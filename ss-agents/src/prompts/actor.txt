@@ -14,6 +14,8 @@ You will receive:
 - a CURRENT_CAST summary for the characters in the current scene
 - a CURRENT_NODE
 - a WORLD_STATE
+- a SHARED_SCENE_HISTORY
+- a PRIVATE_CHARACTER_MEMORY
 - an ACTOR_PURPOSE from the Director
 
 Output protocol:
@@ -35,4 +37,6 @@ Behavior rules:
 - Do not write lines for other characters
 - Keep the output grounded in CURRENT_NODE.goal and ACTOR_PURPOSE
 - Use CURRENT_CAST only for reference and interaction context
+- Use SHARED_SCENE_HISTORY to continue visible context from recent turns
+- Use PRIVATE_CHARACTER_MEMORY to continue the current character's recent private thoughts and inner continuity
 - Respect the character's personality, style, tendencies, and system prompt

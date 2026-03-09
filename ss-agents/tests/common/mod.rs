@@ -4,9 +4,7 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use futures_util::stream;
-use llm::{
-    ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role,
-};
+use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
 
 type RecordedRequests = Arc<Mutex<Vec<ChatRequest>>>;
 type ChatResultSlot = Arc<Mutex<Option<Result<ChatResponse, LlmError>>>>;
@@ -38,7 +36,10 @@ impl MockLlm {
     }
 
     pub fn recorded_requests(&self) -> Vec<ChatRequest> {
-        self.requests.lock().expect("requests lock poisoned").clone()
+        self.requests
+            .lock()
+            .expect("requests lock poisoned")
+            .clone()
     }
 }
 

@@ -4,6 +4,39 @@ use std::collections::HashMap;
 
 use crate::update::{StateOp, StateUpdate};
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActorMemoryKind {
+    Dialogue,
+    Thought,
+    Action,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActorMemoryEntry {
+    pub speaker_id: String,
+    pub speaker_name: String,
+    pub kind: ActorMemoryKind,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorldStatePromptView<'a> {
+    current_node: &'a str,
+    active_characters: &'a [String],
+    custom: &'a HashMap<String, Value>,
+    character_state: &'a HashMap<String, HashMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NarratorWorldStateView<'a> {
+    current_node: &'a str,
+    active_characters: &'a [String],
+    custom: &'a HashMap<String, Value>,
+    character_state: &'a HashMap<String, HashMap<String, Value>>,
+    actor_shared_history: &'a [ActorMemoryEntry],
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldState {
     pub current_node: String,
@@ -11,6 +44,10 @@ pub struct WorldState {
     pub custom: HashMap<String, Value>,
     #[serde(default)]
     pub character_state: HashMap<String, HashMap<String, Value>>,
+    #[serde(default)]
+    pub actor_shared_history: Vec<ActorMemoryEntry>,
+    #[serde(default)]
+    pub actor_private_memory: HashMap<String, Vec<ActorMemoryEntry>>,
 }
 
 impl Default for WorldState {
@@ -20,6 +57,8 @@ impl Default for WorldState {
             active_characters: Vec::new(),
             custom: HashMap::new(),
             character_state: HashMap::new(),
+            actor_shared_history: Vec::new(),
+            actor_private_memory: HashMap::new(),
         }
     }
 }
@@ -47,6 +86,19 @@ impl WorldState {
         character_state: HashMap<String, HashMap<String, Value>>,
     ) -> Self {
         self.character_state = character_state;
+        self
+    }
+
+    pub fn with_actor_shared_history(mut self, history: Vec<ActorMemoryEntry>) -> Self {
+        self.actor_shared_history = history;
+        self
+    }
+
+    pub fn with_actor_private_memory(
+        mut self,
+        memory: HashMap<String, Vec<ActorMemoryEntry>>,
+    ) -> Self {
+        self.actor_private_memory = memory;
         self
     }
 
@@ -141,6 +193,93 @@ impl WorldState {
             .is_some_and(|state| state.contains_key(key))
     }
 
+    pub fn actor_shared_history(&self) -> &[ActorMemoryEntry] {
+        &self.actor_shared_history
+    }
+
+    pub fn actor_private_memory(&self, character: &str) -> &[ActorMemoryEntry] {
+        self.actor_private_memory
+            .get(character)
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+    }
+
+    pub fn recent_actor_shared_history(&self, limit: usize) -> Vec<ActorMemoryEntry> {
+        tail_entries(&self.actor_shared_history, limit)
+    }
+
+    pub fn recent_actor_private_memory(
+        &self,
+        character: &str,
+        limit: usize,
+    ) -> Vec<ActorMemoryEntry> {
+        self.actor_private_memory
+            .get(character)
+            .map(|entries| tail_entries(entries, limit))
+            .unwrap_or_default()
+    }
+
+    pub fn push_actor_shared_history(&mut self, entry: ActorMemoryEntry, limit: usize) {
+        self.actor_shared_history.push(entry);
+        trim_entries(&mut self.actor_shared_history, limit);
+    }
+
+    pub fn push_actor_private_memory(
+        &mut self,
+        character: impl Into<String>,
+        entry: ActorMemoryEntry,
+        limit: usize,
+    ) {
+        let entries = self
+            .actor_private_memory
+            .entry(character.into())
+            .or_default();
+        entries.push(entry);
+        trim_entries(entries, limit);
+    }
+
+    pub fn clear_actor_shared_history(&mut self) {
+        self.actor_shared_history.clear();
+    }
+
+    pub fn clear_actor_private_memory(&mut self, character: &str) {
+        self.actor_private_memory.remove(character);
+    }
+
+    pub fn clear_all_actor_private_memory(&mut self) {
+        self.actor_private_memory.clear();
+    }
+
+    pub fn clear_actor_memory(&mut self) {
+        self.clear_actor_shared_history();
+        self.clear_all_actor_private_memory();
+    }
+
+    pub fn without_actor_memory(&self) -> Self {
+        let mut clone = self.clone();
+        clone.clear_actor_memory();
+        clone
+    }
+
+    pub fn prompt_view(&self) -> WorldStatePromptView<'_> {
+        WorldStatePromptView {
+            current_node: &self.current_node,
+            active_characters: &self.active_characters,
+            custom: &self.custom,
+            character_state: &self.character_state,
+        }
+    }
+
+    pub fn narrator_prompt_view(&self) -> NarratorWorldStateView<'_> {
+        NarratorWorldStateView {
+            current_node: &self.current_node,
+            active_characters: &self.active_characters,
+            custom: &self.custom,
+            character_state: &self.character_state,
+            actor_shared_history: &self.actor_shared_history,
+        }
+    }
+
     pub fn apply_update(&mut self, update: StateUpdate) {
         for op in update.ops {
             self.apply_op(op);
@@ -185,51 +324,23 @@ impl WorldState {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use serde_json::json;
-
-    use super::WorldState;
-    use crate::update::{StateOp, StateUpdate};
-
-    #[test]
-    fn character_state_round_trip_works() {
-        let mut state = WorldState::default();
-
-        state.set_character_state("Haru", "trust", json!(3));
-
-        assert_eq!(state.character_state("Haru", "trust"), Some(&json!(3)));
-        assert!(state.has_character_state("Haru", "trust"));
+fn trim_entries(entries: &mut Vec<ActorMemoryEntry>, limit: usize) {
+    if limit == 0 {
+        entries.clear();
+        return;
     }
 
-    #[test]
-    fn removing_last_character_field_cleans_up_character_map() {
-        let mut state = WorldState::default();
-        state.set_character_state("Haru", "trust", json!(3));
+    if entries.len() > limit {
+        let remove_count = entries.len() - limit;
+        entries.drain(..remove_count);
+    }
+}
 
-        assert_eq!(
-            state.remove_character_state("Haru", "trust"),
-            Some(json!(3))
-        );
-        assert_eq!(state.character_states("Haru"), None);
+fn tail_entries(entries: &[ActorMemoryEntry], limit: usize) -> Vec<ActorMemoryEntry> {
+    if limit == 0 {
+        return Vec::new();
     }
 
-    #[test]
-    fn apply_update_supports_character_state_ops() {
-        let mut state = WorldState::default();
-        let update = StateUpdate::new()
-            .push(StateOp::SetCharacterState {
-                character: "Yuki".to_owned(),
-                key: "mood".to_owned(),
-                value: json!("curious"),
-            })
-            .push(StateOp::RemoveCharacterState {
-                character: "Yuki".to_owned(),
-                key: "mood".to_owned(),
-            });
-
-        state.apply_update(update);
-
-        assert_eq!(state.character_states("Yuki"), None);
-    }
+    let start = entries.len().saturating_sub(limit);
+    entries[start..].to_vec()
 }

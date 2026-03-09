@@ -204,7 +204,7 @@ impl<'a> Director<'a> {
     ) -> Result<String, DirectorError> {
         let node_json =
             serde_json::to_string_pretty(node).map_err(DirectorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(world_state)
+        let world_state_json = serde_json::to_string_pretty(&world_state.prompt_view())
             .map_err(DirectorError::SerializePromptData)?;
         let cast_json = serde_json::to_string_pretty(&current_cast_summaries(
             &node.characters,

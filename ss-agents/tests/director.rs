@@ -3,11 +3,11 @@ mod common;
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::Director;
-use state::WorldState;
+use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{NarrativeNode, StoryGraph};
 
-use common::{assistant_response, MockLlm};
+use common::{MockLlm, assistant_response};
 
 #[tokio::test]
 async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
@@ -45,6 +45,25 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
 
     let mut world_state = WorldState::new("merchant_intro");
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.push_actor_shared_history(
+        ActorMemoryEntry {
+            speaker_id: "merchant".to_owned(),
+            speaker_name: "Old Merchant".to_owned(),
+            kind: ActorMemoryKind::Dialogue,
+            text: "Keep this between us.".to_owned(),
+        },
+        8,
+    );
+    world_state.push_actor_private_memory(
+        "merchant",
+        ActorMemoryEntry {
+            speaker_id: "merchant".to_owned(),
+            speaker_name: "Old Merchant".to_owned(),
+            kind: ActorMemoryKind::Thought,
+            text: "This should stay hidden from the director.".to_owned(),
+        },
+        8,
+    );
 
     let result = director
         .decide_strict(
@@ -74,5 +93,13 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     assert!(user_message.content.contains("CURRENT_CAST"));
     assert!(user_message.content.contains("\"id\": \"merchant\""));
     assert!(!user_message.content.contains("Stay in character."));
+    assert!(!user_message.content.contains("Keep this between us."));
+    assert!(
+        !user_message
+            .content
+            .contains("This should stay hidden from the director.")
+    );
+    assert!(!user_message.content.contains("\"actor_shared_history\""));
+    assert!(!user_message.content.contains("\"actor_private_memory\""));
     assert_eq!(result.response_plan.beats.len(), 2);
 }

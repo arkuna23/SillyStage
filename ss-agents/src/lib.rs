@@ -1,6 +1,7 @@
+pub mod actor;
 pub mod architect;
 pub mod director;
-pub mod actor;
+pub mod narrator;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

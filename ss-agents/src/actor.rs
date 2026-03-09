@@ -4,15 +4,18 @@ use std::path::Path;
 use std::pin::Pin;
 
 use futures_core::Stream;
-use futures_util::{stream, StreamExt};
+use futures_util::{StreamExt, stream};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 
 use crate::director::ActorPurpose;
-use state::WorldState;
+use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
 
-pub type ActorEventStream = Pin<Box<dyn Stream<Item = Result<ActorStreamEvent, ActorError>> + Send>>;
+const DEFAULT_MEMORY_LIMIT: usize = 8;
+
+pub type ActorEventStream<'a> =
+    Pin<Box<dyn Stream<Item = Result<ActorStreamEvent, ActorError>> + Send + 'a>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterCard {
@@ -51,7 +54,7 @@ pub struct ActorRequest {
     pub cast: Vec<CharacterCard>,
     pub purpose: ActorPurpose,
     pub node: NarrativeNode,
-    pub world_state: WorldState,
+    pub memory_limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -113,8 +116,12 @@ impl<'a> Actor<'a> {
         })
     }
 
-    pub async fn perform(&self, request: ActorRequest) -> Result<ActorResponse, ActorError> {
-        let mut stream = self.perform_stream(request).await?;
+    pub async fn perform(
+        &self,
+        request: ActorRequest,
+        world_state: &mut WorldState,
+    ) -> Result<ActorResponse, ActorError> {
+        let mut stream = self.perform_stream(request, world_state).await?;
         let mut final_response = None;
 
         while let Some(event) = stream.next().await {
@@ -128,14 +135,15 @@ impl<'a> Actor<'a> {
         })
     }
 
-    pub async fn perform_stream(
-        &self,
+    pub async fn perform_stream<'b>(
+        &'b self,
         request: ActorRequest,
-    ) -> Result<ActorEventStream, ActorError> {
+        world_state: &'b mut WorldState,
+    ) -> Result<ActorEventStream<'b>, ActorError> {
         Self::validate_request(&request)?;
 
         let character_prompt = self.build_character_prompt(&request.character)?;
-        let user_prompt = self.build_user_prompt(&request)?;
+        let user_prompt = self.build_user_prompt(&request, world_state)?;
         let stream = self
             .llm
             .chat_stream(
@@ -151,7 +159,10 @@ impl<'a> Actor<'a> {
         let state = ActorEventStreamState {
             llm_stream: stream,
             parser: ActorStreamParser::new(&request.character),
+            world_state,
+            memory_limit: request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT),
             llm_finished: false,
+            memory_persisted: false,
             terminated: false,
         };
 
@@ -162,6 +173,10 @@ impl<'a> Actor<'a> {
 
             loop {
                 if let Some(event) = state.parser.pop_event() {
+                    if let Err(error) = state.persist_memory_if_needed(event.clone()) {
+                        state.terminated = true;
+                        return Some((Err(error), state));
+                    }
                     return Some((Ok(event), state));
                 }
 
@@ -203,7 +218,12 @@ impl<'a> Actor<'a> {
     }
 
     fn validate_request(request: &ActorRequest) -> Result<(), ActorError> {
-        if !request.node.characters.iter().any(|id| id == &request.character.id) {
+        if !request
+            .node
+            .characters
+            .iter()
+            .any(|id| id == &request.character.id)
+        {
             return Err(ActorError::InvalidRequest(format!(
                 "current node does not contain character id '{}'",
                 request.character.id
@@ -237,24 +257,38 @@ impl<'a> Actor<'a> {
         ))
     }
 
-    fn build_user_prompt(&self, request: &ActorRequest) -> Result<String, ActorError> {
+    fn build_user_prompt(
+        &self,
+        request: &ActorRequest,
+        world_state: &WorldState,
+    ) -> Result<String, ActorError> {
         let purpose_json =
             serde_json::to_string(&request.purpose).map_err(ActorError::SerializePromptData)?;
         let node_json =
             serde_json::to_string_pretty(&request.node).map_err(ActorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(&request.world_state)
+        let world_state_json = serde_json::to_string_pretty(&world_state.prompt_view())
             .map_err(ActorError::SerializePromptData)?;
+        let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
+        let shared_history_json =
+            serde_json::to_string_pretty(&world_state.recent_actor_shared_history(memory_limit))
+                .map_err(ActorError::SerializePromptData)?;
+        let private_memory_json = serde_json::to_string_pretty(
+            &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
+        )
+        .map_err(ActorError::SerializePromptData)?;
         let cast_json = serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
             .map_err(ActorError::SerializePromptData)?;
 
         Ok(format!(
-            "CURRENT_CHARACTER_ID:\n{}\n\nCURRENT_CHARACTER_NAME:\n{}\n\nACTOR_PURPOSE:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}",
+            "CURRENT_CHARACTER_ID:\n{}\n\nCURRENT_CHARACTER_NAME:\n{}\n\nACTOR_PURPOSE:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
             request.character.id,
             request.character.name,
             purpose_json,
             cast_json,
             node_json,
-            world_state_json
+            world_state_json,
+            shared_history_json,
+            private_memory_json
         ))
     }
 
@@ -300,11 +334,30 @@ pub enum ActorError {
     StreamParse(String),
 }
 
-struct ActorEventStreamState {
+struct ActorEventStreamState<'a> {
     llm_stream: llm::ChatStream,
     parser: ActorStreamParser,
+    world_state: &'a mut WorldState,
+    memory_limit: usize,
     llm_finished: bool,
+    memory_persisted: bool,
     terminated: bool,
+}
+
+impl ActorEventStreamState<'_> {
+    fn persist_memory_if_needed(&mut self, event: ActorStreamEvent) -> Result<(), ActorError> {
+        if self.memory_persisted {
+            return Ok(());
+        }
+
+        let ActorStreamEvent::Done { response } = event else {
+            return Ok(());
+        };
+
+        persist_actor_memory(self.world_state, &response, self.memory_limit);
+        self.memory_persisted = true;
+        Ok(())
+    }
 }
 
 struct ActorStreamParser {
@@ -316,6 +369,38 @@ struct ActorStreamParser {
     queued_events: VecDeque<ActorStreamEvent>,
     raw_output: String,
     finished: bool,
+}
+
+fn persist_actor_memory(
+    world_state: &mut WorldState,
+    response: &ActorResponse,
+    memory_limit: usize,
+) {
+    for segment in &response.segments {
+        let entry = ActorMemoryEntry {
+            speaker_id: response.speaker_id.clone(),
+            speaker_name: response.speaker_name.clone(),
+            kind: memory_kind(segment.kind),
+            text: segment.text.clone(),
+        };
+
+        if matches!(
+            segment.kind,
+            ActorSegmentKind::Dialogue | ActorSegmentKind::Action
+        ) {
+            world_state.push_actor_shared_history(entry, memory_limit);
+        } else if matches!(segment.kind, ActorSegmentKind::Thought) {
+            world_state.push_actor_private_memory(response.speaker_id.clone(), entry, memory_limit);
+        }
+    }
+}
+
+fn memory_kind(kind: ActorSegmentKind) -> ActorMemoryKind {
+    match kind {
+        ActorSegmentKind::Dialogue => ActorMemoryKind::Dialogue,
+        ActorSegmentKind::Thought => ActorMemoryKind::Thought,
+        ActorSegmentKind::Action => ActorMemoryKind::Action,
+    }
 }
 
 enum ParserState {
@@ -455,9 +540,10 @@ impl ActorStreamParser {
                         }
 
                         if matches!(completed.kind, ActorSegmentKind::Action) {
-                            self.queued_events.push_back(ActorStreamEvent::ActionComplete {
-                                text: completed.text.clone(),
-                            });
+                            self.queued_events
+                                .push_back(ActorStreamEvent::ActionComplete {
+                                    text: completed.text.clone(),
+                                });
                         }
                         self.completed_segments.push(completed);
                         self.state = ParserState::SeekingTag;
