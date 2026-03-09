@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["ss-agents","ss-llm-api", "ss-state", "ss-story"]
+
+[workspace.package]
+edition = "2024"
+license-file = "LICENSE"
+
+[workspace.dependencies]
+async-trait = "0.1"
+dotenvy = "0.15"
+eventsource-stream = "0.2"
+futures-core = "0.3"
+futures-util = "0.3"
+reqwest = { version = "0.13", default-features = false, features = ["json", "stream"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+wiremock = "0.6"
+petgraph = "0.8"
+
+llm = { path = "ss-llm-api", package = "ss-llm-api" }
+state = { path = "ss-state", package = "ss-state" }
+story = { path = "ss-story", package = "ss-story" }
