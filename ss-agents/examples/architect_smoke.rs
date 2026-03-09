@@ -4,6 +4,7 @@ use std::time::Duration;
 use dotenvy::dotenv;
 use llm::{OpenAiClient, OpenAiConfig};
 use serde_json::json;
+use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{Architect, ArchitectRequest};
 use state::schema::{StateFieldSchema, StateValueType, WorldStateSchema};
 use story::runtime_graph::RuntimeStoryGraph;
@@ -90,10 +91,62 @@ fn sample_request(story_concept: String) -> ArchitectRequest {
             .with_default(json!(false))
             .with_description("Whether the city flood gate has been opened"),
     );
+    world_state_schema.insert_character_field(
+        "trust",
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(0))
+            .with_description("How much this character currently trusts the courier"),
+    );
+    world_state_schema.insert_character_field(
+        "knows_safe_route",
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether this character knows a safe route through the flood"),
+    );
 
     ArchitectRequest {
         story_concept,
         world_state_schema,
-        available_characters: vec!["Haru".to_owned(), "Yuki".to_owned(), "Ren".to_owned()],
+        available_characters: vec![
+            CharacterCard {
+                id: "merchant".to_owned(),
+                name: "Haru".to_owned(),
+                personality: "greedy but friendly trader".to_owned(),
+                style: "talkative, casual, slightly cunning".to_owned(),
+                tendencies: vec![
+                    "likes profitable deals".to_owned(),
+                    "avoids danger".to_owned(),
+                    "tries to maintain good relationships".to_owned(),
+                ],
+                system_prompt:
+                    "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion.".to_owned(),
+            },
+            CharacterCard {
+                id: "guide".to_owned(),
+                name: "Yuki".to_owned(),
+                personality: "calm local guide who notices small details".to_owned(),
+                style: "measured, clear, reassuring".to_owned(),
+                tendencies: vec![
+                    "prefers careful plans".to_owned(),
+                    "protects civilians".to_owned(),
+                    "shares local knowledge sparingly".to_owned(),
+                ],
+                system_prompt:
+                    "You are a local guide. Stay observant, practical, and in character.".to_owned(),
+            },
+            CharacterCard {
+                id: "boatman".to_owned(),
+                name: "Ren".to_owned(),
+                personality: "quiet ferryman with a dry sense of humor".to_owned(),
+                style: "brief, understated, practical".to_owned(),
+                tendencies: vec![
+                    "avoids unnecessary risk".to_owned(),
+                    "values loyalty".to_owned(),
+                    "keeps useful tools nearby".to_owned(),
+                ],
+                system_prompt:
+                    "You are a seasoned boatman. Stay understated and avoid breaking immersion.".to_owned(),
+            },
+        ],
     }
 }

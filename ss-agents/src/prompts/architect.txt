@@ -12,6 +12,23 @@ The user will provide:
 
 Use this information to construct a StoryGraph.
 
+WORLD_STATE_SCHEMA contains two groups of fields:
+
+- fields: global world state shared by the whole story
+- character_fields: per-character private state keyed by character id
+
+AVAILABLE_CHARACTERS are compact character card summaries.
+Each item includes at least:
+
+- id
+- name
+- personality
+- style
+- tendencies
+
+When you reference a character in any structural field, always use the character id from AVAILABLE_CHARACTERS.
+Use character names only inside human-readable text when helpful.
+
 The output must be a JSON object representing the StoryGraph structure.
 
 ------------------------------------------------
@@ -34,8 +51,9 @@ NarrativeNode:
   "title": "short title",
   "scene": "description of the narrative situation",
   "goal": "what this node tries to accomplish narratively",
-  "characters": ["character_a", "character_b"],
-  "transitions": [Transition]
+  "characters": ["character_id_a", "character_id_b"],
+  "transitions": [Transition],
+  "on_enter_updates": [StateOp]
 }
 
 Transition:
@@ -43,6 +61,8 @@ Transition:
 {
   "to": "target_node",
   "condition": {
+    "scope": "global_or_character",
+    "character": "character_id_if_scope_is_character",
     "key": "state_variable",
     "op": "operator",
     "value": value
@@ -50,6 +70,44 @@ Transition:
 }
 
 The "condition" field may be omitted for unconditional transitions.
+
+------------------------------------------------
+
+StateOp
+
+A state update operation applied when entering a node.
+
+Supported operations:
+
+{
+  "type": "SetState",
+  "key": "state_variable",
+  "value": value
+}
+
+or
+
+{
+  "type": "RemoveState",
+  "key": "state_variable"
+}
+
+or
+
+{
+  "type": "SetCharacterState",
+  "character": "character_id",
+  "key": "state_variable",
+  "value": value
+}
+
+or
+
+{
+  "type": "RemoveCharacterState",
+  "character": "character_id",
+  "key": "state_variable"
+}
 
 ------------------------------------------------
 
@@ -79,6 +137,9 @@ List of characters participating in the node.
 transitions  
 Possible next nodes in the story graph.
 
+on_enter_updates  
+A list of state update operations that are applied automatically when entering this node.
+
 to  
 Target node ID.
 
@@ -92,10 +153,19 @@ CONDITION STRUCTURE
 A condition must follow this structure:
 
 {
+  "scope": "global_or_character",
+  "character": "character_id_if_scope_is_character",
   "key": "state_variable",
   "op": "operator",
   "value": value
 }
+
+Rules:
+
+- If scope is "global", omit the character field.
+- If scope is "character", include the character field and use an id from AVAILABLE_CHARACTERS.
+- Use WORLD_STATE_SCHEMA.fields for global conditions.
+- Use WORLD_STATE_SCHEMA.character_fields for character conditions.
 
 Supported operators:
 
@@ -121,3 +191,8 @@ This applies to:
 Do not translate these fields into another language.
 
 Node IDs and operator names may remain in English if needed for structural consistency.
+
+Only use characters from AVAILABLE_CHARACTERS in:
+- NarrativeNode.characters
+- character-scoped conditions
+- SetCharacterState / RemoveCharacterState

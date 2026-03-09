@@ -28,15 +28,39 @@ impl StateUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum StateOp {
-    SetCurrentNode { node_id: String },
+    SetCurrentNode {
+        node_id: String,
+    },
 
-    SetActiveCharacters { characters: Vec<String> },
+    SetActiveCharacters {
+        characters: Vec<String>,
+    },
 
-    AddActiveCharacter { character: String },
+    AddActiveCharacter {
+        character: String,
+    },
 
-    RemoveActiveCharacter { character: String },
+    RemoveActiveCharacter {
+        character: String,
+    },
 
-    SetState { key: String, value: Value },
+    SetState {
+        key: String,
+        value: Value,
+    },
 
-    RemoveState { key: String },
+    RemoveState {
+        key: String,
+    },
+
+    SetCharacterState {
+        character: String,
+        key: String,
+        value: Value,
+    },
+
+    RemoveCharacterState {
+        character: String,
+        key: String,
+    },
 }

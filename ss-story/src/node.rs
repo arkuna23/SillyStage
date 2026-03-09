@@ -1,20 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 use crate::transition::Transition;
+use state::update::StateOp;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NarrativeNode {
     pub id: String,
-
     pub title: String,
-
     pub scene: String,
-
     pub goal: String,
-
     pub characters: Vec<String>,
-
     pub transitions: Vec<Transition>,
+
+    #[serde(default)]
+    pub on_enter_updates: Vec<StateOp>,
 }
 
 impl NarrativeNode {
@@ -25,6 +24,7 @@ impl NarrativeNode {
         goal: impl Into<String>,
         characters: Vec<String>,
         transitions: Vec<Transition>,
+        on_enter_updates: Vec<StateOp>,
     ) -> Self {
         Self {
             id: id.into(),
@@ -33,6 +33,7 @@ impl NarrativeNode {
             goal: goal.into(),
             characters,
             transitions,
+            on_enter_updates,
         }
     }
 
@@ -58,6 +59,10 @@ impl NarrativeNode {
 
     pub fn transitions(&self) -> &[Transition] {
         &self.transitions
+    }
+
+    pub fn on_enter_updates(&self) -> &[StateOp] {
+        &self.on_enter_updates
     }
 
     pub fn has_character(&self, character: &str) -> bool {

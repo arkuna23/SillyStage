@@ -1,0 +1,78 @@
+mod common;
+
+use serde_json::json;
+use ss_agents::actor::CharacterCard;
+use ss_agents::director::Director;
+use state::WorldState;
+use story::runtime_graph::RuntimeStoryGraph;
+use story::{NarrativeNode, StoryGraph};
+
+use common::{assistant_response, MockLlm};
+
+#[tokio::test]
+async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
+    let llm = MockLlm::with_chat_response(assistant_response(
+        "{\"beats\":[{\"type\":\"Narrator\",\"purpose\":\"DescribeScene\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"AdvanceGoal\"}]}",
+        Some(json!({
+            "beats": [
+                {
+                    "type": "Narrator",
+                    "purpose": "DescribeScene"
+                },
+                {
+                    "type": "Actor",
+                    "speaker_id": "merchant",
+                    "purpose": "AdvanceGoal"
+                }
+            ]
+        })),
+    ));
+    let director = Director::new(&llm, "test-model").expect("director should build");
+
+    let runtime_graph = RuntimeStoryGraph::from_story_graph(StoryGraph::new(
+        "merchant_intro",
+        vec![NarrativeNode::new(
+            "merchant_intro",
+            "Flooded Dock",
+            "A flooded dock at dusk.",
+            "Decide whether to trust the guide.",
+            vec!["merchant".to_owned()],
+            vec![],
+            vec![],
+        )],
+    ))
+    .expect("runtime graph should build");
+
+    let mut world_state = WorldState::new("merchant_intro");
+    world_state.set_state("flood_gate_open", json!(false));
+
+    let result = director
+        .decide_strict(
+            &runtime_graph,
+            &mut world_state,
+            &[CharacterCard {
+                id: "merchant".to_owned(),
+                name: "Old Merchant".to_owned(),
+                personality: "greedy but friendly trader".to_owned(),
+                style: "talkative".to_owned(),
+                tendencies: vec!["likes profitable deals".to_owned()],
+                system_prompt: "Stay in character.".to_owned(),
+            }],
+        )
+        .await
+        .expect("director should succeed");
+
+    let requests = llm.recorded_requests();
+    let request = requests.first().expect("request should be recorded");
+    let user_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::User))
+        .expect("user message should exist");
+
+    assert!(user_message.content.to_lowercase().contains("json"));
+    assert!(user_message.content.contains("CURRENT_CAST"));
+    assert!(user_message.content.contains("\"id\": \"merchant\""));
+    assert!(!user_message.content.contains("Stay in character."));
+    assert_eq!(result.response_plan.beats.len(), 2);
+}

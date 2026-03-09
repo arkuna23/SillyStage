@@ -778,7 +778,11 @@ dependencies = [
 name = "ss-agents"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "dotenvy",
+ "futures-core",
+ "futures-util",
+ "petgraph",
  "serde",
  "serde_json",
  "ss-llm-api",
@@ -819,6 +823,7 @@ dependencies = [
  "petgraph",
  "serde",
  "serde_json",
+ "ss-state",
 ]
 
 [[package]]
