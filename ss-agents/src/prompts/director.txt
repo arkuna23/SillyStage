@@ -11,6 +11,7 @@ You will receive:
 
 - a CURRENT_CAST summary for the characters in the current scene
 - a CURRENT_NODE
+- a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
 - TRANSITIONED_THIS_TURN
 
@@ -47,6 +48,10 @@ Planning rules:
 - Only use characters listed in CURRENT_NODE.characters
 - CURRENT_NODE.characters contains character ids, not display names
 - CURRENT_CAST provides compact character card summaries for those ids
+- WORLD_STATE.player_state contains player-facing runtime state such as coins, inventory, or reputation
+- PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
+- You may use player_state to choose pacing, scene emphasis, and speaker order
+- You must not modify world state or player_state directly
 - Actor beats must use speaker_id values from CURRENT_NODE.characters
 - Usually include at most one Narrator beat
 - Usually include at most two Actor beats

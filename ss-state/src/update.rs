@@ -53,6 +53,15 @@ pub enum StateOp {
         key: String,
     },
 
+    SetPlayerState {
+        key: String,
+        value: Value,
+    },
+
+    RemovePlayerState {
+        key: String,
+    },
+
     SetCharacterState {
         character: String,
         key: String,

@@ -7,8 +7,7 @@ use llm::{OpenAiClient, OpenAiConfig};
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::{Director, DirectorResult, ResponseBeat};
-use state::schema::{StateFieldSchema, StateValueType};
-use state::{StateOp, WorldState};
+use state::{PlayerStateSchema, StateFieldSchema, StateOp, StateValueType, WorldState};
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
@@ -38,17 +37,28 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let director = Director::new(&client, model.clone())?;
     let runtime_graph = sample_runtime_graph()?;
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
 
     let mut stay_world_state = stay_world_state();
     let stay_result = director
-        .decide_strict(&runtime_graph, &mut stay_world_state, &character_cards)
+        .decide_strict(
+            &runtime_graph,
+            &mut stay_world_state,
+            &character_cards,
+            &player_state_schema,
+        )
         .await?;
     verify_stay_result(&stay_result, &stay_world_state)?;
     print_result("stay", &model, &stay_result, &stay_world_state)?;
 
     let mut move_world_state = move_world_state();
     let move_result = director
-        .decide_strict(&runtime_graph, &mut move_world_state, &character_cards)
+        .decide_strict(
+            &runtime_graph,
+            &mut move_world_state,
+            &character_cards,
+            &player_state_schema,
+        )
         .await?;
     verify_move_result(&move_result, &move_world_state)?;
     print_result("move", &model, &move_result, &move_world_state)?;
@@ -150,6 +160,23 @@ fn sample_character_cards() -> Vec<CharacterCard> {
     ]
 }
 
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(8))
+            .with_description("How many coins the player currently carries"),
+    );
+    schema.insert_field(
+        "dock_pass",
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether the player already holds a valid dock pass"),
+    );
+    schema
+}
+
 fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -181,6 +208,8 @@ fn stay_world_state() -> WorldState {
     let mut world_state = WorldState::new("dock");
     world_state.set_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]);
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(8));
+    world_state.set_player_state("dock_pass", json!(false));
     world_state.set_character_state("merchant", "trust", json!(1));
     world_state.set_character_state("boatman", "knows_safe_route", json!(false));
     world_state
@@ -190,6 +219,8 @@ fn move_world_state() -> WorldState {
     let mut world_state = WorldState::new("dock");
     world_state.set_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]);
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(8));
+    world_state.set_player_state("dock_pass", json!(true));
     world_state.set_character_state("merchant", "trust", json!(3));
     world_state.set_character_state("boatman", "knows_safe_route", json!(false));
     world_state

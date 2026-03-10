@@ -6,7 +6,7 @@ use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 
-use state::world_state::WorldState;
+use state::{PlayerStateSchema, WorldState};
 use story::node::NarrativeNode;
 use story::runtime_graph::RuntimeStoryGraph;
 
@@ -96,9 +96,16 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
-        self.decide_internal(runtime_graph, world_state, character_cards, true)
-            .await
+        self.decide_internal(
+            runtime_graph,
+            world_state,
+            character_cards,
+            player_state_schema,
+            true,
+        )
+        .await
     }
 
     pub async fn decide_strict(
@@ -106,9 +113,16 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
-        self.decide_internal(runtime_graph, world_state, character_cards, false)
-            .await
+        self.decide_internal(
+            runtime_graph,
+            world_state,
+            character_cards,
+            player_state_schema,
+            false,
+        )
+        .await
     }
 
     async fn decide_internal(
@@ -116,6 +130,7 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_state_schema: &PlayerStateSchema,
         allow_fallback: bool,
     ) -> Result<DirectorResult, DirectorError> {
         let previous_node_id = world_state.current_node.clone();
@@ -153,12 +168,24 @@ impl<'a> Director<'a> {
         let current_node = &runtime_graph.graph[next_index];
 
         let response_plan = if allow_fallback {
-            self.build_llm_response_plan(world_state, current_node, transitioned, character_cards)
-                .await
-                .unwrap_or_else(|_| self.build_fallback_response_plan(current_node, transitioned))
+            self.build_llm_response_plan(
+                world_state,
+                current_node,
+                transitioned,
+                character_cards,
+                player_state_schema,
+            )
+            .await
+            .unwrap_or_else(|_| self.build_fallback_response_plan(current_node, transitioned))
         } else {
-            self.build_llm_response_plan(world_state, current_node, transitioned, character_cards)
-                .await?
+            self.build_llm_response_plan(
+                world_state,
+                current_node,
+                transitioned,
+                character_cards,
+                player_state_schema,
+            )
+            .await?
         };
 
         Ok(DirectorResult {
@@ -175,9 +202,15 @@ impl<'a> Director<'a> {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
-        let user_prompt =
-            self.build_user_prompt(world_state, node, transitioned, character_cards)?;
+        let user_prompt = self.build_user_prompt(
+            world_state,
+            node,
+            transitioned,
+            character_cards,
+            player_state_schema,
+        )?;
 
         let value = self
             .llm
@@ -201,10 +234,13 @@ impl<'a> Director<'a> {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        player_state_schema: &PlayerStateSchema,
     ) -> Result<String, DirectorError> {
         let node_json =
             serde_json::to_string_pretty(node).map_err(DirectorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(&world_state.prompt_view())
+        let world_state_json = serde_json::to_string_pretty(&world_state.director_prompt_view())
+            .map_err(DirectorError::SerializePromptData)?;
+        let player_state_schema_json = serde_json::to_string_pretty(player_state_schema)
             .map_err(DirectorError::SerializePromptData)?;
         let cast_json = serde_json::to_string_pretty(&current_cast_summaries(
             &node.characters,
@@ -213,8 +249,8 @@ impl<'a> Director<'a> {
         .map_err(DirectorError::SerializePromptData)?;
 
         Ok(format!(
-            "CURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nWORLD_STATE:\n{}",
-            cast_json, node_json, transitioned, world_state_json
+            "CURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
+            cast_json, node_json, transitioned, player_state_schema_json, world_state_json
         ))
     }
 

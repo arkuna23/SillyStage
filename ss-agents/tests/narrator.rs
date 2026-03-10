@@ -8,8 +8,10 @@ use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::NarratorPurpose;
 use ss_agents::narrator::{Narrator, NarratorRequest, NarratorStreamEvent};
-use state::schema::{StateFieldSchema, StateValueType};
-use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
+use state::{
+    ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateValueType,
+    WorldState,
+};
 use story::NarrativeNode;
 
 use common::MockLlm;
@@ -59,6 +61,7 @@ fn sample_world_state() -> WorldState {
     let mut world_state = WorldState::new("dock");
     world_state.set_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]);
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(12));
     world_state.set_character_state("merchant", "trust", json!(2));
     world_state.push_player_input_shared_memory("Can you open the gate before the tide turns?", 8);
     world_state.push_actor_shared_history(
@@ -83,6 +86,15 @@ fn sample_world_state() -> WorldState {
     world_state
 }
 
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+    );
+    schema
+}
+
 fn sample_scene_node() -> NarrativeNode {
     NarrativeNode::new(
         "dock",
@@ -99,6 +111,7 @@ fn scene_request<'a>(
     purpose: NarratorPurpose,
     current_node: &'a NarrativeNode,
     character_cards: &'a [CharacterCard],
+    player_state_schema: &'a PlayerStateSchema,
     world_state: &'a WorldState,
 ) -> NarratorRequest<'a> {
     NarratorRequest {
@@ -106,6 +119,7 @@ fn scene_request<'a>(
         previous_node: None,
         current_node,
         character_cards,
+        player_state_schema,
         world_state,
     }
 }
@@ -137,6 +151,7 @@ async fn narrate_stream_emits_text_deltas_and_done() {
     ]);
     let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let current_node = sample_scene_node();
 
@@ -145,6 +160,7 @@ async fn narrate_stream_emits_text_deltas_and_done() {
             NarratorPurpose::DescribeScene,
             &current_node,
             &character_cards,
+            &player_state_schema,
             &world_state,
         ))
         .await
@@ -178,6 +194,7 @@ async fn describe_transition_requires_previous_node() {
     let llm = MockLlm::with_stream_chunks(vec![]);
     let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let current_node = sample_scene_node();
 
@@ -186,6 +203,7 @@ async fn describe_transition_requires_previous_node() {
             NarratorPurpose::DescribeTransition,
             &current_node,
             &character_cards,
+            &player_state_schema,
             &world_state,
         ))
         .await
@@ -217,6 +235,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     ]);
     let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let previous_node = NarrativeNode::new(
         "market",
@@ -234,6 +253,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         previous_node: Some(&previous_node),
         current_node: &current_node,
         character_cards: &character_cards,
+        player_state_schema: &player_state_schema,
         world_state: &world_state,
     };
 
@@ -253,6 +273,9 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.content.contains("CURRENT_NODE"));
     assert!(user_message.content.contains("PREVIOUS_NODE"));
     assert!(user_message.content.contains("\"actor_shared_history\""));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.content.contains("\"player_state\""));
+    assert!(user_message.content.contains("\"coins\": 12"));
     assert!(user_message.content.contains("\"state_schema\""));
     assert!(
         user_message

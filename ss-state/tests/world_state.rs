@@ -43,6 +43,33 @@ fn apply_update_supports_character_state_ops() {
 }
 
 #[test]
+fn player_state_round_trip_works() {
+    let mut state = WorldState::default();
+
+    state.set_player_state("coins", json!(12));
+
+    assert_eq!(state.player_state("coins"), Some(&json!(12)));
+    assert!(state.has_player_state("coins"));
+}
+
+#[test]
+fn apply_update_supports_player_state_ops() {
+    let mut state = WorldState::default();
+    let update = StateUpdate::new()
+        .push(StateOp::SetPlayerState {
+            key: "coins".to_owned(),
+            value: json!(12),
+        })
+        .push(StateOp::RemovePlayerState {
+            key: "coins".to_owned(),
+        });
+
+    state.apply_update(update);
+
+    assert_eq!(state.player_state("coins"), None);
+}
+
+#[test]
 fn actor_shared_history_respects_limit() {
     let mut state = WorldState::default();
 
@@ -137,6 +164,7 @@ fn without_actor_memory_clears_hidden_memory_only() {
 fn observable_prompt_view_keeps_shared_history_but_hides_private_memory() {
     let mut state = WorldState::new("dock");
     state.set_state("flood_gate_open", json!(false));
+    state.set_player_state("coins", json!(12));
     state.push_actor_shared_history(
         ActorMemoryEntry {
             speaker_id: "merchant".to_owned(),
@@ -161,6 +189,40 @@ fn observable_prompt_view_keeps_shared_history_but_hides_private_memory() {
         .expect("observable view should serialize");
 
     assert!(serialized.get("actor_shared_history").is_some());
+    assert_eq!(serialized.get("player_state").unwrap()["coins"], json!(12));
     assert!(serialized.get("character_state").is_some());
+    assert!(serialized.get("actor_private_memory").is_none());
+}
+
+#[test]
+fn actor_prompt_view_hides_player_state() {
+    let mut state = WorldState::new("dock");
+    state.set_player_state("coins", json!(12));
+
+    let serialized =
+        serde_json::to_value(state.actor_prompt_view()).expect("actor view should serialize");
+
+    assert!(serialized.get("player_state").is_none());
+}
+
+#[test]
+fn director_prompt_view_keeps_player_state_but_hides_actor_memory() {
+    let mut state = WorldState::new("dock");
+    state.set_player_state("coins", json!(12));
+    state.push_actor_shared_history(
+        ActorMemoryEntry {
+            speaker_id: "player".to_owned(),
+            speaker_name: "Player".to_owned(),
+            kind: ActorMemoryKind::PlayerInput,
+            text: "Buy the rope.".to_owned(),
+        },
+        4,
+    );
+
+    let serialized =
+        serde_json::to_value(state.director_prompt_view()).expect("director view should serialize");
+
+    assert_eq!(serialized.get("player_state").unwrap()["coins"], json!(12));
+    assert!(serialized.get("actor_shared_history").is_none());
     assert!(serialized.get("actor_private_memory").is_none());
 }

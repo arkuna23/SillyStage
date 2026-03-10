@@ -10,8 +10,7 @@ use ss_agents::director::{ActorPurpose, NarratorPurpose};
 use ss_agents::keeper::{
     Keeper, KeeperActorSegment, KeeperActorSegmentKind, KeeperBeat, KeeperPhase, KeeperRequest,
 };
-use state::WorldState;
-use state::schema::{StateFieldSchema, StateValueType};
+use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState};
 use story::NarrativeNode;
 
 #[tokio::main]
@@ -39,6 +38,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     )?;
     let keeper = Keeper::new(&client, model.clone())?;
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let market = market_node();
     let dock = dock_node();
     let dock_world_state = dock_world_state();
@@ -71,6 +71,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         previous_node: None,
         current_node: &dock,
         character_cards: &character_cards,
+        player_state_schema: &player_state_schema,
         world_state: &dock_world_state,
         completed_beats: &input_completed_beats,
     };
@@ -82,6 +83,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
         previous_node: Some(&market),
         current_node: &dock,
         character_cards: &character_cards,
+        player_state_schema: &player_state_schema,
         world_state: &dock_world_state,
         completed_beats: &output_completed_beats,
     };
@@ -151,6 +153,23 @@ fn sample_character_cards() -> Vec<CharacterCard> {
     ]
 }
 
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(8))
+            .with_description("How many coins the player currently carries"),
+    );
+    schema.insert_field(
+        "dock_pass",
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether the player already holds a valid dock pass"),
+    );
+    schema
+}
+
 fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -197,6 +216,8 @@ fn dock_world_state() -> WorldState {
     let mut world_state = WorldState::new("dock");
     world_state.set_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]);
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(8));
+    world_state.set_player_state("dock_pass", json!(false));
     world_state.set_character_state("merchant", "trust", json!(2));
     world_state.set_character_state("guide", "knows_safe_route", json!(true));
     world_state.push_player_input_shared_memory(

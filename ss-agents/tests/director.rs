@@ -5,7 +5,10 @@ use std::collections::HashMap;
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::Director;
-use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
+use state::{
+    ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateValueType,
+    WorldState,
+};
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{NarrativeNode, StoryGraph};
 
@@ -30,6 +33,11 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
         })),
     ));
     let director = Director::new(&llm, "test-model").expect("director should build");
+    let mut player_state_schema = PlayerStateSchema::new();
+    player_state_schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+    );
 
     let runtime_graph = RuntimeStoryGraph::from_story_graph(StoryGraph::new(
         "merchant_intro",
@@ -47,6 +55,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
 
     let mut world_state = WorldState::new("merchant_intro");
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(12));
     world_state.push_actor_shared_history(
         ActorMemoryEntry {
             speaker_id: "merchant".to_owned(),
@@ -80,6 +89,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                 state_schema: HashMap::new(),
                 system_prompt: "Stay in character.".to_owned(),
             }],
+            &player_state_schema,
         )
         .await
         .expect("director should succeed");
@@ -97,6 +107,9 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     assert!(!user_message.content.contains("ResponsePlan schema"));
     assert!(!user_message.content.contains("Stay in character."));
     assert!(!user_message.content.contains("Keep this between us."));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.content.contains("\"player_state\""));
+    assert!(user_message.content.contains("\"coins\": 12"));
     assert!(
         !user_message
             .content

@@ -9,7 +9,7 @@ use serde_json::Value;
 use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCardSummaryRef};
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
-use state::{StateOp, StateUpdate, WorldState};
+use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
 use story::NarrativeNode;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -26,6 +26,7 @@ pub struct KeeperRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
     pub completed_beats: &'a [KeeperBeat],
 }
@@ -185,6 +186,8 @@ impl<'a> Keeper<'a> {
             match op {
                 StateOp::SetState { .. }
                 | StateOp::RemoveState { .. }
+                | StateOp::SetPlayerState { .. }
+                | StateOp::RemovePlayerState { .. }
                 | StateOp::SetActiveCharacters { .. }
                 | StateOp::AddActiveCharacter { .. }
                 | StateOp::RemoveActiveCharacter { .. }
@@ -216,6 +219,8 @@ impl<'a> Keeper<'a> {
         let current_cast_json =
             serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
                 .map_err(KeeperError::SerializePromptData)?;
+        let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
+            .map_err(KeeperError::SerializePromptData)?;
         let world_state_json =
             serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
                 .map_err(KeeperError::SerializePromptData)?;
@@ -223,13 +228,14 @@ impl<'a> Keeper<'a> {
             .map_err(KeeperError::SerializePromptData)?;
 
         Ok(format!(
-            "KEEPER_PHASE:\n{}\n\nPLAYER_INPUT:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nWORLD_STATE:\n{}\n\nCOMPLETED_BEATS:\n{}",
+            "KEEPER_PHASE:\n{}\n\nPLAYER_INPUT:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nCOMPLETED_BEATS:\n{}",
             phase_json,
             player_input_json,
             previous_node_json,
             previous_cast_json,
             current_node_json,
             current_cast_json,
+            player_state_schema_json,
             world_state_json,
             completed_beats_json
         ))

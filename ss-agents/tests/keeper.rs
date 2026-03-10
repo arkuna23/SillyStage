@@ -6,8 +6,10 @@ use serde_json::json;
 use ss_agents::actor::{ActorResponse, ActorSegment, ActorSegmentKind, CharacterCard};
 use ss_agents::director::{ActorPurpose, NarratorPurpose};
 use ss_agents::keeper::{Keeper, KeeperActorSegmentKind, KeeperBeat, KeeperPhase, KeeperRequest};
-use state::schema::{StateFieldSchema, StateValueType};
-use state::{ActorMemoryEntry, ActorMemoryKind, StateOp, WorldState};
+use state::{
+    ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateOp,
+    StateValueType, WorldState,
+};
 use story::NarrativeNode;
 
 use common::{MockLlm, assistant_response};
@@ -53,6 +55,7 @@ fn sample_world_state() -> WorldState {
     let mut world_state = WorldState::new("dock");
     world_state.set_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]);
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(12));
     world_state.set_character_state("merchant", "trust", json!(2));
     world_state
         .push_player_input_shared_memory("I agree to follow the guide toward the canal gate.", 8);
@@ -76,6 +79,15 @@ fn sample_world_state() -> WorldState {
         8,
     );
     world_state
+}
+
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+    );
+    schema
 }
 
 fn previous_node() -> NarrativeNode {
@@ -130,6 +142,7 @@ fn sample_request<'a>(
     previous_node: Option<&'a NarrativeNode>,
     current_node: &'a NarrativeNode,
     character_cards: &'a [CharacterCard],
+    player_state_schema: &'a PlayerStateSchema,
     world_state: &'a WorldState,
     completed_beats: &'a [KeeperBeat],
 ) -> KeeperRequest<'a> {
@@ -139,6 +152,7 @@ fn sample_request<'a>(
         previous_node,
         current_node,
         character_cards,
+        player_state_schema,
         world_state,
         completed_beats,
     }
@@ -147,13 +161,18 @@ fn sample_request<'a>(
 #[tokio::test]
 async fn keep_parses_json_state_update() {
     let llm = MockLlm::with_chat_response(assistant_response(
-        "{\"ops\":[{\"type\":\"SetState\",\"key\":\"route_committed\",\"value\":true},{\"type\":\"RemoveActiveCharacter\",\"character\":\"guide\"},{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3}]}",
+        "{\"ops\":[{\"type\":\"SetState\",\"key\":\"route_committed\",\"value\":true},{\"type\":\"SetPlayerState\",\"key\":\"coins\",\"value\":9},{\"type\":\"RemoveActiveCharacter\",\"character\":\"guide\"},{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3}]}",
         Some(json!({
             "ops": [
                 {
                     "type": "SetState",
                     "key": "route_committed",
                     "value": true
+                },
+                {
+                    "type": "SetPlayerState",
+                    "key": "coins",
+                    "value": 9
                 },
                 {
                     "type": "RemoveActiveCharacter",
@@ -170,6 +189,7 @@ async fn keep_parses_json_state_update() {
     ));
     let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let previous_node = previous_node();
     let current_node = current_node();
@@ -180,20 +200,25 @@ async fn keep_parses_json_state_update() {
             Some(&previous_node),
             &current_node,
             &character_cards,
+            &player_state_schema,
             &world_state,
             &completed_beats,
         ))
         .await
         .expect("keeper should succeed");
 
-    assert_eq!(response.update.ops.len(), 3);
+    assert_eq!(response.update.ops.len(), 4);
     assert!(matches!(response.update.ops[0], StateOp::SetState { .. }));
     assert!(matches!(
         response.update.ops[1],
-        StateOp::RemoveActiveCharacter { .. }
+        StateOp::SetPlayerState { .. }
     ));
     assert!(matches!(
         response.update.ops[2],
+        StateOp::RemoveActiveCharacter { .. }
+    ));
+    assert!(matches!(
+        response.update.ops[3],
         StateOp::SetCharacterState { .. }
     ));
 }
@@ -208,6 +233,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     ));
     let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let previous_node = previous_node();
     let current_node = current_node();
@@ -218,6 +244,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             Some(&previous_node),
             &current_node,
             &character_cards,
+            &player_state_schema,
             &world_state,
             &completed_beats,
         ))
@@ -236,6 +263,9 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.content.contains("PLAYER_INPUT"));
     assert!(user_message.content.contains("COMPLETED_BEATS"));
     assert!(user_message.content.contains("\"actor_shared_history\""));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.content.contains("\"player_state\""));
+    assert!(user_message.content.contains("\"coins\": 12"));
     assert!(user_message.content.contains("\"state_schema\""));
     assert!(!user_message.content.contains("StateUpdate schema"));
     assert!(
@@ -271,6 +301,7 @@ async fn keeper_rejects_disallowed_ops() {
     ));
     let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
     let previous_node = previous_node();
     let current_node = current_node();
@@ -281,6 +312,7 @@ async fn keeper_rejects_disallowed_ops() {
             Some(&previous_node),
             &current_node,
             &character_cards,
+            &player_state_schema,
             &world_state,
             &completed_beats,
         ))

@@ -30,10 +30,20 @@ pub struct WorldStatePromptView<'a> {
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub struct NarratorWorldStateView<'a> {
+pub struct DirectorWorldStateView<'a> {
     current_node: &'a str,
     active_characters: &'a [String],
     custom: &'a HashMap<String, Value>,
+    player_state: &'a HashMap<String, Value>,
+    character_state: &'a HashMap<String, HashMap<String, Value>>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ObservableWorldStateView<'a> {
+    current_node: &'a str,
+    active_characters: &'a [String],
+    custom: &'a HashMap<String, Value>,
+    player_state: &'a HashMap<String, Value>,
     character_state: &'a HashMap<String, HashMap<String, Value>>,
     actor_shared_history: &'a [ActorMemoryEntry],
 }
@@ -43,6 +53,8 @@ pub struct WorldState {
     pub current_node: String,
     pub active_characters: Vec<String>,
     pub custom: HashMap<String, Value>,
+    #[serde(default)]
+    pub player_state: HashMap<String, Value>,
     #[serde(default)]
     pub character_state: HashMap<String, HashMap<String, Value>>,
     #[serde(default)]
@@ -57,6 +69,7 @@ impl Default for WorldState {
             current_node: "start".to_string(),
             active_characters: Vec::new(),
             custom: HashMap::new(),
+            player_state: HashMap::new(),
             character_state: HashMap::new(),
             actor_shared_history: Vec::new(),
             actor_private_memory: HashMap::new(),
@@ -87,6 +100,11 @@ impl WorldState {
         character_state: HashMap<String, HashMap<String, Value>>,
     ) -> Self {
         self.character_state = character_state;
+        self
+    }
+
+    pub fn with_player_state(mut self, player_state: HashMap<String, Value>) -> Self {
+        self.player_state = player_state;
         self
     }
 
@@ -149,6 +167,26 @@ impl WorldState {
 
     pub fn has_state(&self, key: &str) -> bool {
         self.custom.contains_key(key)
+    }
+
+    pub fn player_states(&self) -> &HashMap<String, Value> {
+        &self.player_state
+    }
+
+    pub fn player_state(&self, key: &str) -> Option<&Value> {
+        self.player_state.get(key)
+    }
+
+    pub fn set_player_state(&mut self, key: impl Into<String>, value: Value) {
+        self.player_state.insert(key.into(), value);
+    }
+
+    pub fn remove_player_state(&mut self, key: &str) -> Option<Value> {
+        self.player_state.remove(key)
+    }
+
+    pub fn has_player_state(&self, key: &str) -> bool {
+        self.player_state.contains_key(key)
     }
 
     pub fn character_states(&self, character: &str) -> Option<&HashMap<String, Value>> {
@@ -278,7 +316,7 @@ impl WorldState {
         clone
     }
 
-    pub fn prompt_view(&self) -> WorldStatePromptView<'_> {
+    pub fn actor_prompt_view(&self) -> WorldStatePromptView<'_> {
         WorldStatePromptView {
             current_node: &self.current_node,
             active_characters: &self.active_characters,
@@ -287,17 +325,32 @@ impl WorldState {
         }
     }
 
-    pub fn observable_prompt_view(&self) -> NarratorWorldStateView<'_> {
-        NarratorWorldStateView {
+    pub fn prompt_view(&self) -> WorldStatePromptView<'_> {
+        self.actor_prompt_view()
+    }
+
+    pub fn director_prompt_view(&self) -> DirectorWorldStateView<'_> {
+        DirectorWorldStateView {
             current_node: &self.current_node,
             active_characters: &self.active_characters,
             custom: &self.custom,
+            player_state: &self.player_state,
+            character_state: &self.character_state,
+        }
+    }
+
+    pub fn observable_prompt_view(&self) -> ObservableWorldStateView<'_> {
+        ObservableWorldStateView {
+            current_node: &self.current_node,
+            active_characters: &self.active_characters,
+            custom: &self.custom,
+            player_state: &self.player_state,
             character_state: &self.character_state,
             actor_shared_history: &self.actor_shared_history,
         }
     }
 
-    pub fn narrator_prompt_view(&self) -> NarratorWorldStateView<'_> {
+    pub fn narrator_prompt_view(&self) -> ObservableWorldStateView<'_> {
         self.observable_prompt_view()
     }
 
@@ -330,6 +383,12 @@ impl WorldState {
             }
             StateOp::RemoveState { key } => {
                 self.custom.remove(&key);
+            }
+            StateOp::SetPlayerState { key, value } => {
+                self.player_state.insert(key, value);
+            }
+            StateOp::RemovePlayerState { key } => {
+                self.player_state.remove(&key);
             }
             StateOp::SetCharacterState {
                 character,

@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
-use state::WorldState;
+use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
 
 pub type NarratorEventStream<'a> =
@@ -23,6 +23,7 @@ pub struct NarratorRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
 }
 
@@ -233,14 +234,17 @@ impl<'a> Narrator<'a> {
         let world_state_json =
             serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
                 .map_err(NarratorError::SerializePromptData)?;
+        let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
+            .map_err(NarratorError::SerializePromptData)?;
 
         Ok(format!(
-            "NARRATOR_PURPOSE:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nWORLD_STATE:\n{}",
+            "NARRATOR_PURPOSE:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
             purpose_json,
             previous_node_json,
             previous_cast_json,
             current_node_json,
             current_cast_json,
+            player_state_schema_json,
             world_state_json
         ))
     }

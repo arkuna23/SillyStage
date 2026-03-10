@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use agents::actor::CharacterCard;
 use serde_json::json;
 use ss_engine::{RuntimeSnapshot, RuntimeState};
+use state::{PlayerStateSchema, StateFieldSchema, StateValueType};
 use story::{NarrativeNode, StoryGraph};
 
 fn sample_character_cards() -> Vec<CharacterCard> {
@@ -54,17 +55,28 @@ fn sample_story_graph() -> StoryGraph {
     )
 }
 
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+    );
+    schema
+}
+
 #[test]
 fn new_initializes_from_start_node() {
     let runtime_state = RuntimeState::from_story_graph(
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_state_schema(),
     )
     .expect("runtime state should build");
 
     assert_eq!(runtime_state.story_id(), "flooded_city_demo");
     assert_eq!(runtime_state.turn_index(), 0);
+    assert!(runtime_state.player_state_schema().has_field("coins"));
     assert_eq!(runtime_state.world_state().current_node(), "dock");
     assert_eq!(
         runtime_state.world_state().active_characters(),
@@ -85,6 +97,7 @@ fn active_character_cards_follow_world_state() {
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_state_schema(),
     )
     .expect("runtime state should build");
     runtime_state
@@ -112,6 +125,7 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_state_schema(),
     )
     .expect("runtime state should build");
     runtime_state
@@ -123,6 +137,9 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
     runtime_state
         .world_state_mut()
         .set_state("flood_gate_open", json!(true));
+    runtime_state
+        .world_state_mut()
+        .set_player_state("coins", json!(7));
     runtime_state.advance_turn();
     runtime_state.advance_turn();
 
@@ -140,6 +157,7 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
         story::runtime_graph::RuntimeStoryGraph::from_story_graph(sample_story_graph())
             .expect("runtime graph should build"),
         sample_character_cards(),
+        sample_player_state_schema(),
         snapshot,
     )
     .expect("snapshot should restore");
@@ -150,6 +168,10 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
     assert_eq!(
         restored.world_state().state("flood_gate_open"),
         Some(&json!(true))
+    );
+    assert_eq!(
+        restored.world_state().player_state("coins"),
+        Some(&json!(7))
     );
     assert_eq!(
         restored
@@ -174,6 +196,7 @@ fn from_snapshot_rejects_story_id_mismatch() {
         story::runtime_graph::RuntimeStoryGraph::from_story_graph(sample_story_graph())
             .expect("runtime graph should build"),
         sample_character_cards(),
+        sample_player_state_schema(),
         snapshot,
     )
     .expect_err("story id mismatch should fail");
@@ -184,9 +207,13 @@ fn from_snapshot_rejects_story_id_mismatch() {
 
 #[test]
 fn from_story_graph_rejects_missing_character_cards() {
-    let error =
-        RuntimeState::from_story_graph("flooded_city_demo", sample_story_graph(), Vec::new())
-            .expect_err("missing character cards should fail");
+    let error = RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        sample_story_graph(),
+        Vec::new(),
+        sample_player_state_schema(),
+    )
+    .expect_err("missing character cards should fail");
 
     assert!(error.to_string().contains("merchant"));
 }

@@ -290,7 +290,7 @@ impl<'a> Actor<'a> {
             serde_json::to_string(&request.purpose).map_err(ActorError::SerializePromptData)?;
         let node_json =
             serde_json::to_string_pretty(&request.node).map_err(ActorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(&world_state.prompt_view())
+        let world_state_json = serde_json::to_string_pretty(&world_state.actor_prompt_view())
             .map_err(ActorError::SerializePromptData)?;
         let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
         let shared_history_json =

@@ -14,6 +14,7 @@ You will receive:
 - a PREVIOUS_CAST
 - a CURRENT_NODE
 - a CURRENT_CAST
+- a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
 - COMPLETED_BEATS
 
@@ -33,6 +34,8 @@ Allowed StateOp types:
 
 - SetState
 - RemoveState
+- SetPlayerState
+- RemovePlayerState
 - SetActiveCharacters
 - AddActiveCharacter
 - RemoveActiveCharacter
@@ -49,6 +52,8 @@ Evidence rules:
 - Do not invent hidden motives or unseen events
 - Do not read or infer actor private memory
 - CURRENT_CAST contains compact character card summaries, including each character's private state schema
+- PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
+- Use WORLD_STATE.player_state when recording visible player-facing changes such as coins, items, access, or reputation
 - Use WORLD_STATE.actor_shared_history only as visible context, including visible player input when present
 - Use character ids for all character-scoped state updates
 

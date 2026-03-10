@@ -68,6 +68,7 @@ fn sample_request<'a>(
 fn sample_world_state() -> WorldState {
     let mut world_state = WorldState::new("merchant_intro");
     world_state.set_state("flood_gate_open", json!(false));
+    world_state.set_player_state("coins", json!(12));
     world_state
 }
 
@@ -314,6 +315,8 @@ async fn perform_stream_sends_character_specific_system_prompt() {
             .content
             .contains("Can you get us through the flooded gate?")
     );
+    assert!(!request.messages[2].content.contains("\"player_state\""));
+    assert!(!request.messages[2].content.contains("\"coins\": 12"));
     assert!(
         request.messages[2]
             .content

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
-use state::WorldState;
+use state::{PlayerStateSchema, WorldState};
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
 use story::{NarrativeNode, StoryGraph};
 
@@ -12,6 +12,7 @@ pub struct RuntimeState {
     runtime_graph: RuntimeStoryGraph,
     character_cards: Vec<CharacterCard>,
     character_card_index: HashMap<String, usize>,
+    player_state_schema: PlayerStateSchema,
     world_state: WorldState,
     turn_index: u64,
 }
@@ -28,6 +29,7 @@ impl RuntimeState {
         story_id: impl Into<String>,
         runtime_graph: RuntimeStoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_state_schema: PlayerStateSchema,
     ) -> Result<Self, RuntimeError> {
         let start_node = runtime_graph
             .graph
@@ -40,6 +42,7 @@ impl RuntimeState {
             story_id.into(),
             runtime_graph,
             character_cards,
+            player_state_schema,
             world_state,
             0,
         )
@@ -49,16 +52,23 @@ impl RuntimeState {
         story_id: impl Into<String>,
         story_graph: StoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_state_schema: PlayerStateSchema,
     ) -> Result<Self, RuntimeError> {
         let runtime_graph =
             RuntimeStoryGraph::from_story_graph(story_graph).map_err(RuntimeError::GraphBuild)?;
-        Self::new(story_id, runtime_graph, character_cards)
+        Self::new(
+            story_id,
+            runtime_graph,
+            character_cards,
+            player_state_schema,
+        )
     }
 
     pub fn from_snapshot(
         story_id: impl Into<String>,
         runtime_graph: RuntimeStoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_state_schema: PlayerStateSchema,
         snapshot: RuntimeSnapshot,
     ) -> Result<Self, RuntimeError> {
         let story_id = story_id.into();
@@ -73,6 +83,7 @@ impl RuntimeState {
             snapshot.story_id,
             runtime_graph,
             character_cards,
+            player_state_schema,
             snapshot.world_state,
             snapshot.turn_index,
         )
@@ -96,6 +107,10 @@ impl RuntimeState {
 
     pub fn world_state(&self) -> &WorldState {
         &self.world_state
+    }
+
+    pub fn player_state_schema(&self) -> &PlayerStateSchema {
+        &self.player_state_schema
     }
 
     pub fn world_state_mut(&mut self) -> &mut WorldState {
@@ -149,6 +164,7 @@ impl RuntimeState {
         story_id: String,
         runtime_graph: RuntimeStoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_state_schema: PlayerStateSchema,
         world_state: WorldState,
         turn_index: u64,
     ) -> Result<Self, RuntimeError> {
@@ -161,6 +177,7 @@ impl RuntimeState {
             runtime_graph,
             character_cards,
             character_card_index,
+            player_state_schema,
             world_state,
             turn_index,
         })

@@ -62,5 +62,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     assert!(user_message.content.contains("\"fields\""));
     assert!(user_message.content.contains("\"id\": \"merchant\""));
     assert!(user_message.content.contains("\"state_schema\""));
+    assert!(!user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(!user_message.content.contains("\"player_state\""));
     assert!(!user_message.content.contains("Stay in character."));
 }
