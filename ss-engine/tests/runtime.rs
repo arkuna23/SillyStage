@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use agents::actor::CharacterCard;
 use serde_json::json;
-use ss_engine::{RuntimeSnapshot, RuntimeState};
-use state::{PlayerStateSchema, StateFieldSchema, StateValueType};
+use ss_engine::{RuntimeSnapshot, RuntimeState, StoryResources};
+use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
 
 fn sample_character_cards() -> Vec<CharacterCard> {
@@ -62,6 +62,95 @@ fn sample_player_state_schema() -> PlayerStateSchema {
         StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
     );
     schema
+}
+
+fn sample_world_state_schema() -> WorldStateSchema {
+    let mut schema = WorldStateSchema::new();
+    schema.insert_field(
+        "flood_gate_open",
+        StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
+    );
+    schema
+}
+
+fn sample_story_resources() -> StoryResources {
+    StoryResources::new(
+        "flooded_city_demo",
+        "A flooded city courier story.",
+        sample_character_cards(),
+        sample_player_state_schema(),
+    )
+    .expect("story resources should build")
+    .with_world_state_schema_seed(sample_world_state_schema())
+}
+
+#[test]
+fn story_resources_store_generation_inputs_and_seed() {
+    let resources = sample_story_resources();
+
+    assert_eq!(resources.story_id(), "flooded_city_demo");
+    assert_eq!(resources.story_concept(), "A flooded city courier story.");
+    assert_eq!(resources.character_cards().len(), 2);
+    assert!(resources.player_state_schema().has_field("coins"));
+    assert!(
+        resources
+            .world_state_schema_seed()
+            .expect("seed should exist")
+            .has_field("flood_gate_open")
+    );
+}
+
+#[test]
+fn story_resources_reject_invalid_inputs() {
+    let empty_story_id = StoryResources::new(
+        "   ",
+        "A flooded city courier story.",
+        sample_character_cards(),
+        sample_player_state_schema(),
+    )
+    .expect_err("empty story_id should fail");
+    assert!(empty_story_id.to_string().contains("story_id"));
+
+    let empty_story_concept = StoryResources::new(
+        "flooded_city_demo",
+        "   ",
+        sample_character_cards(),
+        sample_player_state_schema(),
+    )
+    .expect_err("empty story_concept should fail");
+    assert!(empty_story_concept.to_string().contains("story_concept"));
+
+    let empty_character_cards = StoryResources::new(
+        "flooded_city_demo",
+        "A flooded city courier story.",
+        Vec::new(),
+        sample_player_state_schema(),
+    )
+    .expect_err("empty character cards should fail");
+    assert!(empty_character_cards.to_string().contains("character card"));
+
+    let duplicate_character_cards = StoryResources::new(
+        "flooded_city_demo",
+        "A flooded city courier story.",
+        vec![
+            sample_character_cards()[0].clone(),
+            sample_character_cards()[0].clone(),
+        ],
+        sample_player_state_schema(),
+    )
+    .expect_err("duplicate character cards should fail");
+    assert!(duplicate_character_cards.to_string().contains("duplicate"));
+}
+
+#[test]
+fn runtime_state_can_build_from_story_resources() {
+    let resources = sample_story_resources();
+    let runtime_state =
+        RuntimeState::from_story_resources(&resources, sample_story_graph()).expect("runtime");
+
+    assert_eq!(runtime_state.story_id(), resources.story_id());
+    assert!(runtime_state.player_state_schema().has_field("coins"));
+    assert_eq!(runtime_state.world_state().current_node(), "dock");
 }
 
 #[test]

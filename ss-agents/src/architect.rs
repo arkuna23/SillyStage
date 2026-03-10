@@ -1,6 +1,6 @@
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use state::schema::WorldStateSchema;
 use story::graph::StoryGraph;
 
@@ -8,7 +8,7 @@ use story::graph::StoryGraph;
 #[derive(Debug, Clone, Copy)]
 pub struct ArchitectRequest<'a> {
     pub story_concept: &'a str,
-    pub world_state_schema: &'a WorldStateSchema,
+    pub world_state_schema: Option<&'a WorldStateSchema>,
     pub available_characters: &'a [CharacterCard],
 }
 
@@ -16,7 +16,16 @@ pub struct ArchitectRequest<'a> {
 #[derive(Debug, Clone, Serialize)]
 pub struct ArchitectResponse {
     pub graph: StoryGraph,
+    pub world_state_schema: WorldStateSchema,
+    pub introduction: String,
     pub output: llm::ChatResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ArchitectOutputBundle {
+    graph: StoryGraph,
+    world_state_schema: WorldStateSchema,
+    introduction: String,
 }
 
 /// Architect agent
@@ -51,13 +60,18 @@ impl<'a> Architect<'a> {
             )
             .await?;
 
-        let graph: StoryGraph = output
+        let bundle: ArchitectOutputBundle = output
             .structured_output
             .as_ref()
             .ok_or_else(|| ArchitectError::MissingOutput)
             .and_then(|r| serde_json::from_value(r.clone()).map_err(ArchitectError::InvalidJson))?;
 
-        Ok(ArchitectResponse { graph, output })
+        Ok(ArchitectResponse {
+            graph: bundle.graph,
+            world_state_schema: bundle.world_state_schema,
+            introduction: bundle.introduction,
+            output,
+        })
     }
 
     fn build_user_prompt(&self, req: &ArchitectRequest<'_>) -> Result<String, ArchitectError> {
@@ -76,7 +90,7 @@ impl<'a> Architect<'a> {
             r#"STORY_CONCEPT:
 {}
 
-WORLD_STATE_SCHEMA:
+WORLD_STATE_SCHEMA_SEED:
 {}
 
 AVAILABLE_CHARACTERS:

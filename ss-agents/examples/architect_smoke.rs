@@ -40,7 +40,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let response = architect
         .generate_graph(sample_request(
             &story_concept,
-            &world_state_schema,
+            Some(&world_state_schema),
             &available_characters,
         ))
         .await?;
@@ -55,11 +55,22 @@ async fn run() -> Result<(), Box<dyn Error>> {
     println!("start_node: {}", response.graph.start_node());
     println!("node_count: {}", response.graph.len());
     println!(
+        "world_state_field_count: {}",
+        response.world_state_schema.fields.len()
+    );
+    println!(
         "structured_output: {}",
         response.output.structured_output.is_some()
     );
     println!("dot_export: graph.dot");
     println!();
+    println!("world_state_schema:");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&response.world_state_schema)?
+    );
+    println!();
+    println!("graph:");
     println!("{}", serde_json::to_string_pretty(&response.graph)?);
 
     Ok(())
@@ -86,7 +97,7 @@ fn resolve_story_concept() -> String {
 
 fn sample_request<'a>(
     story_concept: &'a str,
-    world_state_schema: &'a WorldStateSchema,
+    world_state_schema: Option<&'a WorldStateSchema>,
     available_characters: &'a [CharacterCard],
 ) -> ArchitectRequest<'a> {
     ArchitectRequest {

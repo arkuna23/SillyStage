@@ -8,6 +8,7 @@ license-file = "LICENSE"
 
 [workspace.dependencies]
 async-trait = "0.1"
+async-stream = "0.3"
 dotenvy = "0.15"
 eventsource-stream = "0.2"
 futures-core = "0.3"

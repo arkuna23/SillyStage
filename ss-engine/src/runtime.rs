@@ -2,9 +2,25 @@ use std::collections::HashMap;
 
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
-use state::{PlayerStateSchema, WorldState};
+use state::{PlayerStateSchema, WorldState, WorldStateSchema};
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
 use story::{NarrativeNode, StoryGraph};
+
+pub(crate) struct RuntimeStatePartsMut<'a> {
+    pub runtime_graph: &'a RuntimeStoryGraph,
+    pub character_cards: &'a [CharacterCard],
+    pub player_state_schema: &'a PlayerStateSchema,
+    pub world_state: &'a mut WorldState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryResources {
+    story_id: String,
+    story_concept: String,
+    character_cards: Vec<CharacterCard>,
+    player_state_schema: PlayerStateSchema,
+    world_state_schema_seed: Option<WorldStateSchema>,
+}
 
 #[derive(Debug)]
 pub struct RuntimeState {
@@ -22,6 +38,54 @@ pub struct RuntimeSnapshot {
     pub story_id: String,
     pub world_state: WorldState,
     pub turn_index: u64,
+}
+
+impl StoryResources {
+    pub fn new(
+        story_id: impl Into<String>,
+        story_concept: impl Into<String>,
+        character_cards: Vec<CharacterCard>,
+        player_state_schema: PlayerStateSchema,
+    ) -> Result<Self, RuntimeError> {
+        let story_id = story_id.into();
+        let story_concept = story_concept.into();
+        validate_story_id(&story_id)?;
+        validate_story_concept(&story_concept)?;
+        validate_character_cards(&character_cards)?;
+
+        Ok(Self {
+            story_id,
+            story_concept,
+            character_cards,
+            player_state_schema,
+            world_state_schema_seed: None,
+        })
+    }
+
+    pub fn with_world_state_schema_seed(mut self, world_state_schema: WorldStateSchema) -> Self {
+        self.world_state_schema_seed = Some(world_state_schema);
+        self
+    }
+
+    pub fn story_id(&self) -> &str {
+        &self.story_id
+    }
+
+    pub fn story_concept(&self) -> &str {
+        &self.story_concept
+    }
+
+    pub fn character_cards(&self) -> &[CharacterCard] {
+        &self.character_cards
+    }
+
+    pub fn player_state_schema(&self) -> &PlayerStateSchema {
+        &self.player_state_schema
+    }
+
+    pub fn world_state_schema_seed(&self) -> Option<&WorldStateSchema> {
+        self.world_state_schema_seed.as_ref()
+    }
 }
 
 impl RuntimeState {
@@ -61,6 +125,18 @@ impl RuntimeState {
             runtime_graph,
             character_cards,
             player_state_schema,
+        )
+    }
+
+    pub fn from_story_resources(
+        resources: &StoryResources,
+        story_graph: StoryGraph,
+    ) -> Result<Self, RuntimeError> {
+        Self::from_story_graph(
+            resources.story_id(),
+            story_graph,
+            resources.character_cards().to_vec(),
+            resources.player_state_schema().clone(),
         )
     }
 
@@ -160,6 +236,15 @@ impl RuntimeState {
             .collect()
     }
 
+    pub(crate) fn engine_parts(&mut self) -> RuntimeStatePartsMut<'_> {
+        RuntimeStatePartsMut {
+            runtime_graph: &self.runtime_graph,
+            character_cards: &self.character_cards,
+            player_state_schema: &self.player_state_schema,
+            world_state: &mut self.world_state,
+        }
+    }
+
     fn from_parts(
         story_id: String,
         runtime_graph: RuntimeStoryGraph,
@@ -188,6 +273,12 @@ impl RuntimeState {
 pub enum RuntimeError {
     #[error("failed to build runtime graph: {0:?}")]
     GraphBuild(GraphBuildError),
+    #[error("story_id cannot be empty")]
+    EmptyStoryId,
+    #[error("story_concept cannot be empty")]
+    EmptyStoryConcept,
+    #[error("story resources requires at least one character card")]
+    EmptyCharacterCards,
     #[error(
         "runtime snapshot story_id '{snapshot_story_id}' does not match resource story_id '{resource_story_id}'"
     )]
@@ -201,6 +292,30 @@ pub enum RuntimeError {
     MissingCharacterCard(String),
     #[error("duplicate character card id '{0}'")]
     DuplicateCharacterCard(String),
+}
+
+fn validate_story_id(story_id: &str) -> Result<(), RuntimeError> {
+    if story_id.trim().is_empty() {
+        return Err(RuntimeError::EmptyStoryId);
+    }
+
+    Ok(())
+}
+
+fn validate_story_concept(story_concept: &str) -> Result<(), RuntimeError> {
+    if story_concept.trim().is_empty() {
+        return Err(RuntimeError::EmptyStoryConcept);
+    }
+
+    Ok(())
+}
+
+fn validate_character_cards(character_cards: &[CharacterCard]) -> Result<(), RuntimeError> {
+    if character_cards.is_empty() {
+        return Err(RuntimeError::EmptyCharacterCards);
+    }
+
+    build_character_card_index(character_cards).map(|_| ())
 }
 
 fn build_character_card_index(
