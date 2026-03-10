@@ -22,7 +22,8 @@ Narration rules:
 - Prefer one short paragraph unless the transition or result clearly needs two
 - Do not invent hidden thoughts or secret motives
 - Do not use actor private memory
-- Use WORLD_STATE.actor_shared_history only as visible recent context
+- CURRENT_CAST contains compact character card summaries, including each character's private state schema
+- Use WORLD_STATE.actor_shared_history only as visible recent context, including visible player input when present
 - Use character names naturally when helpful
 
 Purpose behavior:

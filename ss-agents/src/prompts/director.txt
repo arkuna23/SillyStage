@@ -47,6 +47,7 @@ Planning rules:
 - Only use characters listed in CURRENT_NODE.characters
 - CURRENT_NODE.characters contains character ids, not display names
 - CURRENT_CAST provides compact character card summaries for those ids
+- Actor beats must use speaker_id values from CURRENT_NODE.characters
 - Usually include at most one Narrator beat
 - Usually include at most two Actor beats
 - If TRANSITIONED_THIS_TURN is true, the Narrator should usually appear first with DescribeTransition

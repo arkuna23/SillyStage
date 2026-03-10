@@ -1,19 +1,19 @@
-use crate::actor::{CharacterCard, CharacterCardSummary};
+use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use state::schema::WorldStateSchema;
 use story::graph::StoryGraph;
 
 /// Architect 的输入
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ArchitectRequest {
-    pub story_concept: String,
-    pub world_state_schema: WorldStateSchema,
-    pub available_characters: Vec<CharacterCard>,
+#[derive(Debug, Clone, Copy)]
+pub struct ArchitectRequest<'a> {
+    pub story_concept: &'a str,
+    pub world_state_schema: &'a WorldStateSchema,
+    pub available_characters: &'a [CharacterCard],
 }
 
 /// Architect 的输出
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ArchitectResponse {
     pub graph: StoryGraph,
     pub output: llm::ChatResponse,
@@ -35,7 +35,7 @@ impl<'a> Architect<'a> {
 
     pub async fn generate_graph(
         &self,
-        req: ArchitectRequest,
+        req: ArchitectRequest<'_>,
     ) -> Result<ArchitectResponse, ArchitectError> {
         let user_prompt = self.build_user_prompt(&req)?;
 
@@ -60,14 +60,14 @@ impl<'a> Architect<'a> {
         Ok(ArchitectResponse { graph, output })
     }
 
-    fn build_user_prompt(&self, req: &ArchitectRequest) -> Result<String, ArchitectError> {
+    fn build_user_prompt(&self, req: &ArchitectRequest<'_>) -> Result<String, ArchitectError> {
         let schema_json = serde_json::to_string_pretty(&req.world_state_schema)
             .map_err(ArchitectError::SerializeSchema)?;
 
-        let character_summaries: Vec<CharacterCardSummary> = req
+        let character_summaries: Vec<CharacterCardSummaryRef<'_>> = req
             .available_characters
             .iter()
-            .map(CharacterCard::summary)
+            .map(CharacterCard::summary_ref)
             .collect();
         let characters_json = serde_json::to_string_pretty(&character_summaries)
             .map_err(ArchitectError::SerializeCharacters)?;
@@ -79,19 +79,9 @@ impl<'a> Architect<'a> {
 WORLD_STATE_SCHEMA:
 {}
 
-SCHEMA_NOTES:
-- WORLD_STATE_SCHEMA.fields are global state fields shared by the whole story.
-- WORLD_STATE_SCHEMA.character_fields are per-character private state fields keyed by character id.
-
-CHARACTER_RULES:
-- AVAILABLE_CHARACTERS are summarized character cards.
-- Use character ids in all structural fields: node.characters, character-scoped conditions, and character state updates.
-- Use character names only inside human-readable narrative text when helpful.
-
 AVAILABLE_CHARACTERS:
 {}
-
-Design a compact interactive story graph for a demo."#,
+"#,
             req.story_concept, schema_json, characters_json
         ))
     }

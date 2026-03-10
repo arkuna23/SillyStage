@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
@@ -7,6 +8,7 @@ use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::NarratorPurpose;
 use ss_agents::narrator::{Narrator, NarratorRequest, NarratorResponse, NarratorStreamEvent};
+use state::schema::{StateFieldSchema, StateValueType};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
 
@@ -36,6 +38,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let narrator = Narrator::new(&client, model.clone())?;
 
     let character_cards = sample_character_cards();
+    let market = market_node();
+    let dock = dock_node();
+    let gate = gate_node();
+    let dock_world_state = dock_world_state();
+    let gate_world_state = gate_world_state();
 
     print_response(
         "describe_scene",
@@ -45,9 +52,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
             NarratorRequest {
                 purpose: NarratorPurpose::DescribeScene,
                 previous_node: None,
-                current_node: dock_node(),
-                character_cards: character_cards.clone(),
-                world_state: dock_world_state(),
+                current_node: &dock,
+                character_cards: &character_cards,
+                world_state: &dock_world_state,
             },
         )
         .await?,
@@ -60,10 +67,10 @@ async fn run() -> Result<(), Box<dyn Error>> {
             &narrator,
             NarratorRequest {
                 purpose: NarratorPurpose::DescribeTransition,
-                previous_node: Some(market_node()),
-                current_node: dock_node(),
-                character_cards: character_cards.clone(),
-                world_state: dock_world_state(),
+                previous_node: Some(&market),
+                current_node: &dock,
+                character_cards: &character_cards,
+                world_state: &dock_world_state,
             },
         )
         .await?,
@@ -77,9 +84,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
             NarratorRequest {
                 purpose: NarratorPurpose::DescribeResult,
                 previous_node: None,
-                current_node: gate_node(),
-                character_cards,
-                world_state: gate_world_state(),
+                current_node: &gate,
+                character_cards: &character_cards,
+                world_state: &gate_world_state,
             },
         )
         .await?,
@@ -98,7 +105,7 @@ fn require_env(name: &str) -> Result<String, Box<dyn Error>> {
 
 async fn run_scenario(
     narrator: &Narrator<'_>,
-    request: NarratorRequest,
+    request: NarratorRequest<'_>,
 ) -> Result<NarratorResponse, Box<dyn Error>> {
     let mut stream = narrator.narrate_stream(request).await?;
     let mut final_response = None;
@@ -136,6 +143,7 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "avoids danger".to_owned(),
                 "tries to maintain good relationships".to_owned(),
             ],
+            state_schema: merchant_state_schema(),
             system_prompt: "You are a traveling merchant. Stay in character.".to_owned(),
         },
         CharacterCard {
@@ -148,6 +156,7 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "protects civilians".to_owned(),
                 "shares local knowledge sparingly".to_owned(),
             ],
+            state_schema: guide_state_schema(),
             system_prompt: "You are a local guide. Stay observant.".to_owned(),
         },
         CharacterCard {
@@ -160,9 +169,37 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "values loyalty".to_owned(),
                 "keeps useful tools nearby".to_owned(),
             ],
+            state_schema: boatman_state_schema(),
             system_prompt: "You are a seasoned boatman. Stay understated.".to_owned(),
         },
     ]
+}
+
+fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "trust".to_owned(),
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(0))
+            .with_description("How much Haru currently trusts the player"),
+    )])
+}
+
+fn guide_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(true))
+            .with_description("Whether Yuki knows the safe path through the docks"),
+    )])
+}
+
+fn boatman_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether Ren knows the canal gate approach"),
+    )])
 }
 
 fn market_node() -> NarrativeNode {
@@ -207,6 +244,10 @@ fn dock_world_state() -> WorldState {
     world_state.set_state("flood_gate_open", json!(false));
     world_state.set_character_state("merchant", "trust", json!(2));
     world_state.set_character_state("guide", "knows_safe_route", json!(true));
+    world_state.push_player_input_shared_memory(
+        "Show me a safe route before the water rises any higher.",
+        8,
+    );
     world_state.push_actor_shared_history(
         ActorMemoryEntry {
             speaker_id: "guide".to_owned(),

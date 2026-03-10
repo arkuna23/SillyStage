@@ -5,15 +5,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WorldStateSchema {
     pub fields: HashMap<String, StateFieldSchema>,
-    #[serde(default)]
-    pub character_fields: HashMap<String, StateFieldSchema>,
 }
 
 impl WorldStateSchema {
     pub fn new() -> Self {
         Self {
             fields: HashMap::new(),
-            character_fields: HashMap::new(),
         }
     }
 
@@ -39,30 +36,6 @@ impl WorldStateSchema {
 
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.fields.keys()
-    }
-
-    pub fn insert_character_field(
-        &mut self,
-        key: impl Into<String>,
-        field: StateFieldSchema,
-    ) -> Option<StateFieldSchema> {
-        self.character_fields.insert(key.into(), field)
-    }
-
-    pub fn get_character_field(&self, key: &str) -> Option<&StateFieldSchema> {
-        self.character_fields.get(key)
-    }
-
-    pub fn has_character_field(&self, key: &str) -> bool {
-        self.character_fields.contains_key(key)
-    }
-
-    pub fn remove_character_field(&mut self, key: &str) -> Option<StateFieldSchema> {
-        self.character_fields.remove(key)
-    }
-
-    pub fn character_keys(&self) -> impl Iterator<Item = &String> {
-        self.character_fields.keys()
     }
 }
 

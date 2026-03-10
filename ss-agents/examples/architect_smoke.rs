@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
@@ -34,8 +35,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
     )?;
 
     let architect = Architect::new(&client, model.clone());
+    let story_concept = resolve_story_concept();
+    let (world_state_schema, available_characters) = sample_inputs();
     let response = architect
-        .generate_graph(sample_request(resolve_story_concept()))
+        .generate_graph(sample_request(
+            &story_concept,
+            &world_state_schema,
+            &available_characters,
+        ))
         .await?;
     let runtime_graph =
         RuntimeStoryGraph::from_story_graph(response.graph.clone()).map_err(|error| {
@@ -77,7 +84,19 @@ fn resolve_story_concept() -> String {
     DEFAULT_STORY_CONCEPT.to_owned()
 }
 
-fn sample_request(story_concept: String) -> ArchitectRequest {
+fn sample_request<'a>(
+    story_concept: &'a str,
+    world_state_schema: &'a WorldStateSchema,
+    available_characters: &'a [CharacterCard],
+) -> ArchitectRequest<'a> {
+    ArchitectRequest {
+        story_concept,
+        world_state_schema,
+        available_characters,
+    }
+}
+
+fn sample_inputs() -> (WorldStateSchema, Vec<CharacterCard>) {
     let mut world_state_schema = WorldStateSchema::new();
     world_state_schema.insert_field(
         "trust_level",
@@ -91,23 +110,10 @@ fn sample_request(story_concept: String) -> ArchitectRequest {
             .with_default(json!(false))
             .with_description("Whether the city flood gate has been opened"),
     );
-    world_state_schema.insert_character_field(
-        "trust",
-        StateFieldSchema::new(StateValueType::Int)
-            .with_default(json!(0))
-            .with_description("How much this character currently trusts the courier"),
-    );
-    world_state_schema.insert_character_field(
-        "knows_safe_route",
-        StateFieldSchema::new(StateValueType::Bool)
-            .with_default(json!(false))
-            .with_description("Whether this character knows a safe route through the flood"),
-    );
 
-    ArchitectRequest {
-        story_concept,
+    (
         world_state_schema,
-        available_characters: vec![
+        vec![
             CharacterCard {
                 id: "merchant".to_owned(),
                 name: "Haru".to_owned(),
@@ -118,6 +124,7 @@ fn sample_request(story_concept: String) -> ArchitectRequest {
                     "avoids danger".to_owned(),
                     "tries to maintain good relationships".to_owned(),
                 ],
+                state_schema: merchant_state_schema(),
                 system_prompt:
                     "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion.".to_owned(),
             },
@@ -131,6 +138,7 @@ fn sample_request(story_concept: String) -> ArchitectRequest {
                     "protects civilians".to_owned(),
                     "shares local knowledge sparingly".to_owned(),
                 ],
+                state_schema: guide_state_schema(),
                 system_prompt:
                     "You are a local guide. Stay observant, practical, and in character.".to_owned(),
             },
@@ -144,9 +152,37 @@ fn sample_request(story_concept: String) -> ArchitectRequest {
                     "values loyalty".to_owned(),
                     "keeps useful tools nearby".to_owned(),
                 ],
+                state_schema: boatman_state_schema(),
                 system_prompt:
                     "You are a seasoned boatman. Stay understated and avoid breaking immersion.".to_owned(),
             },
         ],
-    }
+    )
+}
+
+fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "trust".to_owned(),
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(0))
+            .with_description("How much Haru currently trusts the courier"),
+    )])
+}
+
+fn guide_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(true))
+            .with_description("Whether Yuki knows a safe route through the flood"),
+    )])
+}
+
+fn boatman_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether Ren knows the canal gate approach"),
+    )])
 }

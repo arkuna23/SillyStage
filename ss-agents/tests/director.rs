@@ -1,5 +1,7 @@
 mod common;
 
+use std::collections::HashMap;
+
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::Director;
@@ -75,6 +77,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                 personality: "greedy but friendly trader".to_owned(),
                 style: "talkative".to_owned(),
                 tendencies: vec!["likes profitable deals".to_owned()],
+                state_schema: HashMap::new(),
                 system_prompt: "Stay in character.".to_owned(),
             }],
         )
@@ -89,9 +92,9 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
         .find(|message| matches!(message.role, llm::Role::User))
         .expect("user message should exist");
 
-    assert!(user_message.content.to_lowercase().contains("json"));
     assert!(user_message.content.contains("CURRENT_CAST"));
     assert!(user_message.content.contains("\"id\": \"merchant\""));
+    assert!(!user_message.content.contains("ResponsePlan schema"));
     assert!(!user_message.content.contains("Stay in character."));
     assert!(!user_message.content.contains("Keep this between us."));
     assert!(

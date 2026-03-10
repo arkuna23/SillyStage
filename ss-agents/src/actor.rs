@@ -7,6 +7,7 @@ use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
+use state::schema::StateFieldSchema;
 
 use crate::director::ActorPurpose;
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
@@ -17,13 +18,15 @@ const DEFAULT_MEMORY_LIMIT: usize = 8;
 pub type ActorEventStream<'a> =
     Pin<Box<dyn Stream<Item = Result<ActorStreamEvent, ActorError>> + Send + 'a>>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterCard {
     pub id: String,
     pub name: String,
     pub personality: String,
     pub style: String,
     pub tendencies: Vec<String>,
+    #[serde(default)]
+    pub state_schema: HashMap<String, StateFieldSchema>,
     pub system_prompt: String,
 }
 
@@ -35,25 +38,49 @@ impl CharacterCard {
             personality: self.personality.clone(),
             style: self.style.clone(),
             tendencies: self.tendencies.clone(),
+            state_schema: self.state_schema.clone(),
+        }
+    }
+
+    pub(crate) fn summary_ref(&self) -> CharacterCardSummaryRef<'_> {
+        CharacterCardSummaryRef {
+            id: &self.id,
+            name: &self.name,
+            personality: &self.personality,
+            style: &self.style,
+            tendencies: &self.tendencies,
+            state_schema: &self.state_schema,
         }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterCardSummary {
     pub id: String,
     pub name: String,
     pub personality: String,
     pub style: String,
     pub tendencies: Vec<String>,
+    #[serde(default)]
+    pub state_schema: HashMap<String, StateFieldSchema>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ActorRequest {
-    pub character: CharacterCard,
-    pub cast: Vec<CharacterCard>,
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct CharacterCardSummaryRef<'a> {
+    id: &'a str,
+    name: &'a str,
+    personality: &'a str,
+    style: &'a str,
+    tendencies: &'a [String],
+    state_schema: &'a HashMap<String, StateFieldSchema>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActorRequest<'a> {
+    pub character: &'a CharacterCard,
+    pub cast: &'a [CharacterCard],
     pub purpose: ActorPurpose,
-    pub node: NarrativeNode,
+    pub node: &'a NarrativeNode,
     pub memory_limit: Option<usize>,
 }
 
@@ -118,7 +145,7 @@ impl<'a> Actor<'a> {
 
     pub async fn perform(
         &self,
-        request: ActorRequest,
+        request: ActorRequest<'_>,
         world_state: &mut WorldState,
     ) -> Result<ActorResponse, ActorError> {
         let mut stream = self.perform_stream(request, world_state).await?;
@@ -137,12 +164,12 @@ impl<'a> Actor<'a> {
 
     pub async fn perform_stream<'b>(
         &'b self,
-        request: ActorRequest,
+        request: ActorRequest<'_>,
         world_state: &'b mut WorldState,
     ) -> Result<ActorEventStream<'b>, ActorError> {
         Self::validate_request(&request)?;
 
-        let character_prompt = self.build_character_prompt(&request.character)?;
+        let character_prompt = self.build_character_prompt(request.character)?;
         let user_prompt = self.build_user_prompt(&request, world_state)?;
         let stream = self
             .llm
@@ -158,7 +185,7 @@ impl<'a> Actor<'a> {
 
         let state = ActorEventStreamState {
             llm_stream: stream,
-            parser: ActorStreamParser::new(&request.character),
+            parser: ActorStreamParser::new(request.character),
             world_state,
             memory_limit: request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT),
             llm_finished: false,
@@ -217,7 +244,7 @@ impl<'a> Actor<'a> {
         Ok(Box::pin(stream))
     }
 
-    fn validate_request(request: &ActorRequest) -> Result<(), ActorError> {
+    fn validate_request(request: &ActorRequest<'_>) -> Result<(), ActorError> {
         if !request
             .node
             .characters
@@ -251,15 +278,12 @@ impl<'a> Actor<'a> {
         let card_json =
             serde_json::to_string_pretty(character).map_err(ActorError::SerializePromptData)?;
 
-        Ok(format!(
-            "CHARACTER_CARD:\n{card_json}\n\nADDITIONAL_CHARACTER_RULE:\n{}",
-            character.system_prompt
-        ))
+        Ok(format!("CHARACTER_CARD:\n{card_json}"))
     }
 
     fn build_user_prompt(
         &self,
-        request: &ActorRequest,
+        request: &ActorRequest<'_>,
         world_state: &WorldState,
     ) -> Result<String, ActorError> {
         let purpose_json =
@@ -280,9 +304,7 @@ impl<'a> Actor<'a> {
             .map_err(ActorError::SerializePromptData)?;
 
         Ok(format!(
-            "CURRENT_CHARACTER_ID:\n{}\n\nCURRENT_CHARACTER_NAME:\n{}\n\nACTOR_PURPOSE:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
-            request.character.id,
-            request.character.name,
+            "ACTOR_PURPOSE:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
             purpose_json,
             cast_json,
             node_json,
@@ -292,10 +314,10 @@ impl<'a> Actor<'a> {
         ))
     }
 
-    fn current_cast_summaries(
+    fn current_cast_summaries<'b>(
         &self,
-        request: &ActorRequest,
-    ) -> Result<Vec<CharacterCardSummary>, ActorError> {
+        request: &ActorRequest<'b>,
+    ) -> Result<Vec<CharacterCardSummaryRef<'b>>, ActorError> {
         let cast_by_id: HashMap<&str, &CharacterCard> = request
             .cast
             .iter()
@@ -309,7 +331,7 @@ impl<'a> Actor<'a> {
             .map(|character_id| {
                 cast_by_id
                     .get(character_id.as_str())
-                    .map(|card| card.summary())
+                    .map(|card| card.summary_ref())
                     .ok_or_else(|| {
                         ActorError::InvalidRequest(format!(
                             "missing character card for current cast id '{character_id}'"
@@ -539,6 +561,15 @@ impl ActorStreamParser {
                             )));
                         }
 
+                        if self.completed_segments.last().is_some_and(|previous| {
+                            completed.kind.order_rank() < previous.kind.order_rank()
+                        }) {
+                            return Err(ActorError::StreamParse(
+                                "actor segments must appear in thought, action, dialogue order"
+                                    .to_owned(),
+                            ));
+                        }
+
                         if matches!(completed.kind, ActorSegmentKind::Action) {
                             self.queued_events
                                 .push_back(ActorStreamEvent::ActionComplete {
@@ -634,6 +665,14 @@ impl ActorSegmentKind {
             Self::Dialogue => "dialogue",
             Self::Thought => "thought",
             Self::Action => "action",
+        }
+    }
+
+    fn order_rank(&self) -> u8 {
+        match self {
+            Self::Thought => 0,
+            Self::Action => 1,
+            Self::Dialogue => 2,
         }
     }
 }

@@ -1,0 +1,192 @@
+use std::collections::HashMap;
+
+use agents::actor::CharacterCard;
+use serde_json::json;
+use ss_engine::{RuntimeSnapshot, RuntimeState};
+use story::{NarrativeNode, StoryGraph};
+
+fn sample_character_cards() -> Vec<CharacterCard> {
+    vec![
+        CharacterCard {
+            id: "merchant".to_owned(),
+            name: "Haru".to_owned(),
+            personality: "greedy but friendly trader".to_owned(),
+            style: "talkative, casual".to_owned(),
+            tendencies: vec!["likes profitable deals".to_owned()],
+            state_schema: HashMap::new(),
+            system_prompt: "Stay in character.".to_owned(),
+        },
+        CharacterCard {
+            id: "guide".to_owned(),
+            name: "Yuki".to_owned(),
+            personality: "calm local guide".to_owned(),
+            style: "measured".to_owned(),
+            tendencies: vec!["protects civilians".to_owned()],
+            state_schema: HashMap::new(),
+            system_prompt: "Stay observant.".to_owned(),
+        },
+    ]
+}
+
+fn sample_story_graph() -> StoryGraph {
+    StoryGraph::new(
+        "dock",
+        vec![
+            NarrativeNode::new(
+                "dock",
+                "Flooded Dock",
+                "A flooded dock at dusk.",
+                "Decide whether to trust the guide.",
+                vec!["merchant".to_owned(), "guide".to_owned()],
+                vec![],
+                vec![],
+            ),
+            NarrativeNode::new(
+                "canal_gate",
+                "Canal Gate",
+                "A narrow ledge beside the gate.",
+                "Open the route.",
+                vec!["guide".to_owned()],
+                vec![],
+                vec![],
+            ),
+        ],
+    )
+}
+
+#[test]
+fn new_initializes_from_start_node() {
+    let runtime_state = RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        sample_story_graph(),
+        sample_character_cards(),
+    )
+    .expect("runtime state should build");
+
+    assert_eq!(runtime_state.story_id(), "flooded_city_demo");
+    assert_eq!(runtime_state.turn_index(), 0);
+    assert_eq!(runtime_state.world_state().current_node(), "dock");
+    assert_eq!(
+        runtime_state.world_state().active_characters(),
+        &["merchant".to_owned(), "guide".to_owned()]
+    );
+    assert_eq!(
+        runtime_state
+            .current_node()
+            .expect("current node should exist")
+            .title(),
+        "Flooded Dock"
+    );
+}
+
+#[test]
+fn active_character_cards_follow_world_state() {
+    let mut runtime_state = RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        sample_story_graph(),
+        sample_character_cards(),
+    )
+    .expect("runtime state should build");
+    runtime_state
+        .world_state_mut()
+        .set_active_characters(vec!["guide".to_owned()]);
+
+    let active_cards = runtime_state
+        .active_character_cards()
+        .expect("active character cards should resolve");
+
+    assert_eq!(active_cards.len(), 1);
+    assert_eq!(active_cards[0].id, "guide");
+    assert_eq!(
+        runtime_state
+            .character_card("merchant")
+            .expect("merchant card")
+            .name,
+        "Haru"
+    );
+}
+
+#[test]
+fn snapshot_round_trip_restores_dynamic_state_only() {
+    let mut runtime_state = RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        sample_story_graph(),
+        sample_character_cards(),
+    )
+    .expect("runtime state should build");
+    runtime_state
+        .world_state_mut()
+        .set_current_node("canal_gate".to_owned());
+    runtime_state
+        .world_state_mut()
+        .set_active_characters(vec!["guide".to_owned()]);
+    runtime_state
+        .world_state_mut()
+        .set_state("flood_gate_open", json!(true));
+    runtime_state.advance_turn();
+    runtime_state.advance_turn();
+
+    let snapshot = runtime_state.snapshot();
+    let serialized = serde_json::to_value(&snapshot).expect("snapshot should serialize");
+
+    assert!(serialized.get("story_id").is_some());
+    assert!(serialized.get("world_state").is_some());
+    assert!(serialized.get("turn_index").is_some());
+    assert!(serialized.get("runtime_graph").is_none());
+    assert!(serialized.get("character_cards").is_none());
+
+    let restored = RuntimeState::from_snapshot(
+        "flooded_city_demo",
+        story::runtime_graph::RuntimeStoryGraph::from_story_graph(sample_story_graph())
+            .expect("runtime graph should build"),
+        sample_character_cards(),
+        snapshot,
+    )
+    .expect("snapshot should restore");
+
+    assert_eq!(restored.story_id(), "flooded_city_demo");
+    assert_eq!(restored.turn_index(), 2);
+    assert_eq!(restored.world_state().current_node(), "canal_gate");
+    assert_eq!(
+        restored.world_state().state("flood_gate_open"),
+        Some(&json!(true))
+    );
+    assert_eq!(
+        restored
+            .active_character_cards()
+            .expect("active character cards should resolve")[0]
+            .id,
+        "guide"
+    );
+}
+
+#[test]
+fn from_snapshot_rejects_story_id_mismatch() {
+    let snapshot = RuntimeSnapshot {
+        story_id: "different_story".to_owned(),
+        world_state: state::WorldState::new("dock")
+            .with_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]),
+        turn_index: 1,
+    };
+
+    let error = RuntimeState::from_snapshot(
+        "flooded_city_demo",
+        story::runtime_graph::RuntimeStoryGraph::from_story_graph(sample_story_graph())
+            .expect("runtime graph should build"),
+        sample_character_cards(),
+        snapshot,
+    )
+    .expect_err("story id mismatch should fail");
+
+    assert!(error.to_string().contains("different_story"));
+    assert!(error.to_string().contains("flooded_city_demo"));
+}
+
+#[test]
+fn from_story_graph_rejects_missing_character_cards() {
+    let error =
+        RuntimeState::from_story_graph("flooded_city_demo", sample_story_graph(), Vec::new())
+            .expect_err("missing character cards should fail");
+
+    assert!(error.to_string().contains("merchant"));
+}

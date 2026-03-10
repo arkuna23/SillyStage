@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use ss_agents::actor::{
 };
 use ss_agents::director::ActorPurpose;
 use state::WorldState;
+use state::schema::{StateFieldSchema, StateValueType};
 use story::NarrativeNode;
 
 #[tokio::main]
@@ -44,9 +46,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
     println!("speaker_name: {}", character.name);
     println!();
 
+    world_state.push_player_input_shared_memory(
+        "Can you get us through the flooded canal before the tide turns?",
+        6,
+    );
+    let first_node = sample_node("merchant_pitch");
     let first_response = run_turn(
         &actor,
-        sample_request(character.clone(), cast.clone(), "merchant_pitch"),
+        sample_request(&character, &cast, &first_node),
         &mut world_state,
         "turn_1",
     )
@@ -54,9 +61,14 @@ async fn run() -> Result<(), Box<dyn Error>> {
     validate_response(&first_response)?;
     print_memory_summary(&world_state, &character.id, "after_turn_1")?;
 
+    world_state.push_player_input_shared_memory(
+        "Then show me why I should trust your route over the guide's.",
+        6,
+    );
+    let second_node = sample_node("merchant_follow_up");
     let second_response = run_turn(
         &actor,
-        sample_request(character.clone(), cast, "merchant_follow_up"),
+        sample_request(&character, &cast, &second_node),
         &mut world_state,
         "turn_2",
     )
@@ -78,7 +90,7 @@ fn require_env(name: &str) -> Result<String, Box<dyn Error>> {
 
 async fn run_turn(
     actor: &Actor<'_>,
-    request: ActorRequest,
+    request: ActorRequest<'_>,
     world_state: &mut WorldState,
     label: &str,
 ) -> Result<ActorResponse, Box<dyn Error>> {
@@ -121,7 +133,8 @@ fn sample_cast() -> (CharacterCard, Vec<CharacterCard>) {
             "avoids danger".to_owned(),
             "tries to maintain good relationships".to_owned(),
         ],
-        system_prompt: "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion. For this diagnostic scene, output exactly one <dialogue>, then one <action>, then one <thought>. Each segment must be short, non-empty, and distinct. On the second turn, clearly continue from the recent shared history and private thoughts memory if present."
+        state_schema: merchant_state_schema(),
+        system_prompt: "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion. For this diagnostic scene, output exactly one <thought>, then one <action>, then one <dialogue>. Each segment must be short, non-empty, and distinct. On the second turn, clearly continue from the recent shared history and private thoughts memory if present."
             .to_owned(),
     };
     let guide = CharacterCard {
@@ -134,11 +147,30 @@ fn sample_cast() -> (CharacterCard, Vec<CharacterCard>) {
             "protects civilians".to_owned(),
             "shares local knowledge sparingly".to_owned(),
         ],
+        state_schema: guide_state_schema(),
         system_prompt: "You are a local guide. Stay observant, practical, and in character."
             .to_owned(),
     };
 
     (merchant.clone(), vec![merchant, guide])
+}
+
+fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "trust".to_owned(),
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(serde_json::json!(0))
+            .with_description("How much Haru currently trusts the player"),
+    )])
+}
+
+fn guide_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(serde_json::json!(true))
+            .with_description("Whether Yuki knows the safe route through the flood"),
+    )])
 }
 
 fn sample_world_state() -> WorldState {
@@ -151,38 +183,42 @@ fn sample_world_state() -> WorldState {
     world_state
 }
 
-fn sample_request(
-    character: CharacterCard,
-    cast: Vec<CharacterCard>,
-    node_id: &str,
-) -> ActorRequest {
+fn sample_request<'a>(
+    character: &'a CharacterCard,
+    cast: &'a [CharacterCard],
+    node: &'a NarrativeNode,
+) -> ActorRequest<'a> {
     ActorRequest {
         character,
         cast,
         purpose: ActorPurpose::AdvanceGoal,
-        node: NarrativeNode::new(
-            node_id,
-            if node_id == "merchant_pitch" {
-                "Dockside Bargain"
-            } else {
-                "Dockside Follow-up"
-            },
-            if node_id == "merchant_pitch" {
-                "At the flooded dock, the merchant tries to persuade the guide to accept a risky but profitable route."
-            } else {
-                "The guide has heard the initial pitch, and the merchant now needs to continue the conversation without contradicting earlier turns."
-            },
-            if node_id == "merchant_pitch" {
-                "Offer a profitable deal while showing a visible action and a brief inner thought."
-            } else {
-                "Continue naturally from the recent exchange while showing continuity with prior dialogue, action, and thought."
-            },
-            vec!["merchant".to_owned(), "guide".to_owned()],
-            vec![],
-            vec![],
-        ),
+        node,
         memory_limit: Some(6),
     }
+}
+
+fn sample_node(node_id: &str) -> NarrativeNode {
+    NarrativeNode::new(
+        node_id,
+        if node_id == "merchant_pitch" {
+            "Dockside Bargain"
+        } else {
+            "Dockside Follow-up"
+        },
+        if node_id == "merchant_pitch" {
+            "At the flooded dock, the merchant tries to persuade the guide to accept a risky but profitable route."
+        } else {
+            "The guide has heard the initial pitch, and the merchant now needs to continue the conversation without contradicting earlier turns."
+        },
+        if node_id == "merchant_pitch" {
+            "Offer a profitable deal while showing a visible action and a brief inner thought."
+        } else {
+            "Continue naturally from the recent exchange while showing continuity with prior dialogue, action, and thought."
+        },
+        vec!["merchant".to_owned(), "guide".to_owned()],
+        vec![],
+        vec![],
+    )
 }
 
 fn validate_response(response: &ActorResponse) -> Result<(), Box<dyn Error>> {

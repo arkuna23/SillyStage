@@ -7,6 +7,7 @@ use crate::update::{StateOp, StateUpdate};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ActorMemoryKind {
+    PlayerInput,
     Dialogue,
     Thought,
     Action,
@@ -219,9 +220,25 @@ impl WorldState {
             .unwrap_or_default()
     }
 
-    pub fn push_actor_shared_history(&mut self, entry: ActorMemoryEntry, limit: usize) {
+    pub fn push_shared_memory(&mut self, entry: ActorMemoryEntry, limit: usize) {
         self.actor_shared_history.push(entry);
         trim_entries(&mut self.actor_shared_history, limit);
+    }
+
+    pub fn push_actor_shared_history(&mut self, entry: ActorMemoryEntry, limit: usize) {
+        self.push_shared_memory(entry, limit);
+    }
+
+    pub fn push_player_input_shared_memory(&mut self, text: impl Into<String>, limit: usize) {
+        self.push_shared_memory(
+            ActorMemoryEntry {
+                speaker_id: "player".to_owned(),
+                speaker_name: "Player".to_owned(),
+                kind: ActorMemoryKind::PlayerInput,
+                text: text.into(),
+            },
+            limit,
+        );
     }
 
     pub fn push_actor_private_memory(
@@ -270,7 +287,7 @@ impl WorldState {
         }
     }
 
-    pub fn narrator_prompt_view(&self) -> NarratorWorldStateView<'_> {
+    pub fn observable_prompt_view(&self) -> NarratorWorldStateView<'_> {
         NarratorWorldStateView {
             current_node: &self.current_node,
             active_characters: &self.active_characters,
@@ -278,6 +295,10 @@ impl WorldState {
             character_state: &self.character_state,
             actor_shared_history: &self.actor_shared_history,
         }
+    }
+
+    pub fn narrator_prompt_view(&self) -> NarratorWorldStateView<'_> {
+        self.observable_prompt_view()
     }
 
     pub fn apply_update(&mut self, update: StateUpdate) {

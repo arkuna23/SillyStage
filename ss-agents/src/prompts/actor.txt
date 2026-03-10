@@ -21,12 +21,14 @@ You will receive:
 Output protocol:
 
 - You must output only these segment tags:
-  - <dialogue>...</dialogue>
   - <thought>...</thought>
   - <action>...</action>
+  - <dialogue>...</dialogue>
 - You may emit multiple segments in sequence.
 - Do not emit any text outside these tags.
 - Do not nest tags.
+- Segments must appear only in this order: thought first, then action, then dialogue.
+- Once you start a later segment type, do not go back to an earlier one.
 
 Behavior rules:
 
@@ -37,6 +39,7 @@ Behavior rules:
 - Do not write lines for other characters
 - Keep the output grounded in CURRENT_NODE.goal and ACTOR_PURPOSE
 - Use CURRENT_CAST only for reference and interaction context
-- Use SHARED_SCENE_HISTORY to continue visible context from recent turns
+- CHARACTER_CARD includes the character's private state schema and character-specific system prompt
+- Use SHARED_SCENE_HISTORY to continue visible context from recent turns, including visible player input when present
 - Use PRIVATE_CHARACTER_MEMORY to continue the current character's recent private thoughts and inner continuity
 - Respect the character's personality, style, tendencies, and system prompt

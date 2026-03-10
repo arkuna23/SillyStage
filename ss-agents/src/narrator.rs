@@ -9,7 +9,7 @@ use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::actor::{CharacterCard, CharacterCardSummary};
+use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
 use state::WorldState;
 use story::NarrativeNode;
@@ -17,13 +17,13 @@ use story::NarrativeNode;
 pub type NarratorEventStream<'a> =
     Pin<Box<dyn Stream<Item = Result<NarratorStreamEvent, NarratorError>> + Send + 'a>>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NarratorRequest {
+#[derive(Debug, Clone)]
+pub struct NarratorRequest<'a> {
     pub purpose: NarratorPurpose,
-    pub previous_node: Option<NarrativeNode>,
-    pub current_node: NarrativeNode,
-    pub character_cards: Vec<CharacterCard>,
-    pub world_state: WorldState,
+    pub previous_node: Option<&'a NarrativeNode>,
+    pub current_node: &'a NarrativeNode,
+    pub character_cards: &'a [CharacterCard],
+    pub world_state: &'a WorldState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ impl<'a> Narrator<'a> {
 
     pub async fn narrate(
         &self,
-        request: NarratorRequest,
+        request: NarratorRequest<'_>,
     ) -> Result<NarratorResponse, NarratorError> {
         let mut stream = self.narrate_stream(request).await?;
         let mut final_response = None;
@@ -89,7 +89,7 @@ impl<'a> Narrator<'a> {
 
     pub async fn narrate_stream<'b>(
         &'b self,
-        request: NarratorRequest,
+        request: NarratorRequest<'_>,
     ) -> Result<NarratorEventStream<'b>, NarratorError> {
         Self::validate_request(&request)?;
 
@@ -172,7 +172,7 @@ impl<'a> Narrator<'a> {
         Ok(Box::pin(stream))
     }
 
-    fn validate_request(request: &NarratorRequest) -> Result<(), NarratorError> {
+    fn validate_request(request: &NarratorRequest<'_>) -> Result<(), NarratorError> {
         if matches!(request.purpose, NarratorPurpose::DescribeTransition)
             && request.previous_node.is_none()
         {
@@ -208,7 +208,7 @@ impl<'a> Narrator<'a> {
         Ok(())
     }
 
-    fn build_user_prompt(&self, request: &NarratorRequest) -> Result<String, NarratorError> {
+    fn build_user_prompt(&self, request: &NarratorRequest<'_>) -> Result<String, NarratorError> {
         let purpose_json =
             serde_json::to_string(&request.purpose).map_err(NarratorError::SerializePromptData)?;
         let previous_node_json = serde_json::to_string_pretty(
@@ -231,7 +231,7 @@ impl<'a> Narrator<'a> {
             serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
                 .map_err(NarratorError::SerializePromptData)?;
         let world_state_json =
-            serde_json::to_string_pretty(&request.world_state.narrator_prompt_view())
+            serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
                 .map_err(NarratorError::SerializePromptData)?;
 
         Ok(format!(
@@ -245,21 +245,20 @@ impl<'a> Narrator<'a> {
         ))
     }
 
-    fn current_cast_summaries(
+    fn current_cast_summaries<'b>(
         &self,
-        request: &NarratorRequest,
-    ) -> Result<Vec<CharacterCardSummary>, NarratorError> {
-        cast_summaries(&request.current_node.characters, &request.character_cards)
+        request: &NarratorRequest<'b>,
+    ) -> Result<Vec<CharacterCardSummaryRef<'b>>, NarratorError> {
+        cast_summaries(&request.current_node.characters, request.character_cards)
     }
 
-    fn previous_cast_summaries(
+    fn previous_cast_summaries<'b>(
         &self,
-        request: &NarratorRequest,
-    ) -> Result<Option<Vec<CharacterCardSummary>>, NarratorError> {
+        request: &NarratorRequest<'b>,
+    ) -> Result<Option<Vec<CharacterCardSummaryRef<'b>>>, NarratorError> {
         request
             .previous_node
-            .as_ref()
-            .map(|node| cast_summaries(&node.characters, &request.character_cards))
+            .map(|node| cast_summaries(&node.characters, request.character_cards))
             .transpose()
     }
 }
@@ -287,10 +286,10 @@ struct NarratorEventStreamState {
     terminated: bool,
 }
 
-fn cast_summaries(
+fn cast_summaries<'a>(
     character_ids: &[String],
-    character_cards: &[CharacterCard],
-) -> Result<Vec<CharacterCardSummary>, NarratorError> {
+    character_cards: &'a [CharacterCard],
+) -> Result<Vec<CharacterCardSummaryRef<'a>>, NarratorError> {
     let cards_by_id: HashMap<&str, &CharacterCard> = character_cards
         .iter()
         .map(|card| (card.id.as_str(), card))
@@ -301,7 +300,7 @@ fn cast_summaries(
         .map(|character_id| {
             cards_by_id
                 .get(character_id.as_str())
-                .map(|card| card.summary())
+                .map(|card| card.summary_ref())
                 .ok_or_else(|| {
                     NarratorError::InvalidRequest(format!(
                         "missing character card for cast id '{character_id}'"

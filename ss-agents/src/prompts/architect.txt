@@ -12,10 +12,7 @@ The user will provide:
 
 Use this information to construct a StoryGraph.
 
-WORLD_STATE_SCHEMA contains two groups of fields:
-
-- fields: global world state shared by the whole story
-- character_fields: per-character private state keyed by character id
+WORLD_STATE_SCHEMA.fields are global world state fields shared by the whole story.
 
 AVAILABLE_CHARACTERS are compact character card summaries.
 Each item includes at least:
@@ -25,11 +22,14 @@ Each item includes at least:
 - personality
 - style
 - tendencies
+- state_schema
 
 When you reference a character in any structural field, always use the character id from AVAILABLE_CHARACTERS.
 Use character names only inside human-readable text when helpful.
+For character-scoped conditions and character state updates, only use keys declared in that character's state_schema.
 
 The output must be a JSON object representing the StoryGraph structure.
+Return JSON only, with no markdown fences and no extra prose.
 
 ------------------------------------------------
 
@@ -165,7 +165,7 @@ Rules:
 - If scope is "global", omit the character field.
 - If scope is "character", include the character field and use an id from AVAILABLE_CHARACTERS.
 - Use WORLD_STATE_SCHEMA.fields for global conditions.
-- Use WORLD_STATE_SCHEMA.character_fields for character conditions.
+- Use the referenced character's AVAILABLE_CHARACTERS[*].state_schema for character conditions.
 
 Supported operators:
 

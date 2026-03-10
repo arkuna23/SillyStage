@@ -47,7 +47,7 @@ fn actor_shared_history_respects_limit() {
     let mut state = WorldState::default();
 
     for index in 0..3 {
-        state.push_actor_shared_history(
+        state.push_shared_memory(
             ActorMemoryEntry {
                 speaker_id: "merchant".to_owned(),
                 speaker_name: "Old Merchant".to_owned(),
@@ -61,6 +61,22 @@ fn actor_shared_history_respects_limit() {
     assert_eq!(state.actor_shared_history().len(), 2);
     assert_eq!(state.actor_shared_history()[0].text, "line 1");
     assert_eq!(state.actor_shared_history()[1].text, "line 2");
+}
+
+#[test]
+fn player_input_shared_memory_uses_visible_player_entry() {
+    let mut state = WorldState::default();
+
+    state.push_player_input_shared_memory("Open the flood gate.", 4);
+
+    assert_eq!(state.actor_shared_history().len(), 1);
+    assert_eq!(state.actor_shared_history()[0].speaker_id, "player");
+    assert_eq!(state.actor_shared_history()[0].speaker_name, "Player");
+    assert_eq!(
+        state.actor_shared_history()[0].kind,
+        ActorMemoryKind::PlayerInput
+    );
+    assert_eq!(state.actor_shared_history()[0].text, "Open the flood gate.");
 }
 
 #[test]
@@ -118,14 +134,14 @@ fn without_actor_memory_clears_hidden_memory_only() {
 }
 
 #[test]
-fn narrator_prompt_view_keeps_shared_history_but_hides_private_memory() {
+fn observable_prompt_view_keeps_shared_history_but_hides_private_memory() {
     let mut state = WorldState::new("dock");
     state.set_state("flood_gate_open", json!(false));
     state.push_actor_shared_history(
         ActorMemoryEntry {
             speaker_id: "merchant".to_owned(),
             speaker_name: "Old Merchant".to_owned(),
-            kind: ActorMemoryKind::Dialogue,
+            kind: ActorMemoryKind::PlayerInput,
             text: "The dock is still holding.".to_owned(),
         },
         4,
@@ -141,8 +157,8 @@ fn narrator_prompt_view_keeps_shared_history_but_hides_private_memory() {
         4,
     );
 
-    let serialized =
-        serde_json::to_value(state.narrator_prompt_view()).expect("narrator view should serialize");
+    let serialized = serde_json::to_value(state.observable_prompt_view())
+        .expect("observable view should serialize");
 
     assert!(serialized.get("actor_shared_history").is_some());
     assert!(serialized.get("character_state").is_some());

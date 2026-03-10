@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::actor::{CharacterCard, CharacterCardSummary};
+use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
@@ -213,7 +213,7 @@ impl<'a> Director<'a> {
         .map_err(DirectorError::SerializePromptData)?;
 
         Ok(format!(
-            "Return a valid JSON object matching the ResponsePlan schema.\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nWORLD_STATE:\n{}",
+            "CURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nWORLD_STATE:\n{}",
             cast_json, node_json, transitioned, world_state_json
         ))
     }
@@ -274,10 +274,10 @@ pub enum DirectorError {
     MissingJson,
 }
 
-fn current_cast_summaries(
+fn current_cast_summaries<'a>(
     current_character_ids: &[String],
-    character_cards: &[CharacterCard],
-) -> Result<Vec<CharacterCardSummary>, DirectorError> {
+    character_cards: &'a [CharacterCard],
+) -> Result<Vec<CharacterCardSummaryRef<'a>>, DirectorError> {
     let cards_by_id: std::collections::HashMap<&str, &CharacterCard> = character_cards
         .iter()
         .map(|card| (card.id.as_str(), card))
@@ -288,7 +288,7 @@ fn current_cast_summaries(
         .map(|character_id| {
             cards_by_id
                 .get(character_id.as_str())
-                .map(|card| card.summary())
+                .map(|card| card.summary_ref())
                 .ok_or_else(|| {
                     DirectorError::MissingCharacterCard(format!(
                         "missing character card for current cast id '{character_id}'"

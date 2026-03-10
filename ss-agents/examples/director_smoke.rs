@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::error::Error;
 use std::time::Duration;
 
@@ -6,6 +7,7 @@ use llm::{OpenAiClient, OpenAiConfig};
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::{Director, DirectorResult, ResponseBeat};
+use state::schema::{StateFieldSchema, StateValueType};
 use state::{StateOp, WorldState};
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
@@ -113,6 +115,7 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "avoids danger".to_owned(),
                 "tries to maintain good relationships".to_owned(),
             ],
+            state_schema: merchant_state_schema(),
             system_prompt:
                 "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion.".to_owned(),
         },
@@ -126,6 +129,7 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "protects civilians".to_owned(),
                 "shares local knowledge sparingly".to_owned(),
             ],
+            state_schema: guide_state_schema(),
             system_prompt:
                 "You are a local guide. Stay observant, practical, and in character.".to_owned(),
         },
@@ -139,10 +143,38 @@ fn sample_character_cards() -> Vec<CharacterCard> {
                 "values loyalty".to_owned(),
                 "keeps useful tools nearby".to_owned(),
             ],
+            state_schema: boatman_state_schema(),
             system_prompt:
                 "You are a seasoned boatman. Stay understated and avoid breaking immersion.".to_owned(),
         },
     ]
+}
+
+fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "trust".to_owned(),
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(0))
+            .with_description("How much Haru currently trusts the player"),
+    )])
+}
+
+fn guide_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(true))
+            .with_description("Whether Yuki knows the safe path through the docks"),
+    )])
+}
+
+fn boatman_state_schema() -> HashMap<String, StateFieldSchema> {
+    HashMap::from([(
+        "knows_safe_route".to_owned(),
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether Ren knows the canal gate approach"),
+    )])
 }
 
 fn stay_world_state() -> WorldState {

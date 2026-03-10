@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ss-agents","ss-llm-api", "ss-state", "ss-story"]
+members = ["ss-agents", "ss-engine","ss-llm-api", "ss-state", "ss-story"]
 
 [workspace.package]
 edition = "2024"
@@ -23,3 +23,4 @@ petgraph = "0.8"
 llm = { path = "ss-llm-api", package = "ss-llm-api" }
 state = { path = "ss-state", package = "ss-state" }
 story = { path = "ss-story", package = "ss-story" }
+agents = { path = "ss-agents", package = "ss-agents" }
