@@ -6,8 +6,8 @@ use futures_util::StreamExt;
 use llm::{ChatChunk, LlmError, Role};
 use serde_json::json;
 use ss_engine::{
-    Engine, EngineError, EngineEvent, EngineStage, RuntimeState, StoryResources,
-    generate_story_graph, generate_story_plan,
+    Engine, EngineError, EngineEvent, EngineStage, RuntimeAgentConfigs, RuntimeState,
+    StoryGenerationAgentConfigs, StoryResources, generate_story_graph, generate_story_plan,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
@@ -92,11 +92,16 @@ fn sample_world_state_schema() -> WorldStateSchema {
     schema
 }
 
+fn sample_player_description() -> &'static str {
+    "A stubborn courier protecting a sealed satchel of medicine."
+}
+
 fn sample_runtime_state() -> RuntimeState {
     RuntimeState::from_story_graph(
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_description(),
         sample_player_state_schema(),
     )
     .expect("runtime state should build")
@@ -218,7 +223,11 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
             ]),
         ],
     );
-    let mut engine = Engine::new(&llm, "test-model", sample_runtime_state()).expect("engine");
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        sample_runtime_state(),
+    )
+    .expect("engine");
     let mut stream = engine
         .run_turn_stream("Open the canal gate.")
         .await
@@ -329,7 +338,11 @@ async fn run_turn_returns_result_and_records_completed_beats() {
             }),
         ])],
     );
-    let mut engine = Engine::new(&llm, "test-model", sample_runtime_state()).expect("engine");
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        sample_runtime_state(),
+    )
+    .expect("engine");
 
     let result = engine
         .run_turn("Stay close to the dock.")
@@ -351,7 +364,11 @@ async fn first_keeper_failure_preserves_recorded_player_input_and_emits_failure(
         })],
         Vec::new(),
     );
-    let mut engine = Engine::new(&llm, "test-model", sample_runtime_state()).expect("engine");
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        sample_runtime_state(),
+    )
+    .expect("engine");
     let mut stream = engine
         .run_turn_stream("Count my coins.")
         .await
@@ -418,7 +435,11 @@ async fn invalid_actor_speaker_fails_after_preserving_prior_state_changes() {
         ],
         Vec::new(),
     );
-    let mut engine = Engine::new(&llm, "test-model", sample_runtime_state()).expect("engine");
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        sample_runtime_state(),
+    )
+    .expect("engine");
 
     let error = engine
         .run_turn("Go to the gate.")
@@ -471,23 +492,41 @@ async fn generate_story_graph_uses_architect_independently() {
     );
     let resources = sample_story_resources();
 
-    let response = generate_story_graph(&llm, "test-model", &resources)
-        .await
-        .expect("architect wrapper should succeed");
+    let response = generate_story_graph(
+        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &resources,
+    )
+    .await
+    .expect("architect wrapper should succeed");
 
     assert_eq!(response.graph.start_node, "dock");
     assert!(response.world_state_schema.has_field("entered_gate"));
+    assert!(response.player_state_schema.has_field("coins"));
     assert_eq!(
         response.introduction,
         "The courier arrives at the flooded dock while the merchant watches from under a lantern."
     );
-    let runtime_state = RuntimeState::from_story_resources(&resources, response.graph.clone())
-        .expect("runtime state should build from story resources");
-    let engine = Engine::new(&llm, "test-model", runtime_state).expect("engine should build");
+    let runtime_state = RuntimeState::from_story_resources(
+        &resources,
+        response.graph.clone(),
+        sample_player_description(),
+        response.player_state_schema.clone(),
+    )
+    .expect("runtime state should build from story resources");
+    let engine = Engine::new(
+        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        runtime_state,
+    )
+    .expect("engine should build");
     assert_eq!(engine.runtime_state().story_id(), "flooded_city_demo");
+    assert_eq!(
+        engine.runtime_state().player_description(),
+        sample_player_description()
+    );
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
     assert!(user_message_content(&requests[0]).contains("STORY_CONCEPT"));
+    assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
 }
 
 #[tokio::test]
@@ -501,9 +540,12 @@ async fn generate_story_plan_uses_planner_independently() {
     );
     let resources = sample_story_resources();
 
-    let response = generate_story_plan(&llm, "test-model", &resources)
-        .await
-        .expect("planner wrapper should succeed");
+    let response = generate_story_plan(
+        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &resources,
+    )
+    .await
+    .expect("planner wrapper should succeed");
 
     assert!(response.story_script.contains("Title:"));
     let requests = llm.recorded_requests();
@@ -543,12 +585,17 @@ async fn generate_story_graph_passes_planned_story_when_present() {
         "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
     );
 
-    let _ = generate_story_graph(&llm, "test-model", &resources)
-        .await
-        .expect("architect wrapper should succeed");
+    let response = generate_story_graph(
+        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &resources,
+    )
+    .await
+    .expect("architect wrapper should succeed");
 
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
     assert!(user_message_content(&requests[0]).contains("PLANNED_STORY"));
+    assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
     assert!(user_message_content(&requests[0]).contains("Flooded Dock Bargain"));
+    assert!(response.player_state_schema.has_field("coins"));
 }

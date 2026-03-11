@@ -26,6 +26,7 @@ pub struct KeeperRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
     pub completed_beats: &'a [KeeperBeat],
@@ -228,9 +229,10 @@ impl<'a> Keeper<'a> {
             .map_err(KeeperError::SerializePromptData)?;
 
         Ok(format!(
-            "KEEPER_PHASE:\n{}\n\nPLAYER_INPUT:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nCOMPLETED_BEATS:\n{}",
+            "KEEPER_PHASE:\n{}\n\nPLAYER_INPUT:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nCOMPLETED_BEATS:\n{}",
             phase_json,
             player_input_json,
+            request.player_description,
             previous_node_json,
             previous_cast_json,
             current_node_json,

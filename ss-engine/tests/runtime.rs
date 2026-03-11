@@ -73,6 +73,10 @@ fn sample_world_state_schema() -> WorldStateSchema {
     schema
 }
 
+fn sample_player_description() -> &'static str {
+    "A cautious courier carrying medicine and trying not to attract attention."
+}
+
 fn sample_story_resources() -> StoryResources {
     StoryResources::new(
         "flooded_city_demo",
@@ -148,11 +152,20 @@ fn story_resources_reject_invalid_inputs() {
 #[test]
 fn runtime_state_can_build_from_story_resources() {
     let resources = sample_story_resources();
-    let runtime_state =
-        RuntimeState::from_story_resources(&resources, sample_story_graph()).expect("runtime");
+    let runtime_state = RuntimeState::from_story_resources(
+        &resources,
+        sample_story_graph(),
+        sample_player_description(),
+        resources.player_state_schema().clone(),
+    )
+    .expect("runtime");
 
     assert_eq!(runtime_state.story_id(), resources.story_id());
     assert!(runtime_state.player_state_schema().has_field("coins"));
+    assert_eq!(
+        runtime_state.player_description(),
+        sample_player_description()
+    );
     assert_eq!(runtime_state.world_state().current_node(), "dock");
 }
 
@@ -162,6 +175,7 @@ fn new_initializes_from_start_node() {
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_description(),
         sample_player_state_schema(),
     )
     .expect("runtime state should build");
@@ -169,6 +183,10 @@ fn new_initializes_from_start_node() {
     assert_eq!(runtime_state.story_id(), "flooded_city_demo");
     assert_eq!(runtime_state.turn_index(), 0);
     assert!(runtime_state.player_state_schema().has_field("coins"));
+    assert_eq!(
+        runtime_state.player_description(),
+        sample_player_description()
+    );
     assert_eq!(runtime_state.world_state().current_node(), "dock");
     assert_eq!(
         runtime_state.world_state().active_characters(),
@@ -189,6 +207,7 @@ fn active_character_cards_follow_world_state() {
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_description(),
         sample_player_state_schema(),
     )
     .expect("runtime state should build");
@@ -217,9 +236,11 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
         "flooded_city_demo",
         sample_story_graph(),
         sample_character_cards(),
+        sample_player_description(),
         sample_player_state_schema(),
     )
     .expect("runtime state should build");
+    runtime_state.set_player_description("A disguised courier posing as a dock clerk.");
     runtime_state
         .world_state_mut()
         .set_current_node("canal_gate".to_owned());
@@ -239,6 +260,7 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
     let serialized = serde_json::to_value(&snapshot).expect("snapshot should serialize");
 
     assert!(serialized.get("story_id").is_some());
+    assert!(serialized.get("player_description").is_some());
     assert!(serialized.get("world_state").is_some());
     assert!(serialized.get("turn_index").is_some());
     assert!(serialized.get("runtime_graph").is_none());
@@ -255,6 +277,10 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
     .expect("snapshot should restore");
 
     assert_eq!(restored.story_id(), "flooded_city_demo");
+    assert_eq!(
+        restored.player_description(),
+        "A disguised courier posing as a dock clerk."
+    );
     assert_eq!(restored.turn_index(), 2);
     assert_eq!(restored.world_state().current_node(), "canal_gate");
     assert_eq!(
@@ -278,6 +304,7 @@ fn snapshot_round_trip_restores_dynamic_state_only() {
 fn from_snapshot_rejects_story_id_mismatch() {
     let snapshot = RuntimeSnapshot {
         story_id: "different_story".to_owned(),
+        player_description: sample_player_description().to_owned(),
         world_state: state::WorldState::new("dock")
             .with_active_characters(vec!["merchant".to_owned(), "guide".to_owned()]),
         turn_index: 1,
@@ -303,6 +330,7 @@ fn from_story_graph_rejects_missing_character_cards() {
         "flooded_city_demo",
         sample_story_graph(),
         Vec::new(),
+        sample_player_description(),
         sample_player_state_schema(),
     )
     .expect_err("missing character cards should fail");

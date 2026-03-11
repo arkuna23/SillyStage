@@ -9,6 +9,7 @@ use story::{NarrativeNode, StoryGraph};
 pub(crate) struct RuntimeStatePartsMut<'a> {
     pub runtime_graph: &'a RuntimeStoryGraph,
     pub character_cards: &'a [CharacterCard],
+    pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a mut WorldState,
 }
@@ -29,6 +30,7 @@ pub struct RuntimeState {
     runtime_graph: RuntimeStoryGraph,
     character_cards: Vec<CharacterCard>,
     character_card_index: HashMap<String, usize>,
+    player_description: String,
     player_state_schema: PlayerStateSchema,
     world_state: WorldState,
     turn_index: u64,
@@ -37,6 +39,7 @@ pub struct RuntimeState {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSnapshot {
     pub story_id: String,
+    pub player_description: String,
     pub world_state: WorldState,
     pub turn_index: u64,
 }
@@ -104,6 +107,7 @@ impl RuntimeState {
         story_id: impl Into<String>,
         runtime_graph: RuntimeStoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_description: impl Into<String>,
         player_state_schema: PlayerStateSchema,
     ) -> Result<Self, RuntimeError> {
         let start_node = runtime_graph
@@ -117,6 +121,7 @@ impl RuntimeState {
             story_id.into(),
             runtime_graph,
             character_cards,
+            player_description.into(),
             player_state_schema,
             world_state,
             0,
@@ -127,6 +132,7 @@ impl RuntimeState {
         story_id: impl Into<String>,
         story_graph: StoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_description: impl Into<String>,
         player_state_schema: PlayerStateSchema,
     ) -> Result<Self, RuntimeError> {
         let runtime_graph =
@@ -135,6 +141,7 @@ impl RuntimeState {
             story_id,
             runtime_graph,
             character_cards,
+            player_description,
             player_state_schema,
         )
     }
@@ -142,12 +149,15 @@ impl RuntimeState {
     pub fn from_story_resources(
         resources: &StoryResources,
         story_graph: StoryGraph,
+        player_description: impl Into<String>,
+        player_state_schema: PlayerStateSchema,
     ) -> Result<Self, RuntimeError> {
         Self::from_story_graph(
             resources.story_id(),
             story_graph,
             resources.character_cards().to_vec(),
-            resources.player_state_schema().clone(),
+            player_description,
+            player_state_schema,
         )
     }
 
@@ -170,6 +180,7 @@ impl RuntimeState {
             snapshot.story_id,
             runtime_graph,
             character_cards,
+            snapshot.player_description,
             player_state_schema,
             snapshot.world_state,
             snapshot.turn_index,
@@ -179,6 +190,7 @@ impl RuntimeState {
     pub fn snapshot(&self) -> RuntimeSnapshot {
         RuntimeSnapshot {
             story_id: self.story_id.clone(),
+            player_description: self.player_description.clone(),
             world_state: self.world_state.clone(),
             turn_index: self.turn_index,
         }
@@ -194,6 +206,14 @@ impl RuntimeState {
 
     pub fn world_state(&self) -> &WorldState {
         &self.world_state
+    }
+
+    pub fn player_description(&self) -> &str {
+        &self.player_description
+    }
+
+    pub fn set_player_description(&mut self, player_description: impl Into<String>) {
+        self.player_description = player_description.into();
     }
 
     pub fn player_state_schema(&self) -> &PlayerStateSchema {
@@ -251,6 +271,7 @@ impl RuntimeState {
         RuntimeStatePartsMut {
             runtime_graph: &self.runtime_graph,
             character_cards: &self.character_cards,
+            player_description: &self.player_description,
             player_state_schema: &self.player_state_schema,
             world_state: &mut self.world_state,
         }
@@ -260,6 +281,7 @@ impl RuntimeState {
         story_id: String,
         runtime_graph: RuntimeStoryGraph,
         character_cards: Vec<CharacterCard>,
+        player_description: String,
         player_state_schema: PlayerStateSchema,
         world_state: WorldState,
         turn_index: u64,
@@ -273,6 +295,7 @@ impl RuntimeState {
             runtime_graph,
             character_cards,
             character_card_index,
+            player_description,
             player_state_schema,
             world_state,
             turn_index,

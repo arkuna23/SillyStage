@@ -79,6 +79,7 @@ pub(crate) struct CharacterCardSummaryRef<'a> {
 pub struct ActorRequest<'a> {
     pub character: &'a CharacterCard,
     pub cast: &'a [CharacterCard],
+    pub player_description: &'a str,
     pub purpose: ActorPurpose,
     pub node: &'a NarrativeNode,
     pub memory_limit: Option<usize>,
@@ -304,8 +305,9 @@ impl<'a> Actor<'a> {
             .map_err(ActorError::SerializePromptData)?;
 
         Ok(format!(
-            "ACTOR_PURPOSE:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
+            "ACTOR_PURPOSE:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
             purpose_json,
+            request.player_description,
             cast_json,
             node_json,
             world_state_json,

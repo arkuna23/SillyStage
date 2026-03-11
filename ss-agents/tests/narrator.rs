@@ -119,6 +119,7 @@ fn scene_request<'a>(
         previous_node: None,
         current_node,
         character_cards,
+        player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema,
         world_state,
     }
@@ -253,6 +254,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         previous_node: Some(&previous_node),
         current_node: &current_node,
         character_cards: &character_cards,
+        player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema: &player_state_schema,
         world_state: &world_state,
     };
@@ -274,6 +276,12 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.content.contains("PREVIOUS_NODE"));
     assert!(user_message.content.contains("\"actor_shared_history\""));
     assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
+    assert!(
+        user_message
+            .content
+            .contains("A cautious courier trying to get medicine through the flooded district.")
+    );
     assert!(user_message.content.contains("\"player_state\""));
     assert!(user_message.content.contains("\"coins\": 12"));
     assert!(user_message.content.contains("\"state_schema\""));

@@ -10,7 +10,10 @@ use dotenvy::dotenv;
 use futures_util::StreamExt;
 use llm::{OpenAiClient, OpenAiConfig};
 use serde_json::json;
-use ss_engine::{Engine, EngineEvent, RuntimeSnapshot, RuntimeState, StoryResources};
+use ss_engine::{
+    Engine, EngineEvent, RuntimeAgentConfigs, RuntimeSnapshot, RuntimeState,
+    StoryGenerationAgentConfigs, StoryResources,
+};
 use state::{PlayerStateSchema, StateFieldSchema, StateOp, StateValueType, WorldStateSchema};
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
@@ -149,6 +152,20 @@ pub fn build_client_from_env() -> Result<(OpenAiClient, String), Box<dyn Error>>
     Ok((client, model))
 }
 
+pub fn shared_generation_agent_configs<'a>(
+    client: &'a OpenAiClient,
+    model: impl Into<String>,
+) -> StoryGenerationAgentConfigs<'a> {
+    StoryGenerationAgentConfigs::shared(client, model)
+}
+
+pub fn shared_runtime_agent_configs<'a>(
+    client: &'a OpenAiClient,
+    model: impl Into<String>,
+) -> RuntimeAgentConfigs<'a> {
+    RuntimeAgentConfigs::shared(client, model)
+}
+
 pub fn build_story_resources(language: Language) -> Result<StoryResources, Box<dyn Error>> {
     let resources = StoryResources::new(
         match language {
@@ -222,6 +239,13 @@ pub fn build_direct_story_bundle(language: Language) -> DirectStoryBundle {
     }
 }
 
+pub fn localized_player_description(language: Language) -> &'static str {
+    language.text(
+        "你是一名谨慎但固执的信使，背着一只装有药品和密封文书的挎包，眼下最重要的是在洪水彻底切断道路前把物资送达。",
+        "You are a cautious but stubborn courier carrying a satchel of medicine and sealed documents. Your priority is to get the supplies through before the flood cuts off the route completely.",
+    )
+}
+
 pub fn seed_runtime_state(runtime_state: &mut RuntimeState) {
     runtime_state
         .world_state_mut()
@@ -287,6 +311,7 @@ pub fn print_story_generation_result(
     language: Language,
     graph: &StoryGraph,
     world_state_schema: &WorldStateSchema,
+    player_state_schema: &PlayerStateSchema,
 ) -> Result<(), Box<dyn Error>> {
     println!(
         "{}",
@@ -298,9 +323,18 @@ pub fn print_story_generation_result(
     println!("start_node: {}", graph.start_node());
     println!("node_count: {}", graph.len());
     println!(
+        "player_state_field_count: {}",
+        player_state_schema.fields.len()
+    );
+    println!(
         "world_state_field_count: {}",
         world_state_schema.fields.len()
     );
+    println!(
+        "{}",
+        language.text("player_state_schema:", "player_state_schema:")
+    );
+    println!("{}", serde_json::to_string_pretty(player_state_schema)?);
     println!(
         "{}",
         language.text("world_state_schema:", "world_state_schema:")
@@ -580,6 +614,7 @@ fn print_runtime_summary(snapshot: &RuntimeSnapshot, label: &str) -> Result<(), 
 
     println!("{label}:");
     println!("  story_id: {}", snapshot.story_id);
+    println!("  player_description: {}", snapshot.player_description);
     println!("  turn_index: {}", snapshot.turn_index);
     println!("  current_node: {}", snapshot.world_state.current_node);
     println!(

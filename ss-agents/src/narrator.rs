@@ -23,6 +23,7 @@ pub struct NarratorRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
 }
@@ -238,8 +239,9 @@ impl<'a> Narrator<'a> {
             .map_err(NarratorError::SerializePromptData)?;
 
         Ok(format!(
-            "NARRATOR_PURPOSE:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
+            "NARRATOR_PURPOSE:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
             purpose_json,
+            request.player_description,
             previous_node_json,
             previous_cast_json,
             current_node_json,

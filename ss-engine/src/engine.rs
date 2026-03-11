@@ -24,6 +24,59 @@ const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
 
 pub type EngineTurnStream<'a> = Pin<Box<dyn Stream<Item = EngineEvent> + Send + 'a>>;
 
+#[derive(Clone)]
+pub struct AgentModelConfig<'a> {
+    pub client: &'a dyn LlmApi,
+    pub model: String,
+}
+
+impl<'a> AgentModelConfig<'a> {
+    pub fn new(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct StoryGenerationAgentConfigs<'a> {
+    pub planner: AgentModelConfig<'a>,
+    pub architect: AgentModelConfig<'a>,
+}
+
+impl<'a> StoryGenerationAgentConfigs<'a> {
+    pub fn shared(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+        let model = model.into();
+
+        Self {
+            planner: AgentModelConfig::new(client, model.clone()),
+            architect: AgentModelConfig::new(client, model),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct RuntimeAgentConfigs<'a> {
+    pub director: AgentModelConfig<'a>,
+    pub actor: AgentModelConfig<'a>,
+    pub narrator: AgentModelConfig<'a>,
+    pub keeper: AgentModelConfig<'a>,
+}
+
+impl<'a> RuntimeAgentConfigs<'a> {
+    pub fn shared(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+        let model = model.into();
+
+        Self {
+            director: AgentModelConfig::new(client, model.clone()),
+            actor: AgentModelConfig::new(client, model.clone()),
+            narrator: AgentModelConfig::new(client, model.clone()),
+            keeper: AgentModelConfig::new(client, model),
+        }
+    }
+}
+
 pub struct Engine<'a> {
     runtime_state: RuntimeState,
     director: Director<'a>,
@@ -34,18 +87,15 @@ pub struct Engine<'a> {
 
 impl<'a> Engine<'a> {
     pub fn new(
-        llm: &'a dyn LlmApi,
-        model: impl Into<String>,
+        agent_configs: RuntimeAgentConfigs<'a>,
         runtime_state: RuntimeState,
     ) -> Result<Self, EngineError> {
-        let model = model.into();
-
         Ok(Self {
             runtime_state,
-            director: Director::new(llm, model.clone())?,
-            actor: Actor::new(llm, model.clone())?,
-            narrator: Narrator::new(llm, model.clone())?,
-            keeper: Keeper::new(llm, model)?,
+            director: Director::new(agent_configs.director.client, agent_configs.director.model)?,
+            actor: Actor::new(agent_configs.actor.client, agent_configs.actor.model)?,
+            narrator: Narrator::new(agent_configs.narrator.client, agent_configs.narrator.model)?,
+            keeper: Keeper::new(agent_configs.keeper.client, agent_configs.keeper.model)?,
         })
     }
 
@@ -120,6 +170,7 @@ impl<'a> Engine<'a> {
                         parts.runtime_graph,
                         parts.world_state,
                         parts.character_cards,
+                        parts.player_description,
                         parts.player_state_schema,
                     )
                     .await
@@ -252,6 +303,7 @@ impl<'a> Engine<'a> {
                                                             ActorRequest {
                                                                 character,
                                                                 cast: parts.character_cards,
+                                                                player_description: parts.player_description,
                                                                 purpose: purpose.clone(),
                                                                 node: current_node,
                                                                 memory_limit: None,
@@ -402,6 +454,7 @@ impl<'a> Engine<'a> {
                 previous_node: None,
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
                 world_state: self.runtime_state.world_state(),
                 completed_beats: &[],
@@ -444,6 +497,7 @@ impl<'a> Engine<'a> {
                 previous_node: Some(previous_node),
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
                 world_state: self.runtime_state.world_state(),
                 completed_beats: &keeper_beats,
@@ -483,6 +537,7 @@ impl<'a> Engine<'a> {
             previous_node,
             current_node: self.runtime_state.current_node()?,
             character_cards: self.runtime_state.character_cards(),
+            player_description: self.runtime_state.player_description(),
             player_state_schema: self.runtime_state.player_state_schema(),
             world_state: self.runtime_state.world_state(),
         })
@@ -566,11 +621,13 @@ pub enum EngineError {
 }
 
 pub async fn generate_story_plan(
-    llm: &dyn LlmApi,
-    model: impl Into<String>,
+    agent_configs: &StoryGenerationAgentConfigs<'_>,
     resources: &StoryResources,
 ) -> Result<PlannerResponse, EngineError> {
-    let planner = Planner::new(llm, model)?;
+    let planner = Planner::new(
+        agent_configs.planner.client,
+        agent_configs.planner.model.clone(),
+    )?;
     planner
         .plan(PlannerRequest {
             story_concept: resources.story_concept(),
@@ -581,16 +638,19 @@ pub async fn generate_story_plan(
 }
 
 pub async fn generate_story_graph(
-    llm: &dyn LlmApi,
-    model: impl Into<String>,
+    agent_configs: &StoryGenerationAgentConfigs<'_>,
     resources: &StoryResources,
 ) -> Result<ArchitectResponse, EngineError> {
-    let architect = Architect::new(llm, model);
+    let architect = Architect::new(
+        agent_configs.architect.client,
+        agent_configs.architect.model.clone(),
+    );
     architect
         .generate_graph(ArchitectRequest {
             story_concept: resources.story_concept(),
             planned_story: resources.planned_story(),
             world_state_schema: resources.world_state_schema_seed(),
+            player_state_schema: Some(resources.player_state_schema()),
             available_characters: resources.character_cards(),
         })
         .await

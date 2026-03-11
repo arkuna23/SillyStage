@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{Architect, ArchitectRequest};
-use state::schema::{StateFieldSchema, StateValueType, WorldStateSchema};
+use state::schema::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 
 use common::{MockLlm, assistant_response};
 
@@ -14,6 +14,15 @@ fn sample_state_schema() -> HashMap<String, StateFieldSchema> {
         "trust".to_owned(),
         StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
     )])
+}
+
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+    );
+    schema
 }
 
 #[tokio::test]
@@ -44,6 +53,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
         "flood_gate_open",
         StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
     );
+    let player_state_schema = sample_player_state_schema();
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -59,6 +69,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             story_concept: "Test concept",
             planned_story: None,
             world_state_schema: Some(&schema),
+            player_state_schema: Some(&player_state_schema),
             available_characters: &available_characters,
         })
         .await
@@ -68,6 +79,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
         response.introduction,
         "The courier arrives at a flooded market gate where a merchant is waiting."
     );
+    assert!(response.player_state_schema.has_field("coins"));
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
@@ -78,18 +90,18 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
         .expect("user message should exist");
 
     assert!(user_message.content.contains("WORLD_STATE_SCHEMA_SEED"));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
     assert!(user_message.content.contains("\"fields\""));
     assert!(user_message.content.contains("\"id\": \"merchant\""));
     assert!(user_message.content.contains("\"state_schema\""));
-    assert!(!user_message.content.contains("PLAYER_STATE_SCHEMA"));
-    assert!(!user_message.content.contains("\"player_state\""));
+    assert!(user_message.content.contains("\"coins\""));
     assert!(!user_message.content.contains("Stay in character."));
 }
 
 #[tokio::test]
 async fn architect_can_generate_schema_without_seed() {
     let llm = MockLlm::with_chat_response(assistant_response(
-        "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{\"trust_level\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How much the protagonist trusts the guide\"}}},\"introduction\":\"The courier reaches the flooded dock and must decide whether to trust the guide.\"}",
+        "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{\"trust_level\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How much the protagonist trusts the guide\"}}},\"player_state_schema\":{\"fields\":{\"reputation\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How much the district trusts the player\"}}},\"introduction\":\"The courier reaches the flooded dock and must decide whether to trust the guide.\"}",
         Some(json!({
             "graph": {
                 "start_node": "dock",
@@ -101,6 +113,15 @@ async fn architect_can_generate_schema_without_seed() {
                         "value_type": "int",
                         "default": 0,
                         "description": "How much the protagonist trusts the guide"
+                    }
+                }
+            },
+            "player_state_schema": {
+                "fields": {
+                    "reputation": {
+                        "value_type": "int",
+                        "default": 0,
+                        "description": "How much the district trusts the player"
                     }
                 }
             },
@@ -123,6 +144,7 @@ async fn architect_can_generate_schema_without_seed() {
             story_concept: "Test concept",
             planned_story: None,
             world_state_schema: None,
+            player_state_schema: None,
             available_characters: &available_characters,
         })
         .await
@@ -130,6 +152,7 @@ async fn architect_can_generate_schema_without_seed() {
 
     assert_eq!(response.graph.start_node, "dock");
     assert!(response.world_state_schema.has_field("trust_level"));
+    assert!(response.player_state_schema.has_field("reputation"));
     assert_eq!(
         response.introduction,
         "The courier reaches the flooded dock and must decide whether to trust the guide."
@@ -144,6 +167,7 @@ async fn architect_can_generate_schema_without_seed() {
         .expect("user message should exist");
 
     assert!(user_message.content.contains("WORLD_STATE_SCHEMA_SEED"));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
     assert!(user_message.content.contains("null"));
 }
 
@@ -179,12 +203,14 @@ async fn architect_prefers_planned_story_when_provided() {
             story_concept: "Test concept",
             planned_story: Some(planned_story),
             world_state_schema: None,
+            player_state_schema: None,
             available_characters: &available_characters,
         })
         .await
         .expect("graph generation should succeed with planned story");
 
     assert_eq!(response.introduction, "The courier arrives at the dock.");
+    assert!(response.player_state_schema.fields.is_empty());
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
@@ -195,5 +221,6 @@ async fn architect_prefers_planned_story_when_provided() {
         .expect("user message should exist");
 
     assert!(user_message.content.contains("PLANNED_STORY"));
+    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
     assert!(user_message.content.contains(planned_story));
 }

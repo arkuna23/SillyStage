@@ -96,12 +96,14 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
         self.decide_internal(
             runtime_graph,
             world_state,
             character_cards,
+            player_description,
             player_state_schema,
             true,
         )
@@ -113,12 +115,14 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
         self.decide_internal(
             runtime_graph,
             world_state,
             character_cards,
+            player_description,
             player_state_schema,
             false,
         )
@@ -130,6 +134,7 @@ impl<'a> Director<'a> {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_description: &str,
         player_state_schema: &PlayerStateSchema,
         allow_fallback: bool,
     ) -> Result<DirectorResult, DirectorError> {
@@ -173,6 +178,7 @@ impl<'a> Director<'a> {
                 current_node,
                 transitioned,
                 character_cards,
+                player_description,
                 player_state_schema,
             )
             .await
@@ -183,6 +189,7 @@ impl<'a> Director<'a> {
                 current_node,
                 transitioned,
                 character_cards,
+                player_description,
                 player_state_schema,
             )
             .await?
@@ -202,6 +209,7 @@ impl<'a> Director<'a> {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
         let user_prompt = self.build_user_prompt(
@@ -209,6 +217,7 @@ impl<'a> Director<'a> {
             node,
             transitioned,
             character_cards,
+            player_description,
             player_state_schema,
         )?;
 
@@ -234,6 +243,7 @@ impl<'a> Director<'a> {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<String, DirectorError> {
         let node_json =
@@ -249,8 +259,13 @@ impl<'a> Director<'a> {
         .map_err(DirectorError::SerializePromptData)?;
 
         Ok(format!(
-            "CURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
-            cast_json, node_json, transitioned, player_state_schema_json, world_state_json
+            "PLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
+            player_description,
+            cast_json,
+            node_json,
+            transitioned,
+            player_state_schema_json,
+            world_state_json
         ))
     }
 

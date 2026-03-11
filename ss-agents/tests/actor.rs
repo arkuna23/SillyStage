@@ -59,6 +59,7 @@ fn sample_request<'a>(
     ActorRequest {
         character,
         cast,
+        player_description: "A cautious courier carrying a sealed satchel and speaking plainly.",
         purpose: ActorPurpose::AdvanceGoal,
         node,
         memory_limit: None,
@@ -314,6 +315,11 @@ async fn perform_stream_sends_character_specific_system_prompt() {
         request.messages[2]
             .content
             .contains("Can you get us through the flooded gate?")
+    );
+    assert!(
+        request.messages[2]
+            .content
+            .contains("A cautious courier carrying a sealed satchel")
     );
     assert!(!request.messages[2].content.contains("\"player_state\""));
     assert!(!request.messages[2].content.contains("\"coins\": 12"));

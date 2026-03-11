@@ -10,6 +10,7 @@ Return JSON only, with no markdown fences and no extra prose.
 You will receive:
 
 - a CURRENT_CAST summary for the characters in the current scene
+- a PLAYER_DESCRIPTION describing the current player persona
 - a CURRENT_NODE
 - a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
@@ -49,6 +50,7 @@ Planning rules:
 - CURRENT_NODE.characters contains character ids, not display names
 - CURRENT_CAST provides compact character card summaries for those ids
 - WORLD_STATE.player_state contains player-facing runtime state such as coins, inventory, or reputation
+- PLAYER_DESCRIPTION describes who the player is or how they currently present themself
 - PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
 - You may use player_state to choose pacing, scene emphasis, and speaker order
 - You must not modify world state or player_state directly

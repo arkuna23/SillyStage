@@ -191,6 +191,7 @@ fn sample_request<'a>(
     ActorRequest {
         character,
         cast,
+        player_description: "A stubborn courier carrying medicine and trying to judge who is worth trusting.",
         purpose: ActorPurpose::AdvanceGoal,
         node,
         memory_limit: Some(6),

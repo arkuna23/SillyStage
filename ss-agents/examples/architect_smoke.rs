@@ -7,7 +7,7 @@ use llm::{OpenAiClient, OpenAiConfig};
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{Architect, ArchitectRequest};
-use state::schema::{StateFieldSchema, StateValueType, WorldStateSchema};
+use state::schema::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::runtime_graph::RuntimeStoryGraph;
 
 #[tokio::main]
@@ -36,11 +36,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
 
     let architect = Architect::new(&client, model.clone());
     let story_concept = resolve_story_concept();
-    let (world_state_schema, available_characters) = sample_inputs();
+    let (world_state_schema, player_state_schema, available_characters) = sample_inputs();
     let response = architect
         .generate_graph(sample_request(
             &story_concept,
             Some(&world_state_schema),
+            Some(&player_state_schema),
             &available_characters,
         ))
         .await?;
@@ -59,10 +60,20 @@ async fn run() -> Result<(), Box<dyn Error>> {
         response.world_state_schema.fields.len()
     );
     println!(
+        "player_state_field_count: {}",
+        response.player_state_schema.fields.len()
+    );
+    println!(
         "structured_output: {}",
         response.output.structured_output.is_some()
     );
     println!("dot_export: graph.dot");
+    println!();
+    println!("player_state_schema:");
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&response.player_state_schema)?
+    );
     println!();
     println!("world_state_schema:");
     println!(
@@ -98,17 +109,19 @@ fn resolve_story_concept() -> String {
 fn sample_request<'a>(
     story_concept: &'a str,
     world_state_schema: Option<&'a WorldStateSchema>,
+    player_state_schema: Option<&'a PlayerStateSchema>,
     available_characters: &'a [CharacterCard],
 ) -> ArchitectRequest<'a> {
     ArchitectRequest {
         story_concept,
         planned_story: None,
         world_state_schema,
+        player_state_schema,
         available_characters,
     }
 }
 
-fn sample_inputs() -> (WorldStateSchema, Vec<CharacterCard>) {
+fn sample_inputs() -> (WorldStateSchema, PlayerStateSchema, Vec<CharacterCard>) {
     let mut world_state_schema = WorldStateSchema::new();
     world_state_schema.insert_field(
         "trust_level",
@@ -122,9 +135,23 @@ fn sample_inputs() -> (WorldStateSchema, Vec<CharacterCard>) {
             .with_default(json!(false))
             .with_description("Whether the city flood gate has been opened"),
     );
+    let mut player_state_schema = PlayerStateSchema::new();
+    player_state_schema.insert_field(
+        "coins",
+        StateFieldSchema::new(StateValueType::Int)
+            .with_default(json!(8))
+            .with_description("How many coins the player currently carries"),
+    );
+    player_state_schema.insert_field(
+        "dock_pass",
+        StateFieldSchema::new(StateValueType::Bool)
+            .with_default(json!(false))
+            .with_description("Whether the player already holds a valid dock pass"),
+    );
 
     (
         world_state_schema,
+        player_state_schema,
         vec![
             CharacterCard {
                 id: "merchant".to_owned(),
