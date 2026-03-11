@@ -850,6 +850,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ss-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "ss-agents",
+ "ss-engine",
+ "ss-state",
+ "ss-story",
+]
+
+[[package]]
 name = "ss-state"
 version = "0.1.0"
 dependencies = [
