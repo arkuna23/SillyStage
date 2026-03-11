@@ -7,7 +7,7 @@ use llm::{ChatChunk, LlmError, Role};
 use serde_json::json;
 use ss_engine::{
     Engine, EngineError, EngineEvent, EngineStage, RuntimeState, StoryResources,
-    generate_story_graph,
+    generate_story_graph, generate_story_plan,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
@@ -488,4 +488,67 @@ async fn generate_story_graph_uses_architect_independently() {
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
     assert!(user_message_content(&requests[0]).contains("STORY_CONCEPT"));
+}
+
+#[tokio::test]
+async fn generate_story_plan_uses_planner_independently() {
+    let llm = QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
+            None,
+        ))],
+        Vec::new(),
+    );
+    let resources = sample_story_resources();
+
+    let response = generate_story_plan(&llm, "test-model", &resources)
+        .await
+        .expect("planner wrapper should succeed");
+
+    assert!(response.story_script.contains("Title:"));
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(user_message_content(&requests[0]).contains("AVAILABLE_CHARACTERS"));
+}
+
+#[tokio::test]
+async fn generate_story_graph_passes_planned_story_when_present() {
+    let llm = QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[{\"id\":\"dock\",\"title\":\"Flooded Dock\",\"scene\":\"A flooded dock at dusk.\",\"goal\":\"Decide whether to trust the merchant.\",\"characters\":[\"merchant\"],\"transitions\":[],\"on_enter_updates\":[]}]},\"world_state_schema\":{\"fields\":{}},\"introduction\":\"The courier arrives at the flooded dock.\"}",
+            Some(json!({
+                "graph": {
+                    "start_node": "dock",
+                    "nodes": [
+                        {
+                            "id": "dock",
+                            "title": "Flooded Dock",
+                            "scene": "A flooded dock at dusk.",
+                            "goal": "Decide whether to trust the merchant.",
+                            "characters": ["merchant"],
+                            "transitions": [],
+                            "on_enter_updates": []
+                        }
+                    ]
+                },
+                "world_state_schema": {
+                    "fields": {}
+                },
+                "introduction": "The courier arrives at the flooded dock."
+            })),
+        ))],
+        Vec::new(),
+    );
+    let resources = sample_story_resources().with_planned_story(
+        "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
+    );
+
+    let _ = generate_story_graph(&llm, "test-model", &resources)
+        .await
+        .expect("architect wrapper should succeed");
+
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(user_message_content(&requests[0]).contains("PLANNED_STORY"));
+    assert!(user_message_content(&requests[0]).contains("Flooded Dock Bargain"));
 }

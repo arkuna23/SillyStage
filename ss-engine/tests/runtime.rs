@@ -86,11 +86,14 @@ fn sample_story_resources() -> StoryResources {
 
 #[test]
 fn story_resources_store_generation_inputs_and_seed() {
-    let resources = sample_story_resources();
+    let resources = sample_story_resources().with_planned_story(
+        "Title:\nFlooded City Courier\n\nOpening Situation:\nThe courier arrives at the dock.",
+    );
 
     assert_eq!(resources.story_id(), "flooded_city_demo");
     assert_eq!(resources.story_concept(), "A flooded city courier story.");
     assert_eq!(resources.character_cards().len(), 2);
+    assert!(resources.planned_story().is_some());
     assert!(resources.player_state_schema().has_field("coins"));
     assert!(
         resources

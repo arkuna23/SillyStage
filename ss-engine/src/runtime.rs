@@ -17,6 +17,7 @@ pub(crate) struct RuntimeStatePartsMut<'a> {
 pub struct StoryResources {
     story_id: String,
     story_concept: String,
+    planned_story: Option<String>,
     character_cards: Vec<CharacterCard>,
     player_state_schema: PlayerStateSchema,
     world_state_schema_seed: Option<WorldStateSchema>,
@@ -56,10 +57,16 @@ impl StoryResources {
         Ok(Self {
             story_id,
             story_concept,
+            planned_story: None,
             character_cards,
             player_state_schema,
             world_state_schema_seed: None,
         })
+    }
+
+    pub fn with_planned_story(mut self, planned_story: impl Into<String>) -> Self {
+        self.planned_story = Some(planned_story.into());
+        self
     }
 
     pub fn with_world_state_schema_seed(mut self, world_state_schema: WorldStateSchema) -> Self {
@@ -77,6 +84,10 @@ impl StoryResources {
 
     pub fn character_cards(&self) -> &[CharacterCard] {
         &self.character_cards
+    }
+
+    pub fn planned_story(&self) -> Option<&str> {
+        self.planned_story.as_deref()
     }
 
     pub fn player_state_schema(&self) -> &PlayerStateSchema {

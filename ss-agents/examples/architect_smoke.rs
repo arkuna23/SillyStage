@@ -102,6 +102,7 @@ fn sample_request<'a>(
 ) -> ArchitectRequest<'a> {
     ArchitectRequest {
         story_concept,
+        planned_story: None,
         world_state_schema,
         available_characters,
     }

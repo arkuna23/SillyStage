@@ -4,7 +4,7 @@ use std::error::Error;
 
 use common::{
     build_client_from_env, build_direct_story_bundle, print_direct_story_summary,
-    print_startup_banner, resolve_language_from_args, run_interactive_loop, seed_runtime_state,
+    print_startup_banner, resolve_smoke_options, run_interactive_loop, seed_runtime_state,
 };
 use ss_engine::{Engine, RuntimeState};
 
@@ -17,7 +17,8 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let language = resolve_language_from_args()?;
+    let options = resolve_smoke_options(false)?;
+    let language = options.language;
     let (client, model) = build_client_from_env()?;
     let bundle = build_direct_story_bundle(language);
     let introduction = bundle.introduction.clone();

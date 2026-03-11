@@ -57,6 +57,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     let response = architect
         .generate_graph(ArchitectRequest {
             story_concept: "Test concept",
+            planned_story: None,
             world_state_schema: Some(&schema),
             available_characters: &available_characters,
         })
@@ -120,6 +121,7 @@ async fn architect_can_generate_schema_without_seed() {
     let response = architect
         .generate_graph(ArchitectRequest {
             story_concept: "Test concept",
+            planned_story: None,
             world_state_schema: None,
             available_characters: &available_characters,
         })
@@ -143,4 +145,55 @@ async fn architect_can_generate_schema_without_seed() {
 
     assert!(user_message.content.contains("WORLD_STATE_SCHEMA_SEED"));
     assert!(user_message.content.contains("null"));
+}
+
+#[tokio::test]
+async fn architect_prefers_planned_story_when_provided() {
+    let llm = MockLlm::with_chat_response(assistant_response(
+        "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{}},\"introduction\":\"The courier arrives at the dock.\"}",
+        Some(json!({
+            "graph": {
+                "start_node": "dock",
+                "nodes": []
+            },
+            "world_state_schema": {
+                "fields": {}
+            },
+            "introduction": "The courier arrives at the dock."
+        })),
+    ));
+    let architect = Architect::new(&llm, "test-model");
+    let available_characters = vec![CharacterCard {
+        id: "merchant".to_owned(),
+        name: "Old Merchant".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative".to_owned(),
+        tendencies: vec!["likes profitable deals".to_owned()],
+        state_schema: sample_state_schema(),
+        system_prompt: "Stay in character.".to_owned(),
+    }];
+    let planned_story = "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.";
+
+    let response = architect
+        .generate_graph(ArchitectRequest {
+            story_concept: "Test concept",
+            planned_story: Some(planned_story),
+            world_state_schema: None,
+            available_characters: &available_characters,
+        })
+        .await
+        .expect("graph generation should succeed with planned story");
+
+    assert_eq!(response.introduction, "The courier arrives at the dock.");
+
+    let requests = llm.recorded_requests();
+    let request = requests.first().expect("request should be recorded");
+    let user_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::User))
+        .expect("user message should exist");
+
+    assert!(user_message.content.contains("PLANNED_STORY"));
+    assert!(user_message.content.contains(planned_story));
 }

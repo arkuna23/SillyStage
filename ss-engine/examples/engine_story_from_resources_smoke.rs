@@ -3,11 +3,10 @@ mod common;
 use std::error::Error;
 
 use common::{
-    build_client_from_env, build_story_resources, print_startup_banner,
-    print_story_generation_result, resolve_language_from_args, run_interactive_loop,
-    seed_runtime_state,
+    build_client_from_env, build_story_resources, print_planned_story, print_startup_banner,
+    print_story_generation_result, resolve_smoke_options, run_interactive_loop, seed_runtime_state,
 };
-use ss_engine::{Engine, RuntimeState, generate_story_graph};
+use ss_engine::{Engine, RuntimeState, generate_story_graph, generate_story_plan};
 
 #[tokio::main]
 async fn main() {
@@ -18,9 +17,17 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let language = resolve_language_from_args()?;
+    let options = resolve_smoke_options(true)?;
+    let language = options.language;
     let (client, model) = build_client_from_env()?;
-    let resources = build_story_resources(language)?;
+    let mut resources = build_story_resources(language)?;
+
+    if options.use_planner {
+        let planner_response = generate_story_plan(&client, model.clone(), &resources).await?;
+        print_planned_story(language, &planner_response.story_script)?;
+        resources = resources.with_planned_story(planner_response.story_script);
+    }
+
     let architect_response = generate_story_graph(&client, model.clone(), &resources).await?;
 
     let mut runtime_state =

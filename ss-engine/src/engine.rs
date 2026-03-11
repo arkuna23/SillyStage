@@ -9,6 +9,7 @@ use agents::keeper::{Keeper, KeeperBeat, KeeperError, KeeperPhase, KeeperRequest
 use agents::narrator::{
     Narrator, NarratorError, NarratorRequest, NarratorResponse, NarratorStreamEvent,
 };
+use agents::planner::{Planner, PlannerError, PlannerRequest, PlannerResponse};
 use async_stream::stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -550,6 +551,8 @@ pub enum EngineError {
     Keeper(#[from] KeeperError),
     #[error(transparent)]
     Architect(#[from] ArchitectError),
+    #[error(transparent)]
+    Planner(#[from] PlannerError),
     #[error("missing previous node '{0}' in runtime graph")]
     MissingPreviousNode(String),
     #[error("actor beat references invalid speaker_id '{speaker_id}' for node '{node_id}'")]
@@ -562,6 +565,21 @@ pub enum EngineError {
     TurnFailed { stage: EngineStage, message: String },
 }
 
+pub async fn generate_story_plan(
+    llm: &dyn LlmApi,
+    model: impl Into<String>,
+    resources: &StoryResources,
+) -> Result<PlannerResponse, EngineError> {
+    let planner = Planner::new(llm, model)?;
+    planner
+        .plan(PlannerRequest {
+            story_concept: resources.story_concept(),
+            available_characters: resources.character_cards(),
+        })
+        .await
+        .map_err(EngineError::from)
+}
+
 pub async fn generate_story_graph(
     llm: &dyn LlmApi,
     model: impl Into<String>,
@@ -571,6 +589,7 @@ pub async fn generate_story_graph(
     architect
         .generate_graph(ArchitectRequest {
             story_concept: resources.story_concept(),
+            planned_story: resources.planned_story(),
             world_state_schema: resources.world_state_schema_seed(),
             available_characters: resources.character_cards(),
         })

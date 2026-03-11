@@ -8,6 +8,7 @@ use story::graph::StoryGraph;
 #[derive(Debug, Clone, Copy)]
 pub struct ArchitectRequest<'a> {
     pub story_concept: &'a str,
+    pub planned_story: Option<&'a str>,
     pub world_state_schema: Option<&'a WorldStateSchema>,
     pub available_characters: &'a [CharacterCard],
 }
@@ -77,6 +78,7 @@ impl<'a> Architect<'a> {
     fn build_user_prompt(&self, req: &ArchitectRequest<'_>) -> Result<String, ArchitectError> {
         let schema_json = serde_json::to_string_pretty(&req.world_state_schema)
             .map_err(ArchitectError::SerializeSchema)?;
+        let planned_story = req.planned_story.unwrap_or("null");
 
         let character_summaries: Vec<CharacterCardSummaryRef<'_>> = req
             .available_characters
@@ -90,13 +92,16 @@ impl<'a> Architect<'a> {
             r#"STORY_CONCEPT:
 {}
 
+PLANNED_STORY:
+{}
+
 WORLD_STATE_SCHEMA_SEED:
 {}
 
 AVAILABLE_CHARACTERS:
 {}
 "#,
-            req.story_concept, schema_json, characters_json
+            req.story_concept, planned_story, schema_json, characters_json
         ))
     }
 }

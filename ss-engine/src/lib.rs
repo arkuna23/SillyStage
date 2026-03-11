@@ -4,6 +4,7 @@ pub mod runtime;
 
 pub use engine::{
     Engine, EngineError, EngineTurnResult, EngineTurnStream, ExecutedBeat, generate_story_graph,
+    generate_story_plan,
 };
 pub use event::{EngineEvent, EngineStage};
 pub use runtime::{RuntimeError, RuntimeSnapshot, RuntimeState, StoryResources};

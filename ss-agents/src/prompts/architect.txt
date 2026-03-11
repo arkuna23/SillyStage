@@ -11,6 +11,7 @@ You design structure and state shape. You do not write dialogue or multi-turn na
 You will receive:
 
 - a STORY_CONCEPT
+- an optional PLANNED_STORY
 - an optional WORLD_STATE_SCHEMA_SEED
 - a list of AVAILABLE_CHARACTERS
 
@@ -26,6 +27,10 @@ Each item includes at least:
 
 WORLD_STATE_SCHEMA_SEED may be null.
 If it is provided, reuse and extend it when reasonable instead of ignoring it.
+
+PLANNED_STORY may be null.
+If it is provided, treat it as the primary editable design document and follow it
+more closely than the raw STORY_CONCEPT.
 
 WORLD_STATE_SCHEMA.fields are global world state fields shared by the whole story.
 Character-scoped state still comes from AVAILABLE_CHARACTERS[*].state_schema.
@@ -170,7 +175,8 @@ contains
 
 LANGUAGE RULE
 
-Use the same natural language as the user's STORY_CONCEPT for all human-readable text fields.
+If PLANNED_STORY is provided, use its natural language for all human-readable text fields.
+Otherwise use the same natural language as the user's STORY_CONCEPT.
 
 This applies to:
 - title

@@ -3,6 +3,7 @@ pub mod architect;
 pub mod director;
 pub mod keeper;
 pub mod narrator;
+pub mod planner;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

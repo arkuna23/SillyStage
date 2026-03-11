@@ -37,6 +37,11 @@ pub struct DirectStoryBundle {
     pub player_state_schema: PlayerStateSchema,
 }
 
+pub struct SmokeOptions {
+    pub language: Language,
+    pub use_planner: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum DeltaChannel {
     Narrator(usize),
@@ -78,8 +83,9 @@ impl DeltaPrinter {
     }
 }
 
-pub fn resolve_language_from_args() -> Result<Language, Box<dyn Error>> {
+pub fn resolve_smoke_options(allow_planner: bool) -> Result<SmokeOptions, Box<dyn Error>> {
     let mut language = Language::Zh;
+    let mut use_planner = false;
     let mut args = std::env::args().skip(1);
 
     while let Some(arg) = args.next() {
@@ -91,7 +97,16 @@ pub fn resolve_language_from_args() -> Result<Language, Box<dyn Error>> {
                 language = parse_language(&value)?;
             }
             "--help" | "-h" => {
-                print_usage_and_exit();
+                print_usage_and_exit(allow_planner);
+            }
+            "--planner" if allow_planner => {
+                use_planner = true;
+            }
+            "--planner" => {
+                return Err(io::Error::other(
+                    "the --planner flag is only supported by the from_resources smoke",
+                )
+                .into());
             }
             _ if arg.starts_with("--lang=") => {
                 let value = arg
@@ -106,7 +121,14 @@ pub fn resolve_language_from_args() -> Result<Language, Box<dyn Error>> {
         }
     }
 
-    Ok(language)
+    Ok(SmokeOptions {
+        language,
+        use_planner,
+    })
+}
+
+pub fn resolve_language_from_args() -> Result<Language, Box<dyn Error>> {
+    Ok(resolve_smoke_options(false)?.language)
 }
 
 pub fn build_client_from_env() -> Result<(OpenAiClient, String), Box<dyn Error>> {
@@ -286,6 +308,16 @@ pub fn print_story_generation_result(
     println!("{}", serde_json::to_string_pretty(world_state_schema)?);
     println!("{}", language.text("graph:", "graph:"));
     println!("{}", serde_json::to_string_pretty(graph)?);
+    println!();
+    Ok(())
+}
+
+pub fn print_planned_story(language: Language, story_script: &str) -> Result<(), Box<dyn Error>> {
+    println!(
+        "{}",
+        language.text("Planner 已生成剧本草案：", "Planner generated story draft:")
+    );
+    println!("{story_script}");
     println!();
     Ok(())
 }
@@ -500,8 +532,12 @@ fn parse_language(value: &str) -> Result<Language, Box<dyn Error>> {
     }
 }
 
-fn print_usage_and_exit() -> ! {
-    eprintln!("Usage: cargo run -p ss-engine --example <name> -- --lang <zh|en>");
+fn print_usage_and_exit(allow_planner: bool) -> ! {
+    if allow_planner {
+        eprintln!("Usage: cargo run -p ss-engine --example <name> -- --lang <zh|en> [--planner]");
+    } else {
+        eprintln!("Usage: cargo run -p ss-engine --example <name> -- --lang <zh|en>");
+    }
     std::process::exit(0);
 }
 
