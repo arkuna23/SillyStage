@@ -16,7 +16,8 @@ If a later task asks to initialize the frontend and does not override these choi
 ## Frontend Principles
 
 - Keep the frontend separate from the Rust backend crates.
-- Treat `ss-protocol` and the API docs under `docs/zh/api/` and `docs/en/api/` as the source of truth for backend communication.
+- Treat `ss-protocol` and the documentation under `docs/` as the source of truth for backend communication and product flow.
+- Before implementing frontend features, check `docs/` first instead of relying on hardcoded per-file guidance here.
 - Use the existing HTTP transport shape:
   - `POST /rpc` for request/response
   - SSE for streaming responses such as turn execution
@@ -30,6 +31,13 @@ If a later task asks to initialize the frontend and does not override these choi
 - Start with small, purpose-built state management. Do not introduce a heavy global state library by default.
 - Use `pnpm` for dependency installation, script execution, and lockfile management.
 - Do not mix package managers. Do not add `package-lock.json` or `yarn.lock`.
+
+## Copy Style
+
+- When writing Simplified Chinese UI copy, default to natural product Chinese rather than literal translation from English.
+- Keep a light stage / roleplay tone when it helps the product voice, but do not let copy become theatrical at the expense of clarity.
+- Prefer mixed Chinese/English terminology for established technical terms such as `RPC`, `SSE`, `prompt`, and `Radix` when that reads more naturally.
+- Avoid translationese, direct English sentence structure, and half-translated engineering jargon in user-facing Chinese copy.
 
 ## Current Constraint
 

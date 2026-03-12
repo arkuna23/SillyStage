@@ -1,0 +1,81 @@
+import * as SelectPrimitive from '@radix-ui/react-select'
+import type { ComponentPropsWithoutRef } from 'react'
+
+import { cn } from '../../lib/cn'
+
+type SelectOption = {
+  label: string
+  value: string
+}
+
+type SelectProps = Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Root>, 'children'> & {
+  items: SelectOption[]
+  placeholder?: string
+  triggerId?: string
+  triggerClassName?: string
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-4 w-4"
+      fill="none"
+      viewBox="0 0 16 16"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M4 6.5L8 10.5L12 6.5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  )
+}
+
+export function Select({
+  items,
+  placeholder,
+  triggerClassName,
+  triggerId,
+  ...props
+}: SelectProps) {
+  return (
+    <SelectPrimitive.Root {...props}>
+      <SelectPrimitive.Trigger
+        className={cn(
+          'inline-flex h-12 w-full items-center justify-between rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 text-sm text-[var(--color-text-primary)] outline-none transition focus:border-[var(--color-accent-copper)] focus:ring-2 focus:ring-amber-200/40 data-[placeholder]:text-[var(--color-text-muted)]',
+          triggerClassName,
+        )}
+        id={triggerId}
+      >
+        <SelectPrimitive.Value placeholder={placeholder} />
+        <SelectPrimitive.Icon className="text-[var(--color-text-secondary)]">
+          <ChevronDownIcon />
+        </SelectPrimitive.Icon>
+      </SelectPrimitive.Trigger>
+
+      <SelectPrimitive.Portal>
+        <SelectPrimitive.Content
+          className="select-content z-50 max-h-[var(--radix-select-content-available-height)] w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] origin-[var(--radix-select-content-transform-origin)] overflow-hidden rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur"
+          position="popper"
+          sideOffset={8}
+        >
+          <SelectPrimitive.Viewport className="w-full space-y-1">
+            {items.map((item) => (
+              <SelectPrimitive.Item
+                key={item.value}
+                className="relative flex cursor-pointer select-none items-center rounded-xl px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none transition hover:bg-white/10 focus:bg-white/10 data-[state=checked]:text-[var(--color-accent-gold-strong)]"
+                value={item.value}
+              >
+                <SelectPrimitive.ItemText>{item.label}</SelectPrimitive.ItemText>
+              </SelectPrimitive.Item>
+            ))}
+          </SelectPrimitive.Viewport>
+        </SelectPrimitive.Content>
+      </SelectPrimitive.Portal>
+    </SelectPrimitive.Root>
+  )
+}
