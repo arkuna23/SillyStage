@@ -1,6 +1,6 @@
 use serde_json::json;
 use ss_protocol::{
-    ResponseBody, RuntimeSnapshotPayload, StreamEventBody, StreamFrame, StreamResponseMessage,
+    ResponseResult, RuntimeSnapshotPayload, ServerEventMessage, StreamEventBody, StreamFrame,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 
@@ -18,7 +18,7 @@ fn sample_snapshot() -> engine::RuntimeSnapshot {
 
 #[test]
 fn stream_event_round_trip_preserves_fine_grained_frames() {
-    let event = StreamResponseMessage::event(
+    let event = ServerEventMessage::event(
         "req-42",
         Some("session-42"),
         2,
@@ -34,7 +34,7 @@ fn stream_event_round_trip_preserves_fine_grained_frames() {
     );
 
     let json = serde_json::to_string_pretty(&event).expect("event should serialize");
-    let round_trip: StreamResponseMessage =
+    let round_trip: ServerEventMessage =
         serde_json::from_str(&json).expect("event should deserialize");
 
     let StreamFrame::Event {
@@ -45,12 +45,15 @@ fn stream_event_round_trip_preserves_fine_grained_frames() {
     };
 
     assert_eq!(entry.text, "Open the gate.");
-    assert_eq!(snapshot.player_description, "A quiet courier keeping their satchel close.");
+    assert_eq!(
+        snapshot.player_description,
+        "A quiet courier keeping their satchel close."
+    );
 }
 
 #[test]
 fn stream_event_supports_actor_and_narrator_deltas_and_terminal_payload() {
-    let narrator_delta = StreamResponseMessage::event(
+    let narrator_delta = ServerEventMessage::event(
         "req-77",
         Some("session-77"),
         3,
@@ -62,10 +65,10 @@ fn stream_event_supports_actor_and_narrator_deltas_and_terminal_payload() {
     );
     let narrator_json =
         serde_json::to_string_pretty(&narrator_delta).expect("delta should serialize");
-    assert!(narrator_json.contains("\"type\": \"event\""));
+    assert!(narrator_json.contains("\"message_type\": \"stream\""));
     assert!(narrator_json.contains("\"narrator_text_delta\""));
 
-    let actor_completed = StreamResponseMessage::event(
+    let actor_completed = ServerEventMessage::event(
         "req-77",
         Some("session-77"),
         4,
@@ -88,22 +91,22 @@ fn stream_event_supports_actor_and_narrator_deltas_and_terminal_payload() {
         serde_json::to_string_pretty(&actor_completed).expect("actor event should serialize");
     assert!(actor_json.contains("\"actor_completed\""));
 
-    let completed = StreamResponseMessage::completed(
+    let completed = ServerEventMessage::completed(
         "req-77",
         Some("session-77"),
         5,
-        ResponseBody::RuntimeSnapshot(RuntimeSnapshotPayload {
+        ResponseResult::RuntimeSnapshot(Box::new(RuntimeSnapshotPayload {
             snapshot: sample_snapshot(),
-        }),
+        })),
     );
     let completed_json =
         serde_json::to_string_pretty(&completed).expect("completed frame should serialize");
-    let completed_round_trip: StreamResponseMessage =
+    let completed_round_trip: ServerEventMessage =
         serde_json::from_str(&completed_json).expect("completed frame should deserialize");
 
     assert!(matches!(
         &completed_round_trip.frame,
         StreamFrame::Completed { response }
-            if matches!(&**response, ResponseBody::RuntimeSnapshot(_))
+            if matches!(&**response, ResponseResult::RuntimeSnapshot(_))
     ));
 }

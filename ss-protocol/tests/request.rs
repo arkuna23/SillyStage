@@ -1,117 +1,233 @@
-use std::collections::HashMap;
-
-use agents::actor::CharacterCard;
+use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
 use serde_json::json;
-use ss_protocol::{RequestBody, StoryGeneratedPayload};
+use ss_protocol::{
+    ConfigGetGlobalParams, ConfigUpdateGlobalParams, CreateStoryResourcesParams,
+    GenerateStoryParams, GetRuntimeSnapshotParams, JsonRpcRequestMessage, RequestParams,
+    RunTurnParams, SessionGetConfigParams, SessionUpdateConfigParams, StartSessionFromStoryParams,
+    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
+    UploadTargetKind,
+};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
-use story::{NarrativeNode, StoryGraph};
 
-fn sample_character_cards() -> Vec<CharacterCard> {
-    vec![CharacterCard {
-        id: "merchant".to_owned(),
-        name: "Haru".to_owned(),
-        personality: "greedy but friendly trader".to_owned(),
-        style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
-        state_schema: HashMap::new(),
-        system_prompt: "Stay in character.".to_owned(),
-    }]
-}
-
-fn sample_story_resources() -> engine::StoryResources {
-    let mut player_state_schema = PlayerStateSchema::new();
-    player_state_schema.insert_field(
+fn sample_player_state_schema() -> PlayerStateSchema {
+    let mut schema = PlayerStateSchema::new();
+    schema.insert_field(
         "coins",
         StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
     );
-
-    engine::StoryResources::new(
-        "demo_story",
-        "A flooded harbor story.",
-        sample_character_cards(),
-        player_state_schema,
-    )
-    .expect("story resources should build")
+    schema
 }
 
-fn sample_generated_story() -> StoryGeneratedPayload {
-    let mut world_state_schema = WorldStateSchema::new();
-    world_state_schema.insert_field(
+fn sample_world_state_schema() -> WorldStateSchema {
+    let mut schema = WorldStateSchema::new();
+    schema.insert_field(
         "gate_open",
         StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
     );
+    schema
+}
 
-    let mut player_state_schema = PlayerStateSchema::new();
-    player_state_schema.insert_field(
-        "coins",
-        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
-    );
-
-    StoryGeneratedPayload {
-        graph: StoryGraph::new(
-            "dock",
-            vec![NarrativeNode::new(
-                "dock",
-                "Flooded Dock",
-                "A flooded dock at dusk.",
-                "Convince the merchant to help.",
-                vec!["merchant".to_owned()],
-                vec![],
-                vec![],
-            )],
-        ),
-        world_state_schema,
-        player_state_schema,
-        introduction: "The courier reaches the flooded dock.".to_owned(),
+fn sample_api_ids() -> AgentApiIds {
+    AgentApiIds {
+        planner_api_id: "planner-default".to_owned(),
+        architect_api_id: "architect-default".to_owned(),
+        director_api_id: "director-default".to_owned(),
+        actor_api_id: "actor-default".to_owned(),
+        narrator_api_id: "narrator-default".to_owned(),
+        keeper_api_id: "keeper-default".to_owned(),
     }
 }
 
 #[test]
-fn start_session_from_generated_story_round_trips() {
-    let request = RequestBody::StartSessionFromGeneratedStory {
-        resources: sample_story_resources(),
-        generated: sample_generated_story(),
-        player_description: "A stubborn courier carrying medicine.".to_owned(),
-    };
+fn create_story_resources_request_uses_character_ids_only() {
+    let request = JsonRpcRequestMessage::new(
+        "req-1",
+        None::<String>,
+        RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned(), "guard".to_owned()],
+            player_state_schema_seed: sample_player_state_schema(),
+            world_state_schema_seed: Some(sample_world_state_schema()),
+            planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
+        }),
+    );
 
     let json = serde_json::to_string_pretty(&request).expect("request should serialize");
-    let round_trip: RequestBody = serde_json::from_str(&json).expect("request should deserialize");
-
-    let RequestBody::StartSessionFromGeneratedStory {
-        generated,
-        player_description,
-        ..
-    } = round_trip
-    else {
-        panic!("expected generated story session request");
-    };
-
-    assert_eq!(generated.graph.start_node, "dock");
-    assert!(generated.player_state_schema.has_field("coins"));
-    assert_eq!(player_description, "A stubborn courier carrying medicine.");
+    assert!(json.contains("\"method\": \"story_resources.create\""));
+    assert!(json.contains("\"character_ids\""));
+    assert!(!json.contains("\"character_cards\""));
 }
 
 #[test]
-fn direct_story_and_runtime_requests_use_stable_tags() {
-    let request = RequestBody::StartSessionFromDirectStory {
-        story_id: "direct_story".to_owned(),
-        graph: sample_generated_story().graph,
-        character_cards: sample_character_cards(),
-        player_state_schema: sample_story_resources().player_state_schema().clone(),
-        player_description: "A disguised courier posing as a dock clerk.".to_owned(),
-    };
-    let json = serde_json::to_string_pretty(&request).expect("request should serialize");
-    assert!(json.contains("\"type\": \"start_session_from_direct_story\""));
+fn upload_and_story_requests_round_trip_with_stable_methods() {
+    let upload_init = JsonRpcRequestMessage::new(
+        "upload-1",
+        None::<String>,
+        RequestParams::UploadInit(UploadInitParams {
+            target_kind: UploadTargetKind::CharacterCard,
+            file_name: "merchant.chr".to_owned(),
+            content_type: "application/x-sillystage-character-card".to_owned(),
+            total_size: 4096,
+            sha256: "abcd1234".to_owned(),
+        }),
+    );
+    let upload_init_json =
+        serde_json::to_string_pretty(&upload_init).expect("upload init should serialize");
+    assert!(upload_init_json.contains("\"method\": \"upload.init\""));
 
-    let run_turn = RequestBody::RunTurn {
-        player_input: "Open the gate.".to_owned(),
-    };
+    let upload_chunk = JsonRpcRequestMessage::new(
+        "upload-2",
+        None::<String>,
+        RequestParams::UploadChunk(UploadChunkParams {
+            upload_id: "up-1".to_owned(),
+            chunk_index: 0,
+            offset: 0,
+            payload_base64: "aGVsbG8=".to_owned(),
+            is_last: false,
+        }),
+    );
+    let upload_chunk_round_trip: JsonRpcRequestMessage = serde_json::from_str(
+        &serde_json::to_string(&upload_chunk).expect("upload chunk should serialize"),
+    )
+    .expect("upload chunk should deserialize");
+    assert!(matches!(
+        upload_chunk_round_trip.params,
+        RequestParams::UploadChunk(UploadChunkParams { upload_id, .. }) if upload_id == "up-1"
+    ));
+
+    let upload_complete = JsonRpcRequestMessage::new(
+        "upload-3",
+        None::<String>,
+        RequestParams::UploadComplete(UploadCompleteParams {
+            upload_id: "up-1".to_owned(),
+        }),
+    );
+    let upload_complete_json =
+        serde_json::to_string_pretty(&upload_complete).expect("upload complete should serialize");
+    assert!(upload_complete_json.contains("\"method\": \"upload.complete\""));
+
+    let generate_story = JsonRpcRequestMessage::new(
+        "story-1",
+        None::<String>,
+        RequestParams::StoryGenerate(GenerateStoryParams {
+            resource_id: "res-1".to_owned(),
+            architect_api_id: Some("architect-fast".to_owned()),
+        }),
+    );
+    let generate_story_json =
+        serde_json::to_string_pretty(&generate_story).expect("generate story should serialize");
+    assert!(generate_story_json.contains("\"method\": \"story.generate\""));
+
+    let start_session = JsonRpcRequestMessage::new(
+        "story-2",
+        None::<String>,
+        RequestParams::StoryStartSession(StartSessionFromStoryParams {
+            story_id: "story-1".to_owned(),
+            player_description: "A disguised courier posing as a dock clerk.".to_owned(),
+            config_mode: SessionConfigMode::UseSession,
+            session_api_ids: Some(sample_api_ids()),
+        }),
+    );
+    let start_session_json =
+        serde_json::to_string_pretty(&start_session).expect("start session should serialize");
+    assert!(start_session_json.contains("\"method\": \"story.start_session\""));
+}
+
+#[test]
+fn session_requests_keep_stable_method_names() {
+    let run_turn = JsonRpcRequestMessage::new(
+        "req-turn",
+        Some("session-1"),
+        RequestParams::SessionRunTurn(RunTurnParams {
+            player_input: "Open the gate.".to_owned(),
+            api_overrides: Some(AgentApiIdOverrides {
+                actor_api_id: Some("actor-creative".to_owned()),
+                ..AgentApiIdOverrides::default()
+            }),
+        }),
+    );
     let run_turn_json =
         serde_json::to_string_pretty(&run_turn).expect("run_turn request should serialize");
-    assert!(run_turn_json.contains("\"type\": \"run_turn\""));
+    assert!(run_turn_json.contains("\"method\": \"session.run_turn\""));
 
-    let get_snapshot = RequestBody::GetRuntimeSnapshot;
+    let update_resources = JsonRpcRequestMessage::new(
+        "req-update",
+        None::<String>,
+        RequestParams::StoryResourcesUpdate(UpdateStoryResourcesParams {
+            resource_id: "res-1".to_owned(),
+            story_concept: None,
+            character_ids: Some(vec!["merchant".to_owned()]),
+            player_state_schema_seed: None,
+            world_state_schema_seed: None,
+            planned_story: Some("Core Conflict:\nThe flood gate is jammed.".to_owned()),
+        }),
+    );
+    let update_resources_json = serde_json::to_string_pretty(&update_resources)
+        .expect("update resources request should serialize");
+    assert!(update_resources_json.contains("\"method\": \"story_resources.update\""));
+
+    let get_snapshot = JsonRpcRequestMessage::new(
+        "req-snapshot",
+        Some("session-1"),
+        RequestParams::SessionGetRuntimeSnapshot(GetRuntimeSnapshotParams::default()),
+    );
     let get_snapshot_json =
         serde_json::to_string_pretty(&get_snapshot).expect("snapshot request should serialize");
-    assert!(get_snapshot_json.contains("\"type\": \"get_runtime_snapshot\""));
+    assert!(get_snapshot_json.contains("\"method\": \"session.get_runtime_snapshot\""));
+}
+
+#[test]
+fn config_requests_round_trip() {
+    let get_global = JsonRpcRequestMessage::new(
+        "cfg-1",
+        None::<String>,
+        RequestParams::ConfigGetGlobal(ConfigGetGlobalParams::default()),
+    );
+    let get_global_json =
+        serde_json::to_string_pretty(&get_global).expect("global config request should serialize");
+    assert!(get_global_json.contains("\"method\": \"config.get_global\""));
+
+    let update_global = JsonRpcRequestMessage::new(
+        "cfg-2",
+        None::<String>,
+        RequestParams::ConfigUpdateGlobal(ConfigUpdateGlobalParams {
+            api_overrides: AgentApiIdOverrides {
+                director_api_id: Some("director-alt".to_owned()),
+                ..AgentApiIdOverrides::default()
+            },
+        }),
+    );
+    let update_global_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&update_global).expect("serialize update"))
+            .expect("deserialize update");
+    assert!(matches!(
+        update_global_round_trip.params,
+        RequestParams::ConfigUpdateGlobal(ConfigUpdateGlobalParams { api_overrides })
+            if api_overrides.director_api_id.as_deref() == Some("director-alt")
+    ));
+
+    let get_session = JsonRpcRequestMessage::new(
+        "cfg-3",
+        Some("session-1"),
+        RequestParams::SessionGetConfig(SessionGetConfigParams::default()),
+    );
+    let get_session_json = serde_json::to_string_pretty(&get_session)
+        .expect("session config request should serialize");
+    assert!(get_session_json.contains("\"method\": \"session.get_config\""));
+
+    let update_session = JsonRpcRequestMessage::new(
+        "cfg-4",
+        Some("session-1"),
+        RequestParams::SessionUpdateConfig(SessionUpdateConfigParams {
+            mode: SessionConfigMode::UseSession,
+            session_api_ids: Some(sample_api_ids()),
+            api_overrides: Some(AgentApiIdOverrides {
+                keeper_api_id: Some("keeper-alt".to_owned()),
+                ..AgentApiIdOverrides::default()
+            }),
+        }),
+    );
+    let update_session_json =
+        serde_json::to_string_pretty(&update_session).expect("session update should serialize");
+    assert!(update_session_json.contains("\"method\": \"session.update_config\""));
 }

@@ -1,40 +1,53 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ErrorCode {
+    ParseError,
     InvalidRequest,
+    MethodNotFound,
+    InvalidParams,
+    InternalError,
     NotFound,
     Conflict,
     BackendError,
     StreamError,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+impl ErrorCode {
+    pub const fn rpc_code(self) -> i32 {
+        match self {
+            Self::ParseError => -32_700,
+            Self::InvalidRequest => -32_600,
+            Self::MethodNotFound => -32_601,
+            Self::InvalidParams => -32_602,
+            Self::InternalError => -32_603,
+            Self::NotFound => 40_404,
+            Self::Conflict => 40_909,
+            Self::BackendError => 50_001,
+            Self::StreamError => 50_002,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ErrorPayload {
-    pub code: ErrorCode,
+    pub code: i32,
     pub message: String,
-    pub details: Option<serde_json::Value>,
-    pub retryable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<serde_json::Value>,
 }
 
 impl ErrorPayload {
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
-            code,
+            code: code.rpc_code(),
             message: message.into(),
-            details: None,
-            retryable: false,
+            data: None,
         }
     }
 
-    pub fn with_details(mut self, details: serde_json::Value) -> Self {
-        self.details = Some(details);
-        self
-    }
-
-    pub fn retryable(mut self, retryable: bool) -> Self {
-        self.retryable = retryable;
+    pub fn with_data(mut self, data: serde_json::Value) -> Self {
+        self.data = Some(data);
         self
     }
 }

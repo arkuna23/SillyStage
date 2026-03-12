@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ss-agents", "ss-engine","ss-llm-api", "ss-protocol", "ss-state", "ss-story"]
+members = ["ss-agents", "ss-engine", "ss-handler", "ss-llm-api", "ss-protocol", "ss-state", "ss-story"]
 
 [workspace.package]
 edition = "2024"
@@ -20,9 +20,12 @@ thiserror = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 wiremock = "0.6"
 petgraph = "0.8"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+base64 = "0.22"
 
 llm = { path = "ss-llm-api", package = "ss-llm-api" }
 state = { path = "ss-state", package = "ss-state" }
 story = { path = "ss-story", package = "ss-story" }
 agents = { path = "ss-agents", package = "ss-agents" }
 engine = { path = "ss-engine", package = "ss-engine" }
+protocol = { path = "ss-protocol", package = "ss-protocol" }
