@@ -2,3 +2,4 @@
 .env
 graph.dot
 graph.png
+data/
