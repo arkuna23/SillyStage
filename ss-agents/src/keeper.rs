@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
@@ -98,14 +99,14 @@ pub struct KeeperResponse {
     pub output: llm::ChatResponse,
 }
 
-pub struct Keeper<'a> {
-    llm: &'a dyn LlmApi,
+pub struct Keeper {
+    llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
 }
 
-impl<'a> Keeper<'a> {
-    pub fn new(llm: &'a dyn LlmApi, model: impl Into<String>) -> Result<Self, KeeperError> {
+impl Keeper {
+    pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, KeeperError> {
         Ok(Self {
             llm,
             model: model.into(),
@@ -114,7 +115,7 @@ impl<'a> Keeper<'a> {
     }
 
     pub fn from_prompt_file(
-        llm: &'a dyn LlmApi,
+        llm: Arc<dyn LlmApi>,
         model: impl Into<String>,
         path: impl AsRef<Path>,
     ) -> Result<Self, KeeperError> {

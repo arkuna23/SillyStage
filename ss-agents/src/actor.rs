@@ -2,6 +2,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 use std::path::Path;
 use std::pin::Pin;
+use std::sync::Arc;
 
 use futures_core::Stream;
 use futures_util::{StreamExt, stream};
@@ -116,14 +117,14 @@ pub enum ActorStreamEvent {
     Done { response: ActorResponse },
 }
 
-pub struct Actor<'a> {
-    llm: &'a dyn LlmApi,
+pub struct Actor {
+    llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
 }
 
-impl<'a> Actor<'a> {
-    pub fn new(llm: &'a dyn LlmApi, model: impl Into<String>) -> Result<Self, ActorError> {
+impl Actor {
+    pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, ActorError> {
         Ok(Self {
             llm,
             model: model.into(),
@@ -132,7 +133,7 @@ impl<'a> Actor<'a> {
     }
 
     pub fn from_prompt_file(
-        llm: &'a dyn LlmApi,
+        llm: Arc<dyn LlmApi>,
         model: impl Into<String>,
         path: impl AsRef<Path>,
     ) -> Result<Self, ActorError> {

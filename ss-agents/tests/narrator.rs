@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use futures_util::StreamExt;
 use llm::ChatChunk;
@@ -127,7 +128,7 @@ fn scene_request<'a>(
 
 #[tokio::test]
 async fn narrate_stream_emits_text_deltas_and_done() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "Cold water slapped".to_owned(),
             model: Some("test-model".to_owned()),
@@ -149,8 +150,8 @@ async fn narrate_stream_emits_text_deltas_and_done() {
             done: true,
             usage: None,
         }),
-    ]);
-    let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
+    ]));
+    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -192,8 +193,8 @@ async fn narrate_stream_emits_text_deltas_and_done() {
 
 #[tokio::test]
 async fn describe_transition_requires_previous_node() {
-    let llm = MockLlm::with_stream_chunks(vec![]);
-    let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![]));
+    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -218,7 +219,7 @@ async fn describe_transition_requires_previous_node() {
 
 #[tokio::test]
 async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "The dock rocked in the dark.".to_owned(),
             model: Some("test-model".to_owned()),
@@ -233,8 +234,8 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
             done: true,
             usage: None,
         }),
-    ]);
-    let narrator = Narrator::new(&llm, "test-model").expect("narrator should build");
+    ]));
+    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();

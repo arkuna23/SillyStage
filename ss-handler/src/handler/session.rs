@@ -12,7 +12,7 @@ use crate::error::HandlerError;
 use super::config::build_session_config_payload;
 use super::{Handler, HandlerReply, require_session_id};
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub(crate) async fn handle_session_get(
         &self,
         request_id: &str,
@@ -90,7 +90,7 @@ impl<'a> Handler<'a> {
         request_id: String,
         session_id: Option<String>,
         params: RunTurnParams,
-    ) -> HandlerReply<'a> {
+    ) -> HandlerReply {
         let session_id = match session_id {
             Some(session_id) => session_id,
             None => {

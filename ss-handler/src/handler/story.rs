@@ -14,7 +14,7 @@ use crate::error::HandlerError;
 use super::Handler;
 use super::config::build_session_config_payload;
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub(crate) async fn handle_story_resources_create(
         &self,
         request_id: &str,

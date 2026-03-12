@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
@@ -18,11 +19,11 @@ fn sample_state_schema() -> HashMap<String, StateFieldSchema> {
 
 #[tokio::test]
 async fn planner_returns_editable_story_script_and_character_summary() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.\n\nCore Conflict:\nThe courier must decide whether to trust the merchant.\n\nCharacter Roles:\nHaru (merchant) wants profit.\n\nSuggested Beats:\nThe player questions the route.\n\nState Hints:\nTrust may rise or fall.",
         None,
-    ));
-    let planner = Planner::new(&llm, "test-model").expect("planner should build");
+    )));
+    let planner = Planner::new(llm.clone(), "test-model").expect("planner should build");
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Haru".to_owned(),

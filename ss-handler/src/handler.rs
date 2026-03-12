@@ -15,27 +15,27 @@ use store::{InMemoryStore, Store};
 use crate::error::HandlerError;
 use crate::store::UploadStore;
 
-pub type HandlerEventStream<'a> = Pin<Box<dyn Stream<Item = ServerEventMessage> + Send + 'a>>;
+pub type HandlerEventStream = Pin<Box<dyn Stream<Item = ServerEventMessage> + Send>>;
 
-pub enum HandlerReply<'a> {
+pub enum HandlerReply {
     Unary(JsonRpcResponseMessage),
     Stream {
         ack: JsonRpcResponseMessage,
-        events: HandlerEventStream<'a>,
+        events: HandlerEventStream,
     },
 }
 
-pub struct Handler<'a> {
+pub struct Handler {
     store: Arc<dyn Store>,
-    manager: EngineManager<'a>,
+    manager: EngineManager,
     uploads: UploadStore,
     id_generator: IdGenerator,
 }
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub async fn new(
         store: Arc<dyn Store>,
-        registry: LlmApiRegistry<'a>,
+        registry: LlmApiRegistry,
         initial_global_config: AgentApiIds,
     ) -> Result<Self, HandlerError> {
         let manager =
@@ -50,7 +50,7 @@ impl<'a> Handler<'a> {
     }
 
     pub async fn with_in_memory_store(
-        registry: LlmApiRegistry<'a>,
+        registry: LlmApiRegistry,
         initial_global_config: AgentApiIds,
     ) -> Result<Self, HandlerError> {
         Self::new(
@@ -61,7 +61,7 @@ impl<'a> Handler<'a> {
         .await
     }
 
-    pub async fn handle(&self, request: JsonRpcRequestMessage) -> HandlerReply<'a> {
+    pub async fn handle(&self, request: JsonRpcRequestMessage) -> HandlerReply {
         let request_id = request.id.clone();
         let session_id = request.session_id.clone();
 

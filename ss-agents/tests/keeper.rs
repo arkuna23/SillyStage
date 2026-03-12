@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::json;
 use ss_agents::actor::{ActorResponse, ActorSegment, ActorSegmentKind, CharacterCard};
@@ -161,7 +162,7 @@ fn sample_request<'a>(
 
 #[tokio::test]
 async fn keep_parses_json_state_update() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"ops\":[{\"type\":\"SetState\",\"key\":\"route_committed\",\"value\":true},{\"type\":\"SetPlayerState\",\"key\":\"coins\",\"value\":9},{\"type\":\"RemoveActiveCharacter\",\"character\":\"guide\"},{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3}]}",
         Some(json!({
             "ops": [
@@ -187,8 +188,8 @@ async fn keep_parses_json_state_update() {
                 }
             ]
         })),
-    ));
-    let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
+    )));
+    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -226,13 +227,13 @@ async fn keep_parses_json_state_update() {
 
 #[tokio::test]
 async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"ops\":[]}",
         Some(json!({
             "ops": []
         })),
-    ));
-    let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
+    )));
+    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -295,7 +296,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
 
 #[tokio::test]
 async fn keeper_rejects_disallowed_ops() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"ops\":[{\"type\":\"SetCurrentNode\",\"node_id\":\"canal_gate\"}]}",
         Some(json!({
             "ops": [
@@ -305,8 +306,8 @@ async fn keeper_rejects_disallowed_ops() {
                 }
             ]
         })),
-    ));
-    let keeper = Keeper::new(&llm, "test-model").expect("keeper should build");
+    )));
+    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();

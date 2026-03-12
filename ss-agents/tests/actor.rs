@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use futures_util::StreamExt;
 use llm::{ChatChunk, LlmError};
@@ -75,7 +76,7 @@ fn sample_world_state() -> WorldState {
 
 #[tokio::test]
 async fn perform_streams_thought_then_action_then_dialogue() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "<thought>Maybe".to_owned(),
             model: Some("test-model".to_owned()),
@@ -105,8 +106,8 @@ async fn perform_streams_thought_then_action_then_dialogue() {
             done: true,
             usage: None,
         }),
-    ]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -165,7 +166,7 @@ async fn perform_streams_thought_then_action_then_dialogue() {
 
 #[tokio::test]
 async fn perform_stream_rejects_text_outside_tags() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "hello<dialogue>bad</dialogue>".to_owned(),
             model: Some("test-model".to_owned()),
@@ -180,8 +181,8 @@ async fn perform_stream_rejects_text_outside_tags() {
             done: true,
             usage: None,
         }),
-    ]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -202,7 +203,7 @@ async fn perform_stream_rejects_text_outside_tags() {
 
 #[tokio::test]
 async fn perform_stream_rejects_out_of_order_segments() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "<dialogue>Too early.</dialogue><thought>Should have started here.</thought>"
                 .to_owned(),
@@ -218,8 +219,8 @@ async fn perform_stream_rejects_out_of_order_segments() {
             done: true,
             usage: None,
         }),
-    ]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -254,7 +255,7 @@ fn character_summary_excludes_system_prompt() {
 
 #[tokio::test]
 async fn perform_stream_sends_character_specific_system_prompt() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "<dialogue>Deal?</dialogue>".to_owned(),
             model: Some("test-model".to_owned()),
@@ -269,8 +270,8 @@ async fn perform_stream_sends_character_specific_system_prompt() {
             done: true,
             usage: None,
         }),
-    ]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -347,8 +348,8 @@ async fn perform_stream_sends_character_specific_system_prompt() {
 
 #[tokio::test]
 async fn llm_stream_errors_surface_through_actor() {
-    let llm = MockLlm::with_stream_chunks(vec![Err(LlmError::RateLimited)]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![Err(LlmError::RateLimited)]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -372,7 +373,7 @@ async fn llm_stream_errors_surface_through_actor() {
 
 #[tokio::test]
 async fn perform_respects_memory_limit_and_only_shares_visible_segments() {
-    let llm = MockLlm::with_stream_chunks(vec![
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "<thought>Keep the better margin hidden.</thought><action>He slides a small crate forward.</action><dialogue>First offer.</dialogue>".to_owned(),
             model: Some("test-model".to_owned()),
@@ -387,8 +388,8 @@ async fn perform_respects_memory_limit_and_only_shares_visible_segments() {
             done: true,
             usage: None,
         }),
-    ]);
-    let actor = Actor::new(&llm, "test-model").expect("actor should build");
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];

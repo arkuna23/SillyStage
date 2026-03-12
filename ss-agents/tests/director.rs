@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
@@ -16,7 +17,7 @@ use common::{MockLlm, assistant_response};
 
 #[tokio::test]
 async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"beats\":[{\"type\":\"Narrator\",\"purpose\":\"DescribeScene\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"AdvanceGoal\"}]}",
         Some(json!({
             "beats": [
@@ -31,8 +32,8 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                 }
             ]
         })),
-    ));
-    let director = Director::new(&llm, "test-model").expect("director should build");
+    )));
+    let director = Director::new(llm.clone(), "test-model").expect("director should build");
     let mut player_state_schema = PlayerStateSchema::new();
     player_state_schema.insert_field(
         "coins",

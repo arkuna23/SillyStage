@@ -22,8 +22,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let options = resolve_smoke_options(true)?;
     let language = options.language;
     let (client, model) = build_client_from_env()?;
-    let generation_agent_configs = shared_generation_agent_configs(&client, model.clone());
-    let runtime_agent_configs = shared_runtime_agent_configs(&client, model.clone());
+    let generation_agent_configs = shared_generation_agent_configs(client.clone(), model.clone());
+    let runtime_agent_configs = shared_runtime_agent_configs(client, model.clone());
     let mut resources = build_story_resources(language)?;
 
     if options.use_planner {

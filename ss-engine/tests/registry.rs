@@ -1,5 +1,7 @@
 mod common;
 
+use std::sync::Arc;
+
 use ss_engine::{AgentApiIds, LlmApiRegistry, RegistryError};
 
 use common::QueuedMockLlm;
@@ -17,15 +19,16 @@ fn sample_api_ids() -> AgentApiIds {
 
 #[test]
 fn registry_builds_story_generation_and_runtime_configs() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let api_ids = sample_api_ids();
+    let llm_api: Arc<dyn llm::LlmApi> = llm.clone();
     let registry = LlmApiRegistry::new()
-        .register(&api_ids.planner_api_id, &llm, "planner-model")
-        .register(&api_ids.architect_api_id, &llm, "architect-model")
-        .register(&api_ids.director_api_id, &llm, "director-model")
-        .register(&api_ids.actor_api_id, &llm, "actor-model")
-        .register(&api_ids.narrator_api_id, &llm, "narrator-model")
-        .register(&api_ids.keeper_api_id, &llm, "keeper-model");
+        .register(&api_ids.planner_api_id, Arc::clone(&llm_api), "planner-model")
+        .register(&api_ids.architect_api_id, Arc::clone(&llm_api), "architect-model")
+        .register(&api_ids.director_api_id, Arc::clone(&llm_api), "director-model")
+        .register(&api_ids.actor_api_id, Arc::clone(&llm_api), "actor-model")
+        .register(&api_ids.narrator_api_id, Arc::clone(&llm_api), "narrator-model")
+        .register(&api_ids.keeper_api_id, llm_api, "keeper-model");
 
     let generation = registry
         .build_story_generation_configs(&api_ids)
@@ -44,9 +47,9 @@ fn registry_builds_story_generation_and_runtime_configs() {
 
 #[test]
 fn registry_reports_unknown_api_ids() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let api_ids = sample_api_ids();
-    let registry = LlmApiRegistry::new().register("planner", &llm, "planner-model");
+    let registry = LlmApiRegistry::new().register("planner", llm, "planner-model");
 
     let error = registry
         .build_story_generation_configs(&api_ids)

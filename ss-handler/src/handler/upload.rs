@@ -13,7 +13,7 @@ use crate::store::UploadRecord;
 
 use super::Handler;
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub(crate) async fn handle_upload_init(
         &self,
         request_id: &str,

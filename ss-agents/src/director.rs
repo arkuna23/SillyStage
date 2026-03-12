@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
@@ -63,14 +64,14 @@ pub enum ActorPurpose {
     CommentOnScene,
 }
 
-pub struct Director<'a> {
-    llm: &'a dyn LlmApi,
+pub struct Director {
+    llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
 }
 
-impl<'a> Director<'a> {
-    pub fn new(llm: &'a dyn LlmApi, model: impl Into<String>) -> Result<Self, DirectorError> {
+impl Director {
+    pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, DirectorError> {
         Ok(Self {
             llm,
             model: model.into(),
@@ -79,7 +80,7 @@ impl<'a> Director<'a> {
     }
 
     pub fn from_prompt_file(
-        llm: &'a dyn LlmApi,
+        llm: Arc<dyn LlmApi>,
         model: impl Into<String>,
         path: impl AsRef<Path>,
     ) -> Result<Self, DirectorError> {

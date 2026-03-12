@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
@@ -27,7 +28,7 @@ fn sample_player_state_schema() -> PlayerStateSchema {
 
 #[tokio::test]
 async fn architect_prompt_uses_character_summaries_and_ids() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"graph\":{\"start_node\":\"start\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{\"flood_gate_open\":{\"value_type\":\"bool\",\"default\":false,\"description\":\"Whether the flood gate has been opened\"}}},\"introduction\":\"The courier arrives at a flooded market gate where a merchant is waiting.\"}",
         Some(json!({
             "graph": {
@@ -45,8 +46,8 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             },
             "introduction": "The courier arrives at a flooded market gate where a merchant is waiting."
         })),
-    ));
-    let architect = Architect::new(&llm, "test-model");
+    )));
+    let architect = Architect::new(llm.clone(), "test-model");
 
     let mut schema = WorldStateSchema::new();
     schema.insert_field(
@@ -100,7 +101,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
 
 #[tokio::test]
 async fn architect_can_generate_schema_without_seed() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{\"trust_level\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How much the protagonist trusts the guide\"}}},\"player_state_schema\":{\"fields\":{\"reputation\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How much the district trusts the player\"}}},\"introduction\":\"The courier reaches the flooded dock and must decide whether to trust the guide.\"}",
         Some(json!({
             "graph": {
@@ -127,8 +128,8 @@ async fn architect_can_generate_schema_without_seed() {
             },
             "introduction": "The courier reaches the flooded dock and must decide whether to trust the guide."
         })),
-    ));
-    let architect = Architect::new(&llm, "test-model");
+    )));
+    let architect = Architect::new(llm.clone(), "test-model");
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -173,7 +174,7 @@ async fn architect_can_generate_schema_without_seed() {
 
 #[tokio::test]
 async fn architect_prefers_planned_story_when_provided() {
-    let llm = MockLlm::with_chat_response(assistant_response(
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
         "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{}},\"introduction\":\"The courier arrives at the dock.\"}",
         Some(json!({
             "graph": {
@@ -185,8 +186,8 @@ async fn architect_prefers_planned_story_when_provided() {
             },
             "introduction": "The courier arrives at the dock."
         })),
-    ));
-    let architect = Architect::new(&llm, "test-model");
+    )));
+    let architect = Architect::new(llm.clone(), "test-model");
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),

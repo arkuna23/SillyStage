@@ -24,14 +24,15 @@ fn sample_api_ids() -> AgentApiIds {
     }
 }
 
-fn registry<'a>(llm: &'a QueuedMockLlm) -> LlmApiRegistry<'a> {
+fn registry(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
     let ids = sample_api_ids();
+    let llm: Arc<dyn llm::LlmApi> = llm;
     LlmApiRegistry::new()
-        .register(ids.planner_api_id, llm, "planner-model")
-        .register(ids.architect_api_id, llm, "architect-model")
-        .register(ids.director_api_id, llm, "director-model")
-        .register(ids.actor_api_id, llm, "actor-model")
-        .register(ids.narrator_api_id, llm, "narrator-model")
+        .register(ids.planner_api_id, Arc::clone(&llm), "planner-model")
+        .register(ids.architect_api_id, Arc::clone(&llm), "architect-model")
+        .register(ids.director_api_id, Arc::clone(&llm), "director-model")
+        .register(ids.actor_api_id, Arc::clone(&llm), "actor-model")
+        .register(ids.narrator_api_id, Arc::clone(&llm), "narrator-model")
         .register(ids.keeper_api_id, llm, "keeper-model")
 }
 
@@ -138,11 +139,11 @@ async fn seed_story(store: &InMemoryStore) {
 
 #[tokio::test]
 async fn manager_starts_session_from_story_and_exposes_snapshot() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(&llm), sample_api_ids())
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()), sample_api_ids())
         .await
         .expect("manager should build");
 
@@ -169,7 +170,7 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
 
 #[tokio::test]
 async fn manager_runs_turn_and_keeps_sessions_isolated() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response(
                 "{\"ops\":[{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3}]}",
@@ -216,11 +217,11 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
                 usage: None,
             }),
         ])],
-    );
+    ));
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(&llm), sample_api_ids())
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()), sample_api_ids())
         .await
         .expect("manager should build");
 

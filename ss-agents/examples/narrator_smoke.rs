@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use dotenvy::dotenv;
@@ -37,7 +38,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             .timeout(Duration::from_secs(180))
             .build()?,
     )?;
-    let narrator = Narrator::new(&client, model.clone())?;
+    let client: Arc<dyn llm::LlmApi> = Arc::new(client);
+    let narrator = Narrator::new(Arc::clone(&client), model.clone())?;
 
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
@@ -116,7 +118,7 @@ fn require_env(name: &str) -> Result<String, Box<dyn Error>> {
 }
 
 async fn run_scenario(
-    narrator: &Narrator<'_>,
+    narrator: &Narrator,
     request: NarratorRequest<'_>,
 ) -> Result<NarratorResponse, Box<dyn Error>> {
     let mut stream = narrator.narrate_stream(request).await?;

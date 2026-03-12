@@ -21,7 +21,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let options = resolve_smoke_options(false)?;
     let language = options.language;
     let (client, model) = build_client_from_env()?;
-    let runtime_agent_configs = shared_runtime_agent_configs(&client, model.clone());
+    let runtime_agent_configs = shared_runtime_agent_configs(client, model.clone());
     let bundle = build_direct_story_bundle(language);
     let introduction = bundle.introduction.clone();
     let story_graph = bundle.story_graph.clone();

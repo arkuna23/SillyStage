@@ -1,4 +1,5 @@
 use std::pin::Pin;
+use std::sync::Arc;
 
 use agents::actor::{Actor, ActorError, ActorRequest, ActorResponse, ActorStreamEvent};
 use agents::architect::{Architect, ArchitectError, ArchitectRequest, ArchitectResponse};
@@ -26,13 +27,13 @@ const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
 pub type EngineTurnStream<'a> = Pin<Box<dyn Stream<Item = EngineEvent> + Send + 'a>>;
 
 #[derive(Clone)]
-pub struct AgentModelConfig<'a> {
-    pub client: &'a dyn LlmApi,
+pub struct AgentModelConfig {
+    pub client: Arc<dyn LlmApi>,
     pub model: String,
 }
 
-impl<'a> AgentModelConfig<'a> {
-    pub fn new(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+impl AgentModelConfig {
+    pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),
@@ -41,56 +42,53 @@ impl<'a> AgentModelConfig<'a> {
 }
 
 #[derive(Clone)]
-pub struct StoryGenerationAgentConfigs<'a> {
-    pub planner: AgentModelConfig<'a>,
-    pub architect: AgentModelConfig<'a>,
+pub struct StoryGenerationAgentConfigs {
+    pub planner: AgentModelConfig,
+    pub architect: AgentModelConfig,
 }
 
-impl<'a> StoryGenerationAgentConfigs<'a> {
-    pub fn shared(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+impl StoryGenerationAgentConfigs {
+    pub fn shared(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
         let model = model.into();
 
         Self {
-            planner: AgentModelConfig::new(client, model.clone()),
+            planner: AgentModelConfig::new(Arc::clone(&client), model.clone()),
             architect: AgentModelConfig::new(client, model),
         }
     }
 }
 
 #[derive(Clone)]
-pub struct RuntimeAgentConfigs<'a> {
-    pub director: AgentModelConfig<'a>,
-    pub actor: AgentModelConfig<'a>,
-    pub narrator: AgentModelConfig<'a>,
-    pub keeper: AgentModelConfig<'a>,
+pub struct RuntimeAgentConfigs {
+    pub director: AgentModelConfig,
+    pub actor: AgentModelConfig,
+    pub narrator: AgentModelConfig,
+    pub keeper: AgentModelConfig,
 }
 
-impl<'a> RuntimeAgentConfigs<'a> {
-    pub fn shared(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+impl RuntimeAgentConfigs {
+    pub fn shared(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
         let model = model.into();
 
         Self {
-            director: AgentModelConfig::new(client, model.clone()),
-            actor: AgentModelConfig::new(client, model.clone()),
-            narrator: AgentModelConfig::new(client, model.clone()),
+            director: AgentModelConfig::new(Arc::clone(&client), model.clone()),
+            actor: AgentModelConfig::new(Arc::clone(&client), model.clone()),
+            narrator: AgentModelConfig::new(Arc::clone(&client), model.clone()),
             keeper: AgentModelConfig::new(client, model),
         }
     }
 }
 
-pub struct Engine<'a> {
+pub struct Engine {
     runtime_state: RuntimeState,
-    director: Director<'a>,
-    actor: Actor<'a>,
-    narrator: Narrator<'a>,
-    keeper: Keeper<'a>,
+    director: Director,
+    actor: Actor,
+    narrator: Narrator,
+    keeper: Keeper,
 }
 
-impl<'a> Engine<'a> {
-    pub fn new(
-        agent_configs: RuntimeAgentConfigs<'a>,
-        runtime_state: RuntimeState,
-    ) -> Result<Self, EngineError> {
+impl Engine {
+    pub fn new(agent_configs: RuntimeAgentConfigs, runtime_state: RuntimeState) -> Result<Self, EngineError> {
         Ok(Self {
             runtime_state,
             director: Director::new(agent_configs.director.client, agent_configs.director.model)?,
@@ -622,11 +620,11 @@ pub enum EngineError {
 }
 
 pub async fn generate_story_plan(
-    agent_configs: &StoryGenerationAgentConfigs<'_>,
+    agent_configs: &StoryGenerationAgentConfigs,
     resources: &StoryResources,
 ) -> Result<PlannerResponse, EngineError> {
     let planner = Planner::new(
-        agent_configs.planner.client,
+        Arc::clone(&agent_configs.planner.client),
         agent_configs.planner.model.clone(),
     )?;
     planner
@@ -639,11 +637,11 @@ pub async fn generate_story_plan(
 }
 
 pub async fn generate_story_graph(
-    agent_configs: &StoryGenerationAgentConfigs<'_>,
+    agent_configs: &StoryGenerationAgentConfigs,
     resources: &StoryResources,
 ) -> Result<ArchitectResponse, EngineError> {
     let architect = Architect::new(
-        agent_configs.architect.client,
+        Arc::clone(&agent_configs.architect.client),
         agent_configs.architect.model.clone(),
     );
     architect

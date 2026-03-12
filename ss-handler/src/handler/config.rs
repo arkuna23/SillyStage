@@ -8,7 +8,7 @@ use crate::error::HandlerError;
 
 use super::{Handler, require_session_id};
 
-impl<'a> Handler<'a> {
+impl Handler {
     pub(crate) async fn handle_config_get_global(
         &self,
         request_id: &str,

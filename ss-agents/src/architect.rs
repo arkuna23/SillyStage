@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
@@ -34,13 +36,13 @@ struct ArchitectOutputBundle {
 }
 
 /// Architect agent
-pub struct Architect<'a> {
-    client: &'a dyn LlmApi,
+pub struct Architect {
+    client: Arc<dyn LlmApi>,
     model: String,
 }
 
-impl<'a> Architect<'a> {
-    pub fn new(client: &'a dyn LlmApi, model: impl Into<String>) -> Self {
+impl Architect {
+    pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
         Self {
             client,
             model: model.into(),

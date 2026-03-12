@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use dotenvy::dotenv;
@@ -36,7 +37,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             .timeout(Duration::from_secs(180))
             .build()?,
     )?;
-    let keeper = Keeper::new(&client, model.clone())?;
+    let client: Arc<dyn llm::LlmApi> = Arc::new(client);
+    let keeper = Keeper::new(Arc::clone(&client), model.clone())?;
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let market = market_node();
@@ -105,7 +107,7 @@ fn require_env(name: &str) -> Result<String, Box<dyn Error>> {
 async fn print_result(
     label: &str,
     model: &str,
-    keeper: &Keeper<'_>,
+    keeper: &Keeper,
     request: KeeperRequest<'_>,
 ) -> Result<(), Box<dyn Error>> {
     let original_world_state = request.world_state.clone();

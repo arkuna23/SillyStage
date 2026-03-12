@@ -45,26 +45,27 @@ fn alternate_api_ids() -> AgentApiIds {
     }
 }
 
-fn registry_with_ids<'a>(llm: &'a QueuedMockLlm) -> LlmApiRegistry<'a> {
+fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
     let default = default_api_ids();
     let alternate = alternate_api_ids();
+    let llm: Arc<dyn llm::LlmApi> = llm;
 
     LlmApiRegistry::new()
-        .register(default.planner_api_id, llm, "planner-model")
-        .register(default.architect_api_id, llm, "architect-model")
-        .register(default.director_api_id, llm, "director-model")
-        .register(default.actor_api_id, llm, "actor-model")
-        .register(default.narrator_api_id, llm, "narrator-model")
-        .register(default.keeper_api_id, llm, "keeper-model")
-        .register(alternate.planner_api_id, llm, "planner-alt-model")
-        .register(alternate.architect_api_id, llm, "architect-alt-model")
-        .register(alternate.director_api_id, llm, "director-alt-model")
-        .register(alternate.actor_api_id, llm, "actor-alt-model")
-        .register(alternate.narrator_api_id, llm, "narrator-alt-model")
+        .register(default.planner_api_id, Arc::clone(&llm), "planner-model")
+        .register(default.architect_api_id, Arc::clone(&llm), "architect-model")
+        .register(default.director_api_id, Arc::clone(&llm), "director-model")
+        .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
+        .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")
+        .register(default.keeper_api_id, Arc::clone(&llm), "keeper-model")
+        .register(alternate.planner_api_id, Arc::clone(&llm), "planner-alt-model")
+        .register(alternate.architect_api_id, Arc::clone(&llm), "architect-alt-model")
+        .register(alternate.director_api_id, Arc::clone(&llm), "director-alt-model")
+        .register(alternate.actor_api_id, Arc::clone(&llm), "actor-alt-model")
+        .register(alternate.narrator_api_id, Arc::clone(&llm), "narrator-alt-model")
         .register(alternate.keeper_api_id, llm, "keeper-alt-model")
 }
 
-fn unary_result(reply: HandlerReply<'_>) -> ResponseResult {
+fn unary_result(reply: HandlerReply) -> ResponseResult {
     match reply {
         HandlerReply::Unary(response) => match response.outcome {
             JsonRpcOutcome::Ok(result) => *result,
@@ -76,8 +77,8 @@ fn unary_result(reply: HandlerReply<'_>) -> ResponseResult {
 
 #[tokio::test]
 async fn upload_character_card_and_create_resources_via_character_id() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
-    let handler = Handler::with_in_memory_store(registry_with_ids(&llm), default_api_ids())
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let handler = Handler::with_in_memory_store(registry_with_ids(llm.clone()), default_api_ids())
         .await
         .expect("handler should build");
     let archive_bytes = sample_archive()
@@ -195,7 +196,7 @@ async fn upload_character_card_and_create_resources_via_character_id() {
 
 #[tokio::test]
 async fn story_and_session_crud_follow_store_objects() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
             "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\"}",
             Some(json!({
@@ -206,14 +207,14 @@ async fn story_and_session_crud_follow_store_objects() {
             })),
         ))],
         vec![],
-    );
+    ));
     let store = Arc::new(InMemoryStore::new());
     store
         .save_character(sample_character_record())
         .await
         .expect("save character");
 
-    let handler = Handler::new(store.clone(), registry_with_ids(&llm), default_api_ids())
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()), default_api_ids())
         .await
         .expect("handler should build");
 
@@ -322,9 +323,9 @@ async fn story_and_session_crud_follow_store_objects() {
 
 #[tokio::test]
 async fn session_config_can_switch_between_session_and_global_modes() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(&llm), default_api_ids())
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()), default_api_ids())
         .await
         .expect("handler should build");
 
@@ -445,7 +446,7 @@ async fn session_config_can_switch_between_session_and_global_modes() {
 
 #[tokio::test]
 async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response(
                 "{\"ops\":[{\"type\":\"SetPlayerState\",\"key\":\"coins\",\"value\":5}]}",
@@ -499,9 +500,9 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
                 usage: None,
             }),
         ])],
-    );
+    ));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(&llm), default_api_ids())
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()), default_api_ids())
         .await
         .expect("handler should build");
     let character = sample_character_record();
@@ -597,9 +598,9 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
 
 #[tokio::test]
 async fn update_player_description_persists_to_session_snapshot() {
-    let llm = QueuedMockLlm::new(vec![], vec![]);
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(&llm), default_api_ids())
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()), default_api_ids())
         .await
         .expect("handler should build");
 

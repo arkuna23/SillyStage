@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use dotenvy::dotenv;
@@ -34,7 +35,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             .timeout(Duration::from_secs(180))
             .build()?,
     )?;
-    let director = Director::new(&client, model.clone())?;
+    let client: Arc<dyn llm::LlmApi> = Arc::new(client);
+    let director = Director::new(Arc::clone(&client), model.clone())?;
     let runtime_graph = sample_runtime_graph()?;
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();

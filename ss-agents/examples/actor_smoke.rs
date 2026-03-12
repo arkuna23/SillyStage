@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use dotenvy::dotenv;
@@ -36,7 +37,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             .build()?,
     )?;
 
-    let actor = Actor::new(&client, model.clone())?;
+    let client: Arc<dyn llm::LlmApi> = Arc::new(client);
+    let actor = Actor::new(Arc::clone(&client), model.clone())?;
     let (character, cast) = sample_cast();
     let mut world_state = sample_world_state();
 
@@ -89,7 +91,7 @@ fn require_env(name: &str) -> Result<String, Box<dyn Error>> {
 }
 
 async fn run_turn(
-    actor: &Actor<'_>,
+    actor: &Actor,
     request: ActorRequest<'_>,
     world_state: &mut WorldState,
     label: &str,

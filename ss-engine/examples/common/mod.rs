@@ -3,12 +3,13 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{self, Write};
+use std::sync::Arc;
 use std::time::Duration;
 
 use agents::actor::CharacterCard;
 use dotenvy::dotenv;
 use futures_util::StreamExt;
-use llm::{OpenAiClient, OpenAiConfig};
+use llm::{LlmApi, OpenAiClient, OpenAiConfig};
 use serde_json::json;
 use ss_engine::{
     Engine, EngineEvent, RuntimeAgentConfigs, RuntimeSnapshot, RuntimeState,
@@ -134,7 +135,7 @@ pub fn resolve_language_from_args() -> Result<Language, Box<dyn Error>> {
     Ok(resolve_smoke_options(false)?.language)
 }
 
-pub fn build_client_from_env() -> Result<(OpenAiClient, String), Box<dyn Error>> {
+pub fn build_client_from_env() -> Result<(Arc<dyn LlmApi>, String), Box<dyn Error>> {
     dotenv().ok();
 
     let base_url = require_env("LLM_API_BASE")?;
@@ -149,20 +150,20 @@ pub fn build_client_from_env() -> Result<(OpenAiClient, String), Box<dyn Error>>
             .build()?,
     )?;
 
-    Ok((client, model))
+    Ok((Arc::new(client), model))
 }
 
-pub fn shared_generation_agent_configs<'a>(
-    client: &'a OpenAiClient,
+pub fn shared_generation_agent_configs(
+    client: Arc<dyn LlmApi>,
     model: impl Into<String>,
-) -> StoryGenerationAgentConfigs<'a> {
+) -> StoryGenerationAgentConfigs {
     StoryGenerationAgentConfigs::shared(client, model)
 }
 
-pub fn shared_runtime_agent_configs<'a>(
-    client: &'a OpenAiClient,
+pub fn shared_runtime_agent_configs(
+    client: Arc<dyn LlmApi>,
     model: impl Into<String>,
-) -> RuntimeAgentConfigs<'a> {
+) -> RuntimeAgentConfigs {
     RuntimeAgentConfigs::shared(client, model)
 }
 
@@ -376,7 +377,7 @@ pub fn print_direct_story_summary(
 }
 
 pub async fn run_interactive_loop(
-    engine: &mut Engine<'_>,
+    engine: &mut Engine,
     language: Language,
 ) -> Result<(), Box<dyn Error>> {
     loop {

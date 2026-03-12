@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use llm::{ChatRequest, LlmApi};
@@ -17,14 +18,14 @@ pub struct PlannerResponse {
     pub output: llm::ChatResponse,
 }
 
-pub struct Planner<'a> {
-    client: &'a dyn LlmApi,
+pub struct Planner {
+    client: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
 }
 
-impl<'a> Planner<'a> {
-    pub fn new(client: &'a dyn LlmApi, model: impl Into<String>) -> Result<Self, PlannerError> {
+impl Planner {
+    pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, PlannerError> {
         Ok(Self {
             client,
             model: model.into(),
@@ -33,7 +34,7 @@ impl<'a> Planner<'a> {
     }
 
     pub fn from_prompt_file(
-        client: &'a dyn LlmApi,
+        client: Arc<dyn LlmApi>,
         model: impl Into<String>,
         path: impl AsRef<Path>,
     ) -> Result<Self, PlannerError> {

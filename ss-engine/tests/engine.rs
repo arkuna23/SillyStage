@@ -130,7 +130,7 @@ fn user_message_content(request: &llm::ChatRequest) -> &str {
 
 #[tokio::test]
 async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response(
                 "{\"ops\":[{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3},{\"type\":\"SetPlayerState\",\"key\":\"coins\",\"value\":9}]}",
@@ -222,9 +222,9 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
                 }),
             ]),
         ],
-    );
+    ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
         sample_runtime_state(),
     )
     .expect("engine");
@@ -304,7 +304,7 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
 
 #[tokio::test]
 async fn run_turn_returns_result_and_records_completed_beats() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response("{\"ops\":[]}", Some(json!({ "ops": [] })))),
             Ok(assistant_response(
@@ -337,9 +337,9 @@ async fn run_turn_returns_result_and_records_completed_beats() {
                 usage: None,
             }),
         ])],
-    );
+    ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
         sample_runtime_state(),
     )
     .expect("engine");
@@ -357,15 +357,15 @@ async fn run_turn_returns_result_and_records_completed_beats() {
 
 #[tokio::test]
 async fn first_keeper_failure_preserves_recorded_player_input_and_emits_failure() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![Err(LlmError::Provider {
             status: 500,
             message: "keeper down".to_owned(),
         })],
         Vec::new(),
-    );
+    ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
         sample_runtime_state(),
     )
     .expect("engine");
@@ -405,7 +405,7 @@ async fn first_keeper_failure_preserves_recorded_player_input_and_emits_failure(
 
 #[tokio::test]
 async fn invalid_actor_speaker_fails_after_preserving_prior_state_changes() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response(
                 "{\"ops\":[{\"type\":\"SetCharacterState\",\"character\":\"merchant\",\"key\":\"trust\",\"value\":3}]}",
@@ -434,9 +434,9 @@ async fn invalid_actor_speaker_fails_after_preserving_prior_state_changes() {
             )),
         ],
         Vec::new(),
-    );
+    ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
         sample_runtime_state(),
     )
     .expect("engine");
@@ -458,7 +458,7 @@ async fn invalid_actor_speaker_fails_after_preserving_prior_state_changes() {
 
 #[tokio::test]
 async fn generate_story_graph_uses_architect_independently() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
             "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[{\"id\":\"dock\",\"title\":\"Flooded Dock\",\"scene\":\"A flooded dock at dusk.\",\"goal\":\"Decide whether to trust the merchant.\",\"characters\":[\"merchant\"],\"transitions\":[],\"on_enter_updates\":[]}]},\"world_state_schema\":{\"fields\":{\"entered_gate\":{\"value_type\":\"bool\",\"default\":false,\"description\":\"Whether the party has entered the gate\"}}},\"introduction\":\"The courier arrives at the flooded dock while the merchant watches from under a lantern.\"}",
             Some(json!({
@@ -489,11 +489,11 @@ async fn generate_story_graph_uses_architect_independently() {
             })),
         ))],
         Vec::new(),
-    );
+    ));
     let resources = sample_story_resources();
 
     let response = generate_story_graph(
-        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
         &resources,
     )
     .await
@@ -514,7 +514,7 @@ async fn generate_story_graph_uses_architect_independently() {
     )
     .expect("runtime state should build from story resources");
     let engine = Engine::new(
-        RuntimeAgentConfigs::shared(&llm, "test-model"),
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
         runtime_state,
     )
     .expect("engine should build");
@@ -531,17 +531,17 @@ async fn generate_story_graph_uses_architect_independently() {
 
 #[tokio::test]
 async fn generate_story_plan_uses_planner_independently() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
             "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
             None,
         ))],
         Vec::new(),
-    );
+    ));
     let resources = sample_story_resources();
 
     let response = generate_story_plan(
-        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
         &resources,
     )
     .await
@@ -555,7 +555,7 @@ async fn generate_story_plan_uses_planner_independently() {
 
 #[tokio::test]
 async fn generate_story_graph_passes_planned_story_when_present() {
-    let llm = QueuedMockLlm::new(
+    let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
             "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[{\"id\":\"dock\",\"title\":\"Flooded Dock\",\"scene\":\"A flooded dock at dusk.\",\"goal\":\"Decide whether to trust the merchant.\",\"characters\":[\"merchant\"],\"transitions\":[],\"on_enter_updates\":[]}]},\"world_state_schema\":{\"fields\":{}},\"introduction\":\"The courier arrives at the flooded dock.\"}",
             Some(json!({
@@ -580,13 +580,13 @@ async fn generate_story_graph_passes_planned_story_when_present() {
             })),
         ))],
         Vec::new(),
-    );
+    ));
     let resources = sample_story_resources().with_planned_story(
         "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
     );
 
     let response = generate_story_graph(
-        &StoryGenerationAgentConfigs::shared(&llm, "test-model"),
+        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
         &resources,
     )
     .await
@@ -599,3 +599,4 @@ async fn generate_story_graph_passes_planned_story_when_present() {
     assert!(user_message_content(&requests[0]).contains("Flooded Dock Bargain"));
     assert!(response.player_state_schema.has_field("coins"));
 }
+use std::sync::Arc;

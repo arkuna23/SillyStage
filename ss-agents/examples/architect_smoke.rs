@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 use std::time::Duration;
 
 use dotenvy::dotenv;
@@ -34,7 +35,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
             .build()?,
     )?;
 
-    let architect = Architect::new(&client, model.clone());
+    let client: Arc<dyn llm::LlmApi> = Arc::new(client);
+    let architect = Architect::new(Arc::clone(&client), model.clone());
     let story_concept = resolve_story_concept();
     let (world_state_schema, player_state_schema, available_characters) = sample_inputs();
     let response = architect

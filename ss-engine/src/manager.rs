@@ -24,15 +24,15 @@ pub struct ResolvedSessionConfig {
     pub effective_api_ids: AgentApiIds,
 }
 
-pub struct EngineManager<'a> {
+pub struct EngineManager {
     store: Arc<dyn Store>,
-    registry: LlmApiRegistry<'a>,
+    registry: LlmApiRegistry,
 }
 
-impl<'a> EngineManager<'a> {
+impl EngineManager {
     pub async fn new(
         store: Arc<dyn Store>,
-        registry: LlmApiRegistry<'a>,
+        registry: LlmApiRegistry,
         initial_global_config: AgentApiIds,
     ) -> Result<Self, ManagerError> {
         validate_api_ids(&registry, &initial_global_config)?;
@@ -257,7 +257,7 @@ impl<'a> EngineManager<'a> {
         session_id: &str,
         player_input: String,
         api_overrides: Option<AgentApiIdOverrides>,
-    ) -> Result<ManagedTurnStream<'a>, ManagerError> {
+    ) -> Result<ManagedTurnStream<'static>, ManagerError> {
         let session = self
             .store
             .get_session(session_id)
@@ -420,10 +420,7 @@ impl<'a> EngineManager<'a> {
     }
 }
 
-fn validate_api_ids(
-    registry: &LlmApiRegistry<'_>,
-    api_ids: &AgentApiIds,
-) -> Result<(), ManagerError> {
+fn validate_api_ids(registry: &LlmApiRegistry, api_ids: &AgentApiIds) -> Result<(), ManagerError> {
     registry.build_story_generation_configs(api_ids)?;
     registry.build_runtime_configs(api_ids)?;
     Ok(())
