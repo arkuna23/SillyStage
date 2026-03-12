@@ -1,9 +1,12 @@
 use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
 use serde_json::json;
 use ss_protocol::{
-    ConfigGetGlobalParams, ConfigUpdateGlobalParams, CreateStoryResourcesParams,
-    GenerateStoryParams, GetRuntimeSnapshotParams, JsonRpcRequestMessage, RequestParams,
-    RunTurnParams, SessionGetConfigParams, SessionUpdateConfigParams, StartSessionFromStoryParams,
+    CharacterDeleteParams, CharacterGetParams, CharacterListParams, ConfigGetGlobalParams,
+    ConfigUpdateGlobalParams, CreateStoryResourcesParams, DeleteSessionParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionParams,
+    GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage, ListSessionsParams,
+    ListStoriesParams, ListStoryResourcesParams, RequestParams, RunTurnParams,
+    SessionGetConfigParams, SessionUpdateConfigParams, StartSessionFromStoryParams,
     UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
     UploadTargetKind,
 };
@@ -111,6 +114,7 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
         None::<String>,
         RequestParams::StoryGenerate(GenerateStoryParams {
             resource_id: "res-1".to_owned(),
+            display_name: Some("Flooded Harbor".to_owned()),
             architect_api_id: Some("architect-fast".to_owned()),
         }),
     );
@@ -123,6 +127,7 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
         None::<String>,
         RequestParams::StoryStartSession(StartSessionFromStoryParams {
             story_id: "story-1".to_owned(),
+            display_name: Some("Courier Run".to_owned()),
             player_description: "A disguised courier posing as a dock clerk.".to_owned(),
             config_mode: SessionConfigMode::UseSession,
             session_api_ids: Some(sample_api_ids()),
@@ -131,6 +136,153 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
     let start_session_json =
         serde_json::to_string_pretty(&start_session).expect("start session should serialize");
     assert!(start_session_json.contains("\"method\": \"story.start_session\""));
+}
+
+#[test]
+fn object_crud_requests_keep_stable_method_names() {
+    let character_get = JsonRpcRequestMessage::new(
+        "character-get",
+        None::<String>,
+        RequestParams::CharacterGet(CharacterGetParams {
+            character_id: "merchant".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_get)
+            .expect("character get should serialize")
+            .contains("\"method\": \"character.get\"")
+    );
+
+    let character_list = JsonRpcRequestMessage::new(
+        "character-list",
+        None::<String>,
+        RequestParams::CharacterList(CharacterListParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_list)
+            .expect("character list should serialize")
+            .contains("\"method\": \"character.list\"")
+    );
+
+    let character_delete = JsonRpcRequestMessage::new(
+        "character-delete",
+        None::<String>,
+        RequestParams::CharacterDelete(CharacterDeleteParams {
+            character_id: "merchant".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_delete)
+            .expect("character delete should serialize")
+            .contains("\"method\": \"character.delete\"")
+    );
+
+    let resources_get = JsonRpcRequestMessage::new(
+        "resources-get",
+        None::<String>,
+        RequestParams::StoryResourcesGet(GetStoryResourcesParams {
+            resource_id: "resource-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&resources_get)
+            .expect("resources get should serialize")
+            .contains("\"method\": \"story_resources.get\"")
+    );
+
+    let resources_list = JsonRpcRequestMessage::new(
+        "resources-list",
+        None::<String>,
+        RequestParams::StoryResourcesList(ListStoryResourcesParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&resources_list)
+            .expect("resources list should serialize")
+            .contains("\"method\": \"story_resources.list\"")
+    );
+
+    let resources_delete = JsonRpcRequestMessage::new(
+        "resources-delete",
+        None::<String>,
+        RequestParams::StoryResourcesDelete(DeleteStoryResourcesParams {
+            resource_id: "resource-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&resources_delete)
+            .expect("resources delete should serialize")
+            .contains("\"method\": \"story_resources.delete\"")
+    );
+
+    let story_get = JsonRpcRequestMessage::new(
+        "story-get",
+        None::<String>,
+        RequestParams::StoryGet(GetStoryParams {
+            story_id: "story-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&story_get)
+            .expect("story get should serialize")
+            .contains("\"method\": \"story.get\"")
+    );
+
+    let story_list = JsonRpcRequestMessage::new(
+        "story-list",
+        None::<String>,
+        RequestParams::StoryList(ListStoriesParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&story_list)
+            .expect("story list should serialize")
+            .contains("\"method\": \"story.list\"")
+    );
+
+    let story_delete = JsonRpcRequestMessage::new(
+        "story-delete",
+        None::<String>,
+        RequestParams::StoryDelete(DeleteStoryParams {
+            story_id: "story-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&story_delete)
+            .expect("story delete should serialize")
+            .contains("\"method\": \"story.delete\"")
+    );
+
+    let session_get = JsonRpcRequestMessage::new(
+        "session-get",
+        Some("session-1"),
+        RequestParams::SessionGet(GetSessionParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&session_get)
+            .expect("session get should serialize")
+            .contains("\"method\": \"session.get\"")
+    );
+
+    let session_list = JsonRpcRequestMessage::new(
+        "session-list",
+        None::<String>,
+        RequestParams::SessionList(ListSessionsParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&session_list)
+            .expect("session list should serialize")
+            .contains("\"method\": \"session.list\"")
+    );
+
+    let session_delete = JsonRpcRequestMessage::new(
+        "session-delete",
+        Some("session-1"),
+        RequestParams::SessionDelete(DeleteSessionParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&session_delete)
+            .expect("session delete should serialize")
+            .contains("\"method\": \"session.delete\"")
+    );
 }
 
 #[test]

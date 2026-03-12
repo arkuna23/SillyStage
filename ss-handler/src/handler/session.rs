@@ -1,21 +1,90 @@
-use std::sync::Arc;
-
-use agents::actor::CharacterCard;
 use async_stream::stream;
-use engine::{AgentApiIdOverrides, Engine, EngineEvent, RuntimeState};
 use futures_util::StreamExt;
 use protocol::{
-    JsonRpcResponseMessage, ResponseResult, RunTurnParams, ServerEventMessage, StreamEventBody,
-    TurnCompletedPayload, TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams,
+    JsonRpcResponseMessage, ResponseResult, RunTurnParams, RuntimeSnapshotPayload,
+    ServerEventMessage, SessionDeletedPayload, SessionDetailPayload, SessionSummaryPayload,
+    SessionsListedPayload, StreamEventBody, TurnCompletedPayload, TurnStreamAcceptedPayload,
+    UpdatePlayerDescriptionParams,
 };
 
 use crate::error::HandlerError;
-use crate::store::SessionRecord;
 
-use super::config::{effective_session_api_ids, validate_api_ids};
+use super::config::build_session_config_payload;
 use super::{Handler, HandlerReply, require_session_id};
 
 impl<'a> Handler<'a> {
+    pub(crate) async fn handle_session_get(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let config = build_session_config_payload(
+            self.manager
+                .get_resolved_session_config(&session_id)
+                .await?,
+        );
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::Session(Box::new(SessionDetailPayload {
+                session_id: session.session_id,
+                story_id: session.story_id,
+                display_name: session.display_name,
+                snapshot: session.snapshot,
+                config,
+            })),
+        ))
+    }
+
+    pub(crate) async fn handle_session_list(
+        &self,
+        request_id: &str,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let sessions = self
+            .store
+            .list_sessions()
+            .await?
+            .into_iter()
+            .map(|session| SessionSummaryPayload {
+                session_id: session.session_id,
+                story_id: session.story_id,
+                display_name: session.display_name,
+                turn_index: session.snapshot.turn_index,
+            })
+            .collect();
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::SessionsListed(SessionsListedPayload { sessions }),
+        ))
+    }
+
+    pub(crate) async fn handle_session_delete(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        self.store
+            .delete_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::SessionDeleted(SessionDeletedPayload { session_id }),
+        ))
+    }
+
     pub(crate) async fn handle_session_run_turn(
         &self,
         request_id: String,
@@ -33,21 +102,17 @@ impl<'a> Handler<'a> {
             }
         };
 
-        let setup = self
-            .prepare_turn_stream_state(
-                &session_id,
-                params.player_input.clone(),
-                params.api_overrides,
-            )
-            .await;
-
-        let (mut engine, session_record, request_runtime_input) = match setup {
-            Ok(value) => value,
+        let managed_stream = match self
+            .manager
+            .run_turn_stream(&session_id, params.player_input, params.api_overrides)
+            .await
+        {
+            Ok(stream) => stream,
             Err(error) => {
                 return HandlerReply::Unary(JsonRpcResponseMessage::err(
                     request_id,
                     Some(session_id),
-                    error.to_error_payload(),
+                    HandlerError::from(error).to_error_payload(),
                 ));
             }
         };
@@ -57,7 +122,6 @@ impl<'a> Handler<'a> {
             Some(session_id.clone()),
             ResponseResult::TurnStreamAccepted(TurnStreamAcceptedPayload::default()),
         );
-        let store = Arc::clone(&self.store);
 
         let events = stream! {
             let mut sequence = 0_u64;
@@ -68,22 +132,10 @@ impl<'a> Handler<'a> {
             );
             sequence = sequence.saturating_add(1);
 
-            let mut engine_stream = match engine.run_turn_stream(&request_runtime_input).await {
-                Ok(stream) => stream,
-                Err(error) => {
-                    yield ServerEventMessage::failed(
-                        request_id.clone(),
-                        Some(session_id.clone()),
-                        sequence,
-                        HandlerError::Engine(error).to_error_payload(),
-                    );
-                    return;
-                }
-            };
-
-            while let Some(event) = engine_stream.next().await {
+            let mut managed_stream = managed_stream;
+            while let Some(event) = managed_stream.next().await {
                 match event {
-                    EngineEvent::TurnStarted { next_turn_index, player_input } => {
+                    Ok(engine::EngineEvent::TurnStarted { next_turn_index, player_input }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -94,7 +146,7 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::PlayerInputRecorded { entry, snapshot } => {
+                    Ok(engine::EngineEvent::PlayerInputRecorded { entry, snapshot }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -102,11 +154,7 @@ impl<'a> Handler<'a> {
                             StreamEventBody::PlayerInputRecorded { entry, snapshot },
                         );
                     }
-                    EngineEvent::KeeperApplied {
-                        phase,
-                        update,
-                        snapshot,
-                    } => {
+                    Ok(engine::EngineEvent::KeeperApplied { phase, update, snapshot }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -118,7 +166,7 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::DirectorCompleted { result, snapshot } => {
+                    Ok(engine::EngineEvent::DirectorCompleted { result, snapshot }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -126,7 +174,7 @@ impl<'a> Handler<'a> {
                             StreamEventBody::DirectorCompleted { result, snapshot },
                         );
                     }
-                    EngineEvent::NarratorStarted { beat_index, purpose } => {
+                    Ok(engine::EngineEvent::NarratorStarted { beat_index, purpose }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -134,11 +182,11 @@ impl<'a> Handler<'a> {
                             StreamEventBody::NarratorStarted { beat_index, purpose },
                         );
                     }
-                    EngineEvent::NarratorTextDelta {
+                    Ok(engine::EngineEvent::NarratorTextDelta {
                         beat_index,
                         purpose,
                         delta,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -150,11 +198,11 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::NarratorCompleted {
+                    Ok(engine::EngineEvent::NarratorCompleted {
                         beat_index,
                         purpose,
                         response,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -166,11 +214,11 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::ActorStarted {
+                    Ok(engine::EngineEvent::ActorStarted {
                         beat_index,
                         speaker_id,
                         purpose,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -182,11 +230,11 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::ActorThoughtDelta {
+                    Ok(engine::EngineEvent::ActorThoughtDelta {
                         beat_index,
                         speaker_id,
                         delta,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -198,11 +246,11 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::ActorActionComplete {
+                    Ok(engine::EngineEvent::ActorActionComplete {
                         beat_index,
                         speaker_id,
                         text,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -214,11 +262,11 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::ActorDialogueDelta {
+                    Ok(engine::EngineEvent::ActorDialogueDelta {
                         beat_index,
                         speaker_id,
                         delta,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -230,12 +278,12 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::ActorCompleted {
+                    Ok(engine::EngineEvent::ActorCompleted {
                         beat_index,
                         speaker_id,
                         purpose,
                         response,
-                    } => {
+                    }) => {
                         yield ServerEventMessage::event(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -248,20 +296,7 @@ impl<'a> Handler<'a> {
                             },
                         );
                     }
-                    EngineEvent::TurnCompleted { result } => {
-                        let mut updated_session = session_record.clone();
-                        updated_session.snapshot = result.snapshot.clone();
-
-                        if let Err(error) = store.save_session(updated_session).await {
-                            yield ServerEventMessage::failed(
-                                request_id.clone(),
-                                Some(session_id.clone()),
-                                sequence,
-                                HandlerError::Store(error).to_error_payload(),
-                            );
-                            return;
-                        }
-
+                    Ok(engine::EngineEvent::TurnCompleted { result }) => {
                         yield ServerEventMessage::completed(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -272,24 +307,7 @@ impl<'a> Handler<'a> {
                         );
                         return;
                     }
-                    EngineEvent::TurnFailed {
-                        stage,
-                        error,
-                        snapshot,
-                    } => {
-                        let mut updated_session = session_record.clone();
-                        updated_session.snapshot = (*snapshot).clone();
-
-                        if let Err(store_error) = store.save_session(updated_session).await {
-                            yield ServerEventMessage::failed(
-                                request_id.clone(),
-                                Some(session_id.clone()),
-                                sequence,
-                                HandlerError::Store(store_error).to_error_payload(),
-                            );
-                            return;
-                        }
-
+                    Ok(engine::EngineEvent::TurnFailed { stage, error, .. }) => {
                         yield ServerEventMessage::failed(
                             request_id.clone(),
                             Some(session_id.clone()),
@@ -299,6 +317,15 @@ impl<'a> Handler<'a> {
                                 message: error,
                             })
                             .to_error_payload(),
+                        );
+                        return;
+                    }
+                    Err(error) => {
+                        yield ServerEventMessage::failed(
+                            request_id.clone(),
+                            Some(session_id.clone()),
+                            sequence,
+                            HandlerError::from(error).to_error_payload(),
                         );
                         return;
                     }
@@ -321,14 +348,10 @@ impl<'a> Handler<'a> {
         params: UpdatePlayerDescriptionParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
         let session_id = require_session_id(session_id)?;
-        let mut session = self
-            .store
-            .get_session(&session_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
-        session.snapshot.player_description = params.player_description;
-        let snapshot = session.snapshot.clone();
-        self.store.save_session(session).await?;
+        let snapshot = self
+            .manager
+            .update_player_description(&session_id, params.player_description)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -345,60 +368,12 @@ impl<'a> Handler<'a> {
         session_id: Option<String>,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
         let session_id = require_session_id(session_id)?;
-        let session = self
-            .store
-            .get_session(&session_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let snapshot = self.manager.get_runtime_snapshot(&session_id).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             Some(session_id),
-            ResponseResult::RuntimeSnapshot(Box::new(protocol::RuntimeSnapshotPayload {
-                snapshot: session.snapshot,
-            })),
+            ResponseResult::RuntimeSnapshot(Box::new(RuntimeSnapshotPayload { snapshot })),
         ))
-    }
-
-    async fn prepare_turn_stream_state(
-        &self,
-        session_id: &str,
-        player_input: String,
-        api_overrides: Option<AgentApiIdOverrides>,
-    ) -> Result<(Engine<'a>, SessionRecord, String), HandlerError> {
-        let session = self
-            .store
-            .get_session(session_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingSession(session_id.to_owned()))?;
-        let story = self
-            .store
-            .get_story(&session.story_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingStory(session.story_id.clone()))?;
-        let character_cards = self
-            .load_story_character_cards(&story.resource_id)
-            .await?
-            .into_iter()
-            .map(|record| CharacterCard::from(record.archive.content))
-            .collect::<Vec<_>>();
-        let runtime_state = RuntimeState::from_snapshot(
-            &story.story_id,
-            story::runtime_graph::RuntimeStoryGraph::from_story_graph(
-                story.generated.graph.clone(),
-            )
-            .map_err(engine::RuntimeError::GraphBuild)?,
-            character_cards,
-            story.generated.player_state_schema.clone(),
-            session.snapshot.clone(),
-        )?;
-        let global = self.load_global_config().await?;
-        let effective = effective_session_api_ids(&session.config, &global)
-            .apply_overrides(&api_overrides.unwrap_or_default());
-        validate_api_ids(&self.registry, &effective)?;
-        let runtime_configs = self.registry.build_runtime_configs(&effective)?;
-        let engine = Engine::new(runtime_configs, runtime_state)?;
-
-        Ok((engine, session, player_input))
     }
 }

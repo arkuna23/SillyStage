@@ -1,0 +1,345 @@
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use tokio::fs;
+use tokio::io::AsyncWriteExt;
+
+use crate::config::AgentApiIds;
+use crate::error::StoreError;
+use crate::record::{
+    CharacterCardRecord, SessionRecord, StoryRecord, StoryResourcesRecord,
+};
+use crate::store::Store;
+
+const GLOBAL_DIR: &str = "global";
+const GLOBAL_CONFIG_FILE: &str = "config.json";
+const CHARACTERS_DIR: &str = "characters";
+const CHARACTER_RECORD_FILE: &str = "record.json";
+const CHARACTER_COVER_FILE: &str = "cover.bin";
+const STORY_RESOURCES_DIR: &str = "story_resources";
+const STORIES_DIR: &str = "stories";
+const SESSIONS_DIR: &str = "sessions";
+
+#[derive(Debug, Clone)]
+pub struct FileSystemStore {
+    root: PathBuf,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CharacterCardRecordFile {
+    character_id: String,
+    content: agents::actor::CharacterCard,
+    cover_file_name: String,
+    cover_mime_type: String,
+}
+
+impl From<&CharacterCardRecord> for CharacterCardRecordFile {
+    fn from(value: &CharacterCardRecord) -> Self {
+        Self {
+            character_id: value.character_id.clone(),
+            content: value.content.clone(),
+            cover_file_name: value.cover_file_name.clone(),
+            cover_mime_type: value.cover_mime_type.clone(),
+        }
+    }
+}
+
+impl FileSystemStore {
+    pub async fn new(root: impl Into<PathBuf>) -> Result<Self, StoreError> {
+        let store = Self { root: root.into() };
+        store.ensure_layout().await?;
+        Ok(store)
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    async fn ensure_layout(&self) -> Result<(), StoreError> {
+        fs::create_dir_all(self.global_dir()).await?;
+        fs::create_dir_all(self.characters_dir()).await?;
+        fs::create_dir_all(self.story_resources_dir()).await?;
+        fs::create_dir_all(self.stories_dir()).await?;
+        fs::create_dir_all(self.sessions_dir()).await?;
+        Ok(())
+    }
+
+    fn global_dir(&self) -> PathBuf {
+        self.root.join(GLOBAL_DIR)
+    }
+
+    fn global_config_path(&self) -> PathBuf {
+        self.global_dir().join(GLOBAL_CONFIG_FILE)
+    }
+
+    fn characters_dir(&self) -> PathBuf {
+        self.root.join(CHARACTERS_DIR)
+    }
+
+    fn character_dir(&self, character_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.characters_dir().join(validate_path_component(character_id)?))
+    }
+
+    fn character_record_path(&self, character_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.character_dir(character_id)?.join(CHARACTER_RECORD_FILE))
+    }
+
+    fn character_cover_path(&self, character_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.character_dir(character_id)?.join(CHARACTER_COVER_FILE))
+    }
+
+    fn story_resources_dir(&self) -> PathBuf {
+        self.root.join(STORY_RESOURCES_DIR)
+    }
+
+    fn story_resources_path(&self, resource_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .story_resources_dir()
+            .join(format!("{}.json", validate_path_component(resource_id)?)))
+    }
+
+    fn stories_dir(&self) -> PathBuf {
+        self.root.join(STORIES_DIR)
+    }
+
+    fn story_path(&self, story_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .stories_dir()
+            .join(format!("{}.json", validate_path_component(story_id)?)))
+    }
+
+    fn sessions_dir(&self) -> PathBuf {
+        self.root.join(SESSIONS_DIR)
+    }
+
+    fn session_path(&self, session_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .sessions_dir()
+            .join(format!("{}.json", validate_path_component(session_id)?)))
+    }
+}
+
+#[async_trait]
+impl Store for FileSystemStore {
+    async fn get_global_config(&self) -> Result<Option<AgentApiIds>, StoreError> {
+        read_optional_json_file(&self.global_config_path()).await
+    }
+
+    async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
+        write_json_atomic(&self.global_config_path(), &config).await
+    }
+
+    async fn get_character(
+        &self,
+        character_id: &str,
+    ) -> Result<Option<CharacterCardRecord>, StoreError> {
+        let record_path = self.character_record_path(character_id)?;
+        if !path_exists(&record_path).await? {
+            return Ok(None);
+        }
+
+        let record: CharacterCardRecordFile = read_json_file(&record_path).await?;
+        let cover_bytes = fs::read(self.character_cover_path(character_id)?).await?;
+
+        Ok(Some(CharacterCardRecord {
+            character_id: record.character_id,
+            content: record.content,
+            cover_file_name: record.cover_file_name,
+            cover_mime_type: record.cover_mime_type,
+            cover_bytes,
+        }))
+    }
+
+    async fn list_characters(&self) -> Result<Vec<CharacterCardRecord>, StoreError> {
+        let mut entries = fs::read_dir(self.characters_dir()).await?;
+        let mut records = Vec::new();
+
+        while let Some(entry) = entries.next_entry().await? {
+            if !entry.file_type().await?.is_dir() {
+                continue;
+            }
+            let character_id = entry.file_name().to_string_lossy().into_owned();
+            if let Some(record) = self.get_character(&character_id).await? {
+                records.push(record);
+            }
+        }
+
+        Ok(records)
+    }
+
+    async fn save_character(&self, record: CharacterCardRecord) -> Result<(), StoreError> {
+        let dir = self.character_dir(&record.character_id)?;
+        fs::create_dir_all(&dir).await?;
+        write_bytes_atomic(&dir.join(CHARACTER_COVER_FILE), &record.cover_bytes).await?;
+        write_json_atomic(&dir.join(CHARACTER_RECORD_FILE), &CharacterCardRecordFile::from(&record))
+            .await
+    }
+
+    async fn delete_character(
+        &self,
+        character_id: &str,
+    ) -> Result<Option<CharacterCardRecord>, StoreError> {
+        let record = self.get_character(character_id).await?;
+        if record.is_none() {
+            return Ok(None);
+        }
+
+        fs::remove_dir_all(self.character_dir(character_id)?).await?;
+        Ok(record)
+    }
+
+    async fn get_story_resources(
+        &self,
+        resource_id: &str,
+    ) -> Result<Option<StoryResourcesRecord>, StoreError> {
+        read_optional_json_file(&self.story_resources_path(resource_id)?).await
+    }
+
+    async fn list_story_resources(&self) -> Result<Vec<StoryResourcesRecord>, StoreError> {
+        list_json_records(&self.story_resources_dir()).await
+    }
+
+    async fn save_story_resources(
+        &self,
+        resources: StoryResourcesRecord,
+    ) -> Result<(), StoreError> {
+        write_json_atomic(&self.story_resources_path(&resources.resource_id)?, &resources).await
+    }
+
+    async fn delete_story_resources(
+        &self,
+        resource_id: &str,
+    ) -> Result<Option<StoryResourcesRecord>, StoreError> {
+        delete_optional_json_file(&self.story_resources_path(resource_id)?).await
+    }
+
+    async fn get_story(&self, story_id: &str) -> Result<Option<StoryRecord>, StoreError> {
+        read_optional_json_file(&self.story_path(story_id)?).await
+    }
+
+    async fn list_stories(&self) -> Result<Vec<StoryRecord>, StoreError> {
+        list_json_records(&self.stories_dir()).await
+    }
+
+    async fn save_story(&self, story: StoryRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.story_path(&story.story_id)?, &story).await
+    }
+
+    async fn delete_story(&self, story_id: &str) -> Result<Option<StoryRecord>, StoreError> {
+        delete_optional_json_file(&self.story_path(story_id)?).await
+    }
+
+    async fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
+        read_optional_json_file(&self.session_path(session_id)?).await
+    }
+
+    async fn list_sessions(&self) -> Result<Vec<SessionRecord>, StoreError> {
+        list_json_records(&self.sessions_dir()).await
+    }
+
+    async fn save_session(&self, session: SessionRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.session_path(&session.session_id)?, &session).await
+    }
+
+    async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
+        delete_optional_json_file(&self.session_path(session_id)?).await
+    }
+}
+
+fn validate_path_component(value: &str) -> Result<&str, StoreError> {
+    let trimmed = value.trim();
+    if trimmed.is_empty()
+        || trimmed == "."
+        || trimmed == ".."
+        || trimmed.contains('/')
+        || trimmed.contains('\\')
+    {
+        return Err(StoreError::InvalidPathComponent(value.to_owned()));
+    }
+
+    Ok(value)
+}
+
+async fn path_exists(path: &Path) -> Result<bool, StoreError> {
+    match fs::metadata(path).await {
+        Ok(_) => Ok(true),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(StoreError::Io(error)),
+    }
+}
+
+async fn read_optional_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, StoreError> {
+    if !path_exists(path).await? {
+        return Ok(None);
+    }
+
+    read_json_file(path).await.map(Some)
+}
+
+async fn read_json_file<T: DeserializeOwned>(path: &Path) -> Result<T, StoreError> {
+    let bytes = fs::read(path).await?;
+    serde_json::from_slice(&bytes).map_err(StoreError::Deserialize)
+}
+
+async fn list_json_records<T: DeserializeOwned>(dir: &Path) -> Result<Vec<T>, StoreError> {
+    let mut entries = fs::read_dir(dir).await?;
+    let mut records = Vec::new();
+
+    while let Some(entry) = entries.next_entry().await? {
+        if !entry.file_type().await?.is_file() {
+            continue;
+        }
+        if entry.path().extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        records.push(read_json_file(&entry.path()).await?);
+    }
+
+    Ok(records)
+}
+
+async fn delete_optional_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, StoreError> {
+    let record = read_optional_json_file(path).await?;
+    if record.is_none() {
+        return Ok(None);
+    }
+
+    fs::remove_file(path).await?;
+    Ok(record)
+}
+
+async fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), StoreError> {
+    let bytes = serde_json::to_vec_pretty(value).map_err(StoreError::Serialize)?;
+    write_bytes_atomic(path, &bytes).await
+}
+
+async fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), StoreError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| StoreError::MissingParentDirectory(path.to_path_buf()))?;
+    fs::create_dir_all(parent).await?;
+
+    let tmp_name = format!(
+        ".{}.tmp-{}",
+        path.file_name().and_then(|name| name.to_str()).unwrap_or("record"),
+        unique_suffix()
+    );
+    let tmp_path = parent.join(tmp_name);
+
+    let mut file = fs::File::create(&tmp_path).await?;
+    file.write_all(bytes).await?;
+    file.flush().await?;
+    drop(file);
+
+    fs::rename(&tmp_path, path).await?;
+    Ok(())
+}
+
+fn unique_suffix() -> u128 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos()
+}

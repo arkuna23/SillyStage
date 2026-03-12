@@ -17,8 +17,9 @@ use llm::LlmApi;
 use serde::{Deserialize, Serialize};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 
+use crate::RuntimeSnapshot;
 use crate::event::{EngineEvent, EngineStage};
-use crate::runtime::{RuntimeError, RuntimeSnapshot, RuntimeState, StoryResources};
+use crate::runtime::{RuntimeError, RuntimeState, StoryResources};
 
 const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
 

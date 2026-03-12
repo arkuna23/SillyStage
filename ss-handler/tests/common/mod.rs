@@ -11,8 +11,8 @@ use protocol::{
     StoryResourcesPayload,
 };
 use serde_json::json;
-use ss_handler::store::{CharacterCardRecord, StoryRecord};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
+use store::{CharacterCardRecord, StoryRecord};
 use story::{NarrativeNode, StoryGraph};
 
 use agents::actor::CharacterCard;
@@ -146,12 +146,16 @@ pub fn sample_archive() -> CharacterArchive {
 
 pub fn sample_character_record() -> CharacterCardRecord {
     let archive = sample_archive();
-    let summary = archive.summary();
 
     CharacterCardRecord {
-        character_id: summary.character_id.clone(),
-        archive,
-        summary,
+        character_id: archive.content.id.clone(),
+        content: archive.content.clone().into(),
+        cover_file_name: archive.manifest.cover_path.clone(),
+        cover_mime_type: serde_json::to_string(&archive.manifest.cover_mime_type)
+            .expect("cover mime type should serialize")
+            .trim_matches('"')
+            .to_owned(),
+        cover_bytes: archive.cover_bytes.clone(),
     }
 }
 
@@ -173,6 +177,7 @@ pub fn sample_story_payload(
     StoryGeneratedPayload {
         resource_id: resource_id.into(),
         story_id: story_id.into(),
+        display_name: "Flooded Harbor".to_owned(),
         graph: sample_story_graph(),
         world_state_schema: sample_world_state_schema(),
         player_state_schema: sample_player_state_schema(),
@@ -188,7 +193,11 @@ pub fn sample_story_record(
 
     StoryRecord {
         story_id: story_id.clone(),
+        display_name: "Flooded Harbor".to_owned(),
         resource_id: resource_id.into(),
-        generated: sample_story_payload("resource-1", story_id),
+        graph: sample_story_graph(),
+        world_state_schema: sample_world_state_schema(),
+        player_state_schema: sample_player_state_schema(),
+        introduction: sample_story_payload("resource-1", story_id).introduction,
     }
 }

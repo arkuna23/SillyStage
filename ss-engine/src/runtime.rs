@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
 use state::{PlayerStateSchema, WorldState, WorldStateSchema};
+use store::RuntimeSnapshot;
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
 use story::{NarrativeNode, StoryGraph};
 
@@ -34,14 +35,6 @@ pub struct RuntimeState {
     player_state_schema: PlayerStateSchema,
     world_state: WorldState,
     turn_index: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuntimeSnapshot {
-    pub story_id: String,
-    pub player_description: String,
-    pub world_state: WorldState,
-    pub turn_index: u64,
 }
 
 impl StoryResources {

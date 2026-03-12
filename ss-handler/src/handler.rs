@@ -7,12 +7,13 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use engine::{AgentApiIds, LlmApiRegistry};
+use engine::{AgentApiIds, EngineManager, LlmApiRegistry};
 use futures_core::Stream;
 use protocol::{JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, ServerEventMessage};
+use store::{InMemoryStore, Store};
 
 use crate::error::HandlerError;
-use crate::store::{HandlerStore, InMemoryHandlerStore};
+use crate::store::UploadStore;
 
 pub type HandlerEventStream<'a> = Pin<Box<dyn Stream<Item = ServerEventMessage> + Send + 'a>>;
 
@@ -25,26 +26,25 @@ pub enum HandlerReply<'a> {
 }
 
 pub struct Handler<'a> {
-    store: Arc<dyn HandlerStore>,
-    registry: LlmApiRegistry<'a>,
+    store: Arc<dyn Store>,
+    manager: EngineManager<'a>,
+    uploads: UploadStore,
     id_generator: IdGenerator,
 }
 
 impl<'a> Handler<'a> {
     pub async fn new(
-        store: Arc<dyn HandlerStore>,
+        store: Arc<dyn Store>,
         registry: LlmApiRegistry<'a>,
         initial_global_config: AgentApiIds,
     ) -> Result<Self, HandlerError> {
-        config::validate_api_ids(&registry, &initial_global_config)?;
-
-        if store.get_global_config().await?.is_none() {
-            store.set_global_config(initial_global_config).await?;
-        }
+        let manager =
+            EngineManager::new(Arc::clone(&store), registry, initial_global_config).await?;
 
         Ok(Self {
             store,
-            registry,
+            manager,
+            uploads: UploadStore::new(),
             id_generator: IdGenerator::default(),
         })
     }
@@ -54,7 +54,7 @@ impl<'a> Handler<'a> {
         initial_global_config: AgentApiIds,
     ) -> Result<Self, HandlerError> {
         Self::new(
-            Arc::new(InMemoryHandlerStore::new()),
+            Arc::new(InMemoryStore::new()),
             registry,
             initial_global_config,
         )
@@ -73,12 +73,29 @@ impl<'a> Handler<'a> {
             RequestParams::UploadComplete(params) => {
                 self.handle_upload_complete(&request_id, params).await
             }
+            RequestParams::CharacterGet(params) => {
+                self.handle_character_get(&request_id, params).await
+            }
+            RequestParams::CharacterList(_) => self.handle_character_list(&request_id).await,
+            RequestParams::CharacterDelete(params) => {
+                self.handle_character_delete(&request_id, params).await
+            }
             RequestParams::StoryResourcesCreate(params) => {
                 self.handle_story_resources_create(&request_id, params)
                     .await
             }
+            RequestParams::StoryResourcesGet(params) => {
+                self.handle_story_resources_get(&request_id, params).await
+            }
+            RequestParams::StoryResourcesList(_) => {
+                self.handle_story_resources_list(&request_id).await
+            }
             RequestParams::StoryResourcesUpdate(params) => {
                 self.handle_story_resources_update(&request_id, params)
+                    .await
+            }
+            RequestParams::StoryResourcesDelete(params) => {
+                self.handle_story_resources_delete(&request_id, params)
                     .await
             }
             RequestParams::StoryGeneratePlan(params) => {
@@ -87,8 +104,22 @@ impl<'a> Handler<'a> {
             RequestParams::StoryGenerate(params) => {
                 self.handle_story_generate(&request_id, params).await
             }
+            RequestParams::StoryGet(params) => self.handle_story_get(&request_id, params).await,
+            RequestParams::StoryList(_) => self.handle_story_list(&request_id).await,
+            RequestParams::StoryDelete(params) => {
+                self.handle_story_delete(&request_id, params).await
+            }
             RequestParams::StoryStartSession(params) => {
                 self.handle_story_start_session(&request_id, params).await
+            }
+            RequestParams::SessionGet(_) => {
+                self.handle_session_get(&request_id, session_id.clone())
+                    .await
+            }
+            RequestParams::SessionList(_) => self.handle_session_list(&request_id).await,
+            RequestParams::SessionDelete(_) => {
+                self.handle_session_delete(&request_id, session_id.clone())
+                    .await
             }
             RequestParams::SessionRunTurn(params) => {
                 return self

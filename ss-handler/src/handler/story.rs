@@ -1,19 +1,18 @@
-use agents::actor::CharacterCard;
-use engine::{
-    AgentApiIdOverrides, RuntimeState, SessionConfigMode, SessionEngineConfig, StoryResources,
-    generate_story_graph, generate_story_plan,
-};
 use protocol::{
-    CreateStoryResourcesParams, GenerateStoryParams, GenerateStoryPlanParams,
-    JsonRpcResponseMessage, ResponseResult, SessionStartedPayload, StartSessionFromStoryParams,
-    StoryGeneratedPayload, StoryPlannedPayload, StoryResourcesPayload, UpdateStoryResourcesParams,
+    CharacterCardSummaryPayload, CreateStoryResourcesParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, GenerateStoryParams, GenerateStoryPlanParams, GetStoryParams,
+    GetStoryResourcesParams, JsonRpcResponseMessage, ResponseResult, SessionStartedPayload,
+    StartSessionFromStoryParams, StoriesListedPayload, StoryDeletedPayload, StoryDetailPayload,
+    StoryGeneratedPayload, StoryPlannedPayload, StoryResourcesDeletedPayload,
+    StoryResourcesListedPayload, StoryResourcesPayload, StorySummaryPayload,
+    UpdateStoryResourcesParams,
 };
+use store::{CharacterCardRecord, StoryRecord, StoryResourcesRecord};
 
 use crate::error::HandlerError;
-use crate::store::{CharacterCardRecord, SessionRecord, StoryRecord};
 
 use super::Handler;
-use super::config::{build_session_config_payload, effective_session_api_ids, validate_api_ids};
+use super::config::build_session_config_payload;
 
 impl<'a> Handler<'a> {
     pub(crate) async fn handle_story_resources_create(
@@ -27,7 +26,7 @@ impl<'a> Handler<'a> {
 
         self.ensure_characters_exist(&params.character_ids).await?;
 
-        let payload = StoryResourcesPayload {
+        let record = StoryResourcesRecord {
             resource_id: self.id_generator.next("resource"),
             story_concept: params.story_concept,
             character_ids: params.character_ids,
@@ -36,12 +35,51 @@ impl<'a> Handler<'a> {
             planned_story: params.planned_story,
         };
 
-        self.store.save_story_resources(payload.clone()).await?;
+        self.store.save_story_resources(record.clone()).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::StoryResourcesCreated(Box::new(payload)),
+            ResponseResult::StoryResourcesCreated(Box::new(story_resources_payload_from_record(
+                &record,
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_resources_get(
+        &self,
+        request_id: &str,
+        params: GetStoryResourcesParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let record = self
+            .store
+            .get_story_resources(&params.resource_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryResources(Box::new(story_resources_payload_from_record(&record))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_resources_list(
+        &self,
+        request_id: &str,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let resources = self
+            .store
+            .list_story_resources()
+            .await?
+            .into_iter()
+            .map(|record| story_resources_payload_from_record(&record))
+            .collect();
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryResourcesListed(StoryResourcesListedPayload { resources }),
         ))
     }
 
@@ -50,38 +88,69 @@ impl<'a> Handler<'a> {
         request_id: &str,
         params: UpdateStoryResourcesParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let mut payload = self
+        let mut record = self
             .store
             .get_story_resources(&params.resource_id)
             .await?
             .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
 
         if let Some(story_concept) = params.story_concept {
-            payload.story_concept = story_concept;
+            record.story_concept = story_concept;
         }
         if let Some(character_ids) = params.character_ids {
             if character_ids.is_empty() {
                 return Err(HandlerError::EmptyCharacterIds);
             }
             self.ensure_characters_exist(&character_ids).await?;
-            payload.character_ids = character_ids;
+            record.character_ids = character_ids;
         }
         if let Some(player_state_schema_seed) = params.player_state_schema_seed {
-            payload.player_state_schema_seed = player_state_schema_seed;
+            record.player_state_schema_seed = player_state_schema_seed;
         }
         if let Some(world_state_schema_seed) = params.world_state_schema_seed {
-            payload.world_state_schema_seed = Some(world_state_schema_seed);
+            record.world_state_schema_seed = Some(world_state_schema_seed);
         }
         if let Some(planned_story) = params.planned_story {
-            payload.planned_story = Some(planned_story);
+            record.planned_story = Some(planned_story);
         }
 
-        self.store.save_story_resources(payload.clone()).await?;
+        self.store.save_story_resources(record.clone()).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::StoryResourcesUpdated(Box::new(payload)),
+            ResponseResult::StoryResourcesUpdated(Box::new(story_resources_payload_from_record(
+                &record,
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_resources_delete(
+        &self,
+        request_id: &str,
+        params: DeleteStoryResourcesParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        if self
+            .store
+            .list_stories()
+            .await?
+            .into_iter()
+            .any(|story| story.resource_id == params.resource_id)
+        {
+            return Err(HandlerError::StoryResourcesInUse(params.resource_id));
+        }
+
+        self.store
+            .delete_story_resources(&params.resource_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryResourcesDeleted(StoryResourcesDeletedPayload {
+                resource_id: params.resource_id,
+            }),
         ))
     }
 
@@ -90,29 +159,16 @@ impl<'a> Handler<'a> {
         request_id: &str,
         params: GenerateStoryPlanParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let resource = self
-            .store
-            .get_story_resources(&params.resource_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
-        let api_ids = self
-            .load_global_config()
-            .await?
-            .apply_overrides(&AgentApiIdOverrides {
-                planner_api_id: params.planner_api_id,
-                ..AgentApiIdOverrides::default()
-            });
-        validate_api_ids(&self.registry, &api_ids)?;
-
-        let story_resources = self.build_engine_story_resources(&resource).await?;
-        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
-        let response = generate_story_plan(&generation_configs, &story_resources).await?;
+        let response = self
+            .manager
+            .generate_story_plan(&params.resource_id, params.planner_api_id)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
             ResponseResult::StoryPlanned(StoryPlannedPayload {
-                resource_id: resource.resource_id,
+                resource_id: params.resource_id,
                 story_script: response.story_script,
             }),
         ))
@@ -123,46 +179,85 @@ impl<'a> Handler<'a> {
         request_id: &str,
         params: GenerateStoryParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let resource = self
-            .store
-            .get_story_resources(&params.resource_id)
-            .await?
-            .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
-        let api_ids = self
-            .load_global_config()
-            .await?
-            .apply_overrides(&AgentApiIdOverrides {
-                architect_api_id: params.architect_api_id,
-                ..AgentApiIdOverrides::default()
-            });
-        validate_api_ids(&self.registry, &api_ids)?;
-
-        let story_resources = self.build_engine_story_resources(&resource).await?;
-        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
-        let response = generate_story_graph(&generation_configs, &story_resources).await?;
-        let story_id = self.id_generator.next("story");
-
-        let payload = StoryGeneratedPayload {
-            resource_id: resource.resource_id.clone(),
-            story_id: story_id.clone(),
-            graph: response.graph,
-            world_state_schema: response.world_state_schema,
-            player_state_schema: response.player_state_schema,
-            introduction: response.introduction,
-        };
-
-        self.store
-            .save_story(StoryRecord {
-                story_id,
-                resource_id: resource.resource_id,
-                generated: payload.clone(),
-            })
+        let story = self
+            .manager
+            .generate_story(
+                &params.resource_id,
+                params.display_name,
+                params.architect_api_id,
+            )
             .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::StoryGenerated(Box::new(payload)),
+            ResponseResult::StoryGenerated(Box::new(story_generated_payload_from_record(&story))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_get(
+        &self,
+        request_id: &str,
+        params: GetStoryParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let story = self
+            .store
+            .get_story(&params.story_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::Story(Box::new(story_detail_payload_from_record(&story))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_list(
+        &self,
+        request_id: &str,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let stories = self
+            .store
+            .list_stories()
+            .await?
+            .into_iter()
+            .map(|story| story_summary_payload_from_record(&story))
+            .collect();
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoriesListed(StoriesListedPayload { stories }),
+        ))
+    }
+
+    pub(crate) async fn handle_story_delete(
+        &self,
+        request_id: &str,
+        params: DeleteStoryParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        if self
+            .store
+            .list_sessions()
+            .await?
+            .into_iter()
+            .any(|session| session.story_id == params.story_id)
+        {
+            return Err(HandlerError::StoryHasSessions(params.story_id));
+        }
+
+        self.store
+            .delete_story(&params.story_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDeleted(StoryDeletedPayload {
+                story_id: params.story_id,
+            }),
         ))
     }
 
@@ -171,63 +266,42 @@ impl<'a> Handler<'a> {
         request_id: &str,
         params: StartSessionFromStoryParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session = self
+            .manager
+            .start_session_from_story(
+                &params.story_id,
+                params.display_name,
+                params.player_description,
+                params.config_mode,
+                params.session_api_ids,
+            )
+            .await?;
         let story = self
             .store
-            .get_story(&params.story_id)
+            .get_story(&session.story_id)
             .await?
-            .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
-        let global_config = self.load_global_config().await?;
-        let session_config = match params.config_mode {
-            SessionConfigMode::UseGlobal => SessionEngineConfig::use_global(),
-            SessionConfigMode::UseSession => SessionEngineConfig::use_session(
-                params
-                    .session_api_ids
-                    .unwrap_or_else(|| global_config.clone()),
-            ),
-        };
-        let effective_api_ids = effective_session_api_ids(&session_config, &global_config);
-        validate_api_ids(&self.registry, &effective_api_ids)?;
-
-        let characters = self
-            .load_story_character_cards(&story.resource_id)
-            .await?
-            .into_iter()
-            .map(|record| record.archive.content.into())
-            .collect::<Vec<CharacterCard>>();
-        let runtime_state = RuntimeState::from_story_graph(
-            &story.story_id,
-            story.generated.graph.clone(),
-            characters,
-            params.player_description,
-            story.generated.player_state_schema.clone(),
-        )?;
-        let snapshot = runtime_state.snapshot();
-        let config_payload = build_session_config_payload(&session_config, &global_config);
-        let session_id = self.id_generator.next("session");
-
-        self.store
-            .save_session(SessionRecord {
-                session_id: session_id.clone(),
-                story_id: story.story_id,
-                snapshot: snapshot.clone(),
-                config: session_config,
-            })
-            .await?;
-
+            .ok_or_else(|| HandlerError::MissingStory(session.story_id.clone()))?;
         let character_summaries = self
             .load_story_character_cards(&story.resource_id)
             .await?
             .into_iter()
-            .map(|record| record.summary)
+            .map(|record| character_summary_payload_from_record(&record))
             .collect();
+        let config = build_session_config_payload(
+            self.manager
+                .get_resolved_session_config(&session.session_id)
+                .await?,
+        );
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
-            Some(session_id),
+            Some(session.session_id),
             ResponseResult::SessionStarted(Box::new(SessionStartedPayload {
-                snapshot,
+                story_id: story.story_id,
+                display_name: session.display_name,
+                snapshot: session.snapshot,
                 character_summaries,
-                config: config_payload,
+                config,
             })),
         ))
     }
@@ -260,38 +334,66 @@ impl<'a> Handler<'a> {
                 .ok_or_else(|| HandlerError::MissingCharacter(character_id.clone()))?;
             records.push(record);
         }
+
         Ok(records)
     }
+}
 
-    async fn build_engine_story_resources(
-        &self,
-        resource: &StoryResourcesPayload,
-    ) -> Result<StoryResources, HandlerError> {
-        let mut cards = Vec::with_capacity(resource.character_ids.len());
-        for character_id in &resource.character_ids {
-            let character = self
-                .store
-                .get_character(character_id)
-                .await?
-                .ok_or_else(|| HandlerError::MissingCharacter(character_id.clone()))?;
-            cards.push(CharacterCard::from(character.archive.content));
-        }
+fn character_summary_payload_from_record(
+    record: &CharacterCardRecord,
+) -> CharacterCardSummaryPayload {
+    CharacterCardSummaryPayload {
+        character_id: record.character_id.clone(),
+        name: record.content.name.clone(),
+        personality: record.content.personality.clone(),
+        style: record.content.style.clone(),
+        tendencies: record.content.tendencies.clone(),
+        cover_file_name: record.cover_file_name.clone(),
+        cover_mime_type: serde_json::from_str(&format!("\"{}\"", record.cover_mime_type))
+            .expect("stored cover mime type should deserialize"),
+    }
+}
 
-        let mut story_resources = StoryResources::new(
-            resource.resource_id.clone(),
-            resource.story_concept.clone(),
-            cards,
-            resource.player_state_schema_seed.clone(),
-        )?;
+fn story_resources_payload_from_record(record: &StoryResourcesRecord) -> StoryResourcesPayload {
+    StoryResourcesPayload {
+        resource_id: record.resource_id.clone(),
+        story_concept: record.story_concept.clone(),
+        character_ids: record.character_ids.clone(),
+        player_state_schema_seed: record.player_state_schema_seed.clone(),
+        world_state_schema_seed: record.world_state_schema_seed.clone(),
+        planned_story: record.planned_story.clone(),
+    }
+}
 
-        if let Some(planned_story) = &resource.planned_story {
-            story_resources = story_resources.with_planned_story(planned_story.clone());
-        }
-        if let Some(world_state_schema_seed) = &resource.world_state_schema_seed {
-            story_resources =
-                story_resources.with_world_state_schema_seed(world_state_schema_seed.clone());
-        }
+fn story_generated_payload_from_record(record: &StoryRecord) -> StoryGeneratedPayload {
+    StoryGeneratedPayload {
+        resource_id: record.resource_id.clone(),
+        story_id: record.story_id.clone(),
+        display_name: record.display_name.clone(),
+        graph: record.graph.clone(),
+        world_state_schema: record.world_state_schema.clone(),
+        player_state_schema: record.player_state_schema.clone(),
+        introduction: record.introduction.clone(),
+    }
+}
 
-        Ok(story_resources)
+fn story_summary_payload_from_record(record: &StoryRecord) -> StorySummaryPayload {
+    StorySummaryPayload {
+        story_id: record.story_id.clone(),
+        display_name: record.display_name.clone(),
+        resource_id: record.resource_id.clone(),
+        introduction: record.introduction.clone(),
+    }
+}
+
+fn story_detail_payload_from_record(record: &StoryRecord) -> StoryDetailPayload {
+    StoryDetailPayload {
+        story_id: record.story_id.clone(),
+        display_name: record.display_name.clone(),
+        resource_id: record.resource_id.clone(),
+        graph: record.graph.clone(),
+        world_state_schema: record.world_state_schema.clone(),
+        player_state_schema: record.player_state_schema.clone(),
+        introduction: record.introduction.clone(),
     }
 }

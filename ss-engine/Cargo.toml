@@ -6,14 +6,16 @@ license-file.workspace = true
 
 [dependencies]
 async-stream.workspace = true
-agents.workspace = true
 futures-core.workspace = true
 futures-util.workspace = true
 llm.workspace = true
 serde.workspace = true
-state.workspace = true
-story.workspace = true
 thiserror.workspace = true
+
+agents.workspace = true
+state.workspace = true
+store.workspace = true
+story.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true

@@ -895,6 +895,7 @@ dependencies = [
  "ss-agents",
  "ss-llm-api",
  "ss-state",
+ "ss-store",
  "ss-story",
  "thiserror",
  "tokio",
@@ -916,6 +917,7 @@ dependencies = [
  "ss-llm-api",
  "ss-protocol",
  "ss-state",
+ "ss-store",
  "ss-story",
  "thiserror",
  "tokio",
@@ -957,6 +959,20 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "ss-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "ss-agents",
+ "ss-state",
+ "ss-story",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

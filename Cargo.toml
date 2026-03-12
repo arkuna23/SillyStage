@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ss-agents", "ss-engine", "ss-handler", "ss-llm-api", "ss-protocol", "ss-state", "ss-story"]
+members = ["ss-agents", "ss-engine", "ss-handler", "ss-llm-api", "ss-protocol", "ss-state", "ss-store", "ss-story"]
 
 [workspace.package]
 edition = "2024"
@@ -29,3 +29,4 @@ story = { path = "ss-story", package = "ss-story" }
 agents = { path = "ss-agents", package = "ss-agents" }
 engine = { path = "ss-engine", package = "ss-engine" }
 protocol = { path = "ss-protocol", package = "ss-protocol" }
+store = { path = "ss-store", package = "ss-store" }
