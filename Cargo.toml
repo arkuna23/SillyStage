@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["ss-agents", "ss-engine", "ss-handler", "ss-llm-api", "ss-protocol", "ss-server", "ss-state", "ss-store", "ss-story"]
+members = ["ss-agents", "ss-app", "ss-engine", "ss-handler", "ss-llm-api", "ss-protocol", "ss-server", "ss-state", "ss-store", "ss-story"]
 
 [workspace.package]
 edition = "2024"
@@ -10,6 +10,7 @@ license-file = "LICENSE"
 async-trait = "0.1"
 async-stream = "0.3"
 axum = { version = "0.8", features = ["json", "http1", "tokio"] }
+clap = { version = "4.5", features = ["derive", "env"] }
 dotenvy = "0.15"
 eventsource-stream = "0.2"
 futures-core = "0.3"
@@ -18,8 +19,10 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "net", "signal"] }
+tower-http = { version = "0.6", features = ["fs"] }
 tower = { version = "0.5", features = ["util"] }
+toml = "0.8"
 wiremock = "0.6"
 petgraph = "0.8"
 zip = { version = "2", default-features = false, features = ["deflate"] }
@@ -32,4 +35,5 @@ agents = { path = "ss-agents", package = "ss-agents" }
 engine = { path = "ss-engine", package = "ss-engine" }
 protocol = { path = "ss-protocol", package = "ss-protocol" }
 handler = { path = "ss-handler", package = "ss-handler" }
+server = { path = "ss-server", package = "ss-server" }
 store = { path = "ss-store", package = "ss-store" }
