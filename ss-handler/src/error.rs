@@ -20,6 +20,10 @@ pub enum HandlerError {
     MissingSession(String),
     #[error("character '{0}' already exists")]
     DuplicateCharacter(String),
+    #[error("character_id must not be empty")]
+    EmptyCharacterId,
+    #[error("character '{0}' does not have a cover yet")]
+    MissingCharacterCover(String),
     #[error("character '{0}' is still referenced by story resources")]
     CharacterInUse(String),
     #[error("story resources '{0}' already has generated stories")]
@@ -36,6 +40,8 @@ pub enum HandlerError {
     UploadSizeMismatch { expected: u64, got: u64 },
     #[error("invalid upload chunk payload: {0}")]
     InvalidUploadChunkPayload(String),
+    #[error("invalid character cover payload: {0}")]
+    InvalidCharacterCoverPayload(String),
     #[error("session config for use_session requires api ids")]
     MissingSessionApiIds,
     #[error("invalid session config: {0}")]
@@ -61,6 +67,8 @@ impl HandlerError {
             | Self::InvalidChunkOffset { .. }
             | Self::UploadSizeMismatch { .. }
             | Self::InvalidUploadChunkPayload(_)
+            | Self::EmptyCharacterId
+            | Self::InvalidCharacterCoverPayload(_)
             | Self::MissingSessionApiIds
             | Self::InvalidSessionConfig(_)
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
@@ -72,6 +80,7 @@ impl HandlerError {
             | Self::MissingSession(_)
             | Self::Registry(_) => ErrorPayload::new(ErrorCode::NotFound, self.to_string()),
             Self::DuplicateCharacter(_)
+            | Self::MissingCharacterCover(_)
             | Self::CharacterInUse(_)
             | Self::StoryResourcesInUse(_)
             | Self::StoryHasSessions(_) => ErrorPayload::new(ErrorCode::Conflict, self.to_string()),

@@ -7,6 +7,7 @@ use crate::config::{
     ConfigGetGlobalParams, ConfigUpdateGlobalParams, SessionGetConfigParams,
     SessionUpdateConfigParams,
 };
+use crate::character::{CharacterCardContent, CharacterCoverMimeType};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
@@ -16,8 +17,16 @@ pub enum RequestMethod {
     UploadChunk,
     #[serde(rename = "upload.complete")]
     UploadComplete,
+    #[serde(rename = "character.create")]
+    CharacterCreate,
     #[serde(rename = "character.get")]
     CharacterGet,
+    #[serde(rename = "character.get_cover")]
+    CharacterGetCover,
+    #[serde(rename = "character.export_chr")]
+    CharacterExportChr,
+    #[serde(rename = "character.set_cover")]
+    CharacterSetCover,
     #[serde(rename = "character.list")]
     CharacterList,
     #[serde(rename = "character.delete")]
@@ -71,7 +80,11 @@ pub enum RequestParams {
     UploadInit(UploadInitParams),
     UploadChunk(UploadChunkParams),
     UploadComplete(UploadCompleteParams),
+    CharacterCreate(CharacterCreateParams),
     CharacterGet(CharacterGetParams),
+    CharacterGetCover(CharacterGetCoverParams),
+    CharacterExportChr(CharacterExportChrParams),
+    CharacterSetCover(CharacterSetCoverParams),
     CharacterList(CharacterListParams),
     CharacterDelete(CharacterDeleteParams),
     StoryResourcesCreate(CreateStoryResourcesParams),
@@ -103,7 +116,11 @@ impl RequestParams {
             Self::UploadInit(_) => RequestMethod::UploadInit,
             Self::UploadChunk(_) => RequestMethod::UploadChunk,
             Self::UploadComplete(_) => RequestMethod::UploadComplete,
+            Self::CharacterCreate(_) => RequestMethod::CharacterCreate,
             Self::CharacterGet(_) => RequestMethod::CharacterGet,
+            Self::CharacterGetCover(_) => RequestMethod::CharacterGetCover,
+            Self::CharacterExportChr(_) => RequestMethod::CharacterExportChr,
+            Self::CharacterSetCover(_) => RequestMethod::CharacterSetCover,
             Self::CharacterList(_) => RequestMethod::CharacterList,
             Self::CharacterDelete(_) => RequestMethod::CharacterDelete,
             Self::StoryResourcesCreate(_) => RequestMethod::StoryResourcesCreate,
@@ -137,7 +154,11 @@ impl RequestParams {
             Self::UploadInit(params) => serde_json::to_value(params),
             Self::UploadChunk(params) => serde_json::to_value(params),
             Self::UploadComplete(params) => serde_json::to_value(params),
+            Self::CharacterCreate(params) => serde_json::to_value(params),
             Self::CharacterGet(params) => serde_json::to_value(params),
+            Self::CharacterGetCover(params) => serde_json::to_value(params),
+            Self::CharacterExportChr(params) => serde_json::to_value(params),
+            Self::CharacterSetCover(params) => serde_json::to_value(params),
             Self::CharacterList(params) => serde_json::to_value(params),
             Self::CharacterDelete(params) => serde_json::to_value(params),
             Self::StoryResourcesCreate(params) => serde_json::to_value(params),
@@ -174,7 +195,19 @@ impl RequestParams {
             RequestMethod::UploadComplete => {
                 serde_json::from_value(value).map(Self::UploadComplete)
             }
+            RequestMethod::CharacterCreate => {
+                serde_json::from_value(value).map(Self::CharacterCreate)
+            }
             RequestMethod::CharacterGet => serde_json::from_value(value).map(Self::CharacterGet),
+            RequestMethod::CharacterGetCover => {
+                serde_json::from_value(value).map(Self::CharacterGetCover)
+            }
+            RequestMethod::CharacterExportChr => {
+                serde_json::from_value(value).map(Self::CharacterExportChr)
+            }
+            RequestMethod::CharacterSetCover => {
+                serde_json::from_value(value).map(Self::CharacterSetCover)
+            }
             RequestMethod::CharacterList => serde_json::from_value(value).map(Self::CharacterList),
             RequestMethod::CharacterDelete => {
                 serde_json::from_value(value).map(Self::CharacterDelete)
@@ -236,6 +269,32 @@ impl RequestParams {
 #[serde(deny_unknown_fields)]
 pub struct CharacterGetParams {
     pub character_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterCreateParams {
+    pub content: CharacterCardContent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterGetCoverParams {
+    pub character_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterExportChrParams {
+    pub character_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterSetCoverParams {
+    pub character_id: String,
+    pub cover_mime_type: CharacterCoverMimeType,
+    pub cover_base64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

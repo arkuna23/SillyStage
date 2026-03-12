@@ -17,9 +17,9 @@ pub struct RuntimeSnapshot {
 pub struct CharacterCardRecord {
     pub character_id: String,
     pub content: CharacterCard,
-    pub cover_file_name: String,
-    pub cover_mime_type: String,
-    pub cover_bytes: Vec<u8>,
+    pub cover_file_name: Option<String>,
+    pub cover_mime_type: Option<String>,
+    pub cover_bytes: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -173,7 +173,7 @@
 当前方法按职责分为：
 
 - `upload.*`: 分段上传
-- `character.*`: 角色卡对象读取与删除
+- `character.*`: 角色卡对象读取、封面读取与删除
 - `story_resources.*`: 剧情生成资源对象
 - `story.*`: 规划、生成、读取、删除、启动 session
 - `session.*`: 会话读取、运行、更新与删除
@@ -214,6 +214,59 @@
 - chunk 通过 `payload_base64` 传输。
 - chunk 需要同时带 `chunk_index` 和 `offset`。
 - 完成上传后，服务端会解析 `.chr` 文件并落为角色卡对象。
+
+### 7.1 角色卡直接创建与封面设置
+
+除 `.chr` 上传外，角色卡当前还支持两步式 JSON-RPC 创建：
+
+1. `character.create`
+2. `character.set_cover`
+
+约定如下：
+
+- `character.create` 只创建角色内容，不要求封面
+- 新建成功后，角色摘要里的 `cover_file_name` / `cover_mime_type` 可以为 `null`
+- `character.set_cover` 通过 `cover_base64` 设置封面
+- 封面文件名由服务端按 mime type 固定派生，例如 `image/png -> cover.png`
+
+### 7.2 角色卡封面读取
+
+角色卡封面当前通过普通 JSON-RPC 方法读取：
+
+- `character.get_cover`
+
+这个方法：
+
+- 不需要 `session_id`
+- 返回普通 unary response
+- 响应中携带：
+  - `character_id`
+  - `cover_file_name`
+  - `cover_mime_type`
+  - `cover_base64`
+
+- 如果角色还没有封面，则返回 `conflict`
+
+协议当前不提供单独的二进制 HTTP 图片下载端点。
+
+### 7.3 角色卡 `.chr` 导出
+
+角色卡完整归档当前也通过普通 JSON-RPC 方法导出：
+
+- `character.export_chr`
+
+这个方法：
+
+- 不需要 `session_id`
+- 返回普通 unary response
+- 响应中携带：
+  - `character_id`
+  - `file_name`
+  - `content_type`
+  - `chr_base64`
+
+`chr_base64` 是完整 `.chr` ZIP 归档的 base64 编码。协议当前不提供单独的 HTTP 二进制下载端点。
+如果角色还没有封面，则返回 `conflict`。
 
 ## 8. `.chr` 角色卡文件格式
 

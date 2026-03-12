@@ -1,10 +1,15 @@
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use protocol::{
-    CharacterArchive, CharacterCardUploadedPayload, CharacterDeleteParams, CharacterDeletedPayload,
-    CharacterDetailPayload, CharacterGetParams, CharactersListedPayload, JsonRpcResponseMessage,
-    ResponseResult, UploadChunkAcceptedPayload, UploadChunkParams, UploadCompleteParams,
-    UploadInitParams, UploadInitializedPayload, UploadTargetKind,
+    CHARACTER_ARCHIVE_CONTENT_TYPE, CharacterArchive, CharacterArchiveManifest,
+    CharacterCardSummaryPayload, CharacterCardUploadedPayload, CharacterChrExportPayload,
+    CharacterCoverMimeType, CharacterCoverPayload, CharacterCoverUpdatedPayload,
+    CharacterCreateParams, CharacterCreatedPayload, CharacterDeleteParams,
+    CharacterDeletedPayload, CharacterDetailPayload, CharacterExportChrParams,
+    CharacterGetCoverParams, CharacterGetParams, CharacterSetCoverParams,
+    CharactersListedPayload, JsonRpcResponseMessage, ResponseResult,
+    UploadChunkAcceptedPayload, UploadChunkParams, UploadCompleteParams, UploadInitParams,
+    UploadInitializedPayload, UploadTargetKind,
 };
 use store::CharacterCardRecord;
 
@@ -125,12 +130,9 @@ impl Handler {
                     .save_character(CharacterCardRecord {
                         character_id: summary.character_id.clone(),
                         content: archive.content.clone().into(),
-                        cover_file_name: archive.manifest.cover_path.clone(),
-                        cover_mime_type: serde_json::to_string(&archive.manifest.cover_mime_type)
-                            .expect("cover mime type should serialize")
-                            .trim_matches('"')
-                            .to_owned(),
-                        cover_bytes: archive.cover_bytes.clone(),
+                        cover_file_name: Some(archive.manifest.cover_path.clone()),
+                        cover_mime_type: Some(store_cover_mime_type(archive.manifest.cover_mime_type)),
+                        cover_bytes: Some(archive.cover_bytes.clone()),
                     })
                     .await?;
                 self.uploads.delete(&upload.upload_id).await;
@@ -145,6 +147,41 @@ impl Handler {
                 ))
             }
         }
+    }
+
+    pub(crate) async fn handle_character_create(
+        &self,
+        request_id: &str,
+        params: CharacterCreateParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let character_id = params.content.id.trim().to_owned();
+        if character_id.is_empty() {
+            return Err(HandlerError::EmptyCharacterId);
+        }
+
+        if self.store.get_character(&character_id).await?.is_some() {
+            return Err(HandlerError::DuplicateCharacter(character_id));
+        }
+
+        let mut content = params.content;
+        content.id = character_id.clone();
+        let record = CharacterCardRecord {
+            character_id,
+            content: content.into(),
+            cover_file_name: None,
+            cover_mime_type: None,
+            cover_bytes: None,
+        };
+        self.store.save_character(record.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::CharacterCreated(CharacterCreatedPayload {
+                character_id: record.character_id.clone(),
+                character_summary: character_summary_payload_from_record(&record),
+            }),
+        ))
     }
 
     pub(crate) async fn handle_character_get(
@@ -165,9 +202,122 @@ impl Handler {
                 character_id: record.character_id,
                 content: (&record.content).into(),
                 cover_file_name: record.cover_file_name,
-                cover_mime_type: serde_json::from_str(&format!("\"{}\"", record.cover_mime_type))
-                    .expect("stored cover mime type should deserialize"),
+                cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
             })),
+        ))
+    }
+
+    pub(crate) async fn handle_character_get_cover(
+        &self,
+        request_id: &str,
+        params: CharacterGetCoverParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let record = self
+            .store
+            .get_character(&params.character_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingCharacter(params.character_id.clone()))?;
+        let cover_file_name = record
+            .cover_file_name
+            .clone()
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+        let cover_mime_type = parse_cover_mime_type_option(record.cover_mime_type.as_deref())
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+        let cover_bytes = record
+            .cover_bytes
+            .clone()
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::CharacterCover(Box::new(CharacterCoverPayload {
+                character_id: record.character_id,
+                cover_file_name,
+                cover_mime_type,
+                cover_base64: BASE64_STANDARD.encode(cover_bytes),
+            })),
+        ))
+    }
+
+    pub(crate) async fn handle_character_export_chr(
+        &self,
+        request_id: &str,
+        params: CharacterExportChrParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let record = self
+            .store
+            .get_character(&params.character_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingCharacter(params.character_id.clone()))?;
+        let cover_file_name = record
+            .cover_file_name
+            .clone()
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+        let cover_mime_type = parse_cover_mime_type_option(record.cover_mime_type.as_deref())
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+        let cover_bytes = record
+            .cover_bytes
+            .clone()
+            .ok_or_else(|| HandlerError::MissingCharacterCover(params.character_id.clone()))?;
+        let archive = CharacterArchive {
+            manifest: CharacterArchiveManifest::new(
+                record.character_id.clone(),
+                cover_mime_type,
+                cover_file_name,
+            ),
+            content: (&record.content).into(),
+            cover_bytes,
+        };
+        let chr_bytes = archive.to_chr_bytes()?;
+        let character_id = archive.content.id.clone();
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::CharacterChrExport(Box::new(CharacterChrExportPayload {
+                character_id: character_id.clone(),
+                file_name: format!("{character_id}.chr"),
+                content_type: CHARACTER_ARCHIVE_CONTENT_TYPE.to_owned(),
+                chr_base64: BASE64_STANDARD.encode(chr_bytes),
+            })),
+        ))
+    }
+
+    pub(crate) async fn handle_character_set_cover(
+        &self,
+        request_id: &str,
+        params: CharacterSetCoverParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let mut record = self
+            .store
+            .get_character(&params.character_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingCharacter(params.character_id.clone()))?;
+
+        let cover_bytes = BASE64_STANDARD
+            .decode(&params.cover_base64)
+            .map_err(|error| HandlerError::InvalidCharacterCoverPayload(error.to_string()))?;
+        if cover_bytes.is_empty() {
+            return Err(HandlerError::InvalidCharacterCoverPayload(
+                "cover bytes must not be empty".to_owned(),
+            ));
+        }
+
+        let cover_file_name = format!("cover.{}", params.cover_mime_type.extension());
+        record.cover_file_name = Some(cover_file_name.clone());
+        record.cover_mime_type = Some(store_cover_mime_type(params.cover_mime_type));
+        record.cover_bytes = Some(cover_bytes);
+        self.store.save_character(record.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::CharacterCoverUpdated(CharacterCoverUpdatedPayload {
+                character_id: record.character_id,
+                cover_file_name,
+                cover_mime_type: params.cover_mime_type,
+            }),
         ))
     }
 
@@ -180,16 +330,7 @@ impl Handler {
             .list_characters()
             .await?
             .into_iter()
-            .map(|record| protocol::CharacterCardSummaryPayload {
-                character_id: record.character_id,
-                name: record.content.name,
-                personality: record.content.personality,
-                style: record.content.style,
-                tendencies: record.content.tendencies,
-                cover_file_name: record.cover_file_name,
-                cover_mime_type: serde_json::from_str(&format!("\"{}\"", record.cover_mime_type))
-                    .expect("stored cover mime type should deserialize"),
-            })
+            .map(|record| character_summary_payload_from_record(&record))
             .collect();
 
         Ok(JsonRpcResponseMessage::ok(
@@ -226,5 +367,31 @@ impl Handler {
                 character_id: params.character_id,
             }),
         ))
+    }
+}
+
+fn parse_cover_mime_type_option(value: Option<&str>) -> Option<CharacterCoverMimeType> {
+    value.map(|mime_type| {
+        serde_json::from_str(&format!("\"{mime_type}\""))
+            .expect("stored cover mime type should deserialize")
+    })
+}
+
+fn store_cover_mime_type(value: CharacterCoverMimeType) -> String {
+    serde_json::to_string(&value)
+        .expect("cover mime type should serialize")
+        .trim_matches('"')
+        .to_owned()
+}
+
+fn character_summary_payload_from_record(record: &CharacterCardRecord) -> CharacterCardSummaryPayload {
+    CharacterCardSummaryPayload {
+        character_id: record.character_id.clone(),
+        name: record.content.name.clone(),
+        personality: record.content.personality.clone(),
+        style: record.content.style.clone(),
+        tendencies: record.content.tendencies.clone(),
+        cover_file_name: record.cover_file_name.clone(),
+        cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
     }
 }

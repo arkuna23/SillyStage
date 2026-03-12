@@ -150,12 +150,14 @@ pub fn sample_character_record() -> CharacterCardRecord {
     CharacterCardRecord {
         character_id: archive.content.id.clone(),
         content: archive.content.clone().into(),
-        cover_file_name: archive.manifest.cover_path.clone(),
-        cover_mime_type: serde_json::to_string(&archive.manifest.cover_mime_type)
-            .expect("cover mime type should serialize")
-            .trim_matches('"')
-            .to_owned(),
-        cover_bytes: archive.cover_bytes.clone(),
+        cover_file_name: Some(archive.manifest.cover_path.clone()),
+        cover_mime_type: Some(
+            serde_json::to_string(&archive.manifest.cover_mime_type)
+                .expect("cover mime type should serialize")
+                .trim_matches('"')
+                .to_owned(),
+        ),
+        cover_bytes: Some(archive.cover_bytes.clone()),
     }
 }
 

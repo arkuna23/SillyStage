@@ -1,14 +1,16 @@
 use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
 use serde_json::json;
 use ss_protocol::{
-    CharacterDeleteParams, CharacterGetParams, CharacterListParams, ConfigGetGlobalParams,
-    ConfigUpdateGlobalParams, CreateStoryResourcesParams, DeleteSessionParams, DeleteStoryParams,
-    DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionParams,
-    GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage, ListSessionsParams,
-    ListStoriesParams, ListStoryResourcesParams, RequestParams, RunTurnParams,
-    SessionGetConfigParams, SessionUpdateConfigParams, StartSessionFromStoryParams,
-    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterDeleteParams,
+    CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
+    CharacterSetCoverParams, ConfigGetGlobalParams, ConfigUpdateGlobalParams,
+    CreateStoryResourcesParams, DeleteSessionParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams,
+    GetSessionParams, GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
+    ListSessionsParams, ListStoriesParams, ListStoryResourcesParams, RequestParams,
+    RunTurnParams, SessionGetConfigParams, SessionUpdateConfigParams,
+    StartSessionFromStoryParams, UpdateStoryResourcesParams, UploadChunkParams,
+    UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 
@@ -153,6 +155,27 @@ fn object_crud_requests_keep_stable_method_names() {
             .contains("\"method\": \"character.get\"")
     );
 
+    let character_create = JsonRpcRequestMessage::new(
+        "character-create",
+        None::<String>,
+        RequestParams::CharacterCreate(CharacterCreateParams {
+            content: CharacterCardContent {
+                id: "merchant".to_owned(),
+                name: "Haru".to_owned(),
+                personality: "greedy but friendly trader".to_owned(),
+                style: "talkative, casual".to_owned(),
+                tendencies: vec!["likes profitable deals".to_owned()],
+                state_schema: Default::default(),
+                system_prompt: "Stay in character.".to_owned(),
+            },
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_create)
+            .expect("character create should serialize")
+            .contains("\"method\": \"character.create\"")
+    );
+
     let character_list = JsonRpcRequestMessage::new(
         "character-list",
         None::<String>,
@@ -162,6 +185,47 @@ fn object_crud_requests_keep_stable_method_names() {
         serde_json::to_string_pretty(&character_list)
             .expect("character list should serialize")
             .contains("\"method\": \"character.list\"")
+    );
+
+    let character_get_cover = JsonRpcRequestMessage::new(
+        "character-get-cover",
+        None::<String>,
+        RequestParams::CharacterGetCover(CharacterGetCoverParams {
+            character_id: "merchant".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_get_cover)
+            .expect("character get cover should serialize")
+            .contains("\"method\": \"character.get_cover\"")
+    );
+
+    let character_export_chr = JsonRpcRequestMessage::new(
+        "character-export-chr",
+        None::<String>,
+        RequestParams::CharacterExportChr(CharacterExportChrParams {
+            character_id: "merchant".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_export_chr)
+            .expect("character export chr should serialize")
+            .contains("\"method\": \"character.export_chr\"")
+    );
+
+    let character_set_cover = JsonRpcRequestMessage::new(
+        "character-set-cover",
+        None::<String>,
+        RequestParams::CharacterSetCover(CharacterSetCoverParams {
+            character_id: "merchant".to_owned(),
+            cover_mime_type: CharacterCoverMimeType::Png,
+            cover_base64: "ZmFrZS1jb3Zlcg==".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_set_cover)
+            .expect("character set cover should serialize")
+            .contains("\"method\": \"character.set_cover\"")
     );
 
     let character_delete = JsonRpcRequestMessage::new(

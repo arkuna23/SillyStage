@@ -9,7 +9,11 @@ This document lists the currently implemented API surface in `ss-protocol`. Meth
 | `upload.init` | No | `upload_initialized` | No |
 | `upload.chunk` | No | `upload_chunk_accepted` | No |
 | `upload.complete` | No | `character_card_uploaded` | No |
+| `character.create` | No | `character_created` | No |
 | `character.get` | No | `character` | No |
+| `character.set_cover` | No | `character_cover_updated` | No |
+| `character.get_cover` | No | `character_cover` | No |
+| `character.export_chr` | No | `character_chr_export` | No |
 | `character.list` | No | `characters_listed` | No |
 | `character.delete` | No | `character_deleted` | No |
 | `story_resources.create` | No | `story_resources_created` | No |
@@ -115,7 +119,32 @@ Result:
 
 ## 3. Character API
 
-### 3.1 `character.get`
+### 3.1 `character.create`
+
+Params:
+
+```json
+{
+  "content": {
+    "id": "merchant",
+    "name": "Old Merchant",
+    "personality": "greedy but friendly trader",
+    "style": "talkative, casual, slightly cunning",
+    "tendencies": [],
+    "state_schema": {},
+    "system_prompt": "Stay in character."
+  }
+}
+```
+
+Result: `character_created`
+
+- `character_id`
+- `character_summary`
+
+This method creates character content only. A cover is not required at creation time, so `character_summary.cover_file_name` and `character_summary.cover_mime_type` may be `null`.
+
+### 3.2 `character.get`
 
 Params:
 
@@ -133,8 +162,69 @@ Result: `character`
 - `cover_mime_type`
 
 `content` matches the `.chr` `content.json`.
+If the character does not have a cover yet, `cover_file_name` and `cover_mime_type` are `null`.
 
-### 3.2 `character.list`
+### 3.3 `character.set_cover`
+
+Params:
+
+```json
+{
+  "character_id": "merchant",
+  "cover_mime_type": "image/png",
+  "cover_base64": "..."
+}
+```
+
+Result: `character_cover_updated`
+
+- `character_id`
+- `cover_file_name`
+- `cover_mime_type`
+
+The server derives the cover file name from the mime type, for example `image/png -> cover.png`.
+
+### 3.4 `character.get_cover`
+
+Params:
+
+```json
+{
+  "character_id": "merchant"
+}
+```
+
+Result: `character_cover`
+
+- `character_id`
+- `cover_file_name`
+- `cover_mime_type`
+- `cover_base64`
+
+`cover_base64` is the base64-encoded binary content of the character cover.
+If the character does not have a cover yet, this method returns a `conflict` error.
+
+### 3.5 `character.export_chr`
+
+Params:
+
+```json
+{
+  "character_id": "merchant"
+}
+```
+
+Result: `character_chr_export`
+
+- `character_id`
+- `file_name`
+- `content_type`
+- `chr_base64`
+
+`chr_base64` is the base64-encoded full `.chr` file content.
+If the character does not have a cover yet, this method returns a `conflict` error.
+
+### 3.6 `character.list`
 
 Params: `{}`
 
@@ -142,7 +232,9 @@ Result: `characters_listed`
 
 - `characters: CharacterCardSummaryPayload[]`
 
-### 3.3 `character.delete`
+`cover_file_name` and `cover_mime_type` in each summary may be `null`.
+
+### 3.7 `character.delete`
 
 Params:
 

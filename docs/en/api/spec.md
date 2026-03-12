@@ -173,7 +173,7 @@ Stream rules:
 Current methods are grouped as:
 
 - `upload.*`: chunked upload
-- `character.*`: character card object access and deletion
+- `character.*`: character card access, cover retrieval, and deletion
 - `story_resources.*`: story generation resource objects
 - `story.*`: planning, generation, retrieval, deletion, and session start
 - `session.*`: session retrieval, execution, update, and deletion
@@ -214,6 +214,59 @@ Upload rules:
 - Chunks are sent through `payload_base64`.
 - Every chunk carries both `chunk_index` and `offset`.
 - After completion, the server parses the `.chr` archive and stores it as a character object.
+
+### 7.1 Direct Character Creation and Cover Setting
+
+Besides `.chr` upload, character cards also support a two-step JSON-RPC creation flow:
+
+1. `character.create`
+2. `character.set_cover`
+
+Rules:
+
+- `character.create` creates character content only and does not require a cover
+- after creation, `cover_file_name` / `cover_mime_type` in summaries may be `null`
+- `character.set_cover` sets the cover through `cover_base64`
+- the server derives the cover file name from the mime type, for example `image/png -> cover.png`
+
+### 7.2 Character Cover Retrieval
+
+Character covers are currently fetched through a regular JSON-RPC method:
+
+- `character.get_cover`
+
+This method:
+
+- does not require `session_id`
+- returns a normal unary response
+- includes:
+  - `character_id`
+  - `cover_file_name`
+  - `cover_mime_type`
+  - `cover_base64`
+
+- if the character does not have a cover yet, the method returns `conflict`
+
+The protocol does not currently expose a separate binary HTTP image endpoint.
+
+### 7.3 Character `.chr` Export
+
+Full character archives are also exported through a regular JSON-RPC method:
+
+- `character.export_chr`
+
+This method:
+
+- does not require `session_id`
+- returns a normal unary response
+- includes:
+  - `character_id`
+  - `file_name`
+  - `content_type`
+  - `chr_base64`
+
+`chr_base64` is the base64-encoded full `.chr` ZIP archive. The protocol does not currently expose a separate HTTP binary download endpoint.
+If the character does not have a cover yet, the method returns `conflict`.
 
 ## 8. `.chr` Character Archive Format
 

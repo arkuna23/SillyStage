@@ -33,8 +33,8 @@ fn chr_archive_round_trip_preserves_manifest_content_and_cover() {
     let summary = parsed.summary();
 
     assert_eq!(summary.character_id, "merchant");
-    assert_eq!(summary.cover_file_name, "cover.png");
-    assert_eq!(summary.cover_mime_type, CharacterCoverMimeType::Png);
+    assert_eq!(summary.cover_file_name.as_deref(), Some("cover.png"));
+    assert_eq!(summary.cover_mime_type, Some(CharacterCoverMimeType::Png));
 
     let reader = std::io::Cursor::new(bytes);
     let mut zip = ZipArchive::new(reader).expect("zip should open");

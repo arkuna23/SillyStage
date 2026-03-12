@@ -9,7 +9,11 @@
 | `upload.init` | 否 | `upload_initialized` | 否 |
 | `upload.chunk` | 否 | `upload_chunk_accepted` | 否 |
 | `upload.complete` | 否 | `character_card_uploaded` | 否 |
+| `character.create` | 否 | `character_created` | 否 |
 | `character.get` | 否 | `character` | 否 |
+| `character.set_cover` | 否 | `character_cover_updated` | 否 |
+| `character.get_cover` | 否 | `character_cover` | 否 |
+| `character.export_chr` | 否 | `character_chr_export` | 否 |
 | `character.list` | 否 | `characters_listed` | 否 |
 | `character.delete` | 否 | `character_deleted` | 否 |
 | `story_resources.create` | 否 | `story_resources_created` | 否 |
@@ -115,7 +119,32 @@
 
 ## 3. Character API
 
-### 3.1 `character.get`
+### 3.1 `character.create`
+
+参数：
+
+```json
+{
+  "content": {
+    "id": "merchant",
+    "name": "Old Merchant",
+    "personality": "greedy but friendly trader",
+    "style": "talkative, casual, slightly cunning",
+    "tendencies": [],
+    "state_schema": {},
+    "system_prompt": "Stay in character."
+  }
+}
+```
+
+结果：`character_created`
+
+- `character_id`
+- `character_summary`
+
+这个接口只创建角色内容，不要求封面。新建成功后，`character_summary.cover_file_name` 和 `character_summary.cover_mime_type` 可能为 `null`。
+
+### 3.2 `character.get`
 
 参数：
 
@@ -133,8 +162,69 @@
 - `cover_mime_type`
 
 `content` 对应 `.chr` 内的 `content.json`。
+如果角色还没有封面，`cover_file_name` 和 `cover_mime_type` 为 `null`。
 
-### 3.2 `character.list`
+### 3.3 `character.set_cover`
+
+参数：
+
+```json
+{
+  "character_id": "merchant",
+  "cover_mime_type": "image/png",
+  "cover_base64": "..."
+}
+```
+
+结果：`character_cover_updated`
+
+- `character_id`
+- `cover_file_name`
+- `cover_mime_type`
+
+封面文件名由服务端按 mime type 固定派生，例如 `image/png -> cover.png`。
+
+### 3.4 `character.get_cover`
+
+参数：
+
+```json
+{
+  "character_id": "merchant"
+}
+```
+
+结果：`character_cover`
+
+- `character_id`
+- `cover_file_name`
+- `cover_mime_type`
+- `cover_base64`
+
+`cover_base64` 是角色卡封面二进制内容的 base64 编码。
+如果角色还没有封面，这个接口返回 `conflict` 错误。
+
+### 3.5 `character.export_chr`
+
+参数：
+
+```json
+{
+  "character_id": "merchant"
+}
+```
+
+结果：`character_chr_export`
+
+- `character_id`
+- `file_name`
+- `content_type`
+- `chr_base64`
+
+`chr_base64` 是完整 `.chr` 文件内容的 base64 编码。
+如果角色还没有封面，这个接口返回 `conflict` 错误。
+
+### 3.6 `character.list`
 
 参数：`{}`
 
@@ -142,7 +232,9 @@
 
 - `characters: CharacterCardSummaryPayload[]`
 
-### 3.3 `character.delete`
+列表项中的 `cover_file_name` 和 `cover_mime_type` 可能为 `null`。
+
+### 3.7 `character.delete`
 
 参数：
 

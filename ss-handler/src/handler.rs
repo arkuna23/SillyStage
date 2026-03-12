@@ -73,8 +73,20 @@ impl Handler {
             RequestParams::UploadComplete(params) => {
                 self.handle_upload_complete(&request_id, params).await
             }
+            RequestParams::CharacterCreate(params) => {
+                self.handle_character_create(&request_id, params).await
+            }
             RequestParams::CharacterGet(params) => {
                 self.handle_character_get(&request_id, params).await
+            }
+            RequestParams::CharacterGetCover(params) => {
+                self.handle_character_get_cover(&request_id, params).await
+            }
+            RequestParams::CharacterExportChr(params) => {
+                self.handle_character_export_chr(&request_id, params).await
+            }
+            RequestParams::CharacterSetCover(params) => {
+                self.handle_character_set_cover(&request_id, params).await
             }
             RequestParams::CharacterList(_) => self.handle_character_list(&request_id).await,
             RequestParams::CharacterDelete(params) => {

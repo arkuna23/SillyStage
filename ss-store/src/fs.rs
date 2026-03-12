@@ -31,8 +31,8 @@ pub struct FileSystemStore {
 struct CharacterCardRecordFile {
     character_id: String,
     content: agents::actor::CharacterCard,
-    cover_file_name: String,
-    cover_mime_type: String,
+    cover_file_name: Option<String>,
+    cover_mime_type: Option<String>,
 }
 
 impl From<&CharacterCardRecord> for CharacterCardRecordFile {
@@ -141,7 +141,11 @@ impl Store for FileSystemStore {
         }
 
         let record: CharacterCardRecordFile = read_json_file(&record_path).await?;
-        let cover_bytes = fs::read(self.character_cover_path(character_id)?).await?;
+        let cover_bytes = if record.cover_file_name.is_some() {
+            Some(fs::read(self.character_cover_path(character_id)?).await?)
+        } else {
+            None
+        };
 
         Ok(Some(CharacterCardRecord {
             character_id: record.character_id,
@@ -172,7 +176,14 @@ impl Store for FileSystemStore {
     async fn save_character(&self, record: CharacterCardRecord) -> Result<(), StoreError> {
         let dir = self.character_dir(&record.character_id)?;
         fs::create_dir_all(&dir).await?;
-        write_bytes_atomic(&dir.join(CHARACTER_COVER_FILE), &record.cover_bytes).await?;
+        let cover_path = dir.join(CHARACTER_COVER_FILE);
+        match &record.cover_bytes {
+            Some(bytes) => write_bytes_atomic(&cover_path, bytes).await?,
+            None if path_exists(&cover_path).await? => {
+                fs::remove_file(&cover_path).await?;
+            }
+            None => {}
+        }
         write_json_atomic(&dir.join(CHARACTER_RECORD_FILE), &CharacterCardRecordFile::from(&record))
             .await
     }

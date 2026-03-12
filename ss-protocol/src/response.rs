@@ -12,7 +12,11 @@ pub enum ResponseResult {
     UploadInitialized(UploadInitializedPayload),
     UploadChunkAccepted(UploadChunkAcceptedPayload),
     CharacterCardUploaded(CharacterCardUploadedPayload),
+    CharacterCreated(CharacterCreatedPayload),
     Character(Box<CharacterDetailPayload>),
+    CharacterCover(Box<CharacterCoverPayload>),
+    CharacterChrExport(Box<CharacterChrExportPayload>),
+    CharacterCoverUpdated(CharacterCoverUpdatedPayload),
     CharactersListed(CharactersListedPayload),
     CharacterDeleted(CharacterDeletedPayload),
     StoryResourcesCreated(Box<StoryResourcesPayload>),
@@ -56,10 +60,39 @@ pub struct CharacterCardUploadedPayload {
     pub character_summary: CharacterCardSummaryPayload,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CharacterCreatedPayload {
+    pub character_id: String,
+    pub character_summary: CharacterCardSummaryPayload,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterDetailPayload {
     pub character_id: String,
     pub content: CharacterCardContent,
+    pub cover_file_name: Option<String>,
+    pub cover_mime_type: Option<CharacterCoverMimeType>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterCoverPayload {
+    pub character_id: String,
+    pub cover_file_name: String,
+    pub cover_mime_type: CharacterCoverMimeType,
+    pub cover_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CharacterChrExportPayload {
+    pub character_id: String,
+    pub file_name: String,
+    pub content_type: String,
+    pub chr_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CharacterCoverUpdatedPayload {
+    pub character_id: String,
     pub cover_file_name: String,
     pub cover_mime_type: CharacterCoverMimeType,
 }

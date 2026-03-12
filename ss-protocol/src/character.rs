@@ -12,6 +12,7 @@ pub const CHARACTER_ARCHIVE_FORMAT: &str = "sillystage_character_card";
 pub const CHARACTER_ARCHIVE_VERSION: u32 = 1;
 pub const CHARACTER_ARCHIVE_MANIFEST_PATH: &str = "manifest.json";
 pub const CHARACTER_ARCHIVE_CONTENT_PATH: &str = "content.json";
+pub const CHARACTER_ARCHIVE_CONTENT_TYPE: &str = "application/x-sillystage-character-card";
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum CharacterCoverMimeType {
@@ -112,8 +113,8 @@ pub struct CharacterCardSummaryPayload {
     pub personality: String,
     pub style: String,
     pub tendencies: Vec<String>,
-    pub cover_file_name: String,
-    pub cover_mime_type: CharacterCoverMimeType,
+    pub cover_file_name: Option<String>,
+    pub cover_mime_type: Option<CharacterCoverMimeType>,
 }
 
 #[derive(Debug, Clone)]
@@ -147,8 +148,8 @@ impl CharacterArchive {
             personality: self.content.personality.clone(),
             style: self.content.style.clone(),
             tendencies: self.content.tendencies.clone(),
-            cover_file_name: self.manifest.cover_path.clone(),
-            cover_mime_type: self.manifest.cover_mime_type,
+            cover_file_name: Some(self.manifest.cover_path.clone()),
+            cover_mime_type: Some(self.manifest.cover_mime_type),
         }
     }
 

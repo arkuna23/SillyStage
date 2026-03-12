@@ -1,7 +1,9 @@
 use engine::AgentApiIds;
 use serde_json::json;
 use ss_protocol::{
-    ErrorCode, ErrorPayload, GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome,
+    CharacterCardSummaryPayload, CharacterChrExportPayload, CharacterCoverMimeType,
+    CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload, ErrorCode,
+    ErrorPayload, GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome,
     JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, ResponseResult,
     RuntimeSnapshotPayload, ServerEventMessage, StoryPlannedPayload, StreamEventBody, StreamFrame,
 };
@@ -101,6 +103,87 @@ fn json_rpc_request_and_response_round_trip() {
     assert!(matches!(
         config_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::GlobalConfig(_))
+    ));
+
+    let cover_response = JsonRpcResponseMessage::ok(
+        "req-4",
+        None::<String>,
+        ResponseResult::CharacterCover(Box::new(CharacterCoverPayload {
+            character_id: "merchant".to_owned(),
+            cover_file_name: "cover.png".to_owned(),
+            cover_mime_type: CharacterCoverMimeType::Png,
+            cover_base64: "ZmFrZS1jb3Zlcg==".to_owned(),
+        })),
+    );
+    let cover_json =
+        serde_json::to_string_pretty(&cover_response).expect("cover response should serialize");
+    let cover_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&cover_json).expect("cover response should deserialize");
+    assert!(matches!(
+        cover_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCover(_))
+    ));
+
+    let chr_export_response = JsonRpcResponseMessage::ok(
+        "req-5",
+        None::<String>,
+        ResponseResult::CharacterChrExport(Box::new(CharacterChrExportPayload {
+            character_id: "merchant".to_owned(),
+            file_name: "merchant.chr".to_owned(),
+            content_type: "application/x-sillystage-character-card".to_owned(),
+            chr_base64: "UEsDBAoAAAAAA".to_owned(),
+        })),
+    );
+    let chr_export_json = serde_json::to_string_pretty(&chr_export_response)
+        .expect("chr export response should serialize");
+    let chr_export_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&chr_export_json).expect("chr export response should deserialize");
+    assert!(matches!(
+        chr_export_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterChrExport(_))
+    ));
+
+    let created_response = JsonRpcResponseMessage::ok(
+        "req-6",
+        None::<String>,
+        ResponseResult::CharacterCreated(CharacterCreatedPayload {
+            character_id: "merchant".to_owned(),
+            character_summary: CharacterCardSummaryPayload {
+                character_id: "merchant".to_owned(),
+                name: "Haru".to_owned(),
+                personality: "greedy but friendly trader".to_owned(),
+                style: "talkative, casual".to_owned(),
+                tendencies: vec!["likes profitable deals".to_owned()],
+                cover_file_name: None,
+                cover_mime_type: None,
+            },
+        }),
+    );
+    let created_json =
+        serde_json::to_string_pretty(&created_response).expect("created response should serialize");
+    let created_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&created_json).expect("created response should deserialize");
+    assert!(matches!(
+        created_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCreated(_))
+    ));
+
+    let cover_updated_response = JsonRpcResponseMessage::ok(
+        "req-7",
+        None::<String>,
+        ResponseResult::CharacterCoverUpdated(CharacterCoverUpdatedPayload {
+            character_id: "merchant".to_owned(),
+            cover_file_name: "cover.png".to_owned(),
+            cover_mime_type: CharacterCoverMimeType::Png,
+        }),
+    );
+    let cover_updated_json = serde_json::to_string_pretty(&cover_updated_response)
+        .expect("cover updated response should serialize");
+    let cover_updated_round_trip: JsonRpcResponseMessage = serde_json::from_str(&cover_updated_json)
+        .expect("cover updated response should deserialize");
+    assert!(matches!(
+        cover_updated_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCoverUpdated(_))
     ));
 }
 

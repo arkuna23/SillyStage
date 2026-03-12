@@ -62,9 +62,9 @@ fn sample_character_record() -> CharacterCardRecord {
             )]),
             system_prompt: "Stay in character.".to_owned(),
         },
-        cover_file_name: "cover.png".to_owned(),
-        cover_mime_type: "image/png".to_owned(),
-        cover_bytes: b"cover".to_vec(),
+        cover_file_name: Some("cover.png".to_owned()),
+        cover_mime_type: Some("image/png".to_owned()),
+        cover_bytes: Some(b"cover".to_vec()),
     }
 }
 
@@ -261,4 +261,34 @@ async fn filesystem_store_rejects_invalid_path_ids() {
         .await
         .expect_err("invalid character id should fail");
     assert!(error.to_string().contains("invalid store id"));
+}
+
+#[tokio::test]
+async fn filesystem_store_supports_characters_without_cover_file() {
+    let temp_dir = TestDir::new();
+    let store = FileSystemStore::new(temp_dir.path.clone())
+        .await
+        .expect("filesystem store should build");
+    let mut character = sample_character_record();
+    character.character_id = "coverless".to_owned();
+    character.content.id = "coverless".to_owned();
+    character.cover_file_name = None;
+    character.cover_mime_type = None;
+    character.cover_bytes = None;
+
+    store
+        .save_character(character)
+        .await
+        .expect("save character without cover");
+
+    assert!(!store.root().join("characters/coverless/cover.bin").exists());
+
+    let loaded = store
+        .get_character("coverless")
+        .await
+        .expect("load character")
+        .expect("character should exist");
+    assert!(loaded.cover_file_name.is_none());
+    assert!(loaded.cover_mime_type.is_none());
+    assert!(loaded.cover_bytes.is_none());
 }

@@ -7,13 +7,15 @@ use axum::http::{Request, StatusCode, header};
 use engine::SessionConfigMode;
 use handler::Handler;
 use protocol::{
+    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams,
+    CharacterExportChrParams, CharacterGetCoverParams, CharacterSetCoverParams,
     CreateStoryResourcesParams, ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage,
     JsonRpcResponseMessage, RequestParams, RunTurnParams, StartSessionFromStoryParams,
     UploadChunkParams, UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
 use serde_json::json;
 use ss_server::http::build_router;
-use store::InMemoryStore;
+use store::{InMemoryStore, Store};
 use tower::util::ServiceExt;
 
 use common::{
@@ -69,6 +71,137 @@ async fn rpc_unary_request_returns_json_rpc_response() {
         serde_json::from_slice(&bytes).expect("response should deserialize");
 
     assert_eq!(response.id, "req-1");
+}
+
+#[tokio::test]
+async fn rpc_character_get_cover_returns_json_rpc_response() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let archive = sample_archive();
+    store
+        .save_character(store::CharacterCardRecord {
+            character_id: archive.content.id.clone(),
+            content: archive.content.clone().into(),
+            cover_file_name: Some(archive.manifest.cover_path.clone()),
+            cover_mime_type: Some(
+                serde_json::to_string(&archive.manifest.cover_mime_type)
+                    .expect("cover mime type should serialize")
+                    .trim_matches('"')
+                    .to_owned(),
+            ),
+            cover_bytes: Some(archive.cover_bytes.clone()),
+        })
+        .await
+        .expect("character should save");
+    let handler = Arc::new(
+        Handler::new(store, registry_with_ids(Arc::clone(&llm)), default_api_ids())
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-cover",
+        None::<String>,
+        RequestParams::CharacterGetCover(CharacterGetCoverParams {
+            character_id: "merchant".to_owned(),
+        }),
+    ))
+    .expect("request should serialize");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("response should deserialize");
+
+    assert_eq!(value["id"], "req-cover");
+    assert_eq!(value["result"]["type"], "character_cover");
+    assert_eq!(value["result"]["character_id"], "merchant");
+    assert_eq!(value["result"]["cover_file_name"], "cover.png");
+}
+
+#[tokio::test]
+async fn rpc_character_export_chr_returns_json_rpc_response() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let archive = sample_archive();
+    store
+        .save_character(store::CharacterCardRecord {
+            character_id: archive.content.id.clone(),
+            content: archive.content.clone().into(),
+            cover_file_name: Some(archive.manifest.cover_path.clone()),
+            cover_mime_type: Some(
+                serde_json::to_string(&archive.manifest.cover_mime_type)
+                    .expect("cover mime type should serialize")
+                    .trim_matches('"')
+                    .to_owned(),
+            ),
+            cover_bytes: Some(archive.cover_bytes.clone()),
+        })
+        .await
+        .expect("character should save");
+    let handler = Arc::new(
+        Handler::new(store, registry_with_ids(Arc::clone(&llm)), default_api_ids())
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-export",
+        None::<String>,
+        RequestParams::CharacterExportChr(CharacterExportChrParams {
+            character_id: "merchant".to_owned(),
+        }),
+    ))
+    .expect("request should serialize");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("response should deserialize");
+
+    assert_eq!(value["id"], "req-export");
+    assert_eq!(value["result"]["type"], "character_chr_export");
+    assert_eq!(value["result"]["character_id"], "merchant");
+    assert_eq!(value["result"]["file_name"], "merchant.chr");
+    assert_eq!(
+        value["result"]["content_type"],
+        "application/x-sillystage-character-card"
+    );
 }
 
 #[tokio::test]
@@ -272,6 +405,109 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
     assert!(text.contains("event: message"));
     assert!(text.contains("\"type\":\"turn_started\""));
     assert!(text.contains("\"type\":\"completed\""));
+}
+
+#[tokio::test]
+async fn rpc_character_create_and_set_cover_return_json_rpc_response() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let handler = Arc::new(
+        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let create = request_json(
+        &router,
+        JsonRpcRequestMessage::new(
+            "req-create",
+            None::<String>,
+            RequestParams::CharacterCreate(CharacterCreateParams {
+                content: CharacterCardContent {
+                    id: "merchant".to_owned(),
+                    name: "Haru".to_owned(),
+                    personality: "greedy but friendly trader".to_owned(),
+                    style: "talkative, casual".to_owned(),
+                    tendencies: vec!["likes profitable deals".to_owned()],
+                    state_schema: Default::default(),
+                    system_prompt: "Stay in character.".to_owned(),
+                },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(create["id"], "req-create");
+    assert_eq!(create["result"]["type"], "character_created");
+    assert!(create["result"]["character_summary"]["cover_file_name"].is_null());
+
+    let set_cover = request_json(
+        &router,
+        JsonRpcRequestMessage::new(
+            "req-set-cover",
+            None::<String>,
+            RequestParams::CharacterSetCover(CharacterSetCoverParams {
+                character_id: "merchant".to_owned(),
+                cover_mime_type: CharacterCoverMimeType::Png,
+                cover_base64: {
+                    use base64::Engine as _;
+                    base64::engine::general_purpose::STANDARD.encode(b"cover-bytes")
+                },
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(set_cover["id"], "req-set-cover");
+    assert_eq!(set_cover["result"]["type"], "character_cover_updated");
+    assert_eq!(set_cover["result"]["cover_file_name"], "cover.png");
+}
+
+#[tokio::test]
+async fn rpc_character_export_chr_without_cover_returns_conflict() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let handler = Arc::new(
+        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let _ = request_json(
+        &router,
+        JsonRpcRequestMessage::new(
+            "req-create",
+            None::<String>,
+            RequestParams::CharacterCreate(CharacterCreateParams {
+                content: CharacterCardContent {
+                    id: "merchant".to_owned(),
+                    name: "Haru".to_owned(),
+                    personality: "greedy but friendly trader".to_owned(),
+                    style: "talkative, casual".to_owned(),
+                    tendencies: vec!["likes profitable deals".to_owned()],
+                    state_schema: Default::default(),
+                    system_prompt: "Stay in character.".to_owned(),
+                },
+            }),
+        ),
+    )
+    .await;
+
+    let response = request_json(
+        &router,
+        JsonRpcRequestMessage::new(
+            "req-export",
+            None::<String>,
+            RequestParams::CharacterExportChr(CharacterExportChrParams {
+                character_id: "merchant".to_owned(),
+            }),
+        ),
+    )
+    .await;
+
+    assert_eq!(response["id"], "req-export");
+    assert_eq!(
+        response["error"]["code"],
+        protocol::ErrorCode::Conflict.rpc_code()
+    );
 }
 
 #[tokio::test]

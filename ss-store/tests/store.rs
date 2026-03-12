@@ -35,9 +35,9 @@ fn sample_character_record() -> CharacterCardRecord {
             )]),
             system_prompt: "Stay in character.".to_owned(),
         },
-        cover_file_name: "cover.png".to_owned(),
-        cover_mime_type: "image/png".to_owned(),
-        cover_bytes: b"cover".to_vec(),
+        cover_file_name: Some("cover.png".to_owned()),
+        cover_mime_type: Some("image/png".to_owned()),
+        cover_bytes: Some(b"cover".to_vec()),
     }
 }
 
@@ -230,4 +230,30 @@ async fn in_memory_store_lists_and_deletes_records() {
     assert!(store.list_stories().await.expect("list").is_empty());
     assert!(store.list_story_resources().await.expect("list").is_empty());
     assert!(store.list_characters().await.expect("list").is_empty());
+}
+
+#[tokio::test]
+async fn in_memory_store_supports_characters_without_cover() {
+    let store = InMemoryStore::new();
+    let mut character = sample_character_record();
+    character.character_id = "coverless".to_owned();
+    character.content.id = "coverless".to_owned();
+    character.cover_file_name = None;
+    character.cover_mime_type = None;
+    character.cover_bytes = None;
+
+    store
+        .save_character(character)
+        .await
+        .expect("save character without cover");
+
+    let loaded = store
+        .get_character("coverless")
+        .await
+        .expect("load character")
+        .expect("character should exist");
+
+    assert!(loaded.cover_file_name.is_none());
+    assert!(loaded.cover_mime_type.is_none());
+    assert!(loaded.cover_bytes.is_none());
 }
