@@ -257,7 +257,13 @@ async fn chat_with_json_object_invalid_json_returns_error() {
         .await
         .expect_err("chat should fail");
 
-    assert!(matches!(error, LlmError::StructuredOutputParse(_)));
+    assert!(matches!(
+        error,
+        LlmError::StructuredOutputParse {
+            message: _,
+            raw_content: _
+        }
+    ));
 }
 
 #[tokio::test]

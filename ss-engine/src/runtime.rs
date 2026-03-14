@@ -10,6 +10,7 @@ use story::{NarrativeNode, StoryGraph};
 pub(crate) struct RuntimeStatePartsMut<'a> {
     pub runtime_graph: &'a RuntimeStoryGraph,
     pub character_cards: &'a [CharacterCard],
+    pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a mut WorldState,
@@ -31,6 +32,7 @@ pub struct RuntimeState {
     runtime_graph: RuntimeStoryGraph,
     character_cards: Vec<CharacterCard>,
     character_card_index: HashMap<String, usize>,
+    player_name: Option<String>,
     player_description: String,
     player_state_schema: PlayerStateSchema,
     world_state: WorldState,
@@ -205,6 +207,14 @@ impl RuntimeState {
         &self.player_description
     }
 
+    pub fn player_name(&self) -> Option<&str> {
+        self.player_name.as_deref()
+    }
+
+    pub fn set_player_name(&mut self, player_name: Option<impl Into<String>>) {
+        self.player_name = player_name.map(Into::into);
+    }
+
     pub fn set_player_description(&mut self, player_description: impl Into<String>) {
         self.player_description = player_description.into();
     }
@@ -264,6 +274,7 @@ impl RuntimeState {
         RuntimeStatePartsMut {
             runtime_graph: &self.runtime_graph,
             character_cards: &self.character_cards,
+            player_name: self.player_name.as_deref(),
             player_description: &self.player_description,
             player_state_schema: &self.player_state_schema,
             world_state: &mut self.world_state,
@@ -288,6 +299,7 @@ impl RuntimeState {
             runtime_graph,
             character_cards,
             character_card_index,
+            player_name: None,
             player_description,
             player_state_schema,
             world_state,

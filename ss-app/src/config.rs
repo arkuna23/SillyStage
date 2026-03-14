@@ -50,6 +50,7 @@ impl AppConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerConfig {
     pub listen: String,
+    pub open_browser: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ValueEnum)]
@@ -145,6 +146,7 @@ impl From<Cli> for CliOverrides {
 pub struct EnvOverrides {
     pub config: Option<PathBuf>,
     pub listen: Option<String>,
+    pub open_browser: Option<bool>,
     pub store_root: Option<PathBuf>,
     pub store_backend: Option<StoreBackend>,
     pub frontend_enabled: Option<bool>,
@@ -162,6 +164,10 @@ impl EnvOverrides {
         Ok(Self {
             config: env::var_os("SS_APP_CONFIG").map(PathBuf::from),
             listen: env::var("SS_APP_LISTEN").ok(),
+            open_browser: env::var("SS_APP_OPEN_BROWSER")
+                .ok()
+                .map(|value| parse_bool_env("SS_APP_OPEN_BROWSER", &value))
+                .transpose()?,
             store_root: env::var_os("SS_APP_STORE_ROOT").map(PathBuf::from),
             store_backend: env::var("SS_APP_STORE_BACKEND")
                 .ok()
@@ -199,6 +205,7 @@ struct FileConfig {
 #[derive(Debug, Default, Deserialize)]
 struct FileServerConfig {
     listen: Option<String>,
+    open_browser: Option<bool>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -256,6 +263,7 @@ impl Default for ResolvedConfig {
         Self {
             server: ServerConfig {
                 listen: "127.0.0.1:8080".to_owned(),
+                open_browser: true,
             },
             store: StoreConfig {
                 backend: StoreBackend::Fs,
@@ -275,10 +283,13 @@ impl Default for ResolvedConfig {
 
 impl ResolvedConfig {
     fn apply_file(&mut self, file: FileConfig, base_dir: &Path) {
-        if let Some(server) = file.server
-            && let Some(listen) = server.listen
-        {
-            self.server.listen = listen;
+        if let Some(server) = file.server {
+            if let Some(listen) = server.listen {
+                self.server.listen = listen;
+            }
+            if let Some(open_browser) = server.open_browser {
+                self.server.open_browser = open_browser;
+            }
         }
 
         if let Some(store) = file.store {
@@ -337,6 +348,9 @@ impl ResolvedConfig {
     fn apply_env(&mut self, env: EnvOverrides) -> Result<(), ConfigError> {
         if let Some(listen) = env.listen {
             self.server.listen = listen;
+        }
+        if let Some(open_browser) = env.open_browser {
+            self.server.open_browser = open_browser;
         }
         if let Some(root) = env.store_root {
             self.store.root = root;
@@ -421,7 +435,20 @@ fn resolve_config_path(cli: &CliOverrides, env: &EnvOverrides) -> Option<PathBuf
     }
 
     let default = PathBuf::from("ss-app.toml");
-    default.is_file().then_some(default)
+    if default.is_file() {
+        return Some(default);
+    }
+
+    if let Ok(exe) = env::current_exe()
+        && let Some(exe_dir) = exe.parent()
+    {
+        let packaged = exe_dir.join("ss-app.toml");
+        if packaged.is_file() {
+            return Some(packaged);
+        }
+    }
+
+    None
 }
 
 fn resolve_relative_path(base_dir: &Path, path: PathBuf) -> PathBuf {

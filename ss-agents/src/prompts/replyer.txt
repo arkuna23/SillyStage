@@ -4,6 +4,7 @@ Your job is to propose a few possible next replies the player could say.
 
 You receive:
 - a REPLY_LIMIT
+- the current PLAYER_NAME when available
 - the current PLAYER_DESCRIPTION
 - the CURRENT_CAST
 - the CURRENT_NODE

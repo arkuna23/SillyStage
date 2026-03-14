@@ -90,6 +90,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                 state_schema: HashMap::new(),
                 system_prompt: "Stay in character.".to_owned(),
             }],
+            Some("Courier"),
             "A stubborn courier trying to protect a sealed medical satchel.",
             &player_state_schema,
         )
@@ -110,6 +111,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     assert!(!user_message.content.contains("Stay in character."));
     assert!(!user_message.content.contains("Keep this between us."));
     assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.content.contains("PLAYER_NAME"));
     assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
     assert!(
         user_message

@@ -24,6 +24,12 @@ Global config and session config only reference `api_id`.
 If env vars or the app config file define a default LLM config, those values override the saved
 default for the current process. Otherwise the saved default is used.
 
+The service is allowed to start without any `llm_api` records or global config. In that state,
+browse/configuration APIs still work, but agent-executing APIs return an “LLM config is not initialized” error.
+
+When the first `llm_api` is created and no global config exists yet, the backend automatically
+uses that `api_id` as the default binding for every agent role.
+
 ### 1.2 Create Schema Resources
 
 Then create reusable `schema` resources:

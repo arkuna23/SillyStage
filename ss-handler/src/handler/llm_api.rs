@@ -25,6 +25,10 @@ impl Handler {
         let record = build_llm_api_record(api_id, params, default_config)?;
         self.manager.upsert_llm_api_record(&record)?;
         self.store.save_llm_api(record.clone()).await?;
+        let _ = self
+            .manager
+            .initialize_global_config_if_missing(&record.api_id)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -189,7 +193,10 @@ impl Handler {
 
 async fn ensure_llm_api_not_in_use(handler: &Handler, api_id: &str) -> Result<(), HandlerError> {
     let global = handler.manager.get_global_config().await?;
-    if agent_api_ids_contains(&global, api_id) {
+    if global
+        .as_ref()
+        .is_some_and(|global| agent_api_ids_contains(global, api_id))
+    {
         return Err(HandlerError::LlmApiInUse(api_id.to_owned()));
     }
 

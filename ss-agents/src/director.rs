@@ -112,14 +112,19 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_name: Option<&str>,
         player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
+        let player_persona = PlayerPersona {
+            name: player_name,
+            description: player_description,
+        };
         self.decide_internal(
             runtime_graph,
             world_state,
             character_cards,
-            player_description,
+            player_persona,
             player_state_schema,
             true,
         )
@@ -131,14 +136,19 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        player_name: Option<&str>,
         player_description: &str,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<DirectorResult, DirectorError> {
+        let player_persona = PlayerPersona {
+            name: player_name,
+            description: player_description,
+        };
         self.decide_internal(
             runtime_graph,
             world_state,
             character_cards,
-            player_description,
+            player_persona,
             player_state_schema,
             false,
         )
@@ -150,7 +160,7 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
-        player_description: &str,
+        player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
         allow_fallback: bool,
     ) -> Result<DirectorResult, DirectorError> {
@@ -194,7 +204,7 @@ impl Director {
                 current_node,
                 transitioned,
                 character_cards,
-                player_description,
+                player_persona,
                 player_state_schema,
             )
             .await
@@ -205,7 +215,7 @@ impl Director {
                 current_node,
                 transitioned,
                 character_cards,
-                player_description,
+                player_persona,
                 player_state_schema,
             )
             .await?
@@ -225,7 +235,7 @@ impl Director {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
-        player_description: &str,
+        player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
         let user_prompt = self.build_user_prompt(
@@ -233,7 +243,7 @@ impl Director {
             node,
             transitioned,
             character_cards,
-            player_description,
+            player_persona,
             player_state_schema,
         )?;
 
@@ -265,7 +275,7 @@ impl Director {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
-        player_description: &str,
+        player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<String, DirectorError> {
         let node_json =
@@ -274,6 +284,8 @@ impl Director {
             .map_err(DirectorError::SerializePromptData)?;
         let player_state_schema_json = serde_json::to_string_pretty(player_state_schema)
             .map_err(DirectorError::SerializePromptData)?;
+        let player_name_json = serde_json::to_string_pretty(&player_persona.name)
+            .map_err(DirectorError::SerializePromptData)?;
         let cast_json = serde_json::to_string_pretty(&current_cast_summaries(
             &node.characters,
             character_cards,
@@ -281,8 +293,9 @@ impl Director {
         .map_err(DirectorError::SerializePromptData)?;
 
         Ok(format!(
-            "PLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
-            player_description,
+            "PLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
+            player_name_json,
+            player_persona.description,
             cast_json,
             node_json,
             transitioned,
@@ -327,6 +340,12 @@ impl Director {
     ) -> bool {
         condition.matches(world_state)
     }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PlayerPersona<'a> {
+    name: Option<&'a str>,
+    description: &'a str,
 }
 
 #[derive(Debug, thiserror::Error)]

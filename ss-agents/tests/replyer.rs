@@ -127,6 +127,7 @@ async fn suggest_returns_sanitized_replies() {
         .suggest(ReplyerRequest {
             current_node: &node,
             character_cards: &character_cards,
+            player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
             world_state: &world_state,
@@ -176,6 +177,7 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
         .suggest(ReplyerRequest {
             current_node: &node,
             character_cards: &character_cards,
+            player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
             world_state: &world_state,
@@ -193,6 +195,7 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
         .expect("user message should exist");
 
     assert!(user_message.content.contains("SESSION_HISTORY"));
+    assert!(user_message.content.contains("PLAYER_NAME"));
     assert!(user_message.content.contains("Can you lower the price?"));
     assert!(user_message.content.contains("\"coins\""));
     assert!(

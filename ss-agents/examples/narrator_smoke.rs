@@ -59,6 +59,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: None,
                 current_node: &dock,
                 character_cards: &character_cards,
+                player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
                 player_state_schema: &player_state_schema,
@@ -78,6 +79,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: Some(&market),
                 current_node: &dock,
                 character_cards: &character_cards,
+                player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
                 player_state_schema: &player_state_schema,
@@ -97,6 +99,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: None,
                 current_node: &gate,
                 character_cards: &character_cards,
+                player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
                 player_state_schema: &player_state_schema,

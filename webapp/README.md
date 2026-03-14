@@ -28,9 +28,13 @@ From the repository root:
 just frontend
 just backend
 just dev
+just package-linux
+just package-windows
 ```
 
 `just dev` starts `ss-app` on `127.0.0.1:8080` and runs Vite with a development proxy for `/rpc` and `/healthz`, so browser requests no longer hit the Vite server directly.
+
+`just package-linux` and `just package-windows` build the frontend, build `ss-app`, and assemble a self-contained release under `dist/`. The packaged binary auto-discovers the sibling `ss-app.toml` and bundled `webapp/` assets.
 
 Inside `webapp/` directly:
 

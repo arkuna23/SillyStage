@@ -30,6 +30,7 @@
 - 读取接口不返回明文 `api_key`
 - 删除时若仍被 global config 或 session config 引用，返回 `conflict`
 - `llm_api.create` 可以省略连接或模型字段，缺失值会从当前生效的 `default_llm_config` 补齐
+- 如果当前还没有 global config，创建第一条 `llm_api` 后，服务端会自动把这个 `api_id` 绑定到所有 agent 的默认选择
 
 ## 3. default_llm_config
 
@@ -243,6 +244,11 @@
 - `keeper_api_id`
 - `replyer_api_id`
 
+说明：
+
+- `config.get_global` 在尚未初始化时会成功返回，但 `api_ids = null`
+- 这表示服务已经可用，但尚未配置任何可执行 agent 的默认 `api_id`
+
 ## 13. dashboard
 
 | 方法 | session_id | 返回 | 说明 |
@@ -256,3 +262,8 @@
 - `global_config`
 - `recent_stories`
 - `recent_sessions`
+
+说明：
+
+- `dashboard.global_config.api_ids` 在未初始化时同样可能为 `null`
+- 在这种状态下，浏览类接口仍可用，但需要 agent 的接口会返回“LLM 配置尚未初始化”错误

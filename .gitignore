@@ -1,4 +1,5 @@
 /target
+/dist
 .env
 graph.dot
 graph.png

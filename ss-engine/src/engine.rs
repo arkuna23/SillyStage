@@ -23,6 +23,8 @@ use crate::event::{EngineEvent, EngineStage};
 use crate::runtime::{RuntimeError, RuntimeState, StoryResources};
 
 const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
+const DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS: u32 = 8_192;
+const DEFAULT_ARCHITECT_GENERATE_TEMPERATURE: f32 = 0.0;
 
 pub type EngineTurnStream<'a> = Pin<Box<dyn Stream<Item = EngineEvent> + Send + 'a>>;
 
@@ -67,7 +69,7 @@ impl StoryGenerationAgentConfigs {
 
         Self {
             planner: AgentModelConfig::new(Arc::clone(&client), model.clone()),
-            architect: AgentModelConfig::new(client, model).with_max_tokens(Some(16_384)),
+            architect: AgentModelConfig::new(client, model).with_max_tokens(Some(8_192)),
         }
     }
 }
@@ -206,6 +208,7 @@ impl Engine {
                         parts.runtime_graph,
                         parts.world_state,
                         parts.character_cards,
+                        parts.player_name,
                         parts.player_description,
                         parts.player_state_schema,
                     )
@@ -339,6 +342,7 @@ impl Engine {
                                                             ActorRequest {
                                                                 character,
                                                                 cast: parts.character_cards,
+                                                                player_name: parts.player_name,
                                                                 player_description: parts.player_description,
                                                                 purpose: purpose.clone(),
                                                                 node: current_node,
@@ -490,6 +494,7 @@ impl Engine {
                 previous_node: None,
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
                 world_state: self.runtime_state.world_state(),
@@ -533,6 +538,7 @@ impl Engine {
                 previous_node: Some(previous_node),
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
                 world_state: self.runtime_state.world_state(),
@@ -573,6 +579,7 @@ impl Engine {
             previous_node,
             current_node: self.runtime_state.current_node()?,
             character_cards: self.runtime_state.character_cards(),
+            player_name: self.runtime_state.player_name(),
             player_description: self.runtime_state.player_description(),
             player_state_schema: self.runtime_state.player_state_schema(),
             world_state: self.runtime_state.world_state(),
@@ -682,8 +689,18 @@ pub async fn generate_story_graph(
     let architect = Architect::new_with_options(
         Arc::clone(&agent_configs.architect.client),
         agent_configs.architect.model.clone(),
-        agent_configs.architect.temperature,
-        agent_configs.architect.max_tokens,
+        Some(
+            agent_configs
+                .architect
+                .temperature
+                .unwrap_or(DEFAULT_ARCHITECT_GENERATE_TEMPERATURE),
+        ),
+        Some(
+            agent_configs
+                .architect
+                .max_tokens
+                .unwrap_or(DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS),
+        ),
     );
     architect
         .generate_graph(ArchitectRequest {

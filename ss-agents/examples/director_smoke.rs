@@ -47,6 +47,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             &runtime_graph,
             &mut stay_world_state,
             &character_cards,
+            Some("Courier"),
             "A stubborn courier carrying medicine through the flooded district.",
             &player_state_schema,
         )
@@ -60,6 +61,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
             &runtime_graph,
             &mut move_world_state,
             &character_cards,
+            Some("Courier"),
             "A stubborn courier carrying medicine through the flooded district.",
             &player_state_schema,
         )

@@ -99,7 +99,7 @@ fn json_rpc_request_and_response_round_trip() {
         "req-3",
         None::<String>,
         ResponseResult::GlobalConfig(GlobalConfigPayload {
-            api_ids: sample_api_ids(),
+            api_ids: Some(sample_api_ids()),
         }),
     );
     let config_json =
@@ -208,7 +208,7 @@ fn json_rpc_request_and_response_round_trip() {
                 sessions_total: 4,
             },
             global_config: GlobalConfigPayload {
-                api_ids: sample_api_ids(),
+                api_ids: Some(sample_api_ids()),
             },
             recent_stories: vec![DashboardStorySummaryPayload {
                 story_id: "story-1".to_owned(),

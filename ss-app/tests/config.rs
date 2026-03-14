@@ -23,6 +23,7 @@ fn config_file_resolves_relative_paths_and_defaults() {
         r#"
 [server]
 listen = "127.0.0.1:9001"
+open_browser = false
 
 [store]
 backend = "fs"
@@ -54,6 +55,7 @@ max_tokens = 4096
     .expect("load config");
 
     assert_eq!(config.server.listen, "127.0.0.1:9001");
+    assert!(!config.server.open_browser);
     assert_eq!(config.store.backend, StoreBackend::Fs);
     assert_eq!(config.store.root, root.join("data-dir"));
     assert_eq!(config.frontend.mount_path, "/app");
@@ -153,6 +155,7 @@ root = "data"
         },
         EnvOverrides {
             listen: Some("127.0.0.1:9100".to_owned()),
+            open_browser: Some(false),
             store_backend: Some(StoreBackend::Memory),
             default_openai_base_url: Some("http://localhost:3000/v1".to_owned()),
             default_openai_api_key: Some("env-key".to_owned()),
@@ -163,6 +166,7 @@ root = "data"
     .expect("load config");
 
     assert_eq!(config.server.listen, "127.0.0.1:9100");
+    assert!(!config.server.open_browser);
     assert_eq!(config.store.backend, StoreBackend::Memory);
     assert!(config.llm.defaults.is_none());
     assert!(config.llm.apis.is_empty());

@@ -3,7 +3,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures_util::StreamExt;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{AUTHORIZATION, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tracing::{debug, error, info, warn};
@@ -173,7 +173,7 @@ impl OpenAiClient {
             return Ok(response);
         }
 
-        let body = response.text().await?;
+        let body = read_response_body(response, "error").await?;
         warn!(
             provider = "openai",
             status = status.as_u16(),
@@ -200,7 +200,7 @@ impl OpenAiClient {
 impl LlmApi for OpenAiClient {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, LlmError> {
         let response = self.send_request(&request, false).await?;
-        let body = response.text().await?;
+        let body = read_response_body(response, "success").await?;
         info!(
             provider = "openai",
             body = %body,
@@ -382,6 +382,65 @@ fn truncate_response_for_log(content: &str) -> String {
     truncate_for_log(content, MAX_LOGGED_RESPONSE_CHARS)
 }
 
+async fn read_response_body(response: reqwest::Response, kind: &'static str) -> Result<String, LlmError> {
+    let response_context = response_context(&response);
+    let mut stream = response.bytes_stream();
+    let mut body = Vec::new();
+
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(chunk) => body.extend_from_slice(&chunk),
+            Err(error) => {
+                let partial_body = String::from_utf8_lossy(&body).into_owned();
+                error!(
+                    provider = "openai",
+                    status = response_context.status,
+                    url = %response_context.url,
+                    content_type = ?response_context.content_type,
+                    content_encoding = ?response_context.content_encoding,
+                    content_length = ?response_context.content_length,
+                    error = %error,
+                    partial_body = %truncate_response_for_log(&partial_body),
+                    "failed to decode llm {kind} response body"
+                );
+                return Err(LlmError::from(error));
+            }
+        }
+    }
+
+    Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+#[derive(Debug)]
+struct ResponseContext {
+    status: u16,
+    url: String,
+    content_type: Option<String>,
+    content_encoding: Option<String>,
+    content_length: Option<String>,
+}
+
+fn response_context(response: &reqwest::Response) -> ResponseContext {
+    ResponseContext {
+        status: response.status().as_u16(),
+        url: response.url().to_string(),
+        content_type: header_value_to_owned(response, CONTENT_TYPE),
+        content_encoding: header_value_to_owned(response, CONTENT_ENCODING),
+        content_length: header_value_to_owned(response, CONTENT_LENGTH),
+    }
+}
+
+fn header_value_to_owned(
+    response: &reqwest::Response,
+    header_name: reqwest::header::HeaderName,
+) -> Option<String> {
+    response
+        .headers()
+        .get(header_name)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned)
+}
+
 #[derive(Debug, Serialize)]
 struct OpenAiChatRequest {
     model: String,
@@ -474,7 +533,10 @@ fn parse_structured_output(
                     content = %truncate_response_for_log(content),
                     "llm returned invalid structured json content"
                 );
-                LlmError::StructuredOutputParse(error.to_string())
+                LlmError::StructuredOutputParse {
+                    message: error.to_string(),
+                    raw_content: content.to_owned(),
+                }
             })
         }
         None => Ok(None),
@@ -585,7 +647,13 @@ mod tests {
         let error = parse_structured_output(Some(&ResponseFormat::JsonObject), "not json")
             .expect_err("invalid json should fail");
 
-        assert!(matches!(error, LlmError::StructuredOutputParse(_)));
+        assert!(matches!(
+            error,
+            LlmError::StructuredOutputParse {
+                message: _,
+                raw_content: _
+            }
+        ));
     }
 
     #[test]

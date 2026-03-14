@@ -6,6 +6,7 @@ use store::{FileSystemStore, InMemoryStore, Store};
 use tokio::net::TcpListener;
 use tracing::info;
 
+use crate::browser::spawn_browser_if_desktop;
 use crate::config::{AppConfig, FrontendConfig, StoreBackend};
 use crate::error::AppError;
 use crate::frontend::mount_frontend;
@@ -47,6 +48,7 @@ pub async fn run(config: AppConfig) -> Result<(), AppError> {
     let listener = TcpListener::bind(&config.server.listen).await?;
     let local_addr = listener.local_addr()?;
     info!(listen = %local_addr, "SillyStage listening");
+    spawn_browser_if_desktop(&config, local_addr);
 
     axum::serve(listener, router)
         .with_graceful_shutdown(shutdown_signal())

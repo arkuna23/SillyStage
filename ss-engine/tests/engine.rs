@@ -525,8 +525,8 @@ async fn generate_story_graph_uses_architect_independently() {
     );
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].max_tokens, Some(16_384));
-    assert_eq!(requests[0].temperature, None);
+    assert_eq!(requests[0].max_tokens, Some(8_192));
+    assert_eq!(requests[0].temperature, Some(0.0));
     assert!(user_message_content(&requests[0]).contains("STORY_CONCEPT"));
     assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
 }

@@ -30,6 +30,9 @@ use crate::{
 };
 
 const DEFAULT_ARCHITECT_CHUNK_NODE_COUNT: usize = 4;
+const DEFAULT_ARCHITECT_INIT_MAX_TOKENS: u32 = 8_192;
+const DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS: u32 = 4_096;
+const DEFAULT_ARCHITECT_TEMPERATURE: f32 = 0.0;
 
 pub type ManagedTurnStream<'a> =
     Pin<Box<dyn Stream<Item = Result<EngineEvent, ManagerError>> + Send + 'a>>;
@@ -75,22 +78,42 @@ impl EngineManager {
         self.registry.remove(api_id);
     }
 
-    pub async fn get_global_config(&self) -> Result<AgentApiIds, ManagerError> {
+    pub async fn get_global_config(&self) -> Result<Option<AgentApiIds>, ManagerError> {
         self.store
             .get_global_config()
+            .await
+            .map_err(ManagerError::from)
+    }
+
+    pub async fn require_global_config(&self) -> Result<AgentApiIds, ManagerError> {
+        self.get_global_config()
             .await?
-            .ok_or(ManagerError::MissingGlobalConfig)
+            .ok_or(ManagerError::LlmConfigNotInitialized)
     }
 
     pub async fn update_global_config(
         &self,
         overrides: AgentApiIdOverrides,
     ) -> Result<AgentApiIds, ManagerError> {
-        let current = self.get_global_config().await?;
+        let current = self.require_global_config().await?;
         let updated = current.apply_overrides(&overrides);
         validate_api_ids(&self.registry, &updated)?;
         self.store.set_global_config(updated.clone()).await?;
         Ok(updated)
+    }
+
+    pub async fn initialize_global_config_if_missing(
+        &self,
+        api_id: &str,
+    ) -> Result<Option<AgentApiIds>, ManagerError> {
+        if self.get_global_config().await?.is_some() {
+            return Ok(None);
+        }
+
+        let initial = repeat_api_id(api_id);
+        validate_api_ids(&self.registry, &initial)?;
+        self.store.set_global_config(initial.clone()).await?;
+        Ok(Some(initial))
     }
 
     pub async fn generate_story_plan(
@@ -104,7 +127,7 @@ impl EngineManager {
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(resource_id.to_owned()))?;
         let api_ids = self
-            .get_global_config()
+            .require_global_config()
             .await?
             .apply_overrides(&AgentApiIdOverrides {
                 planner_api_id,
@@ -170,7 +193,7 @@ impl EngineManager {
         }
 
         let api_ids = self
-            .get_global_config()
+            .require_global_config()
             .await?
             .apply_overrides(&AgentApiIdOverrides {
                 architect_api_id,
@@ -180,12 +203,7 @@ impl EngineManager {
 
         let story_resources = self.build_engine_story_resources(&resource).await?;
         let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
-        let architect = Architect::new_with_options(
-            Arc::clone(&generation_configs.architect.client),
-            generation_configs.architect.model.clone(),
-            generation_configs.architect.temperature,
-            generation_configs.architect.max_tokens,
-        );
+        let architect = self.build_architect_for_init(&generation_configs);
 
         let init = architect
             .start_draft(ArchitectDraftInitRequest {
@@ -286,7 +304,7 @@ impl EngineManager {
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(draft.resource_id.clone()))?;
         let api_ids = self
-            .get_global_config()
+            .require_global_config()
             .await?
             .apply_overrides(&AgentApiIdOverrides {
                 architect_api_id,
@@ -296,12 +314,7 @@ impl EngineManager {
 
         let story_resources = self.build_engine_story_resources(&resource).await?;
         let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
-        let architect = Architect::new_with_options(
-            Arc::clone(&generation_configs.architect.client),
-            generation_configs.architect.model.clone(),
-            generation_configs.architect.temperature,
-            generation_configs.architect.max_tokens,
-        );
+        let architect = self.build_architect_for_continue(&generation_configs);
         let world_schema = self.resolve_world_schema(&draft.world_schema_id).await?;
         let player_schema = self.resolve_player_schema(&draft.player_schema_id).await?;
         let graph_summary = build_graph_summary(&draft.partial_graph);
@@ -317,10 +330,10 @@ impl EngineManager {
         let chunk = architect
             .continue_draft(ArchitectDraftContinueRequest {
                 story_concept: story_resources.story_concept(),
-                planned_story: &draft.planned_story,
                 current_section: &current_section,
                 section_index: draft.next_section_index,
                 total_sections: draft.outline_sections.len(),
+                section_summaries: &draft.section_summaries,
                 graph_summary: &graph_summary,
                 recent_nodes: &recent_nodes,
                 target_node_count: DEFAULT_ARCHITECT_CHUNK_NODE_COUNT,
@@ -431,7 +444,7 @@ impl EngineManager {
             .get_story(story_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStory(story_id.to_owned()))?;
-        let global_config = self.get_global_config().await?;
+        let global_config = self.require_global_config().await?;
         let session_config = match config_mode {
             SessionConfigMode::UseGlobal => SessionEngineConfig::use_global(),
             SessionConfigMode::UseSession => SessionEngineConfig::use_session(
@@ -441,18 +454,11 @@ impl EngineManager {
         let effective = effective_session_api_ids(&session_config, &global_config);
         validate_api_ids(&self.registry, &effective)?;
 
-        let player_description = match &player_profile_id {
-            Some(player_profile_id) => {
-                self.store
-                    .get_player_profile(player_profile_id)
-                    .await?
-                    .ok_or_else(|| ManagerError::MissingPlayerProfile(player_profile_id.clone()))?
-                    .description
-            }
-            None => String::new(),
-        };
+        let (player_name, player_description) = self
+            .resolve_player_identity(player_profile_id.as_deref())
+            .await?;
         let runtime_state = self
-            .build_runtime_state_from_story(&story, player_description)
+            .build_runtime_state_from_story(&story, player_name, player_description)
             .await?;
         let session_id = format!("session-{}", self.store.list_sessions().await?.len());
         let now = now_timestamp_ms();
@@ -502,7 +508,7 @@ impl EngineManager {
         let runtime_state = self
             .build_runtime_state_from_session(&story, &session)
             .await?;
-        let global = self.get_global_config().await?;
+        let global = self.require_global_config().await?;
         let effective_api_ids = effective_session_api_ids(&session.config, &global)
             .apply_overrides(&api_overrides.unwrap_or_default());
         let replyer_config = self.registry.build_replyer_config(&effective_api_ids)?;
@@ -518,6 +524,7 @@ impl EngineManager {
             .suggest(ReplyerRequest {
                 current_node,
                 character_cards: runtime_state.character_cards(),
+                player_name: runtime_state.player_name(),
                 player_description: runtime_state.player_description(),
                 player_state_schema: runtime_state.player_state_schema(),
                 world_state: runtime_state.world_state(),
@@ -558,17 +565,9 @@ impl EngineManager {
             .await?
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
 
-        let player_description = match &player_profile_id {
-            Some(player_profile_id) => {
-                self.store
-                    .get_player_profile(player_profile_id)
-                    .await?
-                    .ok_or_else(|| ManagerError::MissingPlayerProfile(player_profile_id.clone()))?
-                    .description
-            }
-            None => String::new(),
-        };
-
+        let (_player_name, player_description) = self
+            .resolve_player_identity(player_profile_id.as_deref())
+            .await?;
         session.player_profile_id = player_profile_id;
         session.snapshot.player_description = player_description;
         session.updated_at_ms = Some(now_timestamp_ms());
@@ -585,7 +584,7 @@ impl EngineManager {
             .get_session(session_id)
             .await?
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
-        let global = self.get_global_config().await?;
+        let global = self.require_global_config().await?;
         Ok(ResolvedSessionConfig {
             effective_api_ids: effective_session_api_ids(&session.config, &global),
             config: session.config,
@@ -604,7 +603,7 @@ impl EngineManager {
             .get_session(session_id)
             .await?
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
-        let global = self.get_global_config().await?;
+        let global = self.require_global_config().await?;
         let new_config = match mode {
             SessionConfigMode::UseGlobal => SessionEngineConfig::use_global(),
             SessionConfigMode::UseSession => {
@@ -651,7 +650,7 @@ impl EngineManager {
         let runtime_state = self
             .build_runtime_state_from_session(&story, &session)
             .await?;
-        let global = self.get_global_config().await?;
+        let global = self.require_global_config().await?;
         let effective_api_ids = effective_session_api_ids(&session.config, &global)
             .apply_overrides(&api_overrides.unwrap_or_default());
         validate_api_ids(&self.registry, &effective_api_ids)?;
@@ -764,6 +763,7 @@ impl EngineManager {
     async fn build_runtime_state_from_story(
         &self,
         story: &StoryRecord,
+        player_name: Option<String>,
         player_description: String,
     ) -> Result<RuntimeState, ManagerError> {
         let characters = self.load_story_characters(&story.resource_id).await?;
@@ -772,14 +772,16 @@ impl EngineManager {
             resolved_characters.push(self.resolve_character_card(character).await?);
         }
 
-        RuntimeState::from_story_graph(
+        let mut runtime_state = RuntimeState::from_story_graph(
             &story.story_id,
             story.graph.clone(),
             resolved_characters,
             player_description,
             self.resolve_player_schema(&story.player_schema_id).await?,
         )
-        .map_err(ManagerError::from)
+        .map_err(ManagerError::from)?;
+        runtime_state.set_player_name(player_name);
+        Ok(runtime_state)
     }
 
     async fn build_runtime_state_from_session(
@@ -793,7 +795,7 @@ impl EngineManager {
             resolved_characters.push(self.resolve_character_card(character).await?);
         }
 
-        RuntimeState::from_snapshot(
+        let mut runtime_state = RuntimeState::from_snapshot(
             &story.story_id,
             story::runtime_graph::RuntimeStoryGraph::from_story_graph(story.graph.clone())
                 .map_err(RuntimeError::GraphBuild)?,
@@ -802,7 +804,31 @@ impl EngineManager {
                 .await?,
             session.snapshot.clone(),
         )
-        .map_err(ManagerError::from)
+        .map_err(ManagerError::from)?;
+        let (player_name, _player_description) = self
+            .resolve_player_identity(session.player_profile_id.as_deref())
+            .await?;
+        runtime_state.set_player_name(player_name);
+        Ok(runtime_state)
+    }
+
+    async fn resolve_player_identity(
+        &self,
+        player_profile_id: Option<&str>,
+    ) -> Result<(Option<String>, String), ManagerError> {
+        match player_profile_id {
+            Some(player_profile_id) => {
+                let profile = self
+                    .store
+                    .get_player_profile(player_profile_id)
+                    .await?
+                    .ok_or_else(|| {
+                        ManagerError::MissingPlayerProfile(player_profile_id.to_owned())
+                    })?;
+                Ok((Some(profile.display_name), profile.description))
+            }
+            None => Ok((None, String::new())),
+        }
     }
 
     async fn load_story_characters(
@@ -892,6 +918,50 @@ impl EngineManager {
                 text: message.text,
             })
             .collect())
+    }
+
+    fn build_architect_for_init(
+        &self,
+        generation_configs: &crate::engine::StoryGenerationAgentConfigs,
+    ) -> Architect {
+        Architect::new_with_options(
+            Arc::clone(&generation_configs.architect.client),
+            generation_configs.architect.model.clone(),
+            Some(
+                generation_configs
+                    .architect
+                    .temperature
+                    .unwrap_or(DEFAULT_ARCHITECT_TEMPERATURE),
+            ),
+            Some(
+                generation_configs
+                    .architect
+                    .max_tokens
+                    .unwrap_or(DEFAULT_ARCHITECT_INIT_MAX_TOKENS),
+            ),
+        )
+    }
+
+    fn build_architect_for_continue(
+        &self,
+        generation_configs: &crate::engine::StoryGenerationAgentConfigs,
+    ) -> Architect {
+        Architect::new_with_options(
+            Arc::clone(&generation_configs.architect.client),
+            generation_configs.architect.model.clone(),
+            Some(
+                generation_configs
+                    .architect
+                    .temperature
+                    .unwrap_or(DEFAULT_ARCHITECT_TEMPERATURE),
+            ),
+            Some(
+                generation_configs
+                    .architect
+                    .max_tokens
+                    .unwrap_or(DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS),
+            ),
+        )
     }
 
     async fn create_generated_schema(
@@ -1207,6 +1277,18 @@ fn validate_api_ids(registry: &LlmApiRegistry, api_ids: &AgentApiIds) -> Result<
     Ok(())
 }
 
+fn repeat_api_id(api_id: &str) -> AgentApiIds {
+    AgentApiIds {
+        planner_api_id: api_id.to_owned(),
+        architect_api_id: api_id.to_owned(),
+        director_api_id: api_id.to_owned(),
+        actor_api_id: api_id.to_owned(),
+        narrator_api_id: api_id.to_owned(),
+        keeper_api_id: api_id.to_owned(),
+        replyer_api_id: api_id.to_owned(),
+    }
+}
+
 fn effective_session_api_ids(config: &SessionEngineConfig, global: &AgentApiIds) -> AgentApiIds {
     match config.mode {
         SessionConfigMode::UseGlobal => global.clone(),
@@ -1219,8 +1301,8 @@ fn effective_session_api_ids(config: &SessionEngineConfig, global: &AgentApiIds)
 
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerError {
-    #[error("global engine config is not initialized")]
-    MissingGlobalConfig,
+    #[error("llm engine config is not initialized")]
+    LlmConfigNotInitialized,
     #[error("schema '{0}' not found")]
     MissingSchema(String),
     #[error("character '{0}' not found")]

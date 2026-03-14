@@ -193,6 +193,7 @@ fn sample_request<'a>(
     ActorRequest {
         character,
         cast,
+        player_name: Some("Courier"),
         player_description: "A stubborn courier carrying medicine and trying to judge who is worth trusting.",
         purpose: ActorPurpose::AdvanceGoal,
         node,

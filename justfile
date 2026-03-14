@@ -26,3 +26,12 @@ frontend-check:
 
 dev:
     bash -lc 'set -euo pipefail; cargo run -p ss-app & backend_pid=$!; cleanup() { kill "$backend_pid" 2>/dev/null || true; }; trap cleanup EXIT INT TERM; cd webapp; pnpm dev'
+
+package-linux:
+    bash scripts/package-app.sh --target x86_64-unknown-linux-gnu
+
+package-windows:
+    bash scripts/package-app.sh --target x86_64-pc-windows-gnu
+
+package-all:
+    bash scripts/package-app.sh --target x86_64-unknown-linux-gnu --target x86_64-pc-windows-gnu

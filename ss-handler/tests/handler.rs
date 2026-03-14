@@ -9,16 +9,16 @@ use futures_util::StreamExt;
 use protocol::{
     CharacterArchive, CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams,
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterSetCoverParams,
-    CharacterUpdateParams, ConfigUpdateGlobalParams, CreateSessionMessageParams,
-    CreateStoryResourcesParams, DashboardGetParams, DefaultLlmConfigGetParams,
-    DefaultLlmConfigUpdateParams, DeleteSessionMessageParams, DeleteSessionParams, ErrorCode,
-    GenerateStoryParams, GetSessionMessageParams, GetSessionParams, GetStoryResourcesParams,
-    JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams, LlmApiCreateParams,
-    LlmApiDeleteParams, LlmApiGetParams, LlmApiUpdateParams, RequestParams, ResponseResult,
-    RunTurnParams, SessionMessageKind, SessionUpdateConfigParams, StartSessionFromStoryParams,
-    StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionMessageParams,
-    UpdateSessionParams, UpdateStoryParams, UploadChunkParams, UploadCompleteParams,
-    UploadInitParams, UploadTargetKind,
+    CharacterUpdateParams, ConfigGetGlobalParams, ConfigUpdateGlobalParams,
+    CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams,
+    DefaultLlmConfigGetParams, DefaultLlmConfigUpdateParams, DeleteSessionMessageParams,
+    DeleteSessionParams, ErrorCode, GenerateStoryParams, GetSessionMessageParams, GetSessionParams,
+    GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams,
+    LlmApiCreateParams, LlmApiDeleteParams, LlmApiGetParams, LlmApiUpdateParams, RequestParams,
+    ResponseResult, RunTurnParams, SessionMessageKind, SessionUpdateConfigParams,
+    StartSessionFromStoryParams, StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams,
+    UpdateSessionMessageParams, UpdateSessionParams, UpdateStoryParams, UploadChunkParams,
+    UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
@@ -1359,7 +1359,7 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
             assert_eq!(payload.counts.story_resources_total, 6);
             assert_eq!(payload.counts.stories_total, 6);
             assert_eq!(payload.counts.sessions_total, 6);
-            assert_eq!(payload.global_config.api_ids, default_api_ids());
+            assert_eq!(payload.global_config.api_ids, Some(default_api_ids()));
             assert_eq!(payload.recent_stories.len(), 5);
             assert_eq!(payload.recent_sessions.len(), 5);
 
@@ -1388,6 +1388,53 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                     "session-1"
                 ]
             );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn dashboard_and_global_config_are_empty_when_llm_is_unconfigured() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store, registry_with_ids(llm), None, None)
+        .await
+        .expect("handler should build");
+
+    let dashboard = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-dashboard-empty",
+                None::<String>,
+                RequestParams::DashboardGet(DashboardGetParams::default()),
+            ))
+            .await,
+    );
+
+    match dashboard {
+        ResponseResult::Dashboard(payload) => {
+            assert_eq!(payload.global_config.api_ids, None);
+            assert_eq!(payload.counts.characters_total, 0);
+            assert_eq!(payload.counts.story_resources_total, 0);
+            assert_eq!(payload.counts.stories_total, 0);
+            assert_eq!(payload.counts.sessions_total, 0);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let global_config = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-global-empty",
+                None::<String>,
+                RequestParams::ConfigGetGlobal(ConfigGetGlobalParams::default()),
+            ))
+            .await,
+    );
+
+    match global_config {
+        ResponseResult::GlobalConfig(payload) => {
+            assert_eq!(payload.api_ids, None);
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1715,6 +1762,49 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
         ResponseResult::LlmApiDeleted(payload) => assert_eq!(payload.api_id, "managed"),
         other => panic!("unexpected response: {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn first_llm_api_create_auto_initializes_global_config() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store.clone(), registry_with_ids(llm), None, None)
+        .await
+        .expect("handler should build");
+
+    let _ = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "llm-create-first",
+                None::<String>,
+                RequestParams::LlmApiCreate(LlmApiCreateParams {
+                    api_id: "managed".to_owned(),
+                    provider: Some(LlmProvider::OpenAi),
+                    base_url: Some("https://api.openai.example/v1".to_owned()),
+                    api_key: Some("sk-secret-token".to_owned()),
+                    model: Some("gpt-4.1-mini".to_owned()),
+                    temperature: Some(0.3),
+                    max_tokens: Some(1_024),
+                }),
+            ))
+            .await,
+    );
+
+    assert_eq!(
+        store
+            .get_global_config()
+            .await
+            .expect("global config should load"),
+        Some(AgentApiIds {
+            planner_api_id: "managed".to_owned(),
+            architect_api_id: "managed".to_owned(),
+            director_api_id: "managed".to_owned(),
+            actor_api_id: "managed".to_owned(),
+            narrator_api_id: "managed".to_owned(),
+            keeper_api_id: "managed".to_owned(),
+            replyer_api_id: "managed".to_owned(),
+        })
+    );
 }
 
 #[tokio::test]

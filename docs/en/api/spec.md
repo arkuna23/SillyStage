@@ -126,6 +126,9 @@ Global config and session config only reference `api_id`.
 `llm_api.create` may omit `provider`, `base_url`, `api_key`, `model`, `temperature`, or
 `max_tokens`. Missing values are filled from the current effective `default_llm_config`.
 
+If no global config exists yet, successfully creating the first `llm_api` automatically binds
+that `api_id` to every agent role.
+
 The currently supported generation defaults on an `llm_api` object are:
 
 - `temperature`
@@ -140,6 +143,12 @@ Current `AgentApiIds` / `AgentApiIdOverrides` fields:
 - `narrator_api_id`
 - `keeper_api_id`
 - `replyer_api_id`
+
+Notes:
+
+- global config is now allowed to be absent
+- when it is absent, read APIs return `api_ids = null`
+- only agent-executing APIs require global config to be initialized
 
 ### 2.1.1 `default_llm_config`
 

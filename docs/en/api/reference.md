@@ -30,6 +30,7 @@ Notes:
 - Read APIs never return the raw `api_key`
 - Delete returns `conflict` if the API is still referenced by global or session config
 - `llm_api.create` may omit connection or model fields; missing values are filled from the current effective `default_llm_config`
+- If no global config exists yet, creating the first `llm_api` automatically binds that `api_id` to every agent role
 
 ## 3. default_llm_config
 
@@ -243,6 +244,11 @@ The current agent selection fields in `global_config`, `session_config`, and req
 - `keeper_api_id`
 - `replyer_api_id`
 
+Notes:
+
+- `config.get_global` succeeds even when nothing has been initialized yet; in that case `api_ids = null`
+- This means the service is up, but no default executable agent bindings have been configured yet
+
 ## 13. dashboard
 
 | Method | session_id | Result | Notes |
@@ -256,3 +262,8 @@ The current agent selection fields in `global_config`, `session_config`, and req
 - `global_config`
 - `recent_stories`
 - `recent_sessions`
+
+Notes:
+
+- `dashboard.global_config.api_ids` may also be `null` when the backend is still unconfigured
+- In that state, browse/configuration APIs still work, but agent-running APIs return an “LLM config is not initialized” error

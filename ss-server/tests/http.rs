@@ -285,6 +285,46 @@ async fn rpc_dashboard_get_returns_json_rpc_response() {
 }
 
 #[tokio::test]
+async fn rpc_dashboard_get_returns_null_global_config_when_unconfigured() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let handler = Arc::new(
+        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), None, None)
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-dashboard-empty",
+        None::<String>,
+        RequestParams::DashboardGet(DashboardGetParams::default()),
+    ))
+    .expect("request should serialize");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("response should deserialize");
+
+    assert_eq!(value["result"]["type"], "dashboard");
+    assert!(value["result"]["global_config"]["api_ids"].is_null());
+}
+
+#[tokio::test]
 async fn rpc_session_suggest_replies_returns_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(

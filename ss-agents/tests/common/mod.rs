@@ -7,22 +7,26 @@ use futures_util::stream;
 use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
 
 type RecordedRequests = Arc<Mutex<Vec<ChatRequest>>>;
-type ChatResultSlot = Arc<Mutex<Option<Result<ChatResponse, LlmError>>>>;
+type ChatResults = Arc<Mutex<Vec<Result<ChatResponse, LlmError>>>>;
 type StreamChunks = Vec<Result<ChatChunk, LlmError>>;
 type StreamResultSlot = Arc<Mutex<Option<Result<StreamChunks, LlmError>>>>;
 
 #[derive(Clone)]
 pub struct MockLlm {
     requests: RecordedRequests,
-    chat_result: ChatResultSlot,
+    chat_results: ChatResults,
     stream_result: StreamResultSlot,
 }
 
 impl MockLlm {
     pub fn with_chat_response(response: ChatResponse) -> Self {
+        Self::with_chat_responses(vec![Ok(response)])
+    }
+
+    pub fn with_chat_responses(responses: Vec<Result<ChatResponse, LlmError>>) -> Self {
         Self {
             requests: Arc::new(Mutex::new(Vec::new())),
-            chat_result: Arc::new(Mutex::new(Some(Ok(response)))),
+            chat_results: Arc::new(Mutex::new(responses)),
             stream_result: Arc::new(Mutex::new(None)),
         }
     }
@@ -30,7 +34,7 @@ impl MockLlm {
     pub fn with_stream_chunks(chunks: Vec<Result<ChatChunk, LlmError>>) -> Self {
         Self {
             requests: Arc::new(Mutex::new(Vec::new())),
-            chat_result: Arc::new(Mutex::new(None)),
+            chat_results: Arc::new(Mutex::new(Vec::new())),
             stream_result: Arc::new(Mutex::new(Some(Ok(chunks)))),
         }
     }
@@ -51,11 +55,12 @@ impl LlmApi for MockLlm {
             .expect("requests lock poisoned")
             .push(request);
 
-        self.chat_result
+        let mut results = self
+            .chat_results
             .lock()
-            .expect("chat_result lock poisoned")
-            .take()
-            .expect("missing configured chat result")
+            .expect("chat_results lock poisoned");
+        assert!(!results.is_empty(), "missing configured chat result");
+        results.remove(0)
     }
 
     async fn chat_stream(&self, request: ChatRequest) -> Result<ChatStream, LlmError> {

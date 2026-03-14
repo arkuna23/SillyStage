@@ -6,8 +6,8 @@ use store::StoreError;
 pub enum HandlerError {
     #[error("request requires session_id")]
     MissingSessionId,
-    #[error("global engine config is not initialized")]
-    MissingGlobalConfig,
+    #[error("llm engine config is not initialized")]
+    LlmConfigNotInitialized,
     #[error("schema '{0}' not found")]
     MissingSchema(String),
     #[error("player profile '{0}' not found")]
@@ -118,8 +118,7 @@ impl HandlerError {
             | Self::MissingSessionApiIds
             | Self::InvalidSessionConfig(_)
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
-            Self::MissingGlobalConfig
-            | Self::MissingUpload(_)
+            Self::MissingUpload(_)
             | Self::MissingSchema(_)
             | Self::MissingPlayerProfile(_)
             | Self::MissingCharacter(_)
@@ -144,6 +143,9 @@ impl HandlerError {
             Self::InvalidStoryDraft(_) => {
                 ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
             }
+            Self::LlmConfigNotInitialized => {
+                ErrorPayload::new(ErrorCode::Conflict, self.to_string())
+            }
             Self::Registry(error) => match error {
                 RegistryError::UnknownApiId(_) => {
                     ErrorPayload::new(ErrorCode::NotFound, self.to_string())
@@ -162,7 +164,7 @@ impl HandlerError {
 impl From<ManagerError> for HandlerError {
     fn from(value: ManagerError) -> Self {
         match value {
-            ManagerError::MissingGlobalConfig => Self::MissingGlobalConfig,
+            ManagerError::LlmConfigNotInitialized => Self::LlmConfigNotInitialized,
             ManagerError::MissingSchema(id) => Self::MissingSchema(id),
             ManagerError::MissingCharacter(id) => Self::MissingCharacter(id),
             ManagerError::MissingPlayerProfile(id) => Self::MissingPlayerProfile(id),

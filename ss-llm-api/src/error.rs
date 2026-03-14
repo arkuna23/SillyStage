@@ -18,6 +18,9 @@ pub enum LlmError {
     Provider { status: u16, message: String },
     #[error("stream parsing error: {0}")]
     StreamParse(String),
-    #[error("structured output parse error: {0}")]
-    StructuredOutputParse(String),
+    #[error("structured output parse error: {message}")]
+    StructuredOutputParse {
+        message: String,
+        raw_content: String,
+    },
 }

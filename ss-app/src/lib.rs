@@ -1,4 +1,5 @@
 pub mod app;
+mod browser;
 pub mod config;
 pub mod error;
 mod frontend;

@@ -6,8 +6,6 @@ use store::{AgentApiIds, LlmApiRecord, LlmProvider};
 
 use crate::engine::{AgentModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs};
 
-const DEFAULT_ARCHITECT_MAX_TOKENS: u32 = 8_192;
-
 #[derive(Clone)]
 pub struct RegisteredApi {
     pub client: Arc<dyn LlmApi>,
@@ -107,9 +105,7 @@ impl LlmApiRegistry {
                 .with_max_tokens(planner.max_tokens),
             architect: AgentModelConfig::new(architect.client, architect.model)
                 .with_temperature(architect.temperature)
-                .with_max_tokens(Some(
-                    architect.max_tokens.unwrap_or(DEFAULT_ARCHITECT_MAX_TOKENS),
-                )),
+                .with_max_tokens(architect.max_tokens),
         })
     }
 

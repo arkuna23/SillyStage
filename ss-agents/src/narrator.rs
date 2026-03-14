@@ -24,6 +24,7 @@ pub struct NarratorRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
@@ -254,6 +255,8 @@ impl Narrator {
         let current_cast_json =
             serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
                 .map_err(NarratorError::SerializePromptData)?;
+        let player_name_json = serde_json::to_string_pretty(&request.player_name)
+            .map_err(NarratorError::SerializePromptData)?;
         let world_state_json =
             serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
                 .map_err(NarratorError::SerializePromptData)?;
@@ -261,8 +264,9 @@ impl Narrator {
             .map_err(NarratorError::SerializePromptData)?;
 
         Ok(format!(
-            "NARRATOR_PURPOSE:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
+            "NARRATOR_PURPOSE:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
             purpose_json,
+            player_name_json,
             request.player_description,
             previous_node_json,
             previous_cast_json,

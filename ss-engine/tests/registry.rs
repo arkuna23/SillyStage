@@ -63,7 +63,7 @@ fn registry_builds_story_generation_and_runtime_configs() {
     assert_eq!(generation.architect.model, "architect-model");
     assert_eq!(generation.planner.temperature, None);
     assert_eq!(generation.planner.max_tokens, None);
-    assert_eq!(generation.architect.max_tokens, Some(8_192));
+    assert_eq!(generation.architect.max_tokens, None);
     assert_eq!(runtime.director.model, "director-model");
     assert_eq!(runtime.actor.model, "actor-model");
     assert_eq!(runtime.narrator.model, "narrator-model");

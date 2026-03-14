@@ -1,9 +1,13 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use axum::Router;
-use axum::response::{Html, Redirect};
-use axum::routing::{MethodRouter, get, get_service};
-use tower_http::services::{ServeDir, ServeFile};
+use axum::extract::{OriginalUri, Request};
+use axum::http::StatusCode;
+use axum::response::{Html, IntoResponse, Redirect, Response};
+use axum::routing::{MethodRouter, get};
+use tower::util::ServiceExt;
+use tower_http::services::ServeFile;
 
 use crate::config::FrontendConfig;
 
@@ -22,25 +26,26 @@ fn mount_static_frontend(router: Router, config: &FrontendConfig, static_dir: &P
     let mount_path = config.mount_path.as_str();
     let mount_slash = format!("{}/", mount_path.trim_end_matches('/'));
     let index_path = static_dir.join("index.html");
-    let static_service = get_service(ServeDir::new(static_dir));
 
     if mount_path == "/" {
         if index_path.is_file() {
-            let index_service = get_service(ServeFile::new(index_path));
+            let state =
+                StaticFrontendState::new(config.mount_path.clone(), static_dir, &index_path);
+            let handler = static_frontend_handler(state.clone());
             router
-                .route_service("/", index_service)
-                .fallback_service(static_service)
+                .route("/", handler.clone())
+                .route("/{*path}", handler)
         } else {
-            router
-                .route("/", placeholder_handler("/"))
-                .fallback_service(static_service)
+            router.route("/", placeholder_handler("/"))
         }
     } else if index_path.is_file() {
-        let index_service = get_service(ServeFile::new(index_path));
+        let state = StaticFrontendState::new(config.mount_path.clone(), static_dir, &index_path);
+        let handler = static_frontend_handler(state);
+        let wildcard_route = format!("{mount_slash}{{*path}}");
         router
-            .route_service(mount_path, index_service.clone())
-            .route_service(&mount_slash, index_service)
-            .nest_service(mount_path, static_service)
+            .route(mount_path, handler.clone())
+            .route(&mount_slash, handler.clone())
+            .route(&wildcard_route, handler)
     } else {
         let redirect_path = mount_slash.clone();
         router
@@ -52,7 +57,6 @@ fn mount_static_frontend(router: Router, config: &FrontendConfig, static_dir: &P
                 }),
             )
             .route(&mount_slash, placeholder_handler(mount_path))
-            .nest_service(mount_path, static_service)
     }
 }
 
@@ -68,6 +72,13 @@ fn mount_placeholder_frontend(router: Router, config: &FrontendConfig) -> Router
             .route(&mount_path, handler.clone())
             .route(&mount_slash, handler)
     }
+}
+
+fn static_frontend_handler(state: StaticFrontendState) -> MethodRouter {
+    get(move |uri: OriginalUri, request: Request| {
+        let state = state.clone();
+        async move { serve_static_frontend(state, uri, request).await }
+    })
 }
 
 fn placeholder_handler(mount_path: &str) -> MethodRouter {
@@ -118,4 +129,69 @@ fn placeholder_html(mount_path: &str) -> String {
   </body>
 </html>"#
     )
+}
+
+#[derive(Clone)]
+struct StaticFrontendState {
+    mount_path: Arc<String>,
+    static_dir: Arc<PathBuf>,
+    index_path: Arc<PathBuf>,
+}
+
+impl StaticFrontendState {
+    fn new(mount_path: String, static_dir: &Path, index_path: &Path) -> Self {
+        Self {
+            mount_path: Arc::new(mount_path),
+            static_dir: Arc::new(static_dir.to_path_buf()),
+            index_path: Arc::new(index_path.to_path_buf()),
+        }
+    }
+}
+
+async fn serve_static_frontend(
+    state: StaticFrontendState,
+    uri: OriginalUri,
+    request: Request,
+) -> Response {
+    let Some(relative_path) = frontend_relative_path(&state.mount_path, uri.path()) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let candidate = if relative_path.is_empty() {
+        state.index_path.as_ref().clone()
+    } else {
+        state.static_dir.join(&relative_path)
+    };
+
+    if candidate.is_file() {
+        return serve_file_response(candidate, request).await;
+    }
+
+    if relative_path.is_empty() || !path_looks_like_static_asset(&relative_path) {
+        return serve_file_response(state.index_path.as_ref().clone(), request).await;
+    }
+
+    StatusCode::NOT_FOUND.into_response()
+}
+
+async fn serve_file_response(path: PathBuf, request: Request) -> Response {
+    match ServeFile::new(path).oneshot(request).await {
+        Ok(response) => response.into_response(),
+        Err(_error) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
+
+fn frontend_relative_path(mount_path: &str, request_path: &str) -> Option<String> {
+    if mount_path == "/" {
+        return Some(request_path.trim_start_matches('/').to_owned());
+    }
+
+    let prefix = mount_path.trim_end_matches('/');
+    let relative = request_path.strip_prefix(prefix)?;
+    Some(relative.trim_start_matches('/').to_owned())
+}
+
+fn path_looks_like_static_asset(path: &str) -> bool {
+    let last_segment = path.rsplit('/').next().unwrap_or(path);
+    !last_segment.is_empty() && last_segment.contains('.')
 }

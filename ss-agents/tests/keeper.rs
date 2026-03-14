@@ -150,6 +150,7 @@ fn sample_request<'a>(
     KeeperRequest {
         phase: KeeperPhase::AfterTurnOutputs,
         player_input: "I agree to follow the guide toward the canal gate.",
+        player_name: Some("Courier"),
         player_description: "A cautious courier escorting medicine through the flooded district.",
         previous_node,
         current_node,
@@ -263,6 +264,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
 
     assert!(user_message.content.contains("KEEPER_PHASE"));
     assert!(user_message.content.contains("PLAYER_INPUT"));
+    assert!(user_message.content.contains("PLAYER_NAME"));
     assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
     assert!(user_message.content.contains("COMPLETED_BEATS"));
     assert!(user_message.content.contains("\"actor_shared_history\""));

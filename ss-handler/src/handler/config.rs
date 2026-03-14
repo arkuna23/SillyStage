@@ -34,7 +34,9 @@ impl Handler {
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::GlobalConfig(protocol::GlobalConfigPayload { api_ids: updated }),
+            ResponseResult::GlobalConfig(protocol::GlobalConfigPayload {
+                api_ids: Some(updated),
+            }),
         ))
     }
 

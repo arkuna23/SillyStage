@@ -32,6 +32,7 @@ pub struct ReplyHistoryMessage {
 pub struct ReplyerRequest<'a> {
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
     pub world_state: &'a WorldState,
@@ -165,6 +166,8 @@ impl Replyer {
         let current_cast_json =
             serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
                 .map_err(ReplyerError::SerializePromptData)?;
+        let player_name_json = serde_json::to_string_pretty(&request.player_name)
+            .map_err(ReplyerError::SerializePromptData)?;
         let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
             .map_err(ReplyerError::SerializePromptData)?;
         let world_state_json =
@@ -174,8 +177,9 @@ impl Replyer {
             .map_err(ReplyerError::SerializePromptData)?;
 
         Ok(format!(
-            "REPLY_LIMIT:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nSESSION_HISTORY:\n{}",
+            "REPLY_LIMIT:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nSESSION_HISTORY:\n{}",
             request.limit,
+            player_name_json,
             request.player_description,
             current_cast_json,
             current_node_json,

@@ -14,6 +14,7 @@ You will receive:
 - a PREVIOUS_CAST
 - a CURRENT_NODE
 - a CURRENT_CAST
+- a PLAYER_NAME
 - a PLAYER_DESCRIPTION
 - a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
@@ -25,6 +26,7 @@ Narration rules:
 - Do not invent hidden thoughts or secret motives
 - Do not use actor private memory
 - CURRENT_CAST contains compact character card summaries, including each character's private state schema
+- PLAYER_NAME identifies the player persona when available
 - PLAYER_DESCRIPTION describes the player persona currently present in the scene
 - WORLD_STATE.player_state contains visible player-facing runtime state
 - PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
