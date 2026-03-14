@@ -25,6 +25,7 @@ const emptyApiIds: AgentApiIds = {
   keeper_api_id: '',
   narrator_api_id: '',
   planner_api_id: '',
+  replyer_api_id: '',
 }
 
 const emptyDashboard: DashboardPayload = {
@@ -53,13 +54,6 @@ function countAssignedApis(apiIds: AgentApiIds) {
   return agentApiRoleKeys.reduce((count, roleKey) => {
     return count + (apiIds[roleKey].trim() ? 1 : 0)
   }, 0)
-}
-
-function roleLabel(
-  roleKey: AgentApiRoleKey,
-  t: ReturnType<typeof useTranslation>['t'],
-) {
-  return t(`apis.assignments.roles.${roleKey}` as const)
 }
 
 function StatusNotice({ notice }: { notice: Notice }) {
@@ -98,8 +92,8 @@ function DashboardSkeleton() {
     <div className="space-y-8">
       <section className="space-y-5">
         <div className="h-7 w-40 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-          {Array.from({ length: 5 }).map((_, index) => (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, index) => (
             <div
               className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4"
               key={index}
@@ -175,6 +169,18 @@ export function DashboardPage() {
   const assignedApiCount = useMemo(
     () => countAssignedApis(currentDashboard.global_config.api_ids),
     [currentDashboard.global_config.api_ids],
+  )
+  const roleLabels: Record<AgentApiRoleKey, string> = useMemo(
+    () => ({
+      actor_api_id: t('apis.assignments.roles.actor_api_id'),
+      architect_api_id: t('apis.assignments.roles.architect_api_id'),
+      director_api_id: t('apis.assignments.roles.director_api_id'),
+      keeper_api_id: t('apis.assignments.roles.keeper_api_id'),
+      narrator_api_id: t('apis.assignments.roles.narrator_api_id'),
+      planner_api_id: t('apis.assignments.roles.planner_api_id'),
+      replyer_api_id: t('apis.assignments.roles.replyer_api_id'),
+    }),
+    [t],
   )
   const healthLabel =
     dashboard?.health.status === 'ok' ? t('dashboard.health.ok') : '—'
@@ -293,14 +299,10 @@ export function DashboardPage() {
                       </CardTitle>
                     </div>
 
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <DashboardMetric
                         label={t('dashboard.counts.characters')}
                         value={currentDashboard.counts.characters_total}
-                      />
-                      <DashboardMetric
-                        label={t('dashboard.counts.covers')}
-                        value={currentDashboard.counts.characters_with_cover}
                       />
                       <DashboardMetric
                         label={t('dashboard.counts.storyResources')}
@@ -372,7 +374,7 @@ export function DashboardPage() {
                               key={roleKey}
                             >
                               <p className="text-xs text-[var(--color-text-muted)]">
-                                {roleLabel(roleKey, t)}
+                                {roleLabels[roleKey]}
                               </p>
                               <p className="mt-2 truncate text-sm font-medium text-[var(--color-text-primary)]">
                                 {apiId || t('dashboard.config.emptyValue')}

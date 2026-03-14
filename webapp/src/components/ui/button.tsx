@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes } from 'react'
 
 import { cn } from '../../lib/cn'
 
-type ButtonVariant = 'primary' | 'secondary' | 'ghost'
+type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
 const variantClasses: Record<ButtonVariant, string> = {
@@ -13,6 +13,8 @@ const variantClasses: Record<ButtonVariant, string> = {
     'border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)] hover:border-[var(--color-accent-copper-soft)] hover:bg-white/10',
   ghost:
     'border border-[var(--color-ghost-border)] bg-[var(--color-ghost-bg)] text-[var(--color-text-secondary)] hover:bg-[var(--color-ghost-bg-hover)] hover:text-[var(--color-text-primary)]',
+  danger:
+    'border border-[var(--color-state-error-line)] bg-[var(--color-state-error)] text-[var(--color-accent-ink)] shadow-[0_16px_42px_color-mix(in_srgb,var(--color-state-error)_38%,transparent)] hover:bg-[color-mix(in_srgb,var(--color-state-error)_92%,black)] hover:text-[var(--color-accent-ink)] active:text-[var(--color-accent-ink)]',
 }
 
 const sizeClasses: Record<ButtonSize, string> = {

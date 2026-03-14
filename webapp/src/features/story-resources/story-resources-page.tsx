@@ -24,6 +24,7 @@ import {
   generateAndSaveStoryPlan,
   listStoryResources,
 } from './api'
+import { CreateStoryResourceDialog } from './create-story-resource-dialog'
 import { DeleteStoryResourceDialog } from './delete-story-resource-dialog'
 import { StoryResourceFormDialog } from './story-resource-form-dialog'
 import type { StoryResource } from './types'
@@ -85,11 +86,11 @@ function StoryResourcesListSkeleton() {
   )
 }
 
-function summarizeStoryConcept(storyConcept: string) {
-  return storyConcept.replace(/\s+/g, ' ').trim()
+function summarizeStoryInput(resource: StoryResource) {
+  return (resource.planned_story?.trim() || resource.story_concept).replace(/\s+/g, ' ').trim()
 }
 
-function countPlannedResources(resources: ReadonlyArray<StoryResource>) {
+function countRefinedInputs(resources: ReadonlyArray<StoryResource>) {
   return resources.filter((resource) => resource.planned_story?.trim().length).length
 }
 
@@ -108,7 +109,7 @@ export function StoryResourcesPage() {
   const [editResourceId, setEditResourceId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StoryResource | null>(null)
 
-  const plannedCount = useMemo(() => countPlannedResources(resources), [resources])
+  const refinedCount = useMemo(() => countRefinedInputs(resources), [resources])
 
   const refreshResources = useCallback(
     async (signal?: AbortSignal) => {
@@ -184,7 +185,7 @@ export function StoryResourcesPage() {
       description: t('storyResources.rail.description'),
       stats: [
         { label: t('storyResources.metrics.total'), value: resources.length },
-        { label: t('storyResources.metrics.planned'), value: plannedCount },
+        { label: t('storyResources.metrics.planned'), value: refinedCount },
       ],
       title: t('storyResources.title'),
     })
@@ -192,24 +193,26 @@ export function StoryResourcesPage() {
     return () => {
       setRailContent(null)
     }
-  }, [plannedCount, resources.length, setRailContent, t])
+  }, [refinedCount, resources.length, setRailContent, t])
 
   async function handleDeleteResource() {
     if (!deleteTarget) {
       return
     }
 
+    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteStoryResource(deleteTarget.resource_id)
+      await deleteStoryResource(target.resource_id)
       setNotice({
-        message: t('storyResources.feedback.deleted', { id: deleteTarget.resource_id }),
+        message: t('storyResources.feedback.deleted', { id: target.resource_id }),
         tone: 'success',
       })
       setDeleteTarget(null)
       await refreshResources()
     } catch (error) {
+      setDeleteTarget(null)
       setNotice({
         message: isRpcConflict(error)
           ? t('storyResources.deleteDialog.conflict')
@@ -243,10 +246,9 @@ export function StoryResourcesPage() {
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
-      <StoryResourceFormDialog
+      <CreateStoryResourceDialog
         availableCharacters={availableCharacters}
         availableSchemas={availableSchemas}
-        mode="create"
         onCompleted={async ({ message, tone }) => {
           setNotice({ message, tone })
           await refreshResources()
@@ -352,7 +354,7 @@ export function StoryResourcesPage() {
                             {resource.resource_id}
                           </h3>
                           <p className="line-clamp-2 text-sm leading-7 text-[var(--color-text-secondary)]">
-                            {summarizeStoryConcept(resource.story_concept)}
+                            {summarizeStoryInput(resource)}
                           </p>
                         </div>
 
@@ -388,10 +390,9 @@ export function StoryResourcesPage() {
                               setEditResourceId(resource.resource_id)
                             }}
                             size="sm"
-                            variant="ghost"
+                            variant="secondary"
                           />
                           <IconButton
-                            className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
                             disabled={isGenerating}
                             icon={<FontAwesomeIcon icon={faTrashCan} />}
                             label={t('storyResources.actions.delete')}
@@ -399,7 +400,7 @@ export function StoryResourcesPage() {
                               setDeleteTarget(resource)
                             }}
                             size="sm"
-                            variant="ghost"
+                            variant="danger"
                           />
                         </div>
                       </div>

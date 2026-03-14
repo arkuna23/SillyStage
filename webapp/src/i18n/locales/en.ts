@@ -25,132 +25,7 @@ const en = {
       system: 'System',
     },
   },
-  nav: {
-    home: 'Home',
-    workspace: 'Workspace',
-  },
-  home: {
-    brand: {
-      tagline: 'A control room for roleplay, stage cues, and live turns.',
-    },
-    landing: {
-      start: 'Open Workspace',
-      subtitle:
-        'SillyStage is a stage-inspired engine for roleplay, designed to organize characters, prompts, and live creative rhythm in one place.',
-      title: 'Give every roleplay scene a stage of its own.',
-    },
-    hero: {
-      badge: 'Act I · Stage-First UI',
-      eyebrow: 'Theater-grade interface',
-      title: 'A bilingual shell, lit like a stage and ready for real scenes.',
-      description:
-        'SillyStage now has a reusable front-end base: theatrical black-gold styling, English and Simplified Chinese UI text, and a first batch of composable components for the scenes ahead.',
-    },
-    highlights: {
-      metrics: {
-        locales: 'Interface languages ready on day one',
-        rpc: 'The contract still points to the current Rust backend',
-        ui: 'The base layer uses local components on lightweight primitives',
-      },
-    },
-    rehearsal: {
-      eyebrow: 'Starter Form',
-      title: 'Block the next scene before the actors walk on.',
-      description:
-        'This rehearsal panel previews the first shared form controls: input, select, textarea, and action buttons under the same visual system.',
-      placeholders: {
-        directorNote: 'Hold the line softly, then pivot into velvet menace.',
-        roleName: 'Reimu Hakurei',
-      },
-      moods: {
-        conflict: 'Conflict',
-        intrigue: 'Intrigue',
-        wonder: 'Wonder',
-      },
-    },
-    principles: {
-      description:
-        'The frontend should stay expressive, but it still needs to map cleanly onto the existing backend boundaries and transport model.',
-      eyebrow: 'Direction Cues',
-      items: {
-        composable: 'Use local UI components on top of Radix primitives so the app can grow without inheriting a rigid template system.',
-        fidelity: 'Keep the frontend faithful to ss-protocol and the bilingual API docs instead of inventing a second wire format.',
-        thinClient: 'Let Rust keep business behavior while the webapp handles presentation, interaction, and orchestrated request flow.',
-      },
-      title: 'Keep the interface close to the stage machinery.',
-    },
-    transport: {
-      description:
-        'The themed shell changes the presentation layer, not the backend contract. These surfaces remain the anchors for future screens.',
-      eyebrow: 'Transport Surfaces',
-      items: {
-        health: {
-          details: [
-            'Use it as a quick stage-light check before trying larger session flows.',
-            'It is a minimal readiness probe that stays decoupled from runtime internals.',
-            'Helpful for smoke tests, local wiring, and deployment verification.',
-          ],
-          summary: 'A lightweight pulse check for local development and operational readiness.',
-          tabLabel: 'Health',
-          title: 'Health Signal',
-        },
-        rpc: {
-          details: [
-            'Use ss-protocol payloads directly instead of inventing a frontend-only request shape.',
-            'Keep command orchestration in the webapp while business operations stay in the Rust handler layer.',
-            'A strong fit for setup flows, CRUD actions, and explicit operator input.',
-          ],
-          summary: 'The main request and response lane for deliberate user actions.',
-          tabLabel: 'RPC',
-          title: 'Request / Response',
-        },
-        stream: {
-          details: [
-            'Consume server-sent events for live narration, planning, and tool execution updates.',
-            'Preserve backend event semantics so the webapp remains a transport-aware presentation layer.',
-            'This is the future home for live turn playback, actor traces, and director timing.',
-          ],
-          summary: 'Progressive runtime output should stay event-driven and visible like stage cues.',
-          tabLabel: 'Streaming',
-          title: 'Streaming Feed',
-        },
-      },
-      title: 'The current backend contract still frames every future scene.',
-    },
-    stageKit: {
-      description:
-        'These are the first reusable building blocks for scenes, settings, and live operator flows. The home page uses them directly instead of hiding them behind one-off markup.',
-      eyebrow: 'Stage Kit',
-      items: {
-        button: {
-          description: 'Primary, secondary, and ghost buttons share one rhythm, focus style, and theatrical accent palette.',
-          title: 'Buttons',
-        },
-        card: {
-          description: 'Cards standardize panel depth, spacing, border treatment, and content grouping.',
-          title: 'Cards',
-        },
-        input: {
-          description: 'Text input and textarea controls inherit one visual language for editing prompts, names, and notes.',
-          title: 'Inputs',
-        },
-        select: {
-          description: 'Select uses Radix under the hood so future filters and editors can stay consistent.',
-          title: 'Select',
-        },
-      },
-      preview: {
-        ghost: 'Ghost',
-        info: 'Info',
-        primary: 'Primary',
-        secondary: 'Secondary',
-        subtle: 'Subtle',
-      },
-      title: 'A small but reusable component base is now in motion.',
-    },
-  },
   workspace: {
-    backHome: 'Back to Home',
     card: {
       description:
         'The workspace stays intentionally compact, but the core product surface is already in place: one shell, bilingual controls, and a steady navigation rhythm.',
@@ -185,6 +60,9 @@ const en = {
         storyResources: {
           label: 'Story Resources',
         },
+        stories: {
+          label: 'Stories',
+        },
       },
       title: 'Workspace Navigation',
     },
@@ -195,7 +73,128 @@ const en = {
       },
       heading: 'Current Panel',
     },
+    headbar: {
+      label: 'Workspace',
+    },
     title: 'A focused workspace for scene-led creative control.',
+  },
+  stage: {
+    actions: {
+      saveConfig: 'Save Config',
+      savingConfig: 'Saving...',
+    },
+    apiPanel: {
+      description:
+        'Choose whether this session inherits the global API assignment or uses a dedicated API lineup for each role.',
+      errors: {
+        apiRequired: '{{role}} needs an API before this config can be saved.',
+        submitFailed: 'Failed to save the session API config.',
+      },
+      fields: {
+        mode: 'Session API Mode',
+      },
+      modeHint:
+        'Use Global follows the current default API assignment. Switch to Session to pick a dedicated API for each agent role in this session.',
+      title: 'Session API',
+      usingGlobal: 'This session is currently following the global default API assignment.',
+    },
+    cast: {
+      active: 'Replying now',
+      empty: 'No active cast is available right now.',
+      section: 'Active Cast',
+    },
+    composer: {
+      placeholder: 'Enter the player move or line to run the next turn...',
+      running: 'Running turn...',
+      send: 'Run Turn',
+    },
+    createSession: {
+      cancel: 'Cancel',
+      configMode: 'Config Mode',
+      create: 'Create Session',
+      creating: 'Creating...',
+      displayName: 'Session Name',
+      emptyApis:
+        'No APIs are available yet, so a custom session config cannot be created.',
+      emptyPlayerProfiles:
+        'No player profiles are available yet. You can still create a blank session.',
+      emptyStories: 'No stories are available yet. Generate one in the workspace first.',
+      playerProfile: 'Player Profile',
+      story: 'Story',
+      title: 'Start Session',
+    },
+    deleteSession: {
+      confirm: 'Delete Session',
+      deleting: 'Deleting...',
+      message: 'Delete this session? This action cannot be undone.',
+      title: 'Delete Session',
+    },
+    empty: {
+      stage: 'Pick a session from the left, or start a new one.',
+    },
+    feedback: {
+      configUpdated: 'Session API config updated.',
+    },
+    headbar: {
+      label: 'Stage',
+    },
+    intro: {
+      empty: 'This story does not have an introduction yet.',
+      section: 'Current Story',
+    },
+    list: {
+      empty: 'No sessions yet.',
+      refresh: 'Refresh Sessions',
+      section: 'Sessions',
+      untitledStory: 'Untitled story',
+    },
+    messages: {
+      action: 'Action',
+      expandThought: 'Reveal thought',
+      narrator: 'Narrator',
+      noMessages: 'This session has no history yet.',
+      player: 'Player',
+      thinking: 'Thought',
+    },
+    notice: {
+      createFailed: 'Failed to create the session.',
+      created: 'Session created.',
+      deleteFailed: 'Failed to delete the session.',
+      deleted: 'Session deleted.',
+      listFailed: 'Failed to load sessions.',
+      playerProfilesFailed: 'Failed to load player profiles.',
+      runFailed: 'Failed to run the turn.',
+      sessionConfigSaved: 'Session API config updated.',
+      sessionLoadFailed: 'Failed to load the session.',
+      storiesFailed: 'Failed to load stories.',
+      updateConfigFailed: 'Failed to save the session API config.',
+    },
+    startDialog: {
+      configModes: {
+        use_global: {
+          description: 'Use the current global default API assignment.',
+          title: 'Use Global',
+        },
+        use_session: {
+          description: 'Pick a dedicated API lineup for this session.',
+          title: 'Use Session',
+        },
+      },
+    },
+    storyNode: {
+      goal: 'Current Goal',
+      nodeId: 'Node ID',
+      scene: 'Current Scene',
+      section: 'Current Beat',
+    },
+    tabs: {
+      api: 'Session API',
+      session: 'Session Panel',
+    },
+    time: {
+      unknown: 'No timestamp',
+    },
+    title: 'Stage',
   },
   dashboard: {
     config: {
@@ -206,7 +205,6 @@ const en = {
     },
     counts: {
       characters: 'Characters',
-      covers: 'With Covers',
       sessions: 'Sessions',
       stories: 'Stories',
       storyResources: 'Story Resources',
@@ -267,6 +265,7 @@ const en = {
         keeper_api_id: 'Keeper',
         narrator_api_id: 'Narrator',
         planner_api_id: 'Planner',
+        replyer_api_id: 'Replyer',
       },
       selectPlaceholder: 'Choose an API',
       title: 'Global Defaults',
@@ -279,16 +278,37 @@ const en = {
     details: {
       apiKey: 'Masked Key',
       title: 'API Details',
+      unset: 'Not set',
     },
     feedback: {
       created: 'API {{id}} created.',
+      defaultConfigSaved: 'Default LLM config updated.',
       defaultsSaved: 'Global defaults updated.',
       deleteFailed: 'Failed to delete the API.',
       deleted: 'API {{id}} deleted.',
       detailsLoadFailed: 'Failed to load API details.',
       loadApisFailed: 'Failed to load APIs.',
       loadConfigFailed: 'Failed to load global defaults.',
+      loadDefaultConfigFailed: 'Failed to load the default LLM config.',
       updated: 'API {{id}} updated.',
+    },
+    defaultConfig: {
+      apiKeyHint: 'Enter the API key again when saving the default config.',
+      description: 'Set the default connection and generation values used when creating new LLM APIs.',
+      effective: 'Effective',
+      empty: 'No default config is available yet.',
+      errors: {
+        apiKeyRequired: 'An API key is required for the default config.',
+        baseUrlRequired: 'Base URL is required for the default config.',
+        maxTokensInvalid: 'Max tokens must be an integer greater than 0.',
+        modelRequired: 'Model is required for the default config.',
+        submitFailed: 'Failed to save the default LLM config.',
+        temperatureInvalid: 'Temperature must be a valid number.',
+      },
+      save: 'Save Default Config',
+      saved: 'Saved Default',
+      saving: 'Saving...',
+      title: 'Default LLM Config',
     },
     form: {
       createTitle: 'New API',
@@ -299,29 +319,37 @@ const en = {
         apiKeyRequired: 'API key is required.',
         baseUrlRequired: 'Base URL is required.',
         loadFailed: 'Failed to load API details.',
+        maxTokensInvalid: 'Max tokens must be an integer greater than 0.',
         modelRequired: 'Model is required.',
         submitFailed: 'Failed to save the API.',
+        temperatureInvalid: 'Temperature must be a valid number.',
       },
       fields: {
         apiId: 'API ID',
         apiKey: 'API Key',
         apiKeyHint: 'Leave this empty to keep the current key.',
         baseUrl: 'Base URL',
+        maxTokens: 'Max Tokens',
         model: 'Model',
         provider: 'Provider',
+        temperature: 'Temperature',
       },
       placeholders: {
         apiId: 'openai-main',
         apiKey: 'sk-...',
         baseUrl: 'https://api.openai.com/v1',
+        maxTokens: '4096',
         model: 'gpt-4.1-mini',
+        temperature: '0.7',
       },
     },
     list: {
       apiKey: 'API Key',
+      defaultsUnset: 'No generation defaults',
       emptyTitle: 'No APIs yet.',
       keyConfigured: 'Configured',
       keyMissing: 'Not configured',
+      maxTokensShort: 'Max',
       model: 'Model',
       title: 'Stored APIs',
     },
@@ -343,6 +371,7 @@ const en = {
       addTag: 'Add Tag',
       cancel: 'Cancel',
       create: 'New Schema',
+      createPreset: 'Create Starter Schemas',
       delete: 'Delete',
       deleting: 'Deleting...',
       edit: 'Edit',
@@ -364,6 +393,10 @@ const en = {
       deleted: '{{name}} deleted.',
       loadFailed: 'Failed to load schemas.',
       loadSchemaFailed: 'Failed to load schema details.',
+      presetsCreateFailed: 'Failed to create starter schemas: {{failed}}.',
+      presetsCreated: 'Created starter schemas: {{names}}.',
+      presetsCreatedPartial:
+        'Starter schemas were partially created. Success: {{created}}; Failed: {{failed}}.',
       updated: '{{name}} updated.',
     },
     form: {
@@ -419,12 +452,62 @@ const en = {
       noTags: 'No tags',
     },
     metrics: {
-      character: 'Character-tagged',
+      actor: 'Actor Templates',
       player: 'Player-tagged',
       total: 'Schema Count',
+      world: 'World-tagged',
+    },
+    presetDialog: {
+      allExisting: 'All three starter schemas already exist.',
+      alreadyExists: 'Already exists',
+      createSelected: 'Create Selected',
+      creating: 'Creating...',
+      description:
+        'Choose the starter RPG schemas you want to create. Selected templates will be created directly as real state schemas.',
+      selectedCount: '{{count}} selected',
+      title: 'Create Starter Schemas',
+    },
+    presets: {
+      actor: {
+        description:
+          'A minimal runtime state preset for actor and character behavior in relationship-driven RPG scenes.',
+        fields: {
+          affinity: 'How close the actor feels toward the player.',
+          goal: 'The actor’s current primary goal.',
+          mood: 'The actor’s current mood.',
+          statusEffects: 'The list of active status effects on the actor.',
+          trust: 'How much the actor trusts the player.',
+        },
+        title: 'RPG Actor Starter',
+      },
+      player: {
+        description:
+          'A basic player-state preset for common RPG values such as HP, MP, gold, and current location.',
+        fields: {
+          currentLocation: 'The player’s current location.',
+          gold: 'How much gold the player currently has.',
+          hp: 'The player’s current HP.',
+          level: 'The player’s current level.',
+          maxHp: 'The player’s maximum HP.',
+          mp: 'The player’s current MP.',
+        },
+        title: 'RPG Player Starter',
+      },
+      world: {
+        description:
+          'A basic world-state preset for reusable RPG context such as region, weather, and current events.',
+        fields: {
+          currentEvent: 'The most important event happening right now.',
+          dangerLevel: 'The current danger level of the area.',
+          region: 'The current primary region or map zone.',
+          timeOfDay: 'The current time of day.',
+          weather: 'The current weather.',
+        },
+        title: 'RPG World Starter',
+      },
     },
     rail: {
-      description: 'Manage reusable state schemas for characters, players, and world-building seeds.',
+      description: 'Manage reusable state schemas for characters, players, and world state setup.',
     },
     title: 'State Schemas',
   },
@@ -433,6 +516,8 @@ const en = {
       cancel: 'Cancel',
       confirmDelete: 'Delete Profile',
       create: 'New Profile',
+      createSample: 'Insert Sample Profile',
+      creatingSample: 'Inserting Sample...',
       delete: 'Delete',
       deleting: 'Deleting...',
       edit: 'Edit',
@@ -454,6 +539,9 @@ const en = {
       deleted: '{{name}} deleted.',
       loadFailed: 'Failed to load player profile details.',
       loadListFailed: 'Failed to load player profiles.',
+      sampleCreated: 'Sample player profile added: {{name}}.',
+      sampleCreateFailed: 'Failed to insert the sample player profile.',
+      sampleExists: 'The sample player profile already exists.',
       updated: '{{name}} updated.',
     },
     form: {
@@ -490,83 +578,309 @@ const en = {
     rail: {
       description: 'Manage reusable player setups that sessions can switch between later.',
     },
+    sampleDialog: {
+      confirm: 'Add Sample Profile',
+      description: 'This adds one sample player profile so you can verify the flow quickly.',
+      existing: 'Exists',
+      new: 'New',
+      title: 'Add Sample Player Profile',
+    },
     title: 'Player Profiles',
   },
   storyResources: {
     actions: {
+      back: 'Back',
       cancel: 'Cancel',
-      confirmDelete: 'Delete Resource',
-      create: 'New Resource',
-      createAndGenerate: 'Create & Generate',
+      confirmDelete: 'Delete Story Resource',
+      create: 'New Story Resource',
+      createAndGenerate: 'Create & Refine',
       delete: 'Delete',
       deleting: 'Deleting...',
       edit: 'Edit',
-      generate: 'Generate Draft',
-      generating: 'Generating...',
+      generate: 'Refine with Planner',
+      generating: 'Refining...',
+      next: 'Next',
       saveChanges: 'Save Changes',
-      saveAndGenerate: 'Save & Generate',
+      saveAndGenerate: 'Save & Refine',
       saving: 'Saving...',
     },
     deleteDialog: {
-      conflict: 'This resource is still referenced by a story and cannot be deleted.',
-      message: 'Delete {{id}}? This action cannot be undone.',
+      conflict: 'This story resource is still referenced by a story and cannot be deleted.',
+      message: 'Delete {{id}}? This story resource cannot be recovered.',
       title: 'Delete Story Resource',
     },
     empty: {
-      description: 'Create one resource bundle first, then let Planner turn it into an editable draft.',
+      description: 'Start with one story resource, then decide whether Planner should refine its story input.',
       title: 'No story resources yet.',
     },
     feedback: {
-      created: 'Resource {{id}} created.',
-      deleteFailed: 'Failed to delete the resource.',
-      deleted: 'Resource {{id}} deleted.',
-      generateFailed: 'Failed to generate the draft.',
-      generated: 'Draft generated for {{id}}.',
+      created: 'Story resource {{id}} created.',
+      deleteFailed: 'Failed to delete the story resource.',
+      deleted: 'Story resource {{id}} deleted.',
+      generateFailed: 'Failed to refine the story input.',
+      generated: 'Story input {{id}} refined.',
       loadFailed: 'Failed to load story resources.',
       loadReferencesFailed: 'Failed to load available characters or schemas.',
-      loadResourceFailed: 'Failed to load the resource details.',
-      savedButGenerateFailed: 'The resource was saved, but draft generation failed.',
-      updated: 'Resource {{id}} updated.',
+      loadResourceFailed: 'Failed to load the story resource details.',
+      savedButGenerateFailed: 'The story resource was saved, but Planner refinement failed.',
+      updated: 'Story resource {{id}} updated.',
     },
     form: {
       createTitle: 'New Story Resource',
+      createTransitionTitle: 'Preparing Story Resource',
       editTitle: 'Edit Story Resource',
       emptyCharacters: 'No characters are available yet. Create or import at least one character first.',
       emptySelection: 'Choose at least one character.',
       errors: {
         charactersRequired: 'Choose at least one character.',
-        storyConceptRequired: 'Story concept is required.',
-        submitFailed: 'Failed to save the resource.',
+        storyConceptRequired: 'Raw story input is required.',
+        submitFailed: 'Failed to save the story input.',
+      },
+      fieldDescriptions: {
+        plannedStory: 'If you let Planner refine the input, the refined version is stored here. Architect prefers this version when it exists.',
+        storyConcept: 'This is the raw story input. Even after Planner refines it, this remains the starting point of the same input chain.',
       },
       fields: {
         characters: 'Characters',
-        plannedStory: 'Draft Script',
-        playerSchemaIdSeed: 'Player Schema Seed',
+        plannedStory: 'Planner Refined Input',
+        playerSchemaIdSeed: 'Player Schema',
         resourceId: 'Resource ID',
         resourceIdHint: 'Resource ID is generated by the backend and stays fixed.',
-        storyConcept: 'Story Concept',
-        worldSchemaIdSeed: 'World Schema Seed',
+        storyConcept: 'Raw Story Input',
+        worldSchemaIdSeed: 'World Schema',
       },
       placeholders: {
-        plannedStory: 'Planner output will be written back here. You can also edit it manually.',
-        schemaSeed: 'Choose an optional schema seed',
-        storyConcept: 'A short prompt about the conflict, cast, and opening stage situation.',
+        plannedStory: 'If Planner refines this input, the refined version will appear here and remain editable.',
+        schemaSeed: 'Choose an optional schema',
+        storyConcept: 'Write the conflict, cast, and opening situation here. Planner will refine this same input instead of creating a different artifact.',
       },
+    },
+    createWizard: {
+      title: 'New Story Resource',
+      descriptions: {
+        concept: 'Start with the raw story input. Planner and Architect both continue from this same input chain.',
+        planner: 'Decide whether to keep only the raw input for now or hand it to Planner for a cleaner editable version.',
+        seeds: 'If you already have player or world schemas, add them here as optional references.',
+      },
+      flowDescription: 'These are not two different resources. They are two stages of the same story input before and after Planner.',
+      headings: {
+        concept: 'Write the raw story input',
+        planner: 'Decide whether Planner should refine it now',
+        seeds: 'Add optional state schemas',
+      },
+      loading: {
+        badge: 'Planner Refining Input',
+        elapsed: 'Elapsed',
+        generating: 'Planner is refining this raw story input with your cast and selected schemas into a more editable version.',
+        preparing: 'The raw story input is being saved first, then handed over to Planner. This can take a moment.',
+        title: 'Refining this story input',
+      },
+      noSchemas: 'No schemas are available yet. You can skip this step for now.',
+      plannerOptions: {
+        generate: {
+          description: 'Create the input and immediately ask Planner to refine it into a more editable version.',
+          title: 'Create and refine with Planner',
+        },
+        skip: {
+          description: 'Save the raw input now and come back later to edit it directly or ask Planner to refine it.',
+          title: 'Save the raw input only',
+        },
+      },
+      seedHints: {
+        player: 'Optional. Use a schema as the starting structure for player state.',
+        world: 'Optional. Use a schema as the starting structure for world state.',
+      },
+      steps: {
+        concept: 'Raw Input',
+        planner: 'Refinement',
+        seeds: 'State Schemas',
+      },
+    },
+    inputFlow: {
+      badge: 'One Architect Input Chain',
+      description: 'Architect ultimately reads one story input chain. Planner only refines that input into a cleaner editable version.',
+      rawDescription: 'Your original conflict, cast dynamics, and opening situation.',
+      rawLabel: 'Raw Story Input',
+      refinedDescription: 'Planner refines the same input into an editable version. Architect prefers this version when it exists.',
+      refinedLabel: 'Planner Refined Input',
     },
     list: {
       charactersCount: '{{count}} characters',
-      notPlanned: 'No Draft',
-      planned: 'Draft Ready',
+      notPlanned: 'Raw Only',
+      planned: 'Refined',
       title: 'Stored Story Resources',
     },
     metrics: {
-      planned: 'Drafts Ready',
+      planned: 'Refined',
       total: 'Resource Count',
     },
     rail: {
-      description: 'Manage the editable resource bundles that Planner and later story generation read from.',
+      description: 'Manage the story resources Architect reads from. Raw input and Planner refinement both live inside the same resource.',
     },
     title: 'Story Resources',
+  },
+  stories: {
+    actions: {
+      cancel: 'Cancel',
+      close: 'Close',
+      create: 'Generate Story',
+      createDraft: 'Start Draft',
+      continueDraft: 'Continue',
+      creating: 'Generating...',
+      delete: 'Delete',
+      deleting: 'Deleting...',
+      edit: 'Edit',
+      finalizeDraft: 'Finalize',
+      save: 'Save',
+      saving: 'Saving...',
+      view: 'View',
+      viewGraph: 'View Graph',
+    },
+    drafts: {
+      deleteDialog: {
+        message: 'Delete draft {{id}}? This draft cannot be recovered.',
+        title: 'Delete Draft',
+      },
+      details: {
+        outlineSections: 'Outline Sections',
+        partialGraph: 'Partial Graph Summary',
+        plannedStory: 'Refined Story Input',
+        sectionSummaries: 'Section Summaries',
+        title: 'Draft Details',
+      },
+      empty: {
+        description: 'Start a draft from story resources, then continue or finalize it here.',
+        title: 'No drafts yet.',
+      },
+      feedback: {
+        continueFailed: 'Failed to continue the draft.',
+        continued: 'Draft progressed to {{current}} / {{total}}.',
+        continuedUnknown: 'Draft generation continued.',
+        deleteFailed: 'Failed to delete the draft.',
+        deleted: 'Draft deleted: {{name}}.',
+        finalizeFailed: 'Failed to finalize the draft.',
+        loadDraftFailed: 'Failed to load draft details.',
+        loadListFailed: 'Failed to load drafts.',
+      },
+      list: {
+        nodes: '{{count}} nodes',
+        progress: 'Progress {{current}} / {{total}}',
+        progressUnknown: 'Continuing generation',
+        resourcePrefix: 'Resource {{id}}',
+        title: 'Story Drafts',
+      },
+      metrics: {
+        ready: 'Ready',
+        total: 'Draft Count',
+      },
+      rail: {
+        description: 'Manage story drafts in progress here, then continue or finalize them.',
+      },
+      status: {
+        building: 'Building',
+        finalized: 'Finalized',
+        ready_to_finalize: 'Ready',
+      },
+    },
+    deleteDialog: {
+      conflict: 'This story is still referenced by a session.',
+      message: 'Delete {{id}}? This story cannot be recovered.',
+      title: 'Delete Story',
+    },
+    details: {
+      graph: 'Graph Summary',
+      nodeCount: '{{count}} nodes',
+      resourcePrefix: 'Resource {{id}}',
+      startNode: 'Start node {{id}}',
+      terminalCount: '{{count}} terminal nodes',
+      title: 'Story Details',
+    },
+    graph: {
+      characters: 'Cast',
+      charactersSummary: '{{names}} and {{count}} total',
+      draftSubtitle: 'This view shows the current partial graph for the draft.',
+      empty: 'There is no graph to show yet.',
+      emptyCharacters: 'No cast linked',
+      finalGraph: 'Final Graph',
+      goal: 'Goal',
+      hint: 'Drag the canvas to pan, or zoom and reset the current view.',
+      partialGraph: 'Draft Partial Graph',
+      reset: 'Reset',
+      scene: 'Scene',
+      start: 'Start',
+      storySubtitle: 'Review the full graph currently stored for this story.',
+      title: 'Story Graph Viewer',
+      zoomIn: 'Zoom In',
+      zoomOut: 'Zoom Out',
+    },
+    empty: {
+      description: 'Start from story resources, finish the draft, then manage final stories here.',
+      title: 'No stories yet.',
+    },
+    feedback: {
+      created: 'Story generated: {{name}}.',
+      deleteFailed: 'Failed to delete the story.',
+      deleted: 'Story deleted: {{name}}.',
+      loadListFailed: 'Failed to load stories.',
+      loadResourcesFailed: 'Failed to load story resources.',
+      loadStoryFailed: 'Failed to load story details.',
+      updated: 'Story updated: {{name}}.',
+    },
+    form: {
+      createTitle: 'Generate Story',
+      editTitle: 'Edit Story',
+      emptyResources: 'No story resources are available yet. Prepare one in Story Resources first, then come back here.',
+      errors: {
+        draftSubmitFailed:
+          'The draft was created, but generation did not complete. Continue it from the Drafts view.',
+        displayNameRequired: 'Display name is required.',
+        resourceRequired: 'Choose a story resource first.',
+        submitFailed: 'Failed to save the story.',
+      },
+      fields: {
+        displayName: 'Display Name',
+        inputPreview: 'Story Input Preview',
+        introduction: 'Introduction',
+        playerSchemaId: 'Player Schema',
+        resourceId: 'Story Resource',
+        storyId: 'Story ID',
+        worldSchemaId: 'World Schema',
+      },
+      openResources: 'Open Story Resources',
+      placeholders: {
+        displayName: 'A story generated from this resource',
+      },
+    },
+    generating: {
+      badge: 'Generating Draft',
+      draftProgress: 'The story draft is advancing through section {{current}} of {{total}}.',
+      draftProgressUnknown: 'The story draft is still advancing. Please wait a moment.',
+      description: 'Architect is shaping the selected story resource into a full story structure and state graph. This can take a moment.',
+      descriptionWithResource: 'Architect is shaping story resource {{id}} into a full story structure and state graph. This can take a moment.',
+      elapsed: 'Elapsed',
+      finalizing: 'Finalizing the current draft into a complete story.',
+      starting: 'Starting the story draft generation flow.',
+      title: 'Generating this story draft',
+    },
+    list: {
+      playerSchemaPrefix: 'Player {{id}}',
+      resourcePrefix: 'Resource {{id}}',
+      title: 'Generated Stories',
+      worldSchemaPrefix: 'World {{id}}',
+    },
+    metrics: {
+      resources: 'Linked Resources',
+      total: 'Story Count',
+    },
+    rail: {
+      description: 'Manage generated stories here, then review, rename, or remove them as needed.',
+    },
+    title: 'Stories',
+    view: {
+      drafts: 'Drafts',
+      label: 'Story View',
+      stories: 'Stories',
+    },
   },
   characters: {
     actions: {
@@ -577,6 +891,8 @@ const en = {
       closeDetails: 'Close',
       clearCover: 'Remove Cover',
       create: 'Create Character',
+      createSamples: 'Insert Sample Cast',
+      creatingSamples: 'Inserting Samples...',
       delete: 'Delete',
       deleteSelected: 'Delete Selected',
       deleting: 'Deleting...',
@@ -594,12 +910,9 @@ const en = {
       addTendency: 'Add Tendency',
       selectAll: 'Select All',
       selectMode: 'Selection Mode',
-      viewDetails: 'View Details',
     },
     card: {
       coverAlt: '{{name}} cover',
-      coverMissing: 'No cover attached yet.',
-      coverPending: 'Cover Pending',
       idLabel: 'Character ID',
       noTendencies: 'No tendencies added yet',
       personality: 'Personality',
@@ -705,6 +1018,7 @@ const en = {
       createdWithCoverWarning:
         '{{name}} was created, but the cover attachment needs another try.',
       deleteFailed: 'Failed to delete the selected characters.',
+      demoSchemaMissing: 'The demo cast requires the actor schema preset.',
       deleted: '{{name}} was deleted.',
       deletedMany: '{{count}} characters were deleted.',
       deletedPartial:
@@ -719,6 +1033,11 @@ const en = {
       loadCharacterFailed: 'Failed to load the character card.',
       loadFailed: 'Failed to load the character library.',
       loadSchemasFailed: 'Failed to load available schemas.',
+      sampleCreateFailed: 'Failed to insert the sample cast.',
+      samplesCreated: 'Sample cast added: {{names}}.',
+      samplesCreatedPartial:
+        'Sample cast partially added. Created: {{created}}. Skipped: {{skipped}}.',
+      samplesExist: 'The sample cast is already in the library.',
       updated: '{{name}} was updated.',
       updatedWithCoverWarning:
         '{{name}} was updated, but the cover replacement needs another try.',
@@ -727,7 +1046,6 @@ const en = {
       description: 'Create, import, and export character cards from one place.',
     },
     metrics: {
-      covered: 'Covers Ready',
       total: 'Characters',
     },
     views: {
@@ -738,6 +1056,14 @@ const en = {
     title: 'Character Management',
     selection: {
       count: '{{count}} selected',
+    },
+    sampleDialog: {
+      confirm: 'Add Sample Cast',
+      description:
+        'This will try to add the sample cast to the library. Existing characters are skipped, and characters without covers are still created.',
+      existing: 'Exists',
+      new: 'New',
+      title: 'Add Sample Cast',
     },
   },
 } as const

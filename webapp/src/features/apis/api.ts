@@ -1,6 +1,7 @@
 import { rpcRequest } from '../../lib/rpc'
 import type {
   AgentApiIdOverrides,
+  DefaultLlmConfigState,
   GlobalConfigResult,
   LlmApi,
   LlmApiDeletedResult,
@@ -31,8 +32,10 @@ export async function createLlmApi(
     api_id: string
     api_key: string
     base_url: string
+    max_tokens?: number
     model: string
     provider: LlmProvider
+    temperature?: number
   },
   signal?: AbortSignal,
 ) {
@@ -44,8 +47,10 @@ export async function updateLlmApi(
     api_id: string
     api_key?: string
     base_url?: string
+    max_tokens?: number
     model?: string
     provider?: LlmProvider
+    temperature?: number
   },
   signal?: AbortSignal,
 ) {
@@ -71,6 +76,32 @@ export async function updateGlobalApiConfig(
   return rpcRequest<{ api_overrides: AgentApiIdOverrides }, GlobalConfigResult>(
     'config.update_global',
     { api_overrides: apiOverrides },
+    { signal },
+  )
+}
+
+export async function getDefaultLlmConfig(signal?: AbortSignal) {
+  return rpcRequest<Record<string, never>, DefaultLlmConfigState>(
+    'default_llm_config.get',
+    {},
+    { signal },
+  )
+}
+
+export async function updateDefaultLlmConfig(
+  params: {
+    api_key: string
+    base_url: string
+    max_tokens?: number
+    model: string
+    provider: LlmProvider
+    temperature?: number
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, DefaultLlmConfigState>(
+    'default_llm_config.update',
+    params,
     { signal },
   )
 }

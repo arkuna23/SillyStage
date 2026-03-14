@@ -39,8 +39,8 @@ function DetailRow({
   )
 }
 
-function providerLabel(api: LlmApi, t: ReturnType<typeof useTranslation>['t']) {
-  return api.provider === 'open_ai' ? t('apis.providers.open_ai') : api.provider
+function providerLabel(api: LlmApi, openAiLabel: string) {
+  return api.provider === 'open_ai' ? openAiLabel : api.provider
 }
 
 export function LlmApiDetailsDialog({
@@ -49,6 +49,7 @@ export function LlmApiDetailsDialog({
   open,
 }: LlmApiDetailsDialogProps) {
   const { t } = useTranslation()
+  const openAiLabel = String(t('apis.providers.open_ai'))
   const [api, setApi] = useState<LlmApi | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const isLoading = open && apiId !== null && api?.api_id !== apiId && errorMessage === null
@@ -103,16 +104,24 @@ export function LlmApiDetailsDialog({
               <DetailRow label={t('apis.form.fields.apiId')} value={api.api_id} />
               <DetailRow
                 label={t('apis.form.fields.provider')}
-                value={providerLabel(api, t)}
+                value={providerLabel(api, openAiLabel)}
               />
               <DetailRow label={t('apis.form.fields.baseUrl')} value={api.base_url} />
               <DetailRow label={t('apis.form.fields.model')} value={api.model} />
               <DetailRow
+                label={t('apis.form.fields.temperature')}
+                value={api.temperature?.toString() ?? String(t('apis.details.unset'))}
+              />
+              <DetailRow
+                label={t('apis.form.fields.maxTokens')}
+                value={api.max_tokens?.toString() ?? String(t('apis.details.unset'))}
+              />
+              <DetailRow
                 label={t('apis.details.apiKey')}
                 value={
                   api.has_api_key
-                    ? (api.api_key_masked ?? t('apis.list.keyConfigured'))
-                    : t('apis.list.keyMissing')
+                    ? (api.api_key_masked ?? String(t('apis.list.keyConfigured')))
+                    : String(t('apis.list.keyMissing'))
                 }
               />
             </div>

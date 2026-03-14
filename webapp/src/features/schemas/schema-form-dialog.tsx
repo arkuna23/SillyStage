@@ -243,7 +243,11 @@ function Field({
 
 function buildFields(
   rows: FieldRow[],
-  t: ReturnType<typeof useTranslation>['t'],
+  messages: {
+    duplicateFieldKey: string
+    fieldKeyRequired: string
+    invalidDefault: Record<'array' | 'bool' | 'float' | 'int' | 'object', string>
+  },
 ): { fields: Record<string, StateFieldSchema> } | { error: string } {
   const fields: Record<string, StateFieldSchema> = {}
   const usedKeys = new Set<string>()
@@ -261,11 +265,11 @@ function buildFields(
     }
 
     if (trimmedKey.length === 0) {
-      return { error: t('schemas.form.errors.fieldKeyRequired') }
+      return { error: messages.fieldKeyRequired }
     }
 
     if (usedKeys.has(trimmedKey)) {
-      return { error: t('schemas.form.errors.duplicateFieldKey') }
+      return { error: messages.duplicateFieldKey }
     }
 
     usedKeys.add(trimmedKey)
@@ -273,18 +277,7 @@ function buildFields(
     const parsedDefaultValue = parseDefaultValue(row.defaultValue, row.valueType)
 
     if ('error' in parsedDefaultValue) {
-      const errorKey =
-        parsedDefaultValue.error === 'bool'
-          ? 'schemas.form.errors.invalidDefault.bool'
-          : parsedDefaultValue.error === 'int'
-            ? 'schemas.form.errors.invalidDefault.int'
-            : parsedDefaultValue.error === 'float'
-              ? 'schemas.form.errors.invalidDefault.float'
-              : parsedDefaultValue.error === 'array'
-                ? 'schemas.form.errors.invalidDefault.array'
-                : 'schemas.form.errors.invalidDefault.object'
-
-      return { error: t(errorKey) }
+      return { error: messages.invalidDefault[parsedDefaultValue.error] }
     }
 
     fields[trimmedKey] = {
@@ -306,6 +299,17 @@ export function SchemaFormDialog({
   schemaId,
 }: SchemaFormDialogProps) {
   const { t } = useTranslation()
+  const fieldErrorMessages = {
+    duplicateFieldKey: String(t('schemas.form.errors.duplicateFieldKey')),
+    fieldKeyRequired: String(t('schemas.form.errors.fieldKeyRequired')),
+    invalidDefault: {
+      array: String(t('schemas.form.errors.invalidDefault.array')),
+      bool: String(t('schemas.form.errors.invalidDefault.bool')),
+      float: String(t('schemas.form.errors.invalidDefault.float')),
+      int: String(t('schemas.form.errors.invalidDefault.int')),
+      object: String(t('schemas.form.errors.invalidDefault.object')),
+    } as const satisfies Record<'array' | 'bool' | 'float' | 'int' | 'object', string>,
+  }
   const fieldIdPrefix = useId()
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [initialSchema, setInitialSchema] = useState<SchemaResource | null>(null)
@@ -387,7 +391,7 @@ export function SchemaFormDialog({
       return t('schemas.form.errors.displayNameRequired')
     }
 
-    const builtFields = buildFields(nextFormState.rows, t)
+    const builtFields = buildFields(nextFormState.rows, fieldErrorMessages)
 
     if ('error' in builtFields) {
       return builtFields.error
@@ -405,7 +409,7 @@ export function SchemaFormDialog({
     }
 
     const nextFormState = normalizeTags(formState)
-    const builtFields = buildFields(nextFormState.rows, t)
+    const builtFields = buildFields(nextFormState.rows, fieldErrorMessages)
 
     if ('error' in builtFields) {
       setSubmitError(builtFields.error)

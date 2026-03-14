@@ -17,12 +17,13 @@ import type { CharacterSummary } from './types'
 type CharacterDetailsDialogProps = {
   coverUrl?: string
   deleting?: boolean
-  onDelete: () => void
-  onEdit: () => void
+  onDelete?: () => void
+  onEdit?: () => void
   exporting: boolean
-  onExport: () => void
+  onExport?: () => void
   onOpenChange: (open: boolean) => void
   open: boolean
+  showActions?: boolean
   summary: CharacterSummary | null
 }
 
@@ -56,6 +57,7 @@ export function CharacterDetailsDialog({
   onExport,
   onOpenChange,
   open,
+  showActions = true,
   summary,
 }: CharacterDetailsDialogProps) {
   const { t } = useTranslation()
@@ -136,24 +138,26 @@ export function CharacterDetailsDialog({
                 </Button>
               </DialogClose>
 
-              <div className="flex flex-wrap items-center justify-end gap-3 sm:ml-auto">
-                <Button onClick={onEdit} size="md" variant="secondary">
-                  {t('characters.actions.edit')}
-                </Button>
+              {showActions ? (
+                <div className="flex flex-wrap items-center justify-end gap-3 sm:ml-auto">
+                  <Button onClick={onEdit} size="md" variant="secondary">
+                    {t('characters.actions.edit')}
+                  </Button>
 
-                <Button disabled={exporting} onClick={onExport} size="md">
-                  {exporting ? t('characters.actions.exporting') : t('characters.actions.export')}
-                </Button>
+                  <Button disabled={exporting} onClick={onExport} size="md">
+                    {exporting ? t('characters.actions.exporting') : t('characters.actions.export')}
+                  </Button>
 
-                <Button
-                  className="border-[var(--color-state-error-line)] bg-[var(--color-state-error)] text-[var(--color-accent-ink)] hover:bg-[color-mix(in_srgb,var(--color-state-error)_90%,black)]"
-                  disabled={deleting}
-                  onClick={onDelete}
-                  size="md"
-                >
-                  {deleting ? t('characters.actions.deleting') : t('characters.actions.delete')}
-                </Button>
-              </div>
+                  <Button
+                    disabled={deleting}
+                    onClick={onDelete}
+                    size="md"
+                    variant="danger"
+                  >
+                    {deleting ? t('characters.actions.deleting') : t('characters.actions.delete')}
+                  </Button>
+                </div>
+              ) : null}
             </DialogFooter>
           </>
         ) : null}

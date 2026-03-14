@@ -55,10 +55,10 @@ export function DeletePlayerProfileDialog({
               </DialogClose>
 
               <Button
-                className="border-[var(--color-state-error-line)] bg-[var(--color-state-error)] text-[var(--color-accent-ink)] hover:bg-[color-mix(in_srgb,var(--color-state-error)_90%,black)]"
                 disabled={deleting}
                 onClick={onConfirm}
                 size="md"
+                variant="danger"
               >
                 {deleting
                   ? t('playerProfiles.actions.deleting')

@@ -1,9 +1,3 @@
-import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
-import { faFileLines } from '@fortawesome/free-solid-svg-icons/faFileLines'
-import { faGaugeHigh } from '@fortawesome/free-solid-svg-icons/faGaugeHigh'
-import { faIdCard } from '@fortawesome/free-solid-svg-icons/faIdCard'
-import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
-import { faUserGroup } from '@fortawesome/free-solid-svg-icons/faUserGroup'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { motion, useReducedMotion } from 'framer-motion'
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -12,6 +6,7 @@ import { useLocation, useOutlet } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
+import { getWorkspaceNavigationItems } from '../../app/workspace-navigation'
 import { WorkspacePanelShell } from './workspace-panel-shell'
 import { WorkspaceRail, WorkspaceRailSkeleton } from '../workspace-rail'
 import { Button } from '../ui/button'
@@ -24,13 +19,61 @@ function shouldShowWorkspaceRail(pathname: string) {
     pathname.startsWith(appPaths.dashboard) ||
     pathname.startsWith(appPaths.characters) ||
     pathname.startsWith(appPaths.storyResources) ||
+    pathname.startsWith(appPaths.stories) ||
     pathname.startsWith(appPaths.apis) ||
     pathname.startsWith(appPaths.schemas) ||
     pathname.startsWith(appPaths.playerProfiles)
   )
 }
 
-function WorkspaceContentFallback() {
+function DashboardContentFallback() {
+  return (
+    <WorkspacePanelShell className="h-full">
+      <Card className="h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+        <div className="border-b border-[var(--color-border-subtle)] px-6 py-5">
+          <div className="h-10 w-52 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+        </div>
+
+        <div className="space-y-8 p-6">
+          <section className="space-y-4">
+            <div className="h-7 w-40 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div
+                  className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4"
+                  key={index}
+                >
+                  <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+                  <div className="mt-4 h-8 w-14 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <div className="border-t border-[var(--color-border-subtle)]" />
+
+          <section className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            {Array.from({ length: 2 }).map((_, index) => (
+              <div
+                className="rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 py-5"
+                key={index}
+              >
+                <div className="h-6 w-32 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+                <div className="mt-4 space-y-3">
+                  {Array.from({ length: index === 0 ? 2 : 6 }).map((__, rowIndex) => (
+                    <div className="h-10 rounded-[1rem] bg-[var(--color-bg-panel)]" key={rowIndex} />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </section>
+        </div>
+      </Card>
+    </WorkspacePanelShell>
+  )
+}
+
+function CharacterContentFallback() {
   return (
     <WorkspacePanelShell className="h-full">
       <Card className="h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
@@ -60,6 +103,58 @@ function WorkspaceContentFallback() {
   )
 }
 
+function ResourceListContentFallback() {
+  return (
+    <WorkspacePanelShell className="h-full">
+      <Card className="h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+        <div className="border-b border-[var(--color-border-subtle)] px-6 py-5">
+          <div className="flex items-center justify-between gap-4">
+            <div className="h-10 w-48 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+            <div className="h-11 w-11 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+          </div>
+        </div>
+
+        <div className="space-y-6 p-6">
+          <div className="h-16 animate-pulse rounded-[1.4rem] bg-[var(--color-bg-elevated)]" />
+          <div className="divide-y divide-[var(--color-border-subtle)]">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div
+                className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)_auto] lg:items-center"
+                key={index}
+              >
+                <div className="space-y-2.5">
+                  <div className="h-5 w-36 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                  <div className="h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                </div>
+                <div className="space-y-2.5">
+                  <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                  <div className="h-3 w-4/5 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <div className="h-9 w-16 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                  <div className="h-9 w-16 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>
+    </WorkspacePanelShell>
+  )
+}
+
+function WorkspaceContentFallback({ pathname }: { pathname: string }) {
+  if (pathname.startsWith(appPaths.dashboard)) {
+    return <DashboardContentFallback />
+  }
+
+  if (pathname.startsWith(appPaths.characters)) {
+    return <CharacterContentFallback />
+  }
+
+  return <ResourceListContentFallback />
+}
+
 const panelEase = [0.16, 1, 0.3, 1] as const
 type WorkspaceStagePhase = 'entering' | 'idle' | 'exiting'
 
@@ -69,6 +164,10 @@ export function WorkspaceLayout() {
   const prefersReducedMotion = useReducedMotion()
   const [openRailPath, setOpenRailPath] = useState<string | null>(null)
   const [railContent, setRailContent] = useState<WorkspaceRailContent | null>(null)
+  const workspaceNavigationItems = useMemo(
+    () => getWorkspaceNavigationItems(t),
+    [t],
+  )
   const [activeWorkspacePath, setActiveWorkspacePath] = useState(
     location.pathname.startsWith(appPaths.workspaceRoot)
       ? location.pathname
@@ -208,38 +307,11 @@ export function WorkspaceLayout() {
       >
         <WorkspaceSidebar
           ariaLabel={t('workspace.sidebar.title')}
-          items={[
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faGaugeHigh} />,
-              label: t('workspace.sidebar.items.dashboard.label'),
-              to: appPaths.dashboard,
-            },
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faPlug} />,
-              label: t('workspace.sidebar.items.apis.label'),
-              to: appPaths.apis,
-            },
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faDiagramProject} />,
-              label: t('workspace.sidebar.items.schemas.label'),
-              to: appPaths.schemas,
-            },
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faIdCard} />,
-              label: t('workspace.sidebar.items.playerProfiles.label'),
-              to: appPaths.playerProfiles,
-            },
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faUserGroup} />,
-              label: t('workspace.sidebar.items.characters.label'),
-              to: appPaths.characters,
-            },
-            {
-              icon: <FontAwesomeIcon fixedWidth icon={faFileLines} />,
-              label: t('workspace.sidebar.items.storyResources.label'),
-              to: appPaths.storyResources,
-            },
-          ]}
+          items={workspaceNavigationItems.map((item) => ({
+            icon: <FontAwesomeIcon fixedWidth icon={item.icon} />,
+            label: item.label,
+            to: item.to,
+          }))}
         />
 
         <div
@@ -304,7 +376,9 @@ export function WorkspaceLayout() {
             ) : null}
 
             <div className="min-h-0 flex-1">
-              <Suspense fallback={<WorkspaceContentFallback />}>{displayedOutlet}</Suspense>
+              <Suspense fallback={<WorkspaceContentFallback pathname={displayedWorkspacePath} />}>
+                {displayedOutlet}
+              </Suspense>
             </div>
           </motion.div>
 

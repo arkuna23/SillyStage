@@ -26,14 +26,18 @@ export function AppShell() {
   const outlet = useOutlet()
   const prefersReducedMotion = useReducedMotion()
   const isWorkspaceRoute = location.pathname.startsWith(appPaths.workspaceRoot)
-  const routeTransitionKey = location.pathname.startsWith(appPaths.workspaceRoot)
+  const isStageRoute = location.pathname.startsWith(appPaths.stageRoot)
+  const isWideShellRoute = isWorkspaceRoute || isStageRoute
+  const routeTransitionKey = isWorkspaceRoute
     ? appPaths.workspaceRoot
+    : isStageRoute
+      ? appPaths.stageRoot
     : location.pathname
 
   return (
     <div
       className={
-        isWorkspaceRoute
+        isWideShellRoute
           ? 'relative h-screen overflow-visible bg-[var(--color-bg-stage)] text-[var(--color-text-primary)]'
           : 'relative h-screen overflow-hidden bg-[var(--color-bg-stage)] text-[var(--color-text-primary)]'
       }
@@ -46,7 +50,7 @@ export function AppShell() {
 
       <div
         className={
-          isWorkspaceRoute
+          isWideShellRoute
             ? 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-visible px-4 pb-8 pt-24 sm:px-5 sm:pt-28 lg:px-6 lg:pt-32'
             : 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-hidden px-4 pb-8 pt-24 sm:px-5 sm:pt-28 lg:px-6 lg:pt-32'
         }
@@ -55,7 +59,7 @@ export function AppShell() {
           <motion.div
             animate={{ opacity: 1 }}
             className={
-              isWorkspaceRoute
+              isWideShellRoute
                 ? 'flex h-full min-h-0 flex-1 overflow-visible'
                 : 'flex h-full min-h-0 flex-1 overflow-hidden'
             }
@@ -74,7 +78,7 @@ export function AppShell() {
           >
             <div
               className={
-                isWorkspaceRoute
+                isWideShellRoute
                   ? 'flex h-full min-h-0 w-full flex-1 overflow-visible'
                   : 'flex h-full min-h-0 w-full flex-1 overflow-hidden'
               }

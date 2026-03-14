@@ -1,7 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router-dom'
 
 import { appPaths } from '../../app/paths'
 import { Button } from '../../components/ui/button'
@@ -14,6 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
@@ -187,8 +187,10 @@ function LoadingSkeleton() {
 }
 
 function SchemaSelectionEmptyState({
+  onClose,
   onNavigate,
 }: {
+  onClose: () => void
   onNavigate: () => void
 }) {
   const { t } = useTranslation()
@@ -202,9 +204,16 @@ function SchemaSelectionEmptyState({
         {t('characters.create.schemaEmpty.description')}
       </p>
       <div className="mt-5 flex justify-center">
-        <Button asChild onClick={onNavigate} variant="secondary">
-          <Link to={appPaths.schemas}>{t('characters.create.schemaEmpty.action')}</Link>
-        </Button>
+        <DialogRouteButton
+          onRequestClose={() => {
+            onNavigate()
+            onClose()
+          }}
+          to={appPaths.schemas}
+          variant="secondary"
+        >
+          {t('characters.create.schemaEmpty.action')}
+        </DialogRouteButton>
       </div>
     </div>
   )
@@ -823,8 +832,11 @@ export function CharacterFormDialog({
                         />
                       ) : (
                         <SchemaSelectionEmptyState
-                          onNavigate={() => {
+                          onClose={() => {
                             onOpenChange(false)
+                          }}
+                          onNavigate={() => {
+                            setSubmitError(null)
                           }}
                         />
                       )}

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
 import { Button } from '../../components/ui/button'
+import { Input } from '../../components/ui/input'
 import { IconButton } from '../../components/ui/icon-button'
 import {
   Dialog,
@@ -24,19 +25,39 @@ import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
 import {
   deleteLlmApi,
+  getDefaultLlmConfig,
   getGlobalApiConfig,
   listLlmApis,
+  updateDefaultLlmConfig,
   updateGlobalApiConfig,
 } from './api'
 import { LlmApiDetailsDialog } from './llm-api-details-dialog'
 import { LlmApiFormDialog } from './llm-api-form-dialog'
-import { agentApiRoleKeys, type AgentApiIds, type AgentApiRoleKey, type LlmApi } from './types'
+import {
+  agentApiRoleKeys,
+  llmProviders,
+  type AgentApiIds,
+  type AgentApiRoleKey,
+  type DefaultLlmConfigPayload,
+  type DefaultLlmConfigState,
+  type LlmApi,
+  type LlmProvider,
+} from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 
 type Notice = {
   message: string
   tone: NoticeTone
+}
+
+type DefaultConfigFormState = {
+  apiKey: string
+  baseUrl: string
+  maxTokens: string
+  model: string
+  provider: LlmProvider
+  temperature: string
 }
 
 const roleOrder = [
@@ -46,6 +67,7 @@ const roleOrder = [
   'actor_api_id',
   'narrator_api_id',
   'keeper_api_id',
+  'replyer_api_id',
 ] as const satisfies ReadonlyArray<AgentApiRoleKey>
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -60,39 +82,58 @@ function countAssignedRoles(apiIds: AgentApiIds | null) {
   return roleOrder.reduce((count, roleKey) => count + (apiIds[roleKey].trim() ? 1 : 0), 0)
 }
 
-function providerLabel(
-  provider: LlmApi['provider'],
-  t: ReturnType<typeof useTranslation>['t'],
-) {
-  return provider === 'open_ai' ? t('apis.providers.open_ai') : provider
+function providerLabel(provider: LlmApi['provider'], openAiLabel: string) {
+  return provider === 'open_ai' ? openAiLabel : provider
 }
 
-function roleLabel(
-  roleKey: AgentApiRoleKey,
-  t: ReturnType<typeof useTranslation>['t'],
-) {
-  switch (roleKey) {
-    case 'planner_api_id':
-      return t('apis.assignments.roles.planner_api_id')
-    case 'architect_api_id':
-      return t('apis.assignments.roles.architect_api_id')
-    case 'director_api_id':
-      return t('apis.assignments.roles.director_api_id')
-    case 'actor_api_id':
-      return t('apis.assignments.roles.actor_api_id')
-    case 'narrator_api_id':
-      return t('apis.assignments.roles.narrator_api_id')
-    case 'keeper_api_id':
-      return t('apis.assignments.roles.keeper_api_id')
+function createDefaultConfigFormState(config: DefaultLlmConfigState | null): DefaultConfigFormState {
+  const source = config?.saved ?? config?.effective
+
+  return {
+    apiKey: '',
+    baseUrl: source?.base_url ?? '',
+    maxTokens: source?.max_tokens?.toString() ?? '',
+    model: source?.model ?? '',
+    provider: source?.provider ?? llmProviders[0],
+    temperature: source?.temperature?.toString() ?? '',
   }
 }
 
-function keyLabel(api: LlmApi, t: ReturnType<typeof useTranslation>['t']) {
+function roleLabel(roleKey: AgentApiRoleKey, roleLabels: Record<AgentApiRoleKey, string>) {
+  return roleLabels[roleKey]
+}
+
+function keyLabel(api: LlmApi, keyMissingLabel: string, keyConfiguredLabel: string) {
   if (!api.has_api_key) {
-    return t('apis.list.keyMissing')
+    return keyMissingLabel
   }
 
-  return api.api_key_masked ?? t('apis.list.keyConfigured')
+  return api.api_key_masked ?? keyConfiguredLabel
+}
+
+function maskedKeyLabel(
+  payload: DefaultLlmConfigPayload | null | undefined,
+  keyMissingLabel: string,
+  keyConfiguredLabel: string,
+) {
+  if (!payload?.has_api_key) {
+    return keyMissingLabel
+  }
+
+  return payload.api_key_masked ?? keyConfiguredLabel
+}
+
+function generationDefaultsLabel(api: LlmApi, maxTokensShortLabel: string, defaultsUnsetLabel: string) {
+  const parts = [
+    api.temperature !== undefined && api.temperature !== null
+      ? `T ${api.temperature}`
+      : null,
+    api.max_tokens !== undefined && api.max_tokens !== null
+      ? `${maxTokensShortLabel} ${api.max_tokens}`
+      : null,
+  ].filter((value): value is string => Boolean(value))
+
+  return parts.length > 0 ? parts.join(' · ') : defaultsUnsetLabel
 }
 
 function StatusNotice({ notice }: { notice: Notice }) {
@@ -162,6 +203,79 @@ function ApiListSkeleton() {
   )
 }
 
+function DefaultConfigSkeleton() {
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, index) => (
+          <div
+            className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4"
+            key={index}
+          >
+            <div className="space-y-3">
+              <div className="h-4 w-24 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+              <div className="h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+              <div className="h-3 w-4/5 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+              <div className="h-3 w-2/3 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div className="space-y-2.5" key={index}>
+            <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+            <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-elevated)]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function DefaultConfigSummaryCard({
+  apiKeyLabel,
+  emptyLabel,
+  generationDefaults,
+  openAiLabel,
+  payload,
+  title,
+}: {
+  apiKeyLabel: string
+  emptyLabel: string
+  generationDefaults: string
+  openAiLabel: string
+  payload?: DefaultLlmConfigPayload | null
+  title: string
+}) {
+  return (
+    <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium text-[var(--color-text-primary)]">{title}</p>
+          {payload ? (
+            <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+              {providerLabel(payload.provider, openAiLabel)}
+            </p>
+          ) : (
+            <p className="text-sm leading-6 text-[var(--color-text-secondary)]">{emptyLabel}</p>
+          )}
+        </div>
+
+        {payload ? (
+          <div className="space-y-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+            <p className="break-all text-[var(--color-text-primary)]">{payload.base_url}</p>
+            <p>{payload.model}</p>
+            <p>{generationDefaults}</p>
+            <p>{apiKeyLabel}</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
 function DeleteApiDialog({
   api,
   deleting,
@@ -203,9 +317,9 @@ function DeleteApiDialog({
           </DialogClose>
 
           <Button
-            className="border-[var(--color-state-error-line)] bg-[var(--color-state-error)] text-[var(--color-accent-ink)] hover:bg-[color-mix(in_srgb,var(--color-state-error)_90%,black)]"
             disabled={deleting}
             onClick={onConfirm}
+            variant="danger"
           >
             {deleting ? t('apis.actions.deleting') : t('apis.actions.confirmDelete')}
           </Button>
@@ -218,13 +332,37 @@ function DeleteApiDialog({
 export function ApiManagementPage() {
   const { t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
+  const openAiLabel = String(t('apis.providers.open_ai'))
+  const roleLabels: Record<AgentApiRoleKey, string> = {
+    actor_api_id: String(t('apis.assignments.roles.actor_api_id')),
+    architect_api_id: String(t('apis.assignments.roles.architect_api_id')),
+    director_api_id: String(t('apis.assignments.roles.director_api_id')),
+    keeper_api_id: String(t('apis.assignments.roles.keeper_api_id')),
+    narrator_api_id: String(t('apis.assignments.roles.narrator_api_id')),
+    planner_api_id: String(t('apis.assignments.roles.planner_api_id')),
+    replyer_api_id: String(t('apis.assignments.roles.replyer_api_id')),
+  }
+  const keyMissingLabel = String(t('apis.list.keyMissing'))
+  const keyConfiguredLabel = String(t('apis.list.keyConfigured'))
+  const maxTokensShortLabel = String(t('apis.list.maxTokensShort'))
+  const defaultsUnsetLabel = String(t('apis.list.defaultsUnset'))
+  const defaultConfigEffectiveLabel = String(t('apis.defaultConfig.effective'))
+  const defaultConfigSavedLabel = String(t('apis.defaultConfig.saved'))
+  const defaultConfigEmptyLabel = String(t('apis.defaultConfig.empty'))
   const [apis, setApis] = useState<LlmApi[]>([])
   const [assignments, setAssignments] = useState<AgentApiIds | null>(null)
   const [draftAssignments, setDraftAssignments] = useState<AgentApiIds | null>(null)
+  const [defaultConfigState, setDefaultConfigState] = useState<DefaultLlmConfigState | null>(null)
+  const [defaultConfigDraft, setDefaultConfigDraft] = useState<DefaultConfigFormState>(() =>
+    createDefaultConfigFormState(null),
+  )
   const [isAssignmentsLoading, setIsAssignmentsLoading] = useState(true)
+  const [isDefaultConfigLoading, setIsDefaultConfigLoading] = useState(true)
   const [isListLoading, setIsListLoading] = useState(true)
   const [isSavingAssignments, setIsSavingAssignments] = useState(false)
+  const [isSavingDefaultConfig, setIsSavingDefaultConfig] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [defaultConfigError, setDefaultConfigError] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   const [detailsApiId, setDetailsApiId] = useState<string | null>(null)
   const [editApiId, setEditApiId] = useState<string | null>(null)
@@ -234,6 +372,10 @@ export function ApiManagementPage() {
   const apiOptions = apis.map((api) => ({
     label: api.api_id,
     value: api.api_id,
+  }))
+  const providerOptions = llmProviders.map((provider) => ({
+    label: provider === 'open_ai' ? openAiLabel : provider,
+    value: provider,
   }))
 
   const assignmentsDirty =
@@ -294,18 +436,44 @@ export function ApiManagementPage() {
     [t],
   )
 
+  const refreshDefaultConfig = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsDefaultConfigLoading(true)
+
+      try {
+        const nextConfig = await getDefaultLlmConfig(signal)
+
+        if (!signal?.aborted) {
+          setDefaultConfigState(nextConfig)
+          setDefaultConfigDraft(createDefaultConfigFormState(nextConfig))
+          setDefaultConfigError(null)
+        }
+      } catch (error) {
+        if (!signal?.aborted) {
+          setDefaultConfigError(getErrorMessage(error, t('apis.feedback.loadDefaultConfigFailed')))
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsDefaultConfigLoading(false)
+        }
+      }
+    },
+    [t],
+  )
+
   useEffect(() => {
     const controller = new AbortController()
 
     void Promise.allSettled([
       refreshApis(controller.signal),
       refreshAssignments(controller.signal),
+      refreshDefaultConfig(controller.signal),
     ])
 
     return () => {
       controller.abort()
     }
-  }, [refreshApis, refreshAssignments])
+  }, [refreshApis, refreshAssignments, refreshDefaultConfig])
 
   useLayoutEffect(() => {
     setRailContent({
@@ -362,24 +530,87 @@ export function ApiManagementPage() {
     }
   }
 
+  async function handleSaveDefaultConfig() {
+    const nextBaseUrl = defaultConfigDraft.baseUrl.trim()
+    const nextModel = defaultConfigDraft.model.trim()
+    const nextApiKey = defaultConfigDraft.apiKey.trim()
+    const nextTemperature = defaultConfigDraft.temperature.trim()
+    const nextMaxTokens = defaultConfigDraft.maxTokens.trim()
+
+    if (nextBaseUrl.length === 0) {
+      setDefaultConfigError(t('apis.defaultConfig.errors.baseUrlRequired'))
+      return
+    }
+
+    if (nextModel.length === 0) {
+      setDefaultConfigError(t('apis.defaultConfig.errors.modelRequired'))
+      return
+    }
+
+    if (nextApiKey.length === 0) {
+      setDefaultConfigError(t('apis.defaultConfig.errors.apiKeyRequired'))
+      return
+    }
+
+    if (nextTemperature.length > 0 && Number.isNaN(Number(nextTemperature))) {
+      setDefaultConfigError(t('apis.defaultConfig.errors.temperatureInvalid'))
+      return
+    }
+
+    if (
+      nextMaxTokens.length > 0 &&
+      (!Number.isInteger(Number(nextMaxTokens)) || Number(nextMaxTokens) < 1)
+    ) {
+      setDefaultConfigError(t('apis.defaultConfig.errors.maxTokensInvalid'))
+      return
+    }
+
+    setIsSavingDefaultConfig(true)
+    setDefaultConfigError(null)
+
+    try {
+      const updatedConfig = await updateDefaultLlmConfig({
+        api_key: nextApiKey,
+        base_url: nextBaseUrl,
+        ...(nextMaxTokens.length > 0 ? { max_tokens: Number(nextMaxTokens) } : {}),
+        model: nextModel,
+        provider: defaultConfigDraft.provider,
+        ...(nextTemperature.length > 0 ? { temperature: Number(nextTemperature) } : {}),
+      })
+
+      setDefaultConfigState(updatedConfig)
+      setDefaultConfigDraft(createDefaultConfigFormState(updatedConfig))
+      setNotice({
+        message: t('apis.feedback.defaultConfigSaved'),
+        tone: 'success',
+      })
+    } catch (error) {
+      setDefaultConfigError(getErrorMessage(error, t('apis.defaultConfig.errors.submitFailed')))
+    } finally {
+      setIsSavingDefaultConfig(false)
+    }
+  }
+
   async function handleDelete() {
     if (!deleteTarget) {
       return
     }
 
+    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteLlmApi(deleteTarget.api_id)
+      await deleteLlmApi(target.api_id)
       setDeleteTarget(null)
-      setDetailsApiId((current) => (current === deleteTarget.api_id ? null : current))
-      setEditApiId((current) => (current === deleteTarget.api_id ? null : current))
+      setDetailsApiId((current) => (current === target.api_id ? null : current))
+      setEditApiId((current) => (current === target.api_id ? null : current))
       setNotice({
-        message: t('apis.feedback.deleted', { id: deleteTarget.api_id }),
+        message: t('apis.feedback.deleted', { id: target.api_id }),
         tone: 'success',
       })
       await refreshApis()
     } catch (error) {
+      setDeleteTarget(null)
       setNotice({
         message: isRpcConflict(error)
           ? t('apis.deleteDialog.conflict')
@@ -493,7 +724,7 @@ export function ApiManagementPage() {
                   {roleOrder.map((roleKey) => (
                     <div className="space-y-2.5" key={roleKey}>
                       <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                        {roleLabel(roleKey, t)}
+                        {roleLabel(roleKey, roleLabels)}
                       </p>
                       <Select
                         disabled={isSavingAssignments || draftAssignments === null}
@@ -513,6 +744,197 @@ export function ApiManagementPage() {
                       />
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+
+            <div className="border-t border-[var(--color-border-subtle)]" />
+
+            <section className="space-y-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div className="space-y-2">
+                  <CardTitle className="text-[1.85rem]">{t('apis.defaultConfig.title')}</CardTitle>
+                  <CardDescription>{t('apis.defaultConfig.description')}</CardDescription>
+                </div>
+
+                <Button
+                  disabled={isSavingDefaultConfig}
+                  onClick={() => void handleSaveDefaultConfig()}
+                  size="sm"
+                >
+                  {isSavingDefaultConfig
+                    ? t('apis.defaultConfig.saving')
+                    : t('apis.defaultConfig.save')}
+                </Button>
+              </div>
+
+              {defaultConfigError ? (
+                <StatusNotice notice={{ message: defaultConfigError, tone: 'error' }} />
+              ) : null}
+
+              {isDefaultConfigLoading ? (
+                <DefaultConfigSkeleton />
+              ) : (
+                <div className="space-y-5">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <DefaultConfigSummaryCard
+                      apiKeyLabel={maskedKeyLabel(
+                        defaultConfigState?.effective,
+                        keyMissingLabel,
+                        keyConfiguredLabel,
+                      )}
+                      emptyLabel={defaultConfigEmptyLabel}
+                      generationDefaults={generationDefaultsLabel(
+                        {
+                          api_id: '__effective__',
+                          base_url: defaultConfigState?.effective?.base_url ?? '',
+                          has_api_key: defaultConfigState?.effective?.has_api_key ?? false,
+                          max_tokens: defaultConfigState?.effective?.max_tokens ?? null,
+                          model: defaultConfigState?.effective?.model ?? '',
+                          provider: defaultConfigState?.effective?.provider ?? llmProviders[0],
+                          temperature: defaultConfigState?.effective?.temperature ?? null,
+                          type: 'llm_api',
+                        },
+                        maxTokensShortLabel,
+                        defaultsUnsetLabel,
+                      )}
+                      openAiLabel={openAiLabel}
+                      payload={defaultConfigState?.effective}
+                      title={defaultConfigEffectiveLabel}
+                    />
+
+                    <DefaultConfigSummaryCard
+                      apiKeyLabel={maskedKeyLabel(
+                        defaultConfigState?.saved,
+                        keyMissingLabel,
+                        keyConfiguredLabel,
+                      )}
+                      emptyLabel={defaultConfigEmptyLabel}
+                      generationDefaults={generationDefaultsLabel(
+                        {
+                          api_id: '__saved__',
+                          base_url: defaultConfigState?.saved?.base_url ?? '',
+                          has_api_key: defaultConfigState?.saved?.has_api_key ?? false,
+                          max_tokens: defaultConfigState?.saved?.max_tokens ?? null,
+                          model: defaultConfigState?.saved?.model ?? '',
+                          provider: defaultConfigState?.saved?.provider ?? llmProviders[0],
+                          temperature: defaultConfigState?.saved?.temperature ?? null,
+                          type: 'llm_api',
+                        },
+                        maxTokensShortLabel,
+                        defaultsUnsetLabel,
+                      )}
+                      openAiLabel={openAiLabel}
+                      payload={defaultConfigState?.saved}
+                      title={defaultConfigSavedLabel}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="space-y-2.5">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.provider')}
+                      </p>
+                      <Select
+                        items={providerOptions}
+                        onValueChange={(value) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            provider: value as LlmProvider,
+                          }))
+                        }}
+                        textAlign="start"
+                        value={defaultConfigDraft.provider}
+                      />
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.model')}
+                      </p>
+                      <Input
+                        onChange={(event) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            model: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('apis.form.placeholders.model')}
+                        value={defaultConfigDraft.model}
+                      />
+                    </div>
+
+                    <div className="space-y-2.5 md:col-span-2">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.baseUrl')}
+                      </p>
+                      <Input
+                        onChange={(event) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            baseUrl: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('apis.form.placeholders.baseUrl')}
+                        value={defaultConfigDraft.baseUrl}
+                      />
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.temperature')}
+                      </p>
+                      <Input
+                        inputMode="decimal"
+                        onChange={(event) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            temperature: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('apis.form.placeholders.temperature')}
+                        value={defaultConfigDraft.temperature}
+                      />
+                    </div>
+
+                    <div className="space-y-2.5">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.maxTokens')}
+                      </p>
+                      <Input
+                        inputMode="numeric"
+                        onChange={(event) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            maxTokens: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('apis.form.placeholders.maxTokens')}
+                        value={defaultConfigDraft.maxTokens}
+                      />
+                    </div>
+
+                    <div className="space-y-2.5 md:col-span-2">
+                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('apis.form.fields.apiKey')}
+                      </p>
+                      <Input
+                        autoComplete="off"
+                        onChange={(event) => {
+                          setDefaultConfigDraft((current) => ({
+                            ...current,
+                            apiKey: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('apis.form.placeholders.apiKey')}
+                        type="password"
+                        value={defaultConfigDraft.apiKey}
+                      />
+                      <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                        {t('apis.defaultConfig.apiKeyHint')}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </section>
@@ -553,7 +975,7 @@ export function ApiManagementPage() {
                             {api.api_id}
                           </h3>
                           <Badge className="uppercase" variant="subtle">
-                            {providerLabel(api.provider, t)}
+                            {providerLabel(api.provider, openAiLabel)}
                           </Badge>
                         </div>
 
@@ -569,6 +991,13 @@ export function ApiManagementPage() {
                         <p className="truncate text-sm text-[var(--color-text-primary)]">
                           {api.model}
                         </p>
+                        <p className="truncate text-xs text-[var(--color-text-muted)]">
+                          {generationDefaultsLabel(
+                            api,
+                            maxTokensShortLabel,
+                            defaultsUnsetLabel,
+                          )}
+                        </p>
                       </div>
 
                       <div className="min-w-0 space-y-1.5">
@@ -576,13 +1005,12 @@ export function ApiManagementPage() {
                           {t('apis.list.apiKey')}
                         </p>
                         <p className="truncate text-sm text-[var(--color-text-primary)]">
-                          {keyLabel(api, t)}
+                          {keyLabel(api, keyMissingLabel, keyConfiguredLabel)}
                         </p>
                       </div>
 
                       <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
                         <Button
-                          className="text-[var(--color-text-primary)]"
                           onClick={() => {
                             setDetailsApiId(api.api_id)
                           }}
@@ -592,22 +1020,20 @@ export function ApiManagementPage() {
                           {t('apis.actions.view')}
                         </Button>
                         <Button
-                          className="border-[var(--color-accent-copper-soft)] bg-[color-mix(in_srgb,var(--color-accent-copper-soft)_78%,var(--color-bg-panel-strong))] text-[var(--color-accent-copper)] hover:bg-[color-mix(in_srgb,var(--color-accent-copper-soft)_100%,var(--color-bg-panel-strong))] hover:text-[var(--color-text-primary)]"
                           onClick={() => {
                             setEditApiId(api.api_id)
                           }}
                           size="sm"
-                          variant="ghost"
+                          variant="secondary"
                         >
                           {t('apis.actions.edit')}
                         </Button>
                         <Button
-                          className="border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-state-error)] hover:bg-[color-mix(in_srgb,var(--color-state-error-soft)_100%,var(--color-bg-panel-strong))] hover:text-[var(--color-text-primary)]"
                           onClick={() => {
                             setDeleteTarget(api)
                           }}
                           size="sm"
-                          variant="ghost"
+                          variant="danger"
                         >
                           {t('apis.actions.delete')}
                         </Button>

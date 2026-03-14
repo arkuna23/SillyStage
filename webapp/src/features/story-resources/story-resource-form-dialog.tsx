@@ -387,6 +387,7 @@ export function StoryResourceFormDialog({
               ) : null}
 
               <Field
+                description={t('storyResources.form.fieldDescriptions.storyConcept')}
                 htmlFor={fieldIds.storyConcept}
                 label={t('storyResources.form.fields.storyConcept')}
               >
@@ -501,6 +502,7 @@ export function StoryResourceFormDialog({
               </div>
 
               <Field
+                description={t('storyResources.form.fieldDescriptions.plannedStory')}
                 htmlFor={fieldIds.plannedStory}
                 label={t('storyResources.form.fields.plannedStory')}
               >

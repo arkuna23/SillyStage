@@ -7,6 +7,7 @@ export const agentApiRoleKeys = [
   'actor_api_id',
   'narrator_api_id',
   'keeper_api_id',
+  'replyer_api_id',
 ] as const
 
 export type LlmProvider = (typeof llmProviders)[number]
@@ -20,8 +21,10 @@ export type LlmApi = {
   api_key_masked?: string | null
   base_url: string
   has_api_key: boolean
+  max_tokens?: number | null
   model: string
   provider: LlmProvider
+  temperature?: number | null
   type: 'llm_api'
 }
 
@@ -33,6 +36,22 @@ export type LlmApisListedResult = {
 export type LlmApiDeletedResult = {
   api_id: string
   type: 'llm_api_deleted'
+}
+
+export type DefaultLlmConfigPayload = {
+  api_key_masked?: string | null
+  base_url: string
+  has_api_key: boolean
+  max_tokens?: number | null
+  model: string
+  provider: LlmProvider
+  temperature?: number | null
+}
+
+export type DefaultLlmConfigState = {
+  effective?: DefaultLlmConfigPayload | null
+  saved?: DefaultLlmConfigPayload | null
+  type: 'default_llm_config'
 }
 
 export type GlobalConfigResult = {

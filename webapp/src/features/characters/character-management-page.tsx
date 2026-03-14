@@ -7,6 +7,7 @@ import { faSquareCheck } from "@fortawesome/free-solid-svg-icons/faSquareCheck";
 import { faTableCellsLarge } from "@fortawesome/free-solid-svg-icons/faTableCellsLarge";
 import { faTrashCan } from "@fortawesome/free-solid-svg-icons/faTrashCan";
 import { faUpload } from "@fortawesome/free-solid-svg-icons/faUpload";
+import { faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons/faWandMagicSparkles";
 import { faXmark } from "@fortawesome/free-solid-svg-icons/faXmark";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -18,6 +19,7 @@ import { IconButton } from "../../components/ui/icon-button";
 import { WorkspacePanelShell } from "../../components/layout/workspace-panel-shell";
 import { useWorkspaceLayoutContext } from "../../components/layout/workspace-context";
 import { Badge } from "../../components/ui/badge";
+import { InsertSampleDialog } from "../demo-content/insert-sample-dialog";
 import {
 	Card,
 	CardContent,
@@ -28,7 +30,11 @@ import {
 import { SectionHeader } from "../../components/ui/section-header";
 import { cn } from "../../lib/cn";
 import { isRpcConflict } from "../../lib/rpc";
+import { demoCharacterDefinitions, loadDemoCoverFile } from "../demo-content/konosuba-sample-data";
+import { createSchema, listSchemas } from "../schemas/api";
+import { buildSchemaPresetDefinitions } from "../schemas/schema-presets";
 import {
+	createCharacter,
 	createCoverDataUrl,
 	deleteCharacter,
 	downloadCharacterArchive,
@@ -36,6 +42,7 @@ import {
 	hasCharacterCardExtension,
 	importCharacterArchive,
 	listCharacters,
+	setCharacterCover,
 } from "./api";
 import { CharacterFormDialog } from "./create-character-dialog";
 import { DeleteCharacterDialog } from "./delete-character-dialog";
@@ -250,15 +257,14 @@ function CharacterQuickActions({
 				label={t("characters.actions.edit")}
 				onClick={onEdit}
 				size="sm"
-				variant="ghost"
+				variant="secondary"
 			/>
 			<IconButton
-				className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
 				icon={<FontAwesomeIcon icon={faTrashCan} />}
 				label={t("characters.actions.delete")}
 				onClick={onDelete}
 				size="sm"
-				variant="ghost"
+				variant="danger"
 			/>
 		</div>
 	);
@@ -348,35 +354,27 @@ function CharacterCard({
 	const personalitySummary = truncateSummaryText(summary.personality, 72);
 
 	return (
-		<Card className="relative h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
-			<div className="absolute right-3 top-3 z-10">
-				{selectionMode ? (
-					<SelectionIndicator selected={selected} />
-				) : (
-					<CharacterQuickActions onDelete={onDelete} onEdit={onEdit} />
-				)}
-			</div>
-
+		<Card className="flex h-full flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
 			<button
 				aria-pressed={selectionMode ? selected : undefined}
-				className="group flex h-full w-full flex-col text-left"
+				className="group flex w-full flex-1 flex-col text-left"
 				onClick={selectionMode ? onToggleSelect : onOpenDetails}
 				type="button"
 			>
 				<CharacterArtwork coverUrl={coverUrl} mode="card" name={summary.name} />
 
-				<CardHeader className="gap-2 p-4 pb-2">
-					<div className="space-y-1">
+				<CardHeader className="gap-1 p-4 pb-2">
+					<div className="space-y-0.5">
 						<CardTitle className="text-[1.48rem] leading-tight">
 							{summary.name}
 						</CardTitle>
-						<CardDescription className="truncate font-mono text-[0.76rem] leading-5 text-[var(--color-text-muted)]">
+						<CardDescription className="truncate font-mono text-[0.76rem] leading-[1.125rem] text-[var(--color-text-muted)]">
 							{summary.character_id}
 						</CardDescription>
 					</div>
 				</CardHeader>
 
-				<CardContent className="px-4 pb-4 pt-0">
+				<CardContent className="flex-1 px-4 pb-3 pt-0">
 					<p
 						className="text-sm leading-6 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
 						style={CARD_EXCERPT_STYLE}
@@ -385,6 +383,14 @@ function CharacterCard({
 					</p>
 				</CardContent>
 			</button>
+
+			<div className="flex items-center justify-end px-4 pb-4 pt-0">
+				{selectionMode ? (
+					<SelectionIndicator selected={selected} />
+				) : (
+					<CharacterQuickActions onDelete={onDelete} onEdit={onEdit} />
+				)}
+			</div>
 		</Card>
 	);
 }
@@ -587,6 +593,8 @@ export function CharacterManagementPage() {
 	>(null);
 	const [isDeleting, setIsDeleting] = useState(false);
 	const [isCharacterFormOpen, setIsCharacterFormOpen] = useState(false);
+	const [isCreatingSamples, setIsCreatingSamples] = useState(false);
+	const [isSampleDialogOpen, setIsSampleDialogOpen] = useState(false);
 	const [isImporting, setIsImporting] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
 	const [notice, setNotice] = useState<Notice | null>(null);
@@ -792,6 +800,131 @@ export function CharacterManagementPage() {
 		setSelectedCharacterId(null);
 		setEditingCharacterId(characterId);
 		setIsCharacterFormOpen(true);
+	}
+
+	async function ensureActorSchemaId() {
+		const actorPreset = buildSchemaPresetDefinitions(t).find(
+			(preset) => preset.kind === "actor",
+		);
+
+		if (!actorPreset) {
+			throw new Error(t("characters.feedback.demoSchemaMissing"));
+		}
+
+		const existingSchemas = await listSchemas();
+
+		if (existingSchemas.some((schema) => schema.schema_id === actorPreset.schemaId)) {
+			return actorPreset.schemaId;
+		}
+
+		try {
+			await createSchema({
+				display_name: actorPreset.displayName,
+				fields: actorPreset.fields,
+				schema_id: actorPreset.schemaId,
+				tags: actorPreset.tags,
+			});
+		} catch (error) {
+			if (!isRpcConflict(error)) {
+				throw error;
+			}
+		}
+
+		return actorPreset.schemaId;
+	}
+
+	async function handleCreateDemoCharacters() {
+		const existingCharacterIds = new Set(
+			characters.map((character) => character.character_id),
+		);
+
+		if (
+			demoCharacterDefinitions.every((definition) =>
+				existingCharacterIds.has(definition.characterId),
+			)
+		) {
+			setNotice({
+				message: t("characters.feedback.samplesExist"),
+				tone: "warning",
+			});
+			return;
+		}
+
+		setIsCreatingSamples(true);
+
+		const createdNames: string[] = [];
+		const failedNames: string[] = [];
+		const skippedNames: string[] = [];
+
+		try {
+			const schemaId = await ensureActorSchemaId();
+
+			for (const definition of demoCharacterDefinitions) {
+				if (existingCharacterIds.has(definition.characterId)) {
+					skippedNames.push(definition.content.name);
+					continue;
+				}
+
+				try {
+					const created = await createCharacter({
+						...definition.content,
+						schema_id: schemaId,
+					});
+					if (definition.coverUrl && definition.coverFileName) {
+						const coverFile = await loadDemoCoverFile(
+							definition.coverUrl,
+							definition.coverFileName,
+						);
+
+						await setCharacterCover({
+							characterId: created.character_id,
+							coverFile,
+						});
+					}
+
+					existingCharacterIds.add(definition.characterId);
+					createdNames.push(definition.content.name);
+				} catch {
+					failedNames.push(definition.content.name);
+				}
+			}
+
+			if (createdNames.length > 0) {
+				await refreshCharacters();
+			}
+
+			if (failedNames.length === 0 && createdNames.length > 0 && skippedNames.length === 0) {
+				setNotice({
+					message: t("characters.feedback.samplesCreated", {
+						names: createdNames.join("、"),
+					}),
+					tone: "success",
+				});
+			} else if (createdNames.length > 0 && (skippedNames.length > 0 || failedNames.length > 0)) {
+				setNotice({
+					message: t("characters.feedback.samplesCreatedPartial", {
+						created: createdNames.join("、"),
+						skipped: [...skippedNames, ...failedNames].join("、"),
+					}),
+					tone: "warning",
+				});
+			} else {
+				setNotice({
+					message:
+						skippedNames.length > 0
+							? t("characters.feedback.samplesExist")
+							: t("characters.feedback.sampleCreateFailed"),
+					tone: skippedNames.length > 0 ? "warning" : "error",
+				});
+			}
+		} catch (error) {
+			setNotice({
+				message: getErrorMessage(error, t("characters.feedback.sampleCreateFailed")),
+				tone: "error",
+			});
+		} finally {
+			setIsCreatingSamples(false);
+		}
 	}
 
 	function exitSelectionMode() {
@@ -1024,6 +1157,37 @@ export function CharacterManagementPage() {
 				open={isCharacterFormOpen}
 			/>
 
+			<InsertSampleDialog
+				cancelLabel={t("characters.actions.cancel")}
+				confirmLabel={t("characters.sampleDialog.confirm")}
+				confirmDisabled={demoCharacterDefinitions.every((definition) =>
+					characters.some(
+						(character) => character.character_id === definition.characterId,
+					),
+				)}
+				description={t("characters.sampleDialog.description")}
+				existingLabel={t("characters.sampleDialog.existing")}
+				items={demoCharacterDefinitions.map((definition) => ({
+					description: definition.characterId,
+					label: definition.content.name,
+					status: characters.some(
+						(character) => character.character_id === definition.characterId,
+					)
+						? "existing"
+						: "new",
+				}))}
+				newLabel={t("characters.sampleDialog.new")}
+				onConfirm={() => {
+					void handleCreateDemoCharacters();
+					setIsSampleDialogOpen(false);
+				}}
+				onOpenChange={setIsSampleDialogOpen}
+				open={isSampleDialogOpen}
+				pending={isCreatingSamples}
+				pendingLabel={t("characters.actions.creatingSamples")}
+				title={t("characters.sampleDialog.title")}
+			/>
+
 			<DeleteCharacterDialog
 				deleting={isDeleting}
 				onConfirm={() => {
@@ -1077,7 +1241,6 @@ export function CharacterManagementPage() {
 										/>
 
 										<IconButton
-											className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
 											disabled={selectedCharacterIds.length === 0}
 											icon={<FontAwesomeIcon icon={faTrashCan} />}
 											label={t("characters.actions.deleteSelected")}
@@ -1085,7 +1248,7 @@ export function CharacterManagementPage() {
 												requestDelete(selectedCharacterIds);
 											}}
 											size="md"
-											variant="ghost"
+											variant="danger"
 										/>
 
 										<IconButton
@@ -1105,6 +1268,21 @@ export function CharacterManagementPage() {
 												setSelectedCharacterId(null);
 												setSelectedCharacterIds([]);
 												setSelectionMode(true);
+											}}
+											size="md"
+											variant="secondary"
+										/>
+
+										<IconButton
+											disabled={isCreatingSamples}
+											icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+											label={
+												isCreatingSamples
+													? t("characters.actions.creatingSamples")
+													: t("characters.actions.createSamples")
+											}
+											onClick={() => {
+												setIsSampleDialogOpen(true);
 											}}
 											size="md"
 											variant="secondary"

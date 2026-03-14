@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'reac
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -13,9 +14,11 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { isRpcConflict } from '../../lib/rpc'
-import { deleteSchema, listSchemas } from './api'
+import { createSchema, deleteSchema, listSchemas } from './api'
 import { DeleteSchemaDialog } from './delete-schema-dialog'
 import { SchemaFormDialog } from './schema-form-dialog'
+import { SchemaPresetDialog } from './schema-preset-dialog'
+import { buildSchemaPresetDefinitions } from './schema-presets'
 import type { SchemaResource } from './types'
 
 type NoticeTone = 'success' | 'warning' | 'error'
@@ -74,8 +77,10 @@ export function SchemaManagementPage() {
   const [schemas, setSchemas] = useState<SchemaResource[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isCreatingPresets, setIsCreatingPresets] = useState(false)
   const [notice, setNotice] = useState<NoticeState | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false)
   const [editSchemaId, setEditSchemaId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SchemaResource | null>(null)
 
@@ -83,6 +88,8 @@ export function SchemaManagementPage() {
     () => schemas.map((schema) => schema.schema_id),
     [schemas],
   )
+  const existingSchemaIdSet = useMemo(() => new Set(existingSchemaIds), [existingSchemaIds])
+  const schemaPresets = useMemo(() => buildSchemaPresetDefinitions(t), [t])
 
   const refreshSchemas = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -119,8 +126,9 @@ export function SchemaManagementPage() {
       description: t('schemas.rail.description'),
       stats: [
         { label: t('schemas.metrics.total'), value: schemas.length },
-        { label: t('schemas.metrics.character'), value: countTaggedSchemas(schemas, 'character') },
         { label: t('schemas.metrics.player'), value: countTaggedSchemas(schemas, 'player') },
+        { label: t('schemas.metrics.world'), value: countTaggedSchemas(schemas, 'world') },
+        { label: t('schemas.metrics.actor'), value: countTaggedSchemas(schemas, 'actor') },
       ],
       title: t('schemas.title'),
     })
@@ -135,17 +143,19 @@ export function SchemaManagementPage() {
       return
     }
 
+    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteSchema(deleteTarget.schema_id)
+      await deleteSchema(target.schema_id)
       setNotice({
-        message: t('schemas.feedback.deleted', { name: deleteTarget.display_name }),
+        message: t('schemas.feedback.deleted', { name: target.display_name }),
         tone: 'success',
       })
       setDeleteTarget(null)
       await refreshSchemas()
     } catch (error) {
+      setDeleteTarget(null)
       setNotice({
         message:
           isRpcConflict(error)
@@ -160,6 +170,68 @@ export function SchemaManagementPage() {
     }
   }
 
+  async function handleCreatePresets(presetKinds: ReadonlyArray<(typeof schemaPresets)[number]['kind']>) {
+    const presetLookup = new Map(schemaPresets.map((preset) => [preset.kind, preset]))
+    const createdNames: string[] = []
+    const failedNames: string[] = []
+
+    setIsCreatingPresets(true)
+
+    try {
+      for (const presetKind of presetKinds) {
+        const preset = presetLookup.get(presetKind)
+
+        if (!preset || existingSchemaIdSet.has(preset.schemaId)) {
+          continue
+        }
+
+        try {
+          await createSchema({
+            display_name: preset.displayName,
+            fields: preset.fields,
+            schema_id: preset.schemaId,
+            tags: preset.tags,
+          })
+          createdNames.push(preset.displayName)
+        } catch {
+          failedNames.push(preset.displayName)
+        }
+      }
+
+      if (createdNames.length > 0) {
+        await refreshSchemas()
+      }
+
+      if (failedNames.length === 0 && createdNames.length > 0) {
+        setNotice({
+          message: t('schemas.feedback.presetsCreated', {
+            names: createdNames.join('、'),
+          }),
+          tone: 'success',
+        })
+      } else if (createdNames.length > 0 && failedNames.length > 0) {
+        setNotice({
+          message: t('schemas.feedback.presetsCreatedPartial', {
+            created: createdNames.join('、'),
+            failed: failedNames.join('、'),
+          }),
+          tone: 'warning',
+        })
+      } else if (failedNames.length > 0) {
+        setNotice({
+          message: t('schemas.feedback.presetsCreateFailed', {
+            failed: failedNames.join('、'),
+          }),
+          tone: 'error',
+        })
+      }
+
+      setPresetDialogOpen(false)
+    } finally {
+      setIsCreatingPresets(false)
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <SchemaFormDialog
@@ -171,6 +243,17 @@ export function SchemaManagementPage() {
         }}
         onOpenChange={setCreateOpen}
         open={createOpen}
+      />
+
+      <SchemaPresetDialog
+        creating={isCreatingPresets}
+        existingSchemaIds={existingSchemaIdSet}
+        onConfirm={async (presetKinds) => {
+          await handleCreatePresets(presetKinds)
+        }}
+        onOpenChange={setPresetDialogOpen}
+        open={presetDialogOpen}
+        presets={schemaPresets}
       />
 
       <SchemaFormDialog
@@ -205,7 +288,16 @@ export function SchemaManagementPage() {
         <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
           <SectionHeader
             actions={
-              <div className="flex min-h-10 items-center justify-end">
+              <div className="flex min-h-10 items-center justify-end gap-2">
+                <IconButton
+                  icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                  label={t('schemas.actions.createPreset')}
+                  onClick={() => {
+                    setPresetDialogOpen(true)
+                  }}
+                  size="md"
+                  variant="secondary"
+                />
                 <IconButton
                   icon={<FontAwesomeIcon icon={faPlus} />}
                   label={t('schemas.actions.create')}
@@ -233,13 +325,23 @@ export function SchemaManagementPage() {
                 </h3>
 
                 <div className="mt-7 flex justify-center">
-                  <Button
-                    onClick={() => {
-                      setCreateOpen(true)
-                    }}
-                  >
-                    {t('schemas.actions.create')}
-                  </Button>
+                  <div className="flex flex-wrap justify-center gap-3">
+                    <Button
+                      onClick={() => {
+                        setPresetDialogOpen(true)
+                      }}
+                      variant="secondary"
+                    >
+                      {t('schemas.actions.createPreset')}
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setCreateOpen(true)
+                      }}
+                    >
+                      {t('schemas.actions.create')}
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -285,17 +387,16 @@ export function SchemaManagementPage() {
                           setEditSchemaId(schema.schema_id)
                         }}
                         size="sm"
-                        variant="ghost"
+                        variant="secondary"
                       />
                       <IconButton
-                        className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
                         icon={<FontAwesomeIcon icon={faTrashCan} />}
                         label={t('schemas.actions.delete')}
                         onClick={() => {
                           setDeleteTarget(schema)
                         }}
                         size="sm"
-                        variant="ghost"
+                        variant="danger"
                       />
                     </div>
                   </div>

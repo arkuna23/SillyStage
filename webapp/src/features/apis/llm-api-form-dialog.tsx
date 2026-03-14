@@ -30,8 +30,10 @@ type FormState = {
   apiId: string
   apiKey: string
   baseUrl: string
+  maxTokens: string
   model: string
   provider: LlmProvider
+  temperature: string
 }
 
 function createInitialFormState(): FormState {
@@ -39,8 +41,10 @@ function createInitialFormState(): FormState {
     apiId: '',
     apiKey: '',
     baseUrl: '',
+    maxTokens: '',
     model: '',
     provider: llmProviders[0],
+    temperature: '',
   }
 }
 
@@ -48,9 +52,9 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function providerOptions(t: ReturnType<typeof useTranslation>['t']) {
+function providerOptions(openAiLabel: string) {
   return llmProviders.map((provider) => ({
-    label: provider === 'open_ai' ? t('apis.providers.open_ai') : provider,
+    label: provider === 'open_ai' ? openAiLabel : provider,
     value: provider,
   }))
 }
@@ -90,6 +94,7 @@ export function LlmApiFormDialog({
   open,
 }: LlmApiFormDialogProps) {
   const { t } = useTranslation()
+  const openAiLabel = String(t('apis.providers.open_ai'))
   const fieldIdPrefix = useId()
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [initialApi, setInitialApi] = useState<LlmApi | null>(null)
@@ -101,8 +106,10 @@ export function LlmApiFormDialog({
     apiId: `${fieldIdPrefix}-api-id`,
     apiKey: `${fieldIdPrefix}-api-key`,
     baseUrl: `${fieldIdPrefix}-base-url`,
+    maxTokens: `${fieldIdPrefix}-max-tokens`,
     model: `${fieldIdPrefix}-model`,
     provider: `${fieldIdPrefix}-provider`,
+    temperature: `${fieldIdPrefix}-temperature`,
   } as const
 
   useEffect(() => {
@@ -142,8 +149,10 @@ export function LlmApiFormDialog({
           apiId: api.api_id,
           apiKey: '',
           baseUrl: api.base_url,
+          maxTokens: api.max_tokens?.toString() ?? '',
           model: api.model,
           provider: api.provider,
+          temperature: api.temperature?.toString() ?? '',
         })
       })
       .catch((error) => {
@@ -165,8 +174,10 @@ export function LlmApiFormDialog({
   function validateForm() {
     const nextApiId = formState.apiId.trim()
     const nextBaseUrl = formState.baseUrl.trim()
+    const nextMaxTokens = formState.maxTokens.trim()
     const nextModel = formState.model.trim()
     const nextApiKey = formState.apiKey.trim()
+    const nextTemperature = formState.temperature.trim()
 
     if (nextApiId.length === 0) {
       return t('apis.form.errors.apiIdRequired')
@@ -191,6 +202,17 @@ export function LlmApiFormDialog({
       return t('apis.form.errors.apiKeyRequired')
     }
 
+    if (nextTemperature.length > 0 && Number.isNaN(Number(nextTemperature))) {
+      return t('apis.form.errors.temperatureInvalid')
+    }
+
+    if (
+      nextMaxTokens.length > 0 &&
+      (!Number.isInteger(Number(nextMaxTokens)) || Number(nextMaxTokens) < 1)
+    ) {
+      return t('apis.form.errors.maxTokensInvalid')
+    }
+
     return null
   }
 
@@ -204,8 +226,12 @@ export function LlmApiFormDialog({
 
     const nextApiId = formState.apiId.trim()
     const nextBaseUrl = formState.baseUrl.trim()
+    const nextMaxTokens = formState.maxTokens.trim()
     const nextModel = formState.model.trim()
     const nextApiKey = formState.apiKey.trim()
+    const nextTemperature = formState.temperature.trim()
+    const parsedMaxTokens = nextMaxTokens.length > 0 ? Number(nextMaxTokens) : null
+    const parsedTemperature = nextTemperature.length > 0 ? Number(nextTemperature) : null
 
     setIsSubmitting(true)
     setSubmitError(null)
@@ -221,8 +247,10 @@ export function LlmApiFormDialog({
         initialApi &&
         formState.provider === initialApi.provider &&
         nextBaseUrl === initialApi.base_url &&
+        parsedMaxTokens === (initialApi.max_tokens ?? null) &&
         nextModel === initialApi.model &&
-        nextApiKey.length === 0
+        nextApiKey.length === 0 &&
+        parsedTemperature === (initialApi.temperature ?? null)
       ) {
         onOpenChange(false)
         return
@@ -234,8 +262,10 @@ export function LlmApiFormDialog({
               api_id: nextApiId,
               api_key: nextApiKey,
               base_url: nextBaseUrl,
+              ...(parsedMaxTokens !== null ? { max_tokens: parsedMaxTokens } : {}),
               model: nextModel,
               provider: formState.provider,
+              ...(parsedTemperature !== null ? { temperature: parsedTemperature } : {}),
             })
           : await updateLlmApi({
               api_id: nextApiId,
@@ -245,8 +275,14 @@ export function LlmApiFormDialog({
               ...(initialApi && nextBaseUrl !== initialApi.base_url
                 ? { base_url: nextBaseUrl }
                 : {}),
+              ...(initialApi && parsedMaxTokens !== (initialApi.max_tokens ?? null)
+                ? { max_tokens: parsedMaxTokens ?? undefined }
+                : {}),
               ...(nextApiKey.length > 0 ? { api_key: nextApiKey } : {}),
               ...(initialApi && nextModel !== initialApi.model ? { model: nextModel } : {}),
+              ...(initialApi && parsedTemperature !== (initialApi.temperature ?? null)
+                ? { temperature: parsedTemperature ?? undefined }
+                : {}),
             })
 
       await onCompleted({
@@ -307,7 +343,7 @@ export function LlmApiFormDialog({
               <Field htmlFor={fieldIds.provider} label={t('apis.form.fields.provider')}>
                 <Select
                   disabled={isSubmitting}
-                  items={providerOptions(t)}
+                  items={providerOptions(openAiLabel)}
                   onValueChange={(value) => {
                     setFormState((current) => ({
                       ...current,
@@ -363,6 +399,34 @@ export function LlmApiFormDialog({
                   value={formState.model}
                 />
               </Field>
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <Field htmlFor={fieldIds.temperature} label={t('apis.form.fields.temperature')}>
+                  <Input
+                    disabled={isSubmitting}
+                    id={fieldIds.temperature}
+                    inputMode="decimal"
+                    onChange={(event) => {
+                      setFormState((current) => ({ ...current, temperature: event.target.value }))
+                    }}
+                    placeholder={t('apis.form.placeholders.temperature')}
+                    value={formState.temperature}
+                  />
+                </Field>
+
+                <Field htmlFor={fieldIds.maxTokens} label={t('apis.form.fields.maxTokens')}>
+                  <Input
+                    disabled={isSubmitting}
+                    id={fieldIds.maxTokens}
+                    inputMode="numeric"
+                    onChange={(event) => {
+                      setFormState((current) => ({ ...current, maxTokens: event.target.value }))
+                    }}
+                    placeholder={t('apis.form.placeholders.maxTokens')}
+                    value={formState.maxTokens}
+                  />
+                </Field>
+              </div>
             </div>
           )}
         </DialogBody>

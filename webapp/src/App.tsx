@@ -6,10 +6,6 @@ import { AppShell } from './components/layout/app-shell'
 import { WorkspaceLayout } from './components/layout/workspace-layout'
 import { ThemeProvider } from './components/theme-provider'
 
-const HomePage = lazy(() =>
-  import('./pages/home-page').then((module) => ({ default: module.HomePage })),
-)
-
 const DashboardPage = lazy(() =>
   import('./features/dashboard/dashboard-page').then((module) => ({
     default: module.DashboardPage,
@@ -46,6 +42,18 @@ const StoryResourcesPage = lazy(() =>
   })),
 )
 
+const StoriesPage = lazy(() =>
+  import('./features/stories/stories-page').then((module) => ({
+    default: module.StoriesPage,
+  })),
+)
+
+const StagePage = lazy(() =>
+  import('./features/stage/stage-page').then((module) => ({
+    default: module.StagePage,
+  })),
+)
+
 function ScrollToTopOnNavigation() {
   const location = useLocation()
 
@@ -63,20 +71,23 @@ function AppRoutes() {
 
       <Routes>
         <Route element={<AppShell />}>
-          <Route element={<HomePage />} path={appPaths.home} />
+          <Route element={<Navigate replace to={appPaths.workspace} />} path={appPaths.root} />
           <Route
             element={<Navigate replace to={appPaths.workspace} />}
             path={appPaths.workspaceRoot}
           />
+          <Route element={<StagePage />} path={appPaths.stageRoot} />
+          <Route element={<StagePage />} path={`${appPaths.stageRoot}/:sessionId`} />
           <Route element={<WorkspaceLayout />} path={appPaths.workspaceRoot}>
             <Route element={<ApiManagementPage />} path="apis" />
             <Route element={<CharacterManagementPage />} path="characters" />
             <Route element={<DashboardPage />} path="dashboard" />
             <Route element={<StoryResourcesPage />} path="story-resources" />
+            <Route element={<StoriesPage />} path="stories" />
             <Route element={<SchemaManagementPage />} path="schemas" />
             <Route element={<PlayerProfilesPage />} path="player-profiles" />
           </Route>
-          <Route element={<Navigate replace to={appPaths.home} />} path="*" />
+          <Route element={<Navigate replace to={appPaths.workspace} />} path="*" />
         </Route>
       </Routes>
     </>
