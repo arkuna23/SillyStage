@@ -1222,6 +1222,7 @@ dependencies = [
  "ss-agents",
  "ss-engine",
  "ss-state",
+ "ss-store",
  "ss-story",
  "thiserror",
  "zip",

@@ -3,6 +3,7 @@ mod common;
 use std::sync::Arc;
 
 use ss_engine::{AgentApiIds, LlmApiRegistry, RegistryError};
+use store::{LlmApiRecord, LlmProvider};
 
 use common::QueuedMockLlm;
 
@@ -23,11 +24,27 @@ fn registry_builds_story_generation_and_runtime_configs() {
     let api_ids = sample_api_ids();
     let llm_api: Arc<dyn llm::LlmApi> = llm.clone();
     let registry = LlmApiRegistry::new()
-        .register(&api_ids.planner_api_id, Arc::clone(&llm_api), "planner-model")
-        .register(&api_ids.architect_api_id, Arc::clone(&llm_api), "architect-model")
-        .register(&api_ids.director_api_id, Arc::clone(&llm_api), "director-model")
+        .register(
+            &api_ids.planner_api_id,
+            Arc::clone(&llm_api),
+            "planner-model",
+        )
+        .register(
+            &api_ids.architect_api_id,
+            Arc::clone(&llm_api),
+            "architect-model",
+        )
+        .register(
+            &api_ids.director_api_id,
+            Arc::clone(&llm_api),
+            "director-model",
+        )
         .register(&api_ids.actor_api_id, Arc::clone(&llm_api), "actor-model")
-        .register(&api_ids.narrator_api_id, Arc::clone(&llm_api), "narrator-model")
+        .register(
+            &api_ids.narrator_api_id,
+            Arc::clone(&llm_api),
+            "narrator-model",
+        )
         .register(&api_ids.keeper_api_id, llm_api, "keeper-model");
 
     let generation = registry
@@ -57,4 +74,29 @@ fn registry_reports_unknown_api_ids() {
         .expect("missing architect api should fail");
 
     assert!(matches!(error, RegistryError::UnknownApiId(api_id) if api_id == "architect"));
+}
+
+#[test]
+fn registry_can_upsert_and_remove_records() {
+    let registry = LlmApiRegistry::new();
+    let record = LlmApiRecord {
+        api_id: "default".to_owned(),
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: "sk-secret".to_owned(),
+        model: "gpt-4.1-mini".to_owned(),
+    };
+
+    registry
+        .upsert_record(&record)
+        .expect("record should build into client");
+    let resolved = registry.resolve("default").expect("api should resolve");
+    assert_eq!(resolved.model, "gpt-4.1-mini");
+
+    registry.remove("default");
+    let error = registry
+        .resolve("default")
+        .err()
+        .expect("removed api should no longer resolve");
+    assert!(matches!(error, RegistryError::UnknownApiId(api_id) if api_id == "default"));
 }

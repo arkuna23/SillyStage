@@ -7,9 +7,9 @@ use axum::http::{Request, StatusCode, header};
 use engine::SessionConfigMode;
 use handler::Handler;
 use protocol::{
-    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams,
-    CharacterExportChrParams, CharacterGetCoverParams, CharacterSetCoverParams,
-    CreateStoryResourcesParams, ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage,
+    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterExportChrParams,
+    CharacterGetCoverParams, CharacterSetCoverParams, CreateStoryResourcesParams,
+    DashboardGetParams, ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage,
     JsonRpcResponseMessage, RequestParams, RunTurnParams, StartSessionFromStoryParams,
     UploadChunkParams, UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
@@ -94,9 +94,13 @@ async fn rpc_character_get_cover_returns_json_rpc_response() {
         .await
         .expect("character should save");
     let handler = Arc::new(
-        Handler::new(store, registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::new(
+            store,
+            registry_with_ids(Arc::clone(&llm)),
+            default_api_ids(),
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -160,9 +164,13 @@ async fn rpc_character_export_chr_returns_json_rpc_response() {
         .await
         .expect("character should save");
     let handler = Arc::new(
-        Handler::new(store, registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::new(
+            store,
+            registry_with_ids(Arc::clone(&llm)),
+            default_api_ids(),
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -202,6 +210,47 @@ async fn rpc_character_export_chr_returns_json_rpc_response() {
         value["result"]["content_type"],
         "application/x-sillystage-character-card"
     );
+}
+
+#[tokio::test]
+async fn rpc_dashboard_get_returns_json_rpc_response() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let handler = Arc::new(
+        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
+            .await
+            .expect("handler should build"),
+    );
+    let router = build_router(handler);
+
+    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-dashboard",
+        None::<String>,
+        RequestParams::DashboardGet(DashboardGetParams::default()),
+    ))
+    .expect("request should serialize");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("response should deserialize");
+
+    assert_eq!(value["id"], "req-dashboard");
+    assert_eq!(value["result"]["type"], "dashboard");
+    assert_eq!(value["result"]["health"]["status"], "ok");
 }
 
 #[tokio::test]
@@ -251,7 +300,9 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
         .expect("handler should build"),
     );
     let router = build_router(Arc::clone(&handler));
-    let archive_bytes = sample_archive().to_chr_bytes().expect("archive should serialize");
+    let archive_bytes = sample_archive()
+        .to_chr_bytes()
+        .expect("archive should serialize");
 
     let upload_init = request_json(
         &router,
@@ -541,10 +592,7 @@ async fn invalid_json_returns_standard_error_payload() {
     assert_eq!(error.code, protocol::ErrorCode::ParseError.rpc_code());
 }
 
-async fn request_json(
-    router: &axum::Router,
-    message: JsonRpcRequestMessage,
-) -> serde_json::Value {
+async fn request_json(router: &axum::Router, message: JsonRpcRequestMessage) -> serde_json::Value {
     let response = router
         .clone()
         .oneshot(

@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use clap::{Parser, ValueEnum};
 use engine::AgentApiIds;
 use serde::Deserialize;
+pub use store::LlmProvider;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppConfig {
@@ -20,23 +21,22 @@ impl AppConfig {
         Self::load_from_sources(cli, EnvOverrides::from_env()?)
     }
 
-    pub fn load_from_sources(
-        cli: CliOverrides,
-        env: EnvOverrides,
-    ) -> Result<Self, ConfigError> {
+    pub fn load_from_sources(cli: CliOverrides, env: EnvOverrides) -> Result<Self, ConfigError> {
         let config_path = resolve_config_path(&cli, &env);
         let mut resolved = ResolvedConfig::default();
 
         if let Some(path) = config_path {
-            let content = fs::read_to_string(&path).map_err(|source| ConfigError::ReadConfigFile {
-                path: path.clone(),
-                source,
-            })?;
-            let file_config = toml::from_str::<FileConfig>(&content)
-                .map_err(|source| ConfigError::ParseConfigFile {
+            let content =
+                fs::read_to_string(&path).map_err(|source| ConfigError::ReadConfigFile {
                     path: path.clone(),
                     source,
                 })?;
+            let file_config = toml::from_str::<FileConfig>(&content).map_err(|source| {
+                ConfigError::ParseConfigFile {
+                    path: path.clone(),
+                    source,
+                }
+            })?;
             let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
             resolved.apply_file(file_config, base_dir);
         }
@@ -86,12 +86,6 @@ pub struct FrontendConfig {
 pub struct LlmConfig {
     pub apis: BTreeMap<String, LlmApiConfig>,
     pub defaults: AgentApiIds,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LlmProvider {
-    OpenAi,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

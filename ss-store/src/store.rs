@@ -3,13 +3,35 @@ use async_trait::async_trait;
 use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, SessionRecord, StoryRecord, StoryResourcesRecord,
+    CharacterCardRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord, SessionRecord,
+    StoryRecord, StoryResourcesRecord,
 };
 
 #[async_trait]
 pub trait Store: Send + Sync {
     async fn get_global_config(&self) -> Result<Option<AgentApiIds>, StoreError>;
     async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError>;
+
+    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError>;
+    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError>;
+    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError>;
+    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError>;
+
+    async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError>;
+    async fn list_schemas(&self) -> Result<Vec<SchemaRecord>, StoreError>;
+    async fn save_schema(&self, record: SchemaRecord) -> Result<(), StoreError>;
+    async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError>;
+
+    async fn get_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError>;
+    async fn list_player_profiles(&self) -> Result<Vec<PlayerProfileRecord>, StoreError>;
+    async fn save_player_profile(&self, record: PlayerProfileRecord) -> Result<(), StoreError>;
+    async fn delete_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError>;
 
     async fn get_character(
         &self,
@@ -27,10 +49,8 @@ pub trait Store: Send + Sync {
         resource_id: &str,
     ) -> Result<Option<StoryResourcesRecord>, StoreError>;
     async fn list_story_resources(&self) -> Result<Vec<StoryResourcesRecord>, StoreError>;
-    async fn save_story_resources(
-        &self,
-        resources: StoryResourcesRecord,
-    ) -> Result<(), StoreError>;
+    async fn save_story_resources(&self, resources: StoryResourcesRecord)
+    -> Result<(), StoreError>;
     async fn delete_story_resources(
         &self,
         resource_id: &str,

@@ -11,5 +11,7 @@ pub enum AppError {
     #[error(transparent)]
     Llm(#[from] llm::LlmError),
     #[error(transparent)]
+    Registry(#[from] engine::RegistryError),
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 }

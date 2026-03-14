@@ -12,7 +12,9 @@ use protocol::{
 };
 use serde_json::json;
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
-use store::{CharacterCardRecord, StoryRecord};
+use store::{
+    CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord, SchemaRecord, StoryRecord,
+};
 use story::{NarrativeNode, StoryGraph};
 
 use agents::actor::CharacterCard;
@@ -138,10 +140,22 @@ pub fn sample_world_state_schema() -> WorldStateSchema {
 
 pub fn sample_archive() -> CharacterArchive {
     CharacterArchive::new(
-        CharacterCardContent::from(sample_character_card()),
+        sample_character_content(),
         CharacterCoverMimeType::Png,
         b"cover-bytes".to_vec(),
     )
+}
+
+pub fn sample_character_content() -> CharacterCardContent {
+    CharacterCardContent {
+        id: "merchant".to_owned(),
+        name: "Haru".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative, casual".to_owned(),
+        tendencies: vec!["likes profitable deals".to_owned()],
+        schema_id: "schema-character-merchant".to_owned(),
+        system_prompt: "Stay in character.".to_owned(),
+    }
 }
 
 pub fn sample_character_record() -> CharacterCardRecord {
@@ -149,7 +163,15 @@ pub fn sample_character_record() -> CharacterCardRecord {
 
     CharacterCardRecord {
         character_id: archive.content.id.clone(),
-        content: archive.content.clone().into(),
+        content: CharacterCardDefinition {
+            id: archive.content.id.clone(),
+            name: archive.content.name.clone(),
+            personality: archive.content.personality.clone(),
+            style: archive.content.style.clone(),
+            tendencies: archive.content.tendencies.clone(),
+            schema_id: archive.content.schema_id.clone(),
+            system_prompt: archive.content.system_prompt.clone(),
+        },
         cover_file_name: Some(archive.manifest.cover_path.clone()),
         cover_mime_type: Some(
             serde_json::to_string(&archive.manifest.cover_mime_type)
@@ -166,8 +188,8 @@ pub fn sample_resources_payload(resource_id: impl Into<String>) -> StoryResource
         resource_id: resource_id.into(),
         story_concept: "A flooded harbor story.".to_owned(),
         character_ids: vec!["merchant".to_owned()],
-        player_state_schema_seed: sample_player_state_schema(),
-        world_state_schema_seed: Some(sample_world_state_schema()),
+        player_schema_id_seed: Some("schema-player-default".to_owned()),
+        world_schema_id_seed: Some("schema-world-default".to_owned()),
         planned_story: None,
     }
 }
@@ -181,8 +203,8 @@ pub fn sample_story_payload(
         story_id: story_id.into(),
         display_name: "Flooded Harbor".to_owned(),
         graph: sample_story_graph(),
-        world_state_schema: sample_world_state_schema(),
-        player_state_schema: sample_player_state_schema(),
+        world_schema_id: "schema-world-story-1".to_owned(),
+        player_schema_id: "schema-player-story-1".to_owned(),
         introduction: "The courier reaches a flooded dock at dusk.".to_owned(),
     }
 }
@@ -198,8 +220,38 @@ pub fn sample_story_record(
         display_name: "Flooded Harbor".to_owned(),
         resource_id: resource_id.into(),
         graph: sample_story_graph(),
-        world_state_schema: sample_world_state_schema(),
-        player_state_schema: sample_player_state_schema(),
+        world_schema_id: "schema-world-story-1".to_owned(),
+        player_schema_id: "schema-player-story-1".to_owned(),
         introduction: sample_story_payload("resource-1", story_id).introduction,
+        created_at_ms: Some(1_000),
+        updated_at_ms: Some(2_000),
+    }
+}
+
+pub fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
+    let fields = if schema_id.contains("world") {
+        sample_world_state_schema().fields
+    } else if schema_id.contains("player") {
+        sample_player_state_schema().fields
+    } else {
+        HashMap::from([(
+            "trust".to_owned(),
+            StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+        )])
+    };
+
+    SchemaRecord {
+        schema_id: schema_id.to_owned(),
+        display_name: display_name.to_owned(),
+        tags: vec!["test".to_owned()],
+        fields,
+    }
+}
+
+pub fn sample_player_profile(id: &str, description: &str) -> PlayerProfileRecord {
+    PlayerProfileRecord {
+        player_profile_id: id.to_owned(),
+        display_name: id.to_owned(),
+        description: description.to_owned(),
     }
 }

@@ -7,7 +7,10 @@ use futures_util::StreamExt;
 use serde_json::json;
 use ss_engine::{AgentApiIds, EngineEvent, EngineManager, LlmApiRegistry, SessionConfigMode};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
-use store::{CharacterCardRecord, InMemoryStore, Store, StoryRecord, StoryResourcesRecord};
+use store::{
+    CharacterCardDefinition, CharacterCardRecord, InMemoryStore, PlayerProfileRecord, SchemaRecord,
+    Store, StoryRecord, StoryResourcesRecord,
+};
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
 use agents::actor::CharacterCard;
@@ -39,21 +42,46 @@ fn registry(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
 fn sample_character_record() -> CharacterCardRecord {
     CharacterCardRecord {
         character_id: "merchant".to_owned(),
-        content: CharacterCard {
+        content: CharacterCardDefinition {
             id: "merchant".to_owned(),
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual".to_owned(),
             tendencies: vec!["likes profitable deals".to_owned()],
-            state_schema: HashMap::from([(
-                "trust".to_owned(),
-                StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
-            )]),
+            schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
         },
-        cover_file_name: "cover.png".to_owned(),
-        cover_mime_type: "image/png".to_owned(),
-        cover_bytes: b"cover".to_vec(),
+        cover_file_name: Some("cover.png".to_owned()),
+        cover_mime_type: Some("image/png".to_owned()),
+        cover_bytes: Some(b"cover".to_vec()),
+    }
+}
+
+fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
+    let fields = if schema_id.contains("world") {
+        sample_world_state_schema().fields
+    } else if schema_id.contains("player") {
+        sample_player_state_schema().fields
+    } else {
+        HashMap::from([(
+            "trust".to_owned(),
+            StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+        )])
+    };
+
+    SchemaRecord {
+        schema_id: schema_id.to_owned(),
+        display_name: display_name.to_owned(),
+        tags: vec!["test".to_owned()],
+        fields,
+    }
+}
+
+fn sample_player_profile(id: &str, description: &str) -> PlayerProfileRecord {
+    PlayerProfileRecord {
+        player_profile_id: id.to_owned(),
+        display_name: id.to_owned(),
+        description: description.to_owned(),
     }
 }
 
@@ -109,6 +137,49 @@ fn sample_story_graph() -> StoryGraph {
 
 async fn seed_story(store: &InMemoryStore) {
     store
+        .save_schema(sample_schema_record(
+            "schema-character-merchant",
+            "Merchant Schema",
+        ))
+        .await
+        .expect("save character schema");
+    store
+        .save_schema(sample_schema_record("schema-player-default", "Player Seed"))
+        .await
+        .expect("save player seed");
+    store
+        .save_schema(sample_schema_record("schema-world-default", "World Seed"))
+        .await
+        .expect("save world seed");
+    store
+        .save_schema(sample_schema_record(
+            "schema-player-story-1",
+            "Player Story Schema",
+        ))
+        .await
+        .expect("save story player schema");
+    store
+        .save_schema(sample_schema_record(
+            "schema-world-story-1",
+            "World Story Schema",
+        ))
+        .await
+        .expect("save story world schema");
+    store
+        .save_player_profile(sample_player_profile(
+            "profile-courier-a",
+            "A determined courier.",
+        ))
+        .await
+        .expect("save player profile a");
+    store
+        .save_player_profile(sample_player_profile(
+            "profile-courier-b",
+            "A cautious courier.",
+        ))
+        .await
+        .expect("save player profile b");
+    store
         .save_character(sample_character_record())
         .await
         .expect("save character");
@@ -117,8 +188,8 @@ async fn seed_story(store: &InMemoryStore) {
             resource_id: "resource-1".to_owned(),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
-            player_state_schema_seed: sample_player_state_schema(),
-            world_state_schema_seed: Some(sample_world_state_schema()),
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
             planned_story: None,
         })
         .await
@@ -129,9 +200,11 @@ async fn seed_story(store: &InMemoryStore) {
             display_name: "Flooded Harbor".to_owned(),
             resource_id: "resource-1".to_owned(),
             graph: sample_story_graph(),
-            world_state_schema: sample_world_state_schema(),
-            player_state_schema: sample_player_state_schema(),
+            world_schema_id: "schema-world-story-1".to_owned(),
+            player_schema_id: "schema-player-story-1".to_owned(),
             introduction: "The courier reaches a flooded dock.".to_owned(),
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(1_000),
         })
         .await
         .expect("save story");
@@ -151,7 +224,7 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
         .start_session_from_story(
             "story-1",
             Some("Courier Run".to_owned()),
-            "A determined courier.".to_owned(),
+            Some("profile-courier-a".to_owned()),
             SessionConfigMode::UseGlobal,
             None,
         )
@@ -166,6 +239,8 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
     assert_eq!(snapshot.story_id, "story-1");
     assert_eq!(snapshot.player_description, "A determined courier.");
     assert_eq!(snapshot.world_state.current_node(), "dock");
+    assert!(session.created_at_ms.is_some());
+    assert!(session.updated_at_ms.is_some());
 }
 
 #[tokio::test]
@@ -229,7 +304,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
         .start_session_from_story(
             "story-1",
             Some("Run A".to_owned()),
-            "A determined courier.".to_owned(),
+            Some("profile-courier-a".to_owned()),
             SessionConfigMode::UseGlobal,
             None,
         )
@@ -239,7 +314,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
         .start_session_from_story(
             "story-1",
             Some("Run B".to_owned()),
-            "A cautious courier.".to_owned(),
+            Some("profile-courier-b".to_owned()),
             SessionConfigMode::UseGlobal,
             None,
         )
@@ -284,6 +359,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
 
     assert_eq!(updated_a.snapshot.turn_index, 1);
     assert_eq!(updated_a.snapshot.world_state.current_node(), "gate");
+    assert!(updated_a.updated_at_ms >= updated_a.created_at_ms);
     assert_eq!(updated_b.snapshot.turn_index, 0);
     assert_eq!(updated_b.snapshot.world_state.current_node(), "dock");
 }

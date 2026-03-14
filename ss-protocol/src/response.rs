@@ -1,10 +1,14 @@
 use engine::{EngineTurnResult, RuntimeSnapshot};
 use serde::{Deserialize, Serialize};
-use state::{PlayerStateSchema, WorldStateSchema};
 use story::StoryGraph;
 
 use crate::character::{CharacterCardContent, CharacterCardSummaryPayload, CharacterCoverMimeType};
 use crate::config::{GlobalConfigPayload, SessionConfigPayload};
+use crate::llm_api::{LlmApiDeletedPayload, LlmApiPayload, LlmApisListedPayload};
+use crate::player_profile::{
+    PlayerProfileDeletedPayload, PlayerProfilePayload, PlayerProfilesListedPayload,
+};
+use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -12,8 +16,14 @@ pub enum ResponseResult {
     UploadInitialized(UploadInitializedPayload),
     UploadChunkAccepted(UploadChunkAcceptedPayload),
     CharacterCardUploaded(CharacterCardUploadedPayload),
+    Schema(Box<SchemaPayload>),
+    SchemasListed(SchemasListedPayload),
+    SchemaDeleted(SchemaDeletedPayload),
+    PlayerProfile(Box<PlayerProfilePayload>),
+    PlayerProfilesListed(PlayerProfilesListedPayload),
+    PlayerProfileDeleted(PlayerProfileDeletedPayload),
     CharacterCreated(CharacterCreatedPayload),
-    Character(Box<CharacterDetailPayload>),
+    Character(Box<CharacterSchemaPayload>),
     CharacterCover(Box<CharacterCoverPayload>),
     CharacterChrExport(Box<CharacterChrExportPayload>),
     CharacterCoverUpdated(CharacterCoverUpdatedPayload),
@@ -35,6 +45,10 @@ pub enum ResponseResult {
     SessionDeleted(SessionDeletedPayload),
     GlobalConfig(GlobalConfigPayload),
     SessionConfig(SessionConfigPayload),
+    LlmApi(LlmApiPayload),
+    LlmApisListed(LlmApisListedPayload),
+    LlmApiDeleted(LlmApiDeletedPayload),
+    Dashboard(Box<DashboardPayload>),
     TurnStreamAccepted(TurnStreamAcceptedPayload),
     TurnCompleted(Box<TurnCompletedPayload>),
     PlayerDescriptionUpdated(Box<PlayerDescriptionUpdatedPayload>),
@@ -67,7 +81,7 @@ pub struct CharacterCreatedPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterDetailPayload {
+pub struct CharacterSchemaPayload {
     pub character_id: String,
     pub content: CharacterCardContent,
     pub cover_file_name: Option<String>,
@@ -112,8 +126,8 @@ pub struct StoryResourcesPayload {
     pub resource_id: String,
     pub story_concept: String,
     pub character_ids: Vec<String>,
-    pub player_state_schema_seed: PlayerStateSchema,
-    pub world_state_schema_seed: Option<WorldStateSchema>,
+    pub player_schema_id_seed: Option<String>,
+    pub world_schema_id_seed: Option<String>,
     pub planned_story: Option<String>,
 }
 
@@ -139,8 +153,8 @@ pub struct StoryGeneratedPayload {
     pub story_id: String,
     pub display_name: String,
     pub graph: StoryGraph,
-    pub world_state_schema: WorldStateSchema,
-    pub player_state_schema: PlayerStateSchema,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
     pub introduction: String,
 }
 
@@ -149,6 +163,8 @@ pub struct StorySummaryPayload {
     pub story_id: String,
     pub display_name: String,
     pub resource_id: String,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
     pub introduction: String,
 }
 
@@ -158,8 +174,8 @@ pub struct StoryDetailPayload {
     pub display_name: String,
     pub resource_id: String,
     pub graph: StoryGraph,
-    pub world_state_schema: WorldStateSchema,
-    pub player_state_schema: PlayerStateSchema,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
     pub introduction: String,
 }
 
@@ -178,6 +194,8 @@ pub struct SessionStartedPayload {
     pub story_id: String,
     pub display_name: String,
     pub snapshot: RuntimeSnapshot,
+    pub player_profile_id: Option<String>,
+    pub player_schema_id: String,
     pub character_summaries: Vec<CharacterCardSummaryPayload>,
     pub config: SessionConfigPayload,
 }
@@ -187,6 +205,8 @@ pub struct SessionSummaryPayload {
     pub session_id: String,
     pub story_id: String,
     pub display_name: String,
+    pub player_profile_id: Option<String>,
+    pub player_schema_id: String,
     pub turn_index: u64,
 }
 
@@ -195,6 +215,8 @@ pub struct SessionDetailPayload {
     pub session_id: String,
     pub story_id: String,
     pub display_name: String,
+    pub player_profile_id: Option<String>,
+    pub player_schema_id: String,
     pub snapshot: RuntimeSnapshot,
     pub config: SessionConfigPayload,
 }
@@ -207,6 +229,53 @@ pub struct SessionsListedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SessionDeletedPayload {
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DashboardHealthStatus {
+    Ok,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DashboardHealthPayload {
+    pub status: DashboardHealthStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DashboardCountsPayload {
+    pub characters_total: usize,
+    pub characters_with_cover: usize,
+    pub story_resources_total: usize,
+    pub stories_total: usize,
+    pub sessions_total: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardStorySummaryPayload {
+    pub story_id: String,
+    pub display_name: String,
+    pub resource_id: String,
+    pub introduction: String,
+    pub updated_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardSessionSummaryPayload {
+    pub session_id: String,
+    pub story_id: String,
+    pub display_name: String,
+    pub turn_index: u64,
+    pub updated_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DashboardPayload {
+    pub health: DashboardHealthPayload,
+    pub counts: DashboardCountsPayload,
+    pub global_config: GlobalConfigPayload,
+    pub recent_stories: Vec<DashboardStorySummaryPayload>,
+    pub recent_sessions: Vec<DashboardSessionSummaryPayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]

@@ -1,8 +1,13 @@
 use axum::body::{Body, to_bytes};
 use axum::http::{Method, Request, StatusCode};
-use protocol::{ConfigGetGlobalParams, JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams};
+use protocol::{
+    ConfigGetGlobalParams, JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams,
+};
 use ss_app::app::build_router;
-use ss_app::config::{AppConfig, FrontendConfig, LlmApiConfig, LlmConfig, LlmProvider, ServerConfig, StoreBackend, StoreConfig};
+use ss_app::config::{
+    AppConfig, FrontendConfig, LlmApiConfig, LlmConfig, LlmProvider, ServerConfig, StoreBackend,
+    StoreConfig,
+};
 use store::AgentApiIds;
 use tower::util::ServiceExt;
 
@@ -108,6 +113,5 @@ async fn healthz_and_rpc_routes_are_wired() {
     let body = to_bytes(rpc_response.into_body(), usize::MAX)
         .await
         .expect("read body");
-    let _: JsonRpcResponseMessage =
-        serde_json::from_slice(&body).expect("valid json-rpc response");
+    let _: JsonRpcResponseMessage = serde_json::from_slice(&body).expect("valid json-rpc response");
 }

@@ -14,3 +14,4 @@ agents.workspace = true
 engine.workspace = true
 state.workspace = true
 story.workspace = true
+store.workspace = true

@@ -2,12 +2,15 @@ use engine::AgentApiIds;
 use serde_json::json;
 use ss_protocol::{
     CharacterCardSummaryPayload, CharacterChrExportPayload, CharacterCoverMimeType,
-    CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload, ErrorCode,
-    ErrorPayload, GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome,
-    JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, ResponseResult,
-    RuntimeSnapshotPayload, ServerEventMessage, StoryPlannedPayload, StreamEventBody, StreamFrame,
+    CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload,
+    DashboardCountsPayload, DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
+    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, ErrorCode, ErrorPayload,
+    GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage,
+    JsonRpcResponseMessage, LlmApiPayload, RequestParams, ResponseResult, RuntimeSnapshotPayload,
+    ServerEventMessage, StoryPlannedPayload, StreamEventBody, StreamFrame,
 };
 use state::WorldState;
+use store::LlmProvider;
 
 fn sample_runtime_snapshot() -> engine::RuntimeSnapshot {
     let mut world_state = WorldState::new("dock");
@@ -179,11 +182,75 @@ fn json_rpc_request_and_response_round_trip() {
     );
     let cover_updated_json = serde_json::to_string_pretty(&cover_updated_response)
         .expect("cover updated response should serialize");
-    let cover_updated_round_trip: JsonRpcResponseMessage = serde_json::from_str(&cover_updated_json)
-        .expect("cover updated response should deserialize");
+    let cover_updated_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&cover_updated_json)
+            .expect("cover updated response should deserialize");
     assert!(matches!(
         cover_updated_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCoverUpdated(_))
+    ));
+
+    let dashboard_response = JsonRpcResponseMessage::ok(
+        "req-8",
+        None::<String>,
+        ResponseResult::Dashboard(Box::new(DashboardPayload {
+            health: DashboardHealthPayload {
+                status: DashboardHealthStatus::Ok,
+            },
+            counts: DashboardCountsPayload {
+                characters_total: 3,
+                characters_with_cover: 2,
+                story_resources_total: 1,
+                stories_total: 2,
+                sessions_total: 4,
+            },
+            global_config: GlobalConfigPayload {
+                api_ids: sample_api_ids(),
+            },
+            recent_stories: vec![DashboardStorySummaryPayload {
+                story_id: "story-1".to_owned(),
+                display_name: "Flooded Harbor".to_owned(),
+                resource_id: "resource-1".to_owned(),
+                introduction: "At the dock.".to_owned(),
+                updated_at_ms: Some(1_000),
+            }],
+            recent_sessions: vec![DashboardSessionSummaryPayload {
+                session_id: "session-1".to_owned(),
+                story_id: "story-1".to_owned(),
+                display_name: "Courier Run".to_owned(),
+                turn_index: 2,
+                updated_at_ms: Some(2_000),
+            }],
+        })),
+    );
+    let dashboard_json =
+        serde_json::to_string_pretty(&dashboard_response).expect("dashboard should serialize");
+    let dashboard_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&dashboard_json).expect("dashboard should deserialize");
+    assert!(matches!(
+        dashboard_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::Dashboard(_))
+    ));
+
+    let llm_api_response = JsonRpcResponseMessage::ok(
+        "req-9",
+        None::<String>,
+        ResponseResult::LlmApi(LlmApiPayload {
+            api_id: "default".to_owned(),
+            provider: LlmProvider::OpenAi,
+            base_url: "https://api.openai.example/v1".to_owned(),
+            model: "gpt-4.1-mini".to_owned(),
+            has_api_key: true,
+            api_key_masked: Some("sk****et".to_owned()),
+        }),
+    );
+    let llm_api_json =
+        serde_json::to_string_pretty(&llm_api_response).expect("llm api response should serialize");
+    let llm_api_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&llm_api_json).expect("llm api response should deserialize");
+    assert!(matches!(
+        llm_api_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::LlmApi(_))
     ));
 }
 

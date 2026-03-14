@@ -88,7 +88,10 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(agent_configs: RuntimeAgentConfigs, runtime_state: RuntimeState) -> Result<Self, EngineError> {
+    pub fn new(
+        agent_configs: RuntimeAgentConfigs,
+        runtime_state: RuntimeState,
+    ) -> Result<Self, EngineError> {
         Ok(Self {
             runtime_state,
             director: Director::new(agent_configs.director.client, agent_configs.director.model)?,
@@ -649,7 +652,7 @@ pub async fn generate_story_graph(
             story_concept: resources.story_concept(),
             planned_story: resources.planned_story(),
             world_state_schema: resources.world_state_schema_seed(),
-            player_state_schema: Some(resources.player_state_schema()),
+            player_state_schema: resources.player_state_schema_seed(),
             available_characters: resources.character_cards(),
         })
         .await

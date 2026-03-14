@@ -8,7 +8,7 @@ use tokio::net::TcpListener;
 use crate::config::{AppConfig, FrontendConfig, StoreBackend};
 use crate::error::AppError;
 use crate::frontend::mount_frontend;
-use crate::llm::build_registry;
+use crate::llm::seed_store_and_build_registry;
 
 pub async fn build_store(config: &AppConfig) -> Result<Arc<dyn Store>, AppError> {
     match config.store.backend {
@@ -19,7 +19,7 @@ pub async fn build_store(config: &AppConfig) -> Result<Arc<dyn Store>, AppError>
 
 pub async fn build_handler(config: &AppConfig) -> Result<Arc<Handler>, AppError> {
     let store = build_store(config).await?;
-    let registry = build_registry(config)?;
+    let registry = seed_store_and_build_registry(&store, config).await?;
     let handler = Handler::new(store, registry, config.llm.defaults.clone()).await?;
     Ok(Arc::new(handler))
 }

@@ -1,8 +1,8 @@
 use std::path::Path;
 
+use axum::Router;
 use axum::response::{Html, Redirect};
 use axum::routing::{MethodRouter, get, get_service};
-use axum::Router;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::FrontendConfig;
@@ -27,7 +27,9 @@ fn mount_static_frontend(router: Router, config: &FrontendConfig, static_dir: &P
     if mount_path == "/" {
         if index_path.is_file() {
             let index_service = get_service(ServeFile::new(index_path));
-            router.route_service("/", index_service).fallback_service(static_service)
+            router
+                .route_service("/", index_service)
+                .fallback_service(static_service)
         } else {
             router
                 .route("/", placeholder_handler("/"))
@@ -62,7 +64,9 @@ fn mount_placeholder_frontend(router: Router, config: &FrontendConfig) -> Router
     if mount_path == "/" {
         router.route("/", handler)
     } else {
-        router.route(&mount_path, handler.clone()).route(&mount_slash, handler)
+        router
+            .route(&mount_path, handler.clone())
+            .route(&mount_slash, handler)
     }
 }
 

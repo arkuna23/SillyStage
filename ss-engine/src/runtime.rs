@@ -21,7 +21,7 @@ pub struct StoryResources {
     story_concept: String,
     planned_story: Option<String>,
     character_cards: Vec<CharacterCard>,
-    player_state_schema: PlayerStateSchema,
+    player_state_schema_seed: Option<PlayerStateSchema>,
     world_state_schema_seed: Option<WorldStateSchema>,
 }
 
@@ -42,7 +42,7 @@ impl StoryResources {
         story_id: impl Into<String>,
         story_concept: impl Into<String>,
         character_cards: Vec<CharacterCard>,
-        player_state_schema: PlayerStateSchema,
+        player_state_schema_seed: Option<PlayerStateSchema>,
     ) -> Result<Self, RuntimeError> {
         let story_id = story_id.into();
         let story_concept = story_concept.into();
@@ -55,7 +55,7 @@ impl StoryResources {
             story_concept,
             planned_story: None,
             character_cards,
-            player_state_schema,
+            player_state_schema_seed,
             world_state_schema_seed: None,
         })
     }
@@ -86,8 +86,8 @@ impl StoryResources {
         self.planned_story.as_deref()
     }
 
-    pub fn player_state_schema(&self) -> &PlayerStateSchema {
-        &self.player_state_schema
+    pub fn player_state_schema_seed(&self) -> Option<&PlayerStateSchema> {
+        self.player_state_schema_seed.as_ref()
     }
 
     pub fn world_state_schema_seed(&self) -> Option<&WorldStateSchema> {

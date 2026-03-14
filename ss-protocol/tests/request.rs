@@ -3,34 +3,21 @@ use serde_json::json;
 use ss_protocol::{
     CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterDeleteParams,
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
-    CharacterSetCoverParams, ConfigGetGlobalParams, ConfigUpdateGlobalParams,
-    CreateStoryResourcesParams, DeleteSessionParams, DeleteStoryParams,
-    DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams,
+    CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
+    ConfigUpdateGlobalParams, CreateStoryResourcesParams, DashboardGetParams, DeleteSessionParams,
+    DeleteStoryParams, DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams,
     GetSessionParams, GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
-    ListSessionsParams, ListStoriesParams, ListStoryResourcesParams, RequestParams,
-    RunTurnParams, SessionGetConfigParams, SessionUpdateConfigParams,
+    ListSessionsParams, ListStoriesParams, ListStoryResourcesParams, LlmApiCreateParams,
+    LlmApiDeleteParams, LlmApiGetParams, LlmApiListParams, LlmApiUpdateParams,
+    PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
+    PlayerProfileListParams, PlayerProfileUpdateParams, RequestParams, RunTurnParams,
+    SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
+    SessionGetConfigParams, SessionUpdateConfigParams, SetPlayerProfileParams,
     StartSessionFromStoryParams, UpdateStoryResourcesParams, UploadChunkParams,
     UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
-use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
-
-fn sample_player_state_schema() -> PlayerStateSchema {
-    let mut schema = PlayerStateSchema::new();
-    schema.insert_field(
-        "coins",
-        StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
-    );
-    schema
-}
-
-fn sample_world_state_schema() -> WorldStateSchema {
-    let mut schema = WorldStateSchema::new();
-    schema.insert_field(
-        "gate_open",
-        StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
-    );
-    schema
-}
+use state::{StateFieldSchema, StateValueType};
+use store::LlmProvider;
 
 fn sample_api_ids() -> AgentApiIds {
     AgentApiIds {
@@ -51,8 +38,8 @@ fn create_story_resources_request_uses_character_ids_only() {
         RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned(), "guard".to_owned()],
-            player_state_schema_seed: sample_player_state_schema(),
-            world_state_schema_seed: Some(sample_world_state_schema()),
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
             planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
         }),
     );
@@ -130,7 +117,7 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
         RequestParams::StoryStartSession(StartSessionFromStoryParams {
             story_id: "story-1".to_owned(),
             display_name: Some("Courier Run".to_owned()),
-            player_description: "A disguised courier posing as a dock clerk.".to_owned(),
+            player_profile_id: Some("profile-courier".to_owned()),
             config_mode: SessionConfigMode::UseSession,
             session_api_ids: Some(sample_api_ids()),
         }),
@@ -142,6 +129,17 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
 
 #[test]
 fn object_crud_requests_keep_stable_method_names() {
+    let dashboard_get = JsonRpcRequestMessage::new(
+        "dashboard-get",
+        None::<String>,
+        RequestParams::DashboardGet(DashboardGetParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&dashboard_get)
+            .expect("dashboard get should serialize")
+            .contains("\"method\": \"dashboard.get\"")
+    );
+
     let character_get = JsonRpcRequestMessage::new(
         "character-get",
         None::<String>,
@@ -155,6 +153,28 @@ fn object_crud_requests_keep_stable_method_names() {
             .contains("\"method\": \"character.get\"")
     );
 
+    let character_update = JsonRpcRequestMessage::new(
+        "character-update",
+        None::<String>,
+        RequestParams::CharacterUpdate(CharacterUpdateParams {
+            character_id: "merchant".to_owned(),
+            content: CharacterCardContent {
+                id: "merchant".to_owned(),
+                name: "Haru".to_owned(),
+                personality: "greedy but friendly trader".to_owned(),
+                style: "talkative, casual".to_owned(),
+                tendencies: vec!["likes profitable deals".to_owned()],
+                schema_id: "schema-character-merchant".to_owned(),
+                system_prompt: "Stay in character.".to_owned(),
+            },
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&character_update)
+            .expect("character update should serialize")
+            .contains("\"method\": \"character.update\"")
+    );
+
     let character_create = JsonRpcRequestMessage::new(
         "character-create",
         None::<String>,
@@ -165,7 +185,7 @@ fn object_crud_requests_keep_stable_method_names() {
                 personality: "greedy but friendly trader".to_owned(),
                 style: "talkative, casual".to_owned(),
                 tendencies: vec!["likes profitable deals".to_owned()],
-                state_schema: Default::default(),
+                schema_id: "schema-character-merchant".to_owned(),
                 system_prompt: "Stay in character.".to_owned(),
             },
         }),
@@ -228,6 +248,77 @@ fn object_crud_requests_keep_stable_method_names() {
             .contains("\"method\": \"character.set_cover\"")
     );
 
+    let llm_api_create = JsonRpcRequestMessage::new(
+        "llm-api-create",
+        None::<String>,
+        RequestParams::LlmApiCreate(LlmApiCreateParams {
+            api_id: "default".to_owned(),
+            provider: LlmProvider::OpenAi,
+            base_url: "https://api.openai.example/v1".to_owned(),
+            api_key: "sk-secret".to_owned(),
+            model: "gpt-4.1-mini".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&llm_api_create)
+            .expect("llm api create should serialize")
+            .contains("\"method\": \"llm_api.create\"")
+    );
+
+    let llm_api_get = JsonRpcRequestMessage::new(
+        "llm-api-get",
+        None::<String>,
+        RequestParams::LlmApiGet(LlmApiGetParams {
+            api_id: "default".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&llm_api_get)
+            .expect("llm api get should serialize")
+            .contains("\"method\": \"llm_api.get\"")
+    );
+
+    let llm_api_list = JsonRpcRequestMessage::new(
+        "llm-api-list",
+        None::<String>,
+        RequestParams::LlmApiList(LlmApiListParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&llm_api_list)
+            .expect("llm api list should serialize")
+            .contains("\"method\": \"llm_api.list\"")
+    );
+
+    let llm_api_update = JsonRpcRequestMessage::new(
+        "llm-api-update",
+        None::<String>,
+        RequestParams::LlmApiUpdate(LlmApiUpdateParams {
+            api_id: "default".to_owned(),
+            provider: None,
+            base_url: Some("https://api.alt.example/v1".to_owned()),
+            api_key: None,
+            model: Some("gpt-4.1".to_owned()),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&llm_api_update)
+            .expect("llm api update should serialize")
+            .contains("\"method\": \"llm_api.update\"")
+    );
+
+    let llm_api_delete = JsonRpcRequestMessage::new(
+        "llm-api-delete",
+        None::<String>,
+        RequestParams::LlmApiDelete(LlmApiDeleteParams {
+            api_id: "default".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&llm_api_delete)
+            .expect("llm api delete should serialize")
+            .contains("\"method\": \"llm_api.delete\"")
+    );
+
     let character_delete = JsonRpcRequestMessage::new(
         "character-delete",
         None::<String>,
@@ -239,6 +330,147 @@ fn object_crud_requests_keep_stable_method_names() {
         serde_json::to_string_pretty(&character_delete)
             .expect("character delete should serialize")
             .contains("\"method\": \"character.delete\"")
+    );
+
+    let schema_create = JsonRpcRequestMessage::new(
+        "schema-create",
+        None::<String>,
+        RequestParams::SchemaCreate(SchemaCreateParams {
+            schema_id: "schema-player-default".to_owned(),
+            display_name: "Player Schema".to_owned(),
+            tags: vec!["player".to_owned()],
+            fields: [(
+                "coins".to_owned(),
+                StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+            )]
+            .into_iter()
+            .collect(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&schema_create)
+            .expect("schema create should serialize")
+            .contains("\"method\": \"schema.create\"")
+    );
+
+    let schema_get = JsonRpcRequestMessage::new(
+        "schema-get",
+        None::<String>,
+        RequestParams::SchemaGet(SchemaGetParams {
+            schema_id: "schema-player-default".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&schema_get)
+            .expect("schema get should serialize")
+            .contains("\"method\": \"schema.get\"")
+    );
+
+    let schema_list = JsonRpcRequestMessage::new(
+        "schema-list",
+        None::<String>,
+        RequestParams::SchemaList(SchemaListParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&schema_list)
+            .expect("schema list should serialize")
+            .contains("\"method\": \"schema.list\"")
+    );
+
+    let schema_update = JsonRpcRequestMessage::new(
+        "schema-update",
+        None::<String>,
+        RequestParams::SchemaUpdate(SchemaUpdateParams {
+            schema_id: "schema-player-default".to_owned(),
+            display_name: Some("Player Schema V2".to_owned()),
+            tags: None,
+            fields: None,
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&schema_update)
+            .expect("schema update should serialize")
+            .contains("\"method\": \"schema.update\"")
+    );
+
+    let schema_delete = JsonRpcRequestMessage::new(
+        "schema-delete",
+        None::<String>,
+        RequestParams::SchemaDelete(SchemaDeleteParams {
+            schema_id: "schema-player-default".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&schema_delete)
+            .expect("schema delete should serialize")
+            .contains("\"method\": \"schema.delete\"")
+    );
+
+    let player_profile_create = JsonRpcRequestMessage::new(
+        "player-profile-create",
+        None::<String>,
+        RequestParams::PlayerProfileCreate(PlayerProfileCreateParams {
+            player_profile_id: "profile-courier".to_owned(),
+            display_name: "Courier".to_owned(),
+            description: "A determined courier.".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&player_profile_create)
+            .expect("player profile create should serialize")
+            .contains("\"method\": \"player_profile.create\"")
+    );
+
+    let player_profile_get = JsonRpcRequestMessage::new(
+        "player-profile-get",
+        None::<String>,
+        RequestParams::PlayerProfileGet(PlayerProfileGetParams {
+            player_profile_id: "profile-courier".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&player_profile_get)
+            .expect("player profile get should serialize")
+            .contains("\"method\": \"player_profile.get\"")
+    );
+
+    let player_profile_list = JsonRpcRequestMessage::new(
+        "player-profile-list",
+        None::<String>,
+        RequestParams::PlayerProfileList(PlayerProfileListParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&player_profile_list)
+            .expect("player profile list should serialize")
+            .contains("\"method\": \"player_profile.list\"")
+    );
+
+    let player_profile_update = JsonRpcRequestMessage::new(
+        "player-profile-update",
+        None::<String>,
+        RequestParams::PlayerProfileUpdate(PlayerProfileUpdateParams {
+            player_profile_id: "profile-courier".to_owned(),
+            display_name: Some("Courier V2".to_owned()),
+            description: None,
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&player_profile_update)
+            .expect("player profile update should serialize")
+            .contains("\"method\": \"player_profile.update\"")
+    );
+
+    let player_profile_delete = JsonRpcRequestMessage::new(
+        "player-profile-delete",
+        None::<String>,
+        RequestParams::PlayerProfileDelete(PlayerProfileDeleteParams {
+            player_profile_id: "profile-courier".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&player_profile_delete)
+            .expect("player profile delete should serialize")
+            .contains("\"method\": \"player_profile.delete\"")
     );
 
     let resources_get = JsonRpcRequestMessage::new(
@@ -373,8 +605,8 @@ fn session_requests_keep_stable_method_names() {
             resource_id: "res-1".to_owned(),
             story_concept: None,
             character_ids: Some(vec!["merchant".to_owned()]),
-            player_state_schema_seed: None,
-            world_state_schema_seed: None,
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
             planned_story: Some("Core Conflict:\nThe flood gate is jammed.".to_owned()),
         }),
     );
@@ -390,6 +622,19 @@ fn session_requests_keep_stable_method_names() {
     let get_snapshot_json =
         serde_json::to_string_pretty(&get_snapshot).expect("snapshot request should serialize");
     assert!(get_snapshot_json.contains("\"method\": \"session.get_runtime_snapshot\""));
+
+    let set_player_profile = JsonRpcRequestMessage::new(
+        "req-set-profile",
+        Some("session-1"),
+        RequestParams::SessionSetPlayerProfile(SetPlayerProfileParams {
+            player_profile_id: Some("profile-courier".to_owned()),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&set_player_profile)
+            .expect("set player profile should serialize")
+            .contains("\"method\": \"session.set_player_profile\"")
+    );
 }
 
 #[test]

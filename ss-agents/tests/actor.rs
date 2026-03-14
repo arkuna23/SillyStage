@@ -348,7 +348,9 @@ async fn perform_stream_sends_character_specific_system_prompt() {
 
 #[tokio::test]
 async fn llm_stream_errors_surface_through_actor() {
-    let llm = Arc::new(MockLlm::with_stream_chunks(vec![Err(LlmError::RateLimited)]));
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![Err(
+        LlmError::RateLimited,
+    )]));
     let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
     let character = sample_card();

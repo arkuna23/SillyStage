@@ -25,13 +25,19 @@ impl Handler {
         }
 
         self.ensure_characters_exist(&params.character_ids).await?;
+        if let Some(player_schema_id_seed) = &params.player_schema_id_seed {
+            self.ensure_schema_exists(player_schema_id_seed).await?;
+        }
+        if let Some(world_schema_id_seed) = &params.world_schema_id_seed {
+            self.ensure_schema_exists(world_schema_id_seed).await?;
+        }
 
         let record = StoryResourcesRecord {
             resource_id: self.id_generator.next("resource"),
             story_concept: params.story_concept,
             character_ids: params.character_ids,
-            player_state_schema_seed: params.player_state_schema_seed,
-            world_state_schema_seed: params.world_state_schema_seed,
+            player_schema_id_seed: params.player_schema_id_seed,
+            world_schema_id_seed: params.world_schema_id_seed,
             planned_story: params.planned_story,
         };
 
@@ -104,11 +110,13 @@ impl Handler {
             self.ensure_characters_exist(&character_ids).await?;
             record.character_ids = character_ids;
         }
-        if let Some(player_state_schema_seed) = params.player_state_schema_seed {
-            record.player_state_schema_seed = player_state_schema_seed;
+        if let Some(player_schema_id_seed) = params.player_schema_id_seed {
+            self.ensure_schema_exists(&player_schema_id_seed).await?;
+            record.player_schema_id_seed = Some(player_schema_id_seed);
         }
-        if let Some(world_state_schema_seed) = params.world_state_schema_seed {
-            record.world_state_schema_seed = Some(world_state_schema_seed);
+        if let Some(world_schema_id_seed) = params.world_schema_id_seed {
+            self.ensure_schema_exists(&world_schema_id_seed).await?;
+            record.world_schema_id_seed = Some(world_schema_id_seed);
         }
         if let Some(planned_story) = params.planned_story {
             record.planned_story = Some(planned_story);
@@ -271,7 +279,7 @@ impl Handler {
             .start_session_from_story(
                 &params.story_id,
                 params.display_name,
-                params.player_description,
+                params.player_profile_id,
                 params.config_mode,
                 params.session_api_ids,
             )
@@ -300,6 +308,8 @@ impl Handler {
                 story_id: story.story_id,
                 display_name: session.display_name,
                 snapshot: session.snapshot,
+                player_profile_id: session.player_profile_id,
+                player_schema_id: session.player_schema_id,
                 character_summaries,
                 config,
             })),
@@ -311,6 +321,13 @@ impl Handler {
             if self.store.get_character(character_id).await?.is_none() {
                 return Err(HandlerError::MissingCharacter(character_id.clone()));
             }
+        }
+        Ok(())
+    }
+
+    pub(crate) async fn ensure_schema_exists(&self, schema_id: &str) -> Result<(), HandlerError> {
+        if self.store.get_schema(schema_id).await?.is_none() {
+            return Err(HandlerError::MissingSchema(schema_id.to_owned()));
         }
         Ok(())
     }
@@ -361,8 +378,8 @@ fn story_resources_payload_from_record(record: &StoryResourcesRecord) -> StoryRe
         resource_id: record.resource_id.clone(),
         story_concept: record.story_concept.clone(),
         character_ids: record.character_ids.clone(),
-        player_state_schema_seed: record.player_state_schema_seed.clone(),
-        world_state_schema_seed: record.world_state_schema_seed.clone(),
+        player_schema_id_seed: record.player_schema_id_seed.clone(),
+        world_schema_id_seed: record.world_schema_id_seed.clone(),
         planned_story: record.planned_story.clone(),
     }
 }
@@ -373,8 +390,8 @@ fn story_generated_payload_from_record(record: &StoryRecord) -> StoryGeneratedPa
         story_id: record.story_id.clone(),
         display_name: record.display_name.clone(),
         graph: record.graph.clone(),
-        world_state_schema: record.world_state_schema.clone(),
-        player_state_schema: record.player_state_schema.clone(),
+        world_schema_id: record.world_schema_id.clone(),
+        player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
     }
 }
@@ -384,6 +401,8 @@ fn story_summary_payload_from_record(record: &StoryRecord) -> StorySummaryPayloa
         story_id: record.story_id.clone(),
         display_name: record.display_name.clone(),
         resource_id: record.resource_id.clone(),
+        world_schema_id: record.world_schema_id.clone(),
+        player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
     }
 }
@@ -394,8 +413,8 @@ fn story_detail_payload_from_record(record: &StoryRecord) -> StoryDetailPayload 
         display_name: record.display_name.clone(),
         resource_id: record.resource_id.clone(),
         graph: record.graph.clone(),
-        world_state_schema: record.world_state_schema.clone(),
-        player_state_schema: record.player_state_schema.clone(),
+        world_schema_id: record.world_schema_id.clone(),
+        player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
     }
 }

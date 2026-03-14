@@ -9,12 +9,16 @@ use tokio::io::AsyncWriteExt;
 use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, SessionRecord, StoryRecord, StoryResourcesRecord,
+    CharacterCardDefinition, CharacterCardRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord,
+    SessionRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
 const GLOBAL_DIR: &str = "global";
 const GLOBAL_CONFIG_FILE: &str = "config.json";
+const LLM_APIS_DIR: &str = "llm_apis";
+const SCHEMAS_DIR: &str = "schemas";
+const PLAYER_PROFILES_DIR: &str = "player_profiles";
 const CHARACTERS_DIR: &str = "characters";
 const CHARACTER_RECORD_FILE: &str = "record.json";
 const CHARACTER_COVER_FILE: &str = "cover.bin";
@@ -30,7 +34,7 @@ pub struct FileSystemStore {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CharacterCardRecordFile {
     character_id: String,
-    content: agents::actor::CharacterCard,
+    content: CharacterCardDefinition,
     cover_file_name: Option<String>,
     cover_mime_type: Option<String>,
 }
@@ -59,6 +63,9 @@ impl FileSystemStore {
 
     async fn ensure_layout(&self) -> Result<(), StoreError> {
         fs::create_dir_all(self.global_dir()).await?;
+        fs::create_dir_all(self.llm_apis_dir()).await?;
+        fs::create_dir_all(self.schemas_dir()).await?;
+        fs::create_dir_all(self.player_profiles_dir()).await?;
         fs::create_dir_all(self.characters_dir()).await?;
         fs::create_dir_all(self.story_resources_dir()).await?;
         fs::create_dir_all(self.stories_dir()).await?;
@@ -74,16 +81,51 @@ impl FileSystemStore {
         self.global_dir().join(GLOBAL_CONFIG_FILE)
     }
 
+    fn llm_apis_dir(&self) -> PathBuf {
+        self.root.join(LLM_APIS_DIR)
+    }
+
+    fn llm_api_path(&self, api_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .llm_apis_dir()
+            .join(format!("{}.json", validate_path_component(api_id)?)))
+    }
+
+    fn schemas_dir(&self) -> PathBuf {
+        self.root.join(SCHEMAS_DIR)
+    }
+
+    fn schema_path(&self, schema_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .schemas_dir()
+            .join(format!("{}.json", validate_path_component(schema_id)?)))
+    }
+
+    fn player_profiles_dir(&self) -> PathBuf {
+        self.root.join(PLAYER_PROFILES_DIR)
+    }
+
+    fn player_profile_path(&self, player_profile_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.player_profiles_dir().join(format!(
+            "{}.json",
+            validate_path_component(player_profile_id)?
+        )))
+    }
+
     fn characters_dir(&self) -> PathBuf {
         self.root.join(CHARACTERS_DIR)
     }
 
     fn character_dir(&self, character_id: &str) -> Result<PathBuf, StoreError> {
-        Ok(self.characters_dir().join(validate_path_component(character_id)?))
+        Ok(self
+            .characters_dir()
+            .join(validate_path_component(character_id)?))
     }
 
     fn character_record_path(&self, character_id: &str) -> Result<PathBuf, StoreError> {
-        Ok(self.character_dir(character_id)?.join(CHARACTER_RECORD_FILE))
+        Ok(self
+            .character_dir(character_id)?
+            .join(CHARACTER_RECORD_FILE))
     }
 
     fn character_cover_path(&self, character_id: &str) -> Result<PathBuf, StoreError> {
@@ -129,6 +171,64 @@ impl Store for FileSystemStore {
 
     async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
         write_json_atomic(&self.global_config_path(), &config).await
+    }
+
+    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
+        read_optional_json_file(&self.llm_api_path(api_id)?).await
+    }
+
+    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError> {
+        list_json_records(&self.llm_apis_dir()).await
+    }
+
+    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.llm_api_path(&record.api_id)?, &record).await
+    }
+
+    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
+        delete_optional_json_file(&self.llm_api_path(api_id)?).await
+    }
+
+    async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
+        read_optional_json_file(&self.schema_path(schema_id)?).await
+    }
+
+    async fn list_schemas(&self) -> Result<Vec<SchemaRecord>, StoreError> {
+        list_json_records(&self.schemas_dir()).await
+    }
+
+    async fn save_schema(&self, record: SchemaRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.schema_path(&record.schema_id)?, &record).await
+    }
+
+    async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
+        delete_optional_json_file(&self.schema_path(schema_id)?).await
+    }
+
+    async fn get_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError> {
+        read_optional_json_file(&self.player_profile_path(player_profile_id)?).await
+    }
+
+    async fn list_player_profiles(&self) -> Result<Vec<PlayerProfileRecord>, StoreError> {
+        list_json_records(&self.player_profiles_dir()).await
+    }
+
+    async fn save_player_profile(&self, record: PlayerProfileRecord) -> Result<(), StoreError> {
+        write_json_atomic(
+            &self.player_profile_path(&record.player_profile_id)?,
+            &record,
+        )
+        .await
+    }
+
+    async fn delete_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError> {
+        delete_optional_json_file(&self.player_profile_path(player_profile_id)?).await
     }
 
     async fn get_character(
@@ -184,8 +284,11 @@ impl Store for FileSystemStore {
             }
             None => {}
         }
-        write_json_atomic(&dir.join(CHARACTER_RECORD_FILE), &CharacterCardRecordFile::from(&record))
-            .await
+        write_json_atomic(
+            &dir.join(CHARACTER_RECORD_FILE),
+            &CharacterCardRecordFile::from(&record),
+        )
+        .await
     }
 
     async fn delete_character(
@@ -216,7 +319,11 @@ impl Store for FileSystemStore {
         &self,
         resources: StoryResourcesRecord,
     ) -> Result<(), StoreError> {
-        write_json_atomic(&self.story_resources_path(&resources.resource_id)?, &resources).await
+        write_json_atomic(
+            &self.story_resources_path(&resources.resource_id)?,
+            &resources,
+        )
+        .await
     }
 
     async fn delete_story_resources(
@@ -281,7 +388,9 @@ async fn path_exists(path: &Path) -> Result<bool, StoreError> {
     }
 }
 
-async fn read_optional_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, StoreError> {
+async fn read_optional_json_file<T: DeserializeOwned>(
+    path: &Path,
+) -> Result<Option<T>, StoreError> {
     if !path_exists(path).await? {
         return Ok(None);
     }
@@ -311,7 +420,9 @@ async fn list_json_records<T: DeserializeOwned>(dir: &Path) -> Result<Vec<T>, St
     Ok(records)
 }
 
-async fn delete_optional_json_file<T: DeserializeOwned>(path: &Path) -> Result<Option<T>, StoreError> {
+async fn delete_optional_json_file<T: DeserializeOwned>(
+    path: &Path,
+) -> Result<Option<T>, StoreError> {
     let record = read_optional_json_file(path).await?;
     if record.is_none() {
         return Ok(None);
@@ -334,7 +445,9 @@ async fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), StoreError>
 
     let tmp_name = format!(
         ".{}.tmp-{}",
-        path.file_name().and_then(|name| name.to_str()).unwrap_or("record"),
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("record"),
         unique_suffix()
     );
     let tmp_path = parent.join(tmp_name);

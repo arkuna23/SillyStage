@@ -112,7 +112,7 @@ fn sample_story_resources() -> StoryResources {
         "flooded_city_demo",
         "A flooded dock story",
         sample_character_cards(),
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect("story resources should build")
     .with_world_state_schema_seed(sample_world_state_schema())

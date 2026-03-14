@@ -1,9 +1,7 @@
-use std::collections::HashMap;
 use std::io::{Cursor, Read, Write};
 
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
-use state::StateFieldSchema;
 use thiserror::Error;
 use zip::write::SimpleFileOptions;
 use zip::{CompressionMethod, ZipArchive, ZipWriter};
@@ -68,7 +66,7 @@ pub struct CharacterCardContent {
     pub personality: String,
     pub style: String,
     pub tendencies: Vec<String>,
-    pub state_schema: HashMap<String, StateFieldSchema>,
+    pub schema_id: String,
     pub system_prompt: String,
 }
 
@@ -80,7 +78,7 @@ impl From<&CharacterCard> for CharacterCardContent {
             personality: value.personality.clone(),
             style: value.style.clone(),
             tendencies: value.tendencies.clone(),
-            state_schema: value.state_schema.clone(),
+            schema_id: value.id.clone(),
             system_prompt: value.system_prompt.clone(),
         }
     }
@@ -100,7 +98,7 @@ impl From<CharacterCardContent> for CharacterCard {
             personality: value.personality,
             style: value.style,
             tendencies: value.tendencies,
-            state_schema: value.state_schema,
+            state_schema: Default::default(),
             system_prompt: value.system_prompt,
         }
     }

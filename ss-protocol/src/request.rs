@@ -1,13 +1,21 @@
-use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
-use state::{PlayerStateSchema, WorldStateSchema};
-
+use crate::character::{CharacterCardContent, CharacterCoverMimeType};
 use crate::config::{
     ConfigGetGlobalParams, ConfigUpdateGlobalParams, SessionGetConfigParams,
     SessionUpdateConfigParams,
 };
-use crate::character::{CharacterCardContent, CharacterCoverMimeType};
+use crate::llm_api::{
+    LlmApiCreateParams, LlmApiDeleteParams, LlmApiGetParams, LlmApiListParams, LlmApiUpdateParams,
+};
+use crate::player_profile::{
+    PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
+    PlayerProfileListParams, PlayerProfileUpdateParams,
+};
+use crate::schema::{
+    SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
+};
+use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
@@ -17,10 +25,32 @@ pub enum RequestMethod {
     UploadChunk,
     #[serde(rename = "upload.complete")]
     UploadComplete,
+    #[serde(rename = "schema.create")]
+    SchemaCreate,
+    #[serde(rename = "schema.get")]
+    SchemaGet,
+    #[serde(rename = "schema.list")]
+    SchemaList,
+    #[serde(rename = "schema.update")]
+    SchemaUpdate,
+    #[serde(rename = "schema.delete")]
+    SchemaDelete,
+    #[serde(rename = "player_profile.create")]
+    PlayerProfileCreate,
+    #[serde(rename = "player_profile.get")]
+    PlayerProfileGet,
+    #[serde(rename = "player_profile.list")]
+    PlayerProfileList,
+    #[serde(rename = "player_profile.update")]
+    PlayerProfileUpdate,
+    #[serde(rename = "player_profile.delete")]
+    PlayerProfileDelete,
     #[serde(rename = "character.create")]
     CharacterCreate,
     #[serde(rename = "character.get")]
     CharacterGet,
+    #[serde(rename = "character.update")]
+    CharacterUpdate,
     #[serde(rename = "character.get_cover")]
     CharacterGetCover,
     #[serde(rename = "character.export_chr")]
@@ -61,6 +91,8 @@ pub enum RequestMethod {
     SessionDelete,
     #[serde(rename = "session.run_turn")]
     SessionRunTurn,
+    #[serde(rename = "session.set_player_profile")]
+    SessionSetPlayerProfile,
     #[serde(rename = "session.update_player_description")]
     SessionUpdatePlayerDescription,
     #[serde(rename = "session.get_runtime_snapshot")]
@@ -73,6 +105,18 @@ pub enum RequestMethod {
     SessionGetConfig,
     #[serde(rename = "session.update_config")]
     SessionUpdateConfig,
+    #[serde(rename = "llm_api.create")]
+    LlmApiCreate,
+    #[serde(rename = "llm_api.get")]
+    LlmApiGet,
+    #[serde(rename = "llm_api.list")]
+    LlmApiList,
+    #[serde(rename = "llm_api.update")]
+    LlmApiUpdate,
+    #[serde(rename = "llm_api.delete")]
+    LlmApiDelete,
+    #[serde(rename = "dashboard.get")]
+    DashboardGet,
 }
 
 #[derive(Debug, Clone)]
@@ -80,8 +124,19 @@ pub enum RequestParams {
     UploadInit(UploadInitParams),
     UploadChunk(UploadChunkParams),
     UploadComplete(UploadCompleteParams),
+    SchemaCreate(SchemaCreateParams),
+    SchemaGet(SchemaGetParams),
+    SchemaList(SchemaListParams),
+    SchemaUpdate(SchemaUpdateParams),
+    SchemaDelete(SchemaDeleteParams),
+    PlayerProfileCreate(PlayerProfileCreateParams),
+    PlayerProfileGet(PlayerProfileGetParams),
+    PlayerProfileList(PlayerProfileListParams),
+    PlayerProfileUpdate(PlayerProfileUpdateParams),
+    PlayerProfileDelete(PlayerProfileDeleteParams),
     CharacterCreate(CharacterCreateParams),
     CharacterGet(CharacterGetParams),
+    CharacterUpdate(CharacterUpdateParams),
     CharacterGetCover(CharacterGetCoverParams),
     CharacterExportChr(CharacterExportChrParams),
     CharacterSetCover(CharacterSetCoverParams),
@@ -102,12 +157,19 @@ pub enum RequestParams {
     SessionList(ListSessionsParams),
     SessionDelete(DeleteSessionParams),
     SessionRunTurn(RunTurnParams),
+    SessionSetPlayerProfile(SetPlayerProfileParams),
     SessionUpdatePlayerDescription(UpdatePlayerDescriptionParams),
     SessionGetRuntimeSnapshot(GetRuntimeSnapshotParams),
     ConfigGetGlobal(ConfigGetGlobalParams),
     ConfigUpdateGlobal(ConfigUpdateGlobalParams),
     SessionGetConfig(SessionGetConfigParams),
     SessionUpdateConfig(SessionUpdateConfigParams),
+    LlmApiCreate(LlmApiCreateParams),
+    LlmApiGet(LlmApiGetParams),
+    LlmApiList(LlmApiListParams),
+    LlmApiUpdate(LlmApiUpdateParams),
+    LlmApiDelete(LlmApiDeleteParams),
+    DashboardGet(DashboardGetParams),
 }
 
 impl RequestParams {
@@ -116,8 +178,19 @@ impl RequestParams {
             Self::UploadInit(_) => RequestMethod::UploadInit,
             Self::UploadChunk(_) => RequestMethod::UploadChunk,
             Self::UploadComplete(_) => RequestMethod::UploadComplete,
+            Self::SchemaCreate(_) => RequestMethod::SchemaCreate,
+            Self::SchemaGet(_) => RequestMethod::SchemaGet,
+            Self::SchemaList(_) => RequestMethod::SchemaList,
+            Self::SchemaUpdate(_) => RequestMethod::SchemaUpdate,
+            Self::SchemaDelete(_) => RequestMethod::SchemaDelete,
+            Self::PlayerProfileCreate(_) => RequestMethod::PlayerProfileCreate,
+            Self::PlayerProfileGet(_) => RequestMethod::PlayerProfileGet,
+            Self::PlayerProfileList(_) => RequestMethod::PlayerProfileList,
+            Self::PlayerProfileUpdate(_) => RequestMethod::PlayerProfileUpdate,
+            Self::PlayerProfileDelete(_) => RequestMethod::PlayerProfileDelete,
             Self::CharacterCreate(_) => RequestMethod::CharacterCreate,
             Self::CharacterGet(_) => RequestMethod::CharacterGet,
+            Self::CharacterUpdate(_) => RequestMethod::CharacterUpdate,
             Self::CharacterGetCover(_) => RequestMethod::CharacterGetCover,
             Self::CharacterExportChr(_) => RequestMethod::CharacterExportChr,
             Self::CharacterSetCover(_) => RequestMethod::CharacterSetCover,
@@ -138,6 +211,7 @@ impl RequestParams {
             Self::SessionList(_) => RequestMethod::SessionList,
             Self::SessionDelete(_) => RequestMethod::SessionDelete,
             Self::SessionRunTurn(_) => RequestMethod::SessionRunTurn,
+            Self::SessionSetPlayerProfile(_) => RequestMethod::SessionSetPlayerProfile,
             Self::SessionUpdatePlayerDescription(_) => {
                 RequestMethod::SessionUpdatePlayerDescription
             }
@@ -146,6 +220,12 @@ impl RequestParams {
             Self::ConfigUpdateGlobal(_) => RequestMethod::ConfigUpdateGlobal,
             Self::SessionGetConfig(_) => RequestMethod::SessionGetConfig,
             Self::SessionUpdateConfig(_) => RequestMethod::SessionUpdateConfig,
+            Self::LlmApiCreate(_) => RequestMethod::LlmApiCreate,
+            Self::LlmApiGet(_) => RequestMethod::LlmApiGet,
+            Self::LlmApiList(_) => RequestMethod::LlmApiList,
+            Self::LlmApiUpdate(_) => RequestMethod::LlmApiUpdate,
+            Self::LlmApiDelete(_) => RequestMethod::LlmApiDelete,
+            Self::DashboardGet(_) => RequestMethod::DashboardGet,
         }
     }
 
@@ -154,8 +234,19 @@ impl RequestParams {
             Self::UploadInit(params) => serde_json::to_value(params),
             Self::UploadChunk(params) => serde_json::to_value(params),
             Self::UploadComplete(params) => serde_json::to_value(params),
+            Self::SchemaCreate(params) => serde_json::to_value(params),
+            Self::SchemaGet(params) => serde_json::to_value(params),
+            Self::SchemaList(params) => serde_json::to_value(params),
+            Self::SchemaUpdate(params) => serde_json::to_value(params),
+            Self::SchemaDelete(params) => serde_json::to_value(params),
+            Self::PlayerProfileCreate(params) => serde_json::to_value(params),
+            Self::PlayerProfileGet(params) => serde_json::to_value(params),
+            Self::PlayerProfileList(params) => serde_json::to_value(params),
+            Self::PlayerProfileUpdate(params) => serde_json::to_value(params),
+            Self::PlayerProfileDelete(params) => serde_json::to_value(params),
             Self::CharacterCreate(params) => serde_json::to_value(params),
             Self::CharacterGet(params) => serde_json::to_value(params),
+            Self::CharacterUpdate(params) => serde_json::to_value(params),
             Self::CharacterGetCover(params) => serde_json::to_value(params),
             Self::CharacterExportChr(params) => serde_json::to_value(params),
             Self::CharacterSetCover(params) => serde_json::to_value(params),
@@ -176,12 +267,19 @@ impl RequestParams {
             Self::SessionList(params) => serde_json::to_value(params),
             Self::SessionDelete(params) => serde_json::to_value(params),
             Self::SessionRunTurn(params) => serde_json::to_value(params),
+            Self::SessionSetPlayerProfile(params) => serde_json::to_value(params),
             Self::SessionUpdatePlayerDescription(params) => serde_json::to_value(params),
             Self::SessionGetRuntimeSnapshot(params) => serde_json::to_value(params),
             Self::ConfigGetGlobal(params) => serde_json::to_value(params),
             Self::ConfigUpdateGlobal(params) => serde_json::to_value(params),
             Self::SessionGetConfig(params) => serde_json::to_value(params),
             Self::SessionUpdateConfig(params) => serde_json::to_value(params),
+            Self::LlmApiCreate(params) => serde_json::to_value(params),
+            Self::LlmApiGet(params) => serde_json::to_value(params),
+            Self::LlmApiList(params) => serde_json::to_value(params),
+            Self::LlmApiUpdate(params) => serde_json::to_value(params),
+            Self::LlmApiDelete(params) => serde_json::to_value(params),
+            Self::DashboardGet(params) => serde_json::to_value(params),
         }
     }
 
@@ -195,10 +293,33 @@ impl RequestParams {
             RequestMethod::UploadComplete => {
                 serde_json::from_value(value).map(Self::UploadComplete)
             }
+            RequestMethod::SchemaCreate => serde_json::from_value(value).map(Self::SchemaCreate),
+            RequestMethod::SchemaGet => serde_json::from_value(value).map(Self::SchemaGet),
+            RequestMethod::SchemaList => serde_json::from_value(value).map(Self::SchemaList),
+            RequestMethod::SchemaUpdate => serde_json::from_value(value).map(Self::SchemaUpdate),
+            RequestMethod::SchemaDelete => serde_json::from_value(value).map(Self::SchemaDelete),
+            RequestMethod::PlayerProfileCreate => {
+                serde_json::from_value(value).map(Self::PlayerProfileCreate)
+            }
+            RequestMethod::PlayerProfileGet => {
+                serde_json::from_value(value).map(Self::PlayerProfileGet)
+            }
+            RequestMethod::PlayerProfileList => {
+                serde_json::from_value(value).map(Self::PlayerProfileList)
+            }
+            RequestMethod::PlayerProfileUpdate => {
+                serde_json::from_value(value).map(Self::PlayerProfileUpdate)
+            }
+            RequestMethod::PlayerProfileDelete => {
+                serde_json::from_value(value).map(Self::PlayerProfileDelete)
+            }
             RequestMethod::CharacterCreate => {
                 serde_json::from_value(value).map(Self::CharacterCreate)
             }
             RequestMethod::CharacterGet => serde_json::from_value(value).map(Self::CharacterGet),
+            RequestMethod::CharacterUpdate => {
+                serde_json::from_value(value).map(Self::CharacterUpdate)
+            }
             RequestMethod::CharacterGetCover => {
                 serde_json::from_value(value).map(Self::CharacterGetCover)
             }
@@ -243,6 +364,9 @@ impl RequestParams {
             RequestMethod::SessionRunTurn => {
                 serde_json::from_value(value).map(Self::SessionRunTurn)
             }
+            RequestMethod::SessionSetPlayerProfile => {
+                serde_json::from_value(value).map(Self::SessionSetPlayerProfile)
+            }
             RequestMethod::SessionUpdatePlayerDescription => {
                 serde_json::from_value(value).map(Self::SessionUpdatePlayerDescription)
             }
@@ -261,9 +385,19 @@ impl RequestParams {
             RequestMethod::SessionUpdateConfig => {
                 serde_json::from_value(value).map(Self::SessionUpdateConfig)
             }
+            RequestMethod::LlmApiCreate => serde_json::from_value(value).map(Self::LlmApiCreate),
+            RequestMethod::LlmApiGet => serde_json::from_value(value).map(Self::LlmApiGet),
+            RequestMethod::LlmApiList => serde_json::from_value(value).map(Self::LlmApiList),
+            RequestMethod::LlmApiUpdate => serde_json::from_value(value).map(Self::LlmApiUpdate),
+            RequestMethod::LlmApiDelete => serde_json::from_value(value).map(Self::LlmApiDelete),
+            RequestMethod::DashboardGet => serde_json::from_value(value).map(Self::DashboardGet),
         }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct DashboardGetParams {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -274,6 +408,13 @@ pub struct CharacterGetParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CharacterCreateParams {
+    pub content: CharacterCardContent,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CharacterUpdateParams {
+    pub character_id: String,
     pub content: CharacterCardContent,
 }
 
@@ -344,9 +485,10 @@ pub struct UploadCompleteParams {
 pub struct CreateStoryResourcesParams {
     pub story_concept: String,
     pub character_ids: Vec<String>,
-    pub player_state_schema_seed: PlayerStateSchema,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub world_state_schema_seed: Option<WorldStateSchema>,
+    pub player_schema_id_seed: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub world_schema_id_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_story: Option<String>,
 }
@@ -370,9 +512,9 @@ pub struct UpdateStoryResourcesParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub character_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub player_state_schema_seed: Option<PlayerStateSchema>,
+    pub player_schema_id_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub world_state_schema_seed: Option<WorldStateSchema>,
+    pub world_schema_id_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_story: Option<String>,
 }
@@ -423,7 +565,8 @@ pub struct StartSessionFromStoryParams {
     pub story_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
-    pub player_description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_profile_id: Option<String>,
     #[serde(default)]
     pub config_mode: SessionConfigMode,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -448,6 +591,13 @@ pub struct RunTurnParams {
     pub player_input: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_overrides: Option<AgentApiIdOverrides>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SetPlayerProfileParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_profile_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

@@ -1,45 +1,10 @@
-# Character Card Structure and `.chr` File Format
+# Character Card Structure and File Format
 
-This document describes the current SillyStage character card data structure and the `.chr` archive format. It documents the current protocol implementation, not an open-ended general standard. If implementation and docs diverge, `ss-protocol/src/character.rs` is the source of truth.
+This document describes the current character content structure, the `.chr` archive format, and how character cards relate to standalone schema resources.
 
-## 1. Role of Character Cards
+## 1. Character Content
 
-Character cards are one of the core inputs before story generation. There are currently two creation paths:
-
-- upload a `.chr` file and let the server parse it
-- call `character.create` for the content first, then `character.set_cover` for the cover
-
-Both flows end up creating the same stored character object and returning a `character_id`. After that:
-
-- `story resources` only reference `character_id`
-- story generation reads the character card content
-- session runtime loads the matching character cards again
-
-So character cards are uploaded once and referenced later, instead of being inlined again for every resource or story request.
-
-## 2. Character Content Structure
-
-The main content of a character card is `content.json`, which currently maps to protocol type `CharacterCardContent`. Its fields are:
-
-- `id`
-  - Stable character ID
-  - Must match `manifest.json.character_id`
-- `name`
-  - Display name of the character
-- `personality`
-  - Short description of the character's personality
-- `style`
-  - Speaking or acting style
-- `tendencies`
-  - List of character tendencies
-  - This is an array of strings
-- `state_schema`
-  - Schema for the character's private state
-  - Keys are state field names and values are `StateFieldSchema`
-- `system_prompt`
-  - System prompt used by the character agent
-
-A minimal example:
+The current character content structure is:
 
 ```json
 {
@@ -52,19 +17,29 @@ A minimal example:
     "avoids danger",
     "tries to maintain good relationships"
   ],
-  "state_schema": {
-    "trust": {
-      "value_type": "int",
-      "description": "How much the merchant trusts the player"
-    }
-  },
+  "schema_id": "schema-character-merchant",
   "system_prompt": "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion."
 }
 ```
 
-## 3. `.chr` File Format
+Field meanings:
 
-`.chr` is a ZIP archive with exactly three required entries:
+- `id`: character id
+- `name`: display name
+- `personality`: personality summary
+- `style`: speaking / behavior style
+- `tendencies`: behavioral tendencies
+- `schema_id`: id of the character-private state schema
+- `system_prompt`: actor-facing character system prompt
+
+Important:
+
+- Character cards no longer embed `state_schema`
+- Private state schema is referenced through standalone `schema` resources
+
+## 2. `.chr` Archive Format
+
+`.chr` is a ZIP archive with fixed entries:
 
 - `manifest.json`
 - `content.json`
@@ -79,35 +54,7 @@ merchant.chr
 └── cover.png
 ```
 
-Current protocol constraints:
-
-- the manifest path must be `manifest.json`
-- the content path must be `content.json`
-- the cover path must start with `cover.`
-- the cover file name is usually derived from the mime type:
-  - `image/png` -> `cover.png`
-  - `image/jpeg` -> `cover.jpg`
-  - `image/webp` -> `cover.webp`
-
-## 4. `manifest.json`
-
-`manifest.json` currently maps to `CharacterArchiveManifest`. Its fields are:
-
-- `format`
-  - currently fixed to `sillystage_character_card`
-- `version`
-  - currently fixed to `1`
-- `character_id`
-  - character ID
-- `content_path`
-  - currently fixed to `content.json`
-- `cover_path`
-  - cover file path, must start with `cover.`
-- `cover_mime_type`
-  - currently supported values:
-    - `image/png`
-    - `image/jpeg`
-    - `image/webp`
+## 3. `manifest.json`
 
 Example:
 
@@ -122,136 +69,95 @@ Example:
 }
 ```
 
-## 5. `cover` File
+Constraints:
 
-The cover file is binary data, not JSON. Its purpose is to provide a visual cover for the character card.
+- `format` must be `sillystage_character_card`
+- `version` is currently fixed to `1`
+- `content_path` is currently fixed to `content.json`
+- `cover_path` must start with `cover.`
+- `character_id` must match `content.json.id`
 
-Current requirements:
-
-- it must exist in the archive
-- its path must match `manifest.json.cover_path`
-- its bytes must not be empty
-- its mime type is declared in `manifest.json.cover_mime_type`
-
-The currently supported cover mime types are:
+Supported cover MIME types:
 
 - `image/png`
 - `image/jpeg`
 - `image/webp`
 
-## 6. Validation Rules
+## 4. `content.json`
 
-When the server parses a `.chr` file, it currently performs these key checks:
+`content.json` uses the character content structure shown above, i.e. `CharacterCardContent`.
 
-- `manifest.format` must equal `sillystage_character_card`
-- `manifest.version` must equal `1`
-- `manifest.content_path` must equal `content.json`
-- `manifest.cover_path` must start with `cover.`
-- `content.id` must equal `manifest.character_id`
-- the archive must contain:
-  - `manifest.json`
-  - `content.json`
-  - the cover file referenced by `manifest.cover_path`
+Key point:
+
+- `schema_id` is required
+- it references a standalone `schema` resource managed by the backend
+
+## 5. `cover`
+
+The cover is stored as a separate binary entry inside the ZIP archive.
+
+Common file names:
+
+- `cover.png`
+- `cover.jpg`
+- `cover.webp`
+
+Requirements:
+
 - cover bytes must not be empty
+- MIME type and file extension should match
 
-If any of these checks fail, character archive parsing fails.
+## 6. Two Creation Paths
 
-## 7. Relation to Runtime Character Objects
+Character cards can currently be created in two ways.
 
-Protocol type `CharacterCardContent` maps one-to-one to runtime type `ss-agents::actor::CharacterCard`. The current implementation provides direct conversion in both directions:
+### 6.1 Upload `.chr`
 
-- `CharacterCard -> CharacterCardContent`
-- `CharacterCardContent -> CharacterCard`
-
-That means:
-
-- `.chr` `content.json` is the persisted exchange format of the character card
-- agents work with the equivalent runtime character object
-
-## 8. How the Server Stores Created Character Cards
-
-### 8.1 Through `.chr` upload
-
-The client uploads character cards through:
+Through:
 
 1. `upload.init`
 2. `upload.chunk`
 3. `upload.complete`
 
-After completion, the server:
+The backend parses the archive and creates the character object.
 
-1. parses the `.chr` archive
-2. extracts `manifest`, `content`, and `cover`
-3. builds a character summary
-4. stores the character object in the store
+### 6.2 Create from Request Data
 
-### 8.2 Through request data
-
-The client can also create a character card directly through requests:
+Through:
 
 1. `character.create`
 2. optional `character.set_cover`
 
-In this flow:
+This is the preferred flow for a frontend form editor.
 
-- `character.create` stores character content only
-- before a cover is set, `cover_file_name` / `cover_mime_type` are `null`
-- after `character.set_cover`, the character has the full cover metadata needed for cover retrieval and `.chr` export
+## 7. Read and Export
 
-The current returned character summary includes:
+### 7.1 Get Character Content
 
-- `character_id`
-- `name`
-- `personality`
-- `style`
-- `tendencies`
-- `cover_file_name`
-- `cover_mime_type`
+- `character.list`: get summaries
+- `character.get`: get the full character content
 
-If later code needs the full character card, it should read the character object itself instead of relying on the upload response alone.
-
-## 9. How to Fetch the Character Cover
-
-The protocol currently exposes a dedicated cover retrieval method:
+### 7.2 Get Cover
 
 - `character.get_cover`
 
-It returns:
+Returns:
 
 - `character_id`
 - `cover_file_name`
 - `cover_mime_type`
 - `cover_base64`
 
-So the frontend currently receives base64 text for the cover, not a standalone image download URL.
-If the character does not have a cover yet, this method returns `conflict`.
-
-## 10. How to Export the Full `.chr`
-
-The protocol also exposes a method for exporting the full character archive:
+### 7.3 Export `.chr`
 
 - `character.export_chr`
 
-It returns:
+Returns:
 
 - `character_id`
 - `file_name`
 - `content_type`
 - `chr_base64`
 
-Where:
+The backend repacks the `.chr` archive from the currently stored character content and cover. It does not need to preserve byte-for-byte identity with the originally uploaded archive.
 
-- `file_name` currently defaults to `<character_id>.chr`
-- `content_type` is currently `application/x-sillystage-character-card`
-- `chr_base64` is the base64-encoded full `.chr` ZIP content
-
-So if the frontend wants to let users download a character card, it should call this method first and then convert the returned base64 into a downloadable file.
-If the character does not have a cover yet, this method returns `conflict`, because the exported `.chr` archive must include a cover file.
-
-## 11. Related Documents
-
-For how character cards participate in the full product flow, continue with:
-
-- `docs/en/process.md`
-- `docs/en/api/spec.md`
-- `docs/en/api/reference.md`

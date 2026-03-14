@@ -40,7 +40,10 @@ impl QueuedMockLlm {
 #[async_trait]
 impl LlmApi for QueuedMockLlm {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, LlmError> {
-        self.requests.lock().expect("requests lock poisoned").push(request);
+        self.requests
+            .lock()
+            .expect("requests lock poisoned")
+            .push(request);
 
         self.chat_queue
             .lock()
@@ -50,7 +53,10 @@ impl LlmApi for QueuedMockLlm {
     }
 
     async fn chat_stream(&self, request: ChatRequest) -> Result<ChatStream, LlmError> {
-        self.requests.lock().expect("requests lock poisoned").push(request);
+        self.requests
+            .lock()
+            .expect("requests lock poisoned")
+            .push(request);
 
         let chunks = self
             .stream_queue
@@ -93,7 +99,11 @@ pub fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
 
     LlmApiRegistry::new()
         .register(default.planner_api_id, Arc::clone(&llm), "planner-model")
-        .register(default.architect_api_id, Arc::clone(&llm), "architect-model")
+        .register(
+            default.architect_api_id,
+            Arc::clone(&llm),
+            "architect-model",
+        )
         .register(default.director_api_id, Arc::clone(&llm), "director-model")
         .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
         .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")

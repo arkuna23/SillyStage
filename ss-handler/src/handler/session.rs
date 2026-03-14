@@ -3,8 +3,8 @@ use futures_util::StreamExt;
 use protocol::{
     JsonRpcResponseMessage, ResponseResult, RunTurnParams, RuntimeSnapshotPayload,
     ServerEventMessage, SessionDeletedPayload, SessionDetailPayload, SessionSummaryPayload,
-    SessionsListedPayload, StreamEventBody, TurnCompletedPayload, TurnStreamAcceptedPayload,
-    UpdatePlayerDescriptionParams,
+    SessionsListedPayload, SetPlayerProfileParams, StreamEventBody, TurnCompletedPayload,
+    TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams,
 };
 
 use crate::error::HandlerError;
@@ -37,6 +37,8 @@ impl Handler {
                 session_id: session.session_id,
                 story_id: session.story_id,
                 display_name: session.display_name,
+                player_profile_id: session.player_profile_id,
+                player_schema_id: session.player_schema_id,
                 snapshot: session.snapshot,
                 config,
             })),
@@ -56,6 +58,8 @@ impl Handler {
                 session_id: session.session_id,
                 story_id: session.story_id,
                 display_name: session.display_name,
+                player_profile_id: session.player_profile_id,
+                player_schema_id: session.player_schema_id,
                 turn_index: session.snapshot.turn_index,
             })
             .collect();
@@ -359,6 +363,38 @@ impl Handler {
             ResponseResult::PlayerDescriptionUpdated(Box::new(
                 protocol::PlayerDescriptionUpdatedPayload { snapshot },
             )),
+        ))
+    }
+
+    pub(crate) async fn handle_session_set_player_profile(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: SetPlayerProfileParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let session = self
+            .manager
+            .set_player_profile(&session_id, params.player_profile_id)
+            .await?;
+        let config = build_session_config_payload(
+            self.manager
+                .get_resolved_session_config(&session_id)
+                .await?,
+        );
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::Session(Box::new(SessionDetailPayload {
+                session_id: session.session_id,
+                story_id: session.story_id,
+                display_name: session.display_name,
+                player_profile_id: session.player_profile_id,
+                player_schema_id: session.player_schema_id,
+                snapshot: session.snapshot,
+                config,
+            })),
         ))
     }
 

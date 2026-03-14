@@ -1,4 +1,8 @@
 mod config;
+mod dashboard;
+mod llm_api;
+mod player_profile;
+mod schema;
 mod session;
 mod story;
 mod upload;
@@ -73,11 +77,40 @@ impl Handler {
             RequestParams::UploadComplete(params) => {
                 self.handle_upload_complete(&request_id, params).await
             }
+            RequestParams::SchemaCreate(params) => {
+                self.handle_schema_create(&request_id, params).await
+            }
+            RequestParams::SchemaGet(params) => self.handle_schema_get(&request_id, params).await,
+            RequestParams::SchemaList(_) => self.handle_schema_list(&request_id).await,
+            RequestParams::SchemaUpdate(params) => {
+                self.handle_schema_update(&request_id, params).await
+            }
+            RequestParams::SchemaDelete(params) => {
+                self.handle_schema_delete(&request_id, params).await
+            }
+            RequestParams::PlayerProfileCreate(params) => {
+                self.handle_player_profile_create(&request_id, params).await
+            }
+            RequestParams::PlayerProfileGet(params) => {
+                self.handle_player_profile_get(&request_id, params).await
+            }
+            RequestParams::PlayerProfileList(_) => {
+                self.handle_player_profile_list(&request_id).await
+            }
+            RequestParams::PlayerProfileUpdate(params) => {
+                self.handle_player_profile_update(&request_id, params).await
+            }
+            RequestParams::PlayerProfileDelete(params) => {
+                self.handle_player_profile_delete(&request_id, params).await
+            }
             RequestParams::CharacterCreate(params) => {
                 self.handle_character_create(&request_id, params).await
             }
             RequestParams::CharacterGet(params) => {
                 self.handle_character_get(&request_id, params).await
+            }
+            RequestParams::CharacterUpdate(params) => {
+                self.handle_character_update(&request_id, params).await
             }
             RequestParams::CharacterGetCover(params) => {
                 self.handle_character_get_cover(&request_id, params).await
@@ -138,6 +171,10 @@ impl Handler {
                     .handle_session_run_turn(request_id, session_id, params)
                     .await;
             }
+            RequestParams::SessionSetPlayerProfile(params) => {
+                self.handle_session_set_player_profile(&request_id, session_id.clone(), params)
+                    .await
+            }
             RequestParams::SessionUpdatePlayerDescription(params) => {
                 self.handle_session_update_player_description(
                     &request_id,
@@ -162,6 +199,18 @@ impl Handler {
                 self.handle_session_update_config(&request_id, session_id.clone(), params)
                     .await
             }
+            RequestParams::LlmApiCreate(params) => {
+                self.handle_llm_api_create(&request_id, params).await
+            }
+            RequestParams::LlmApiGet(params) => self.handle_llm_api_get(&request_id, params).await,
+            RequestParams::LlmApiList(_) => self.handle_llm_api_list(&request_id).await,
+            RequestParams::LlmApiUpdate(params) => {
+                self.handle_llm_api_update(&request_id, params).await
+            }
+            RequestParams::LlmApiDelete(params) => {
+                self.handle_llm_api_delete(&request_id, params).await
+            }
+            RequestParams::DashboardGet(_) => self.handle_dashboard_get(&request_id).await,
         };
 
         match result {

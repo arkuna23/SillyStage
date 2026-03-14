@@ -178,7 +178,7 @@ pub fn build_story_resources(language: Language) -> Result<StoryResources, Box<d
             "Create a tiny multi-turn interactive story: after a storm floods the harbor, a courier must persuade a merchant and a guide to reveal a safe route to the canal gate. The story should support continued player dialogue, use the provided characters, stay within 3 nodes, and generate the necessary global world state schema.",
         ),
         localized_character_cards(language),
-        localized_player_state_schema(language),
+        Some(localized_player_state_schema(language)),
     )?
     .with_world_state_schema_seed(localized_world_state_schema_seed(language));
 

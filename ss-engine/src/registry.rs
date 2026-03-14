@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
-use llm::LlmApi;
-use store::AgentApiIds;
+use llm::{LlmApi, OpenAiClient, OpenAiConfig};
+use store::{AgentApiIds, LlmApiRecord, LlmProvider};
 
 use crate::engine::{AgentModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs};
 
@@ -23,7 +23,7 @@ impl RegisteredApi {
 
 #[derive(Clone, Default)]
 pub struct LlmApiRegistry {
-    apis: HashMap<String, RegisteredApi>,
+    apis: Arc<RwLock<HashMap<String, RegisteredApi>>>,
 }
 
 impl LlmApiRegistry {
@@ -32,19 +32,50 @@ impl LlmApiRegistry {
     }
 
     pub fn register(
-        mut self,
+        self,
         api_id: impl Into<String>,
         client: Arc<dyn LlmApi>,
         model: impl Into<String>,
     ) -> Self {
         self.apis
+            .write()
+            .expect("llm api registry write lock should not be poisoned")
             .insert(api_id.into(), RegisteredApi::new(client, model));
         self
     }
 
-    pub fn resolve(&self, api_id: &str) -> Result<&RegisteredApi, RegistryError> {
+    pub fn upsert_record(&self, record: &LlmApiRecord) -> Result<(), RegistryError> {
+        let registered = match record.provider {
+            LlmProvider::OpenAi => {
+                let config = OpenAiConfig::builder()
+                    .api_key(&record.api_key)
+                    .base_url(&record.base_url)
+                    .default_model(&record.model)
+                    .build()?;
+                RegisteredApi::new(Arc::new(OpenAiClient::new(config)?), &record.model)
+            }
+        };
+
         self.apis
+            .write()
+            .expect("llm api registry write lock should not be poisoned")
+            .insert(record.api_id.clone(), registered);
+        Ok(())
+    }
+
+    pub fn remove(&self, api_id: &str) {
+        self.apis
+            .write()
+            .expect("llm api registry write lock should not be poisoned")
+            .remove(api_id);
+    }
+
+    pub fn resolve(&self, api_id: &str) -> Result<RegisteredApi, RegistryError> {
+        self.apis
+            .read()
+            .expect("llm api registry read lock should not be poisoned")
             .get(api_id)
+            .cloned()
             .ok_or_else(|| RegistryError::UnknownApiId(api_id.to_owned()))
     }
 
@@ -72,12 +103,12 @@ impl LlmApiRegistry {
 
     fn resolve_story_agent(&self, api_id: &str) -> Result<AgentModelConfig, RegistryError> {
         let api = self.resolve(api_id)?;
-        Ok(AgentModelConfig::new(Arc::clone(&api.client), api.model.clone()))
+        Ok(AgentModelConfig::new(api.client, api.model))
     }
 
     fn resolve_runtime_agent(&self, api_id: &str) -> Result<AgentModelConfig, RegistryError> {
         let api = self.resolve(api_id)?;
-        Ok(AgentModelConfig::new(Arc::clone(&api.client), api.model.clone()))
+        Ok(AgentModelConfig::new(api.client, api.model))
     }
 }
 
@@ -85,4 +116,6 @@ impl LlmApiRegistry {
 pub enum RegistryError {
     #[error("unknown llm api id: {0}")]
     UnknownApiId(String),
+    #[error("failed to build llm api client: {0}")]
+    Llm(#[from] llm::LlmError),
 }

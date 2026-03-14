@@ -82,7 +82,7 @@ fn sample_story_resources() -> StoryResources {
         "flooded_city_demo",
         "A flooded city courier story.",
         sample_character_cards(),
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect("story resources should build")
     .with_world_state_schema_seed(sample_world_state_schema())
@@ -98,7 +98,12 @@ fn story_resources_store_generation_inputs_and_seed() {
     assert_eq!(resources.story_concept(), "A flooded city courier story.");
     assert_eq!(resources.character_cards().len(), 2);
     assert!(resources.planned_story().is_some());
-    assert!(resources.player_state_schema().has_field("coins"));
+    assert!(
+        resources
+            .player_state_schema_seed()
+            .expect("player schema seed should exist")
+            .has_field("coins")
+    );
     assert!(
         resources
             .world_state_schema_seed()
@@ -113,7 +118,7 @@ fn story_resources_reject_invalid_inputs() {
         "   ",
         "A flooded city courier story.",
         sample_character_cards(),
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect_err("empty story_id should fail");
     assert!(empty_story_id.to_string().contains("story_id"));
@@ -122,7 +127,7 @@ fn story_resources_reject_invalid_inputs() {
         "flooded_city_demo",
         "   ",
         sample_character_cards(),
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect_err("empty story_concept should fail");
     assert!(empty_story_concept.to_string().contains("story_concept"));
@@ -131,7 +136,7 @@ fn story_resources_reject_invalid_inputs() {
         "flooded_city_demo",
         "A flooded city courier story.",
         Vec::new(),
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect_err("empty character cards should fail");
     assert!(empty_character_cards.to_string().contains("character card"));
@@ -143,7 +148,7 @@ fn story_resources_reject_invalid_inputs() {
             sample_character_cards()[0].clone(),
             sample_character_cards()[0].clone(),
         ],
-        sample_player_state_schema(),
+        Some(sample_player_state_schema()),
     )
     .expect_err("duplicate character cards should fail");
     assert!(duplicate_character_cards.to_string().contains("duplicate"));
@@ -156,7 +161,10 @@ fn runtime_state_can_build_from_story_resources() {
         &resources,
         sample_story_graph(),
         sample_player_description(),
-        resources.player_state_schema().clone(),
+        resources
+            .player_state_schema_seed()
+            .cloned()
+            .expect("player schema seed should exist"),
     )
     .expect("runtime");
 

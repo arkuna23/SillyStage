@@ -4,14 +4,13 @@ use protocol::{
     CHARACTER_ARCHIVE_CONTENT_TYPE, CharacterArchive, CharacterArchiveManifest,
     CharacterCardSummaryPayload, CharacterCardUploadedPayload, CharacterChrExportPayload,
     CharacterCoverMimeType, CharacterCoverPayload, CharacterCoverUpdatedPayload,
-    CharacterCreateParams, CharacterCreatedPayload, CharacterDeleteParams,
-    CharacterDeletedPayload, CharacterDetailPayload, CharacterExportChrParams,
-    CharacterGetCoverParams, CharacterGetParams, CharacterSetCoverParams,
-    CharactersListedPayload, JsonRpcResponseMessage, ResponseResult,
-    UploadChunkAcceptedPayload, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadInitializedPayload, UploadTargetKind,
+    CharacterCreateParams, CharacterCreatedPayload, CharacterDeleteParams, CharacterDeletedPayload,
+    CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterSchemaPayload,
+    CharacterSetCoverParams, CharacterUpdateParams, CharactersListedPayload,
+    JsonRpcResponseMessage, ResponseResult, UploadChunkAcceptedPayload, UploadChunkParams,
+    UploadCompleteParams, UploadInitParams, UploadInitializedPayload, UploadTargetKind,
 };
-use store::CharacterCardRecord;
+use store::{CharacterCardDefinition, CharacterCardRecord};
 
 use crate::error::HandlerError;
 use crate::store::UploadRecord;
@@ -125,13 +124,17 @@ impl Handler {
                 if self.store.get_character(&character_id).await?.is_some() {
                     return Err(HandlerError::DuplicateCharacter(character_id));
                 }
+                self.ensure_schema_exists(&archive.content.schema_id)
+                    .await?;
 
                 self.store
                     .save_character(CharacterCardRecord {
                         character_id: summary.character_id.clone(),
-                        content: archive.content.clone().into(),
+                        content: character_definition_from_content(archive.content.clone()),
                         cover_file_name: Some(archive.manifest.cover_path.clone()),
-                        cover_mime_type: Some(store_cover_mime_type(archive.manifest.cover_mime_type)),
+                        cover_mime_type: Some(store_cover_mime_type(
+                            archive.manifest.cover_mime_type,
+                        )),
                         cover_bytes: Some(archive.cover_bytes.clone()),
                     })
                     .await?;
@@ -162,12 +165,13 @@ impl Handler {
         if self.store.get_character(&character_id).await?.is_some() {
             return Err(HandlerError::DuplicateCharacter(character_id));
         }
+        self.ensure_schema_exists(&params.content.schema_id).await?;
 
         let mut content = params.content;
         content.id = character_id.clone();
         let record = CharacterCardRecord {
             character_id,
-            content: content.into(),
+            content: character_definition_from_content(content),
             cover_file_name: None,
             cover_mime_type: None,
             cover_bytes: None,
@@ -198,9 +202,47 @@ impl Handler {
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::Character(Box::new(CharacterDetailPayload {
+            ResponseResult::Character(Box::new(CharacterSchemaPayload {
                 character_id: record.character_id,
-                content: (&record.content).into(),
+                content: character_content_from_definition(&record.content),
+                cover_file_name: record.cover_file_name,
+                cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
+            })),
+        ))
+    }
+
+    pub(crate) async fn handle_character_update(
+        &self,
+        request_id: &str,
+        params: CharacterUpdateParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let mut record = self
+            .store
+            .get_character(&params.character_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingCharacter(params.character_id.clone()))?;
+
+        if params.content.id.trim().is_empty() {
+            return Err(HandlerError::EmptyCharacterId);
+        }
+
+        if params.content.id != params.character_id {
+            return Err(HandlerError::CharacterIdMismatch {
+                expected: params.character_id,
+                got: params.content.id,
+            });
+        }
+
+        self.ensure_schema_exists(&params.content.schema_id).await?;
+        record.content = character_definition_from_content(params.content);
+        self.store.save_character(record.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::Character(Box::new(CharacterSchemaPayload {
+                character_id: record.character_id,
+                content: character_content_from_definition(&record.content),
                 cover_file_name: record.cover_file_name,
                 cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
             })),
@@ -266,7 +308,7 @@ impl Handler {
                 cover_mime_type,
                 cover_file_name,
             ),
-            content: (&record.content).into(),
+            content: character_content_from_definition(&record.content),
             cover_bytes,
         };
         let chr_bytes = archive.to_chr_bytes()?;
@@ -384,7 +426,9 @@ fn store_cover_mime_type(value: CharacterCoverMimeType) -> String {
         .to_owned()
 }
 
-fn character_summary_payload_from_record(record: &CharacterCardRecord) -> CharacterCardSummaryPayload {
+fn character_summary_payload_from_record(
+    record: &CharacterCardRecord,
+) -> CharacterCardSummaryPayload {
     CharacterCardSummaryPayload {
         character_id: record.character_id.clone(),
         name: record.content.name.clone(),
@@ -393,5 +437,33 @@ fn character_summary_payload_from_record(record: &CharacterCardRecord) -> Charac
         tendencies: record.content.tendencies.clone(),
         cover_file_name: record.cover_file_name.clone(),
         cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
+    }
+}
+
+fn character_definition_from_content(
+    content: protocol::CharacterCardContent,
+) -> CharacterCardDefinition {
+    CharacterCardDefinition {
+        id: content.id,
+        name: content.name,
+        personality: content.personality,
+        style: content.style,
+        tendencies: content.tendencies,
+        schema_id: content.schema_id,
+        system_prompt: content.system_prompt,
+    }
+}
+
+fn character_content_from_definition(
+    definition: &CharacterCardDefinition,
+) -> protocol::CharacterCardContent {
+    protocol::CharacterCardContent {
+        id: definition.id.clone(),
+        name: definition.name.clone(),
+        personality: definition.personality.clone(),
+        style: definition.style.clone(),
+        tendencies: definition.tendencies.clone(),
+        schema_id: definition.schema_id.clone(),
+        system_prompt: definition.system_prompt.clone(),
     }
 }

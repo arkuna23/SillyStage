@@ -6,13 +6,17 @@ use tokio::sync::RwLock;
 use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, SessionRecord, StoryRecord, StoryResourcesRecord,
+    CharacterCardRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord, SessionRecord,
+    StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
 #[derive(Default)]
 pub struct InMemoryStore {
     global_config: RwLock<Option<AgentApiIds>>,
+    llm_apis: RwLock<HashMap<String, LlmApiRecord>>,
+    schemas: RwLock<HashMap<String, SchemaRecord>>,
+    player_profiles: RwLock<HashMap<String, PlayerProfileRecord>>,
     characters: RwLock<HashMap<String, CharacterCardRecord>>,
     story_resources: RwLock<HashMap<String, StoryResourcesRecord>>,
     stories: RwLock<HashMap<String, StoryRecord>>,
@@ -34,6 +38,83 @@ impl Store for InMemoryStore {
     async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
         *self.global_config.write().await = Some(config);
         Ok(())
+    }
+
+    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
+        Ok(self.llm_apis.read().await.get(api_id).cloned())
+    }
+
+    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError> {
+        Ok(self.llm_apis.read().await.values().cloned().collect())
+    }
+
+    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError> {
+        self.llm_apis
+            .write()
+            .await
+            .insert(record.api_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
+        Ok(self.llm_apis.write().await.remove(api_id))
+    }
+
+    async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
+        Ok(self.schemas.read().await.get(schema_id).cloned())
+    }
+
+    async fn list_schemas(&self) -> Result<Vec<SchemaRecord>, StoreError> {
+        Ok(self.schemas.read().await.values().cloned().collect())
+    }
+
+    async fn save_schema(&self, record: SchemaRecord) -> Result<(), StoreError> {
+        self.schemas
+            .write()
+            .await
+            .insert(record.schema_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
+        Ok(self.schemas.write().await.remove(schema_id))
+    }
+
+    async fn get_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError> {
+        Ok(self
+            .player_profiles
+            .read()
+            .await
+            .get(player_profile_id)
+            .cloned())
+    }
+
+    async fn list_player_profiles(&self) -> Result<Vec<PlayerProfileRecord>, StoreError> {
+        Ok(self
+            .player_profiles
+            .read()
+            .await
+            .values()
+            .cloned()
+            .collect())
+    }
+
+    async fn save_player_profile(&self, record: PlayerProfileRecord) -> Result<(), StoreError> {
+        self.player_profiles
+            .write()
+            .await
+            .insert(record.player_profile_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_player_profile(
+        &self,
+        player_profile_id: &str,
+    ) -> Result<Option<PlayerProfileRecord>, StoreError> {
+        Ok(self.player_profiles.write().await.remove(player_profile_id))
     }
 
     async fn get_character(

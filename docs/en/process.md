@@ -1,312 +1,248 @@
-# SillyStage End-to-End Process
+# End-to-End Flow
 
-This document describes the full flow from importing resources, generating a story, starting a session, and letting the player participate in the conversation, to saving and switching runtime state. It does not repeat field-level request details. For exact payload shapes, use `docs/en/api/spec.md` and `docs/en/api/reference.md`.
+This document describes the current flow from resource import to interactive play.
 
-## 1. Overview
+## 1. Prepare Base Resources
 
-The system is currently split into these layers:
+### 1.1 Configure LLM APIs
 
-- `ss-protocol`: defines request, response, and streaming event structures.
-- `ss-handler`: receives protocol requests and performs application operations.
-- `ss-engine`: handles story generation, session execution, and agent orchestration.
-- `ss-store`: persists character cards, resources, stories, sessions, and config.
-- `ss-server`: provides HTTP/SSE transport.
-- `ss-app`: boots the full backend application.
+Create one or more `llm_api` resources first:
 
-From the outside, the main entrypoints are:
+- `llm_api.create`
+- `llm_api.list`
+- `llm_api.update`
+- `llm_api.delete`
 
-- `POST /rpc`
-- `GET /healthz`
+These objects describe reusable model endpoints such as OpenAI-compatible APIs.  
+Global config and session config only reference `api_id`.
 
-Regular requests return JSON-RPC responses. `session.run_turn` returns an SSE stream.
+### 1.2 Create Schema Resources
 
-## 2. Main Flow from Resources to Story
+Then create reusable `schema` resources:
 
-### 2.1 Import character cards
+- character-private state schemas
+- player state schemas
+- world state schema seeds
 
-Character cards use the `.chr` extension. Each `.chr` file is a packaged archive containing:
+Through:
 
-- `manifest.json`
-- `content.json`
-- `cover.<ext>`
+- `schema.create`
+- `schema.list`
+- `schema.get`
 
-Uploads use a chunked flow:
+Each schema stores:
 
-1. Call `upload.init`
-2. Call `upload.chunk` multiple times
-3. Call `upload.complete`
+- `schema_id`
+- `display_name`
+- `tags`
+- `fields`
 
-After upload completes, the backend parses the `.chr` archive, writes the character content and cover into `ss-store`, and returns a `character_id`. All later resources and stories only reference the `character_id`. They do not upload the full character card again.
+## 2. Prepare Player Profiles
 
-To inspect or manage character cards, use:
+Player setup is now a standalone `player_profile` resource, and multiple profiles can coexist.
 
-- `character.get`
-- `character.list`
-- `character.delete`
+Fields:
 
-### 2.2 Create story resources
+- `player_profile_id`
+- `display_name`
+- `description`
 
-Once character IDs are available, the client calls `story_resources.create` to create a set of story generation resources. These resources typically include:
+APIs:
+
+- `player_profile.create`
+- `player_profile.list`
+- `player_profile.get`
+- `player_profile.update`
+- `player_profile.delete`
+
+A session activates at most one player profile at a time, but the system can store many profiles for later switching.
+
+## 3. Import Character Cards
+
+Characters can be created in two ways.
+
+### 3.1 Upload `.chr`
+
+Flow:
+
+1. `upload.init`
+2. `upload.chunk`
+3. `upload.complete`
+
+After completion, the backend parses the archive and stores a `character` resource.
+
+### 3.2 Create Character Directly
+
+Flow:
+
+1. `character.create`
+2. optional `character.set_cover`
+
+Character content now stores only:
+
+- `id`
+- `name`
+- `personality`
+- `style`
+- `tendencies`
+- `schema_id`
+- `system_prompt`
+
+That means a character references its private schema by `schema_id` instead of embedding the schema body.
+
+## 4. Create Story Resources
+
+Once characters and schemas exist, create `story_resources`:
+
+- `story_resources.create`
+
+Main fields:
 
 - `story_concept`
 - `character_ids`
-- `world_state_schema_seed`
-- `player_state_schema_seed`
-- optional `planned_story`
+- `player_schema_id_seed`
+- `world_schema_id_seed`
+- `planned_story`
 
-`story resources` are the raw inputs used before a runnable story exists. They are not a playable story yet. They are the inputs later consumed by `Planner` and `Architect`.
+All of these are ids or plain text, not embedded resource objects.
 
-After creation, they can be managed with:
+## 5. Optional: Run Planner First
 
-- `story_resources.get`
-- `story_resources.list`
-- `story_resources.update`
-- `story_resources.delete`
-
-### 2.3 Optional: generate an editable story draft first
-
-If you want a text draft that is easier for humans to edit and easier for `Architect` to read, call:
+If you want an editable planning draft first:
 
 - `story.generate_plan`
 
-This triggers `Planner`. It reads the current `story resources` and returns a plain-text `planned_story`.
+This reads the story concept and character set from `story_resources` and returns an editable script-like draft.  
+If the user edits that draft, call:
 
-A typical workflow is:
+- `story_resources.update`
 
-1. Call `story.generate_plan`
-2. Receive `story_script`
-3. Edit it on the client side
-4. Write the edited `planned_story` back with `story_resources.update`
+to store the new `planned_story`.
 
-This step is optional. If you do not need a planning draft, move directly to story generation.
-
-### 2.4 Generate the story
+## 6. Generate the Story
 
 Call:
 
 - `story.generate`
 
-This request reads the specified `resource_id` and sends it to `Architect`. `Architect` currently produces:
+This stage:
 
-- `graph`
-- `world_state_schema`
-- `player_state_schema`
-- `introduction`
+1. reads `story_resources`
+2. uses `Architect` to generate:
+   - `graph`
+   - world schema content
+   - player schema content
+   - `introduction`
+3. stores the generated schema bodies as standalone `schema` resources
+4. creates the final `story`
 
-When generation succeeds, the backend saves the result as a new `story` object in `ss-store` and returns:
+The resulting `story` stores:
 
 - `story_id`
-- a generated result preview
+- `resource_id`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
 
-From this point on, the story is a runnable object that can be used to start sessions.
-
-To inspect or manage stories, use:
-
-- `story.get`
-- `story.list`
-- `story.delete`
-
-Notes:
-
-- Deleting resources that were already used to generate a story should return a conflict.
-- Deleting a story that still has dependent sessions should also return a conflict.
-
-## 3. From Story to Session
-
-### 3.1 Start a new session
+## 7. Start a Session
 
 Call:
 
 - `story.start_session`
 
-The input includes at least:
+Input may include:
 
 - `story_id`
-- `player_description`
+- optional `display_name`
+- optional `player_profile_id`
+- `config_mode`
+- optional `session_api_ids`
 
-`player_description` is provided at runtime and does not belong to `story resources`. It describes the player for this specific playthrough, such as background, style, or role.
+This creates a new `session`.
 
-When starting a session, the backend:
+## 8. Session State
 
-1. Loads the `story` from `ss-store`
-2. Loads the story's character cards and schemas
-3. Builds the initial `RuntimeState`
-4. Creates a `session`
-5. Writes the initial snapshot into `ss-store`
+A session now stores:
 
-The response returns:
-
-- `session_id`
+- `player_profile_id`
+- `player_schema_id`
 - `snapshot`
-- character summaries for the current story
 
-The same story can have multiple sessions. Each session is an independent save state.
+Where:
 
-### 3.2 List, load, and delete sessions
+- `player_profile_id` selects the active player setup
+- `player_schema_id` selects which player-state schema is in use
+- `snapshot` stores dynamic runtime state, including:
+  - `world_state`
+  - `turn_index`
+  - the currently effective `player_description`
 
-Once sessions exist, they can be managed with:
+Important:
 
-- `session.get`
-- `session.list`
-- `session.delete`
+- a session has a single `player_state`
+- switching `player_profile_id` does not switch `player_state`
 
-There is no dedicated "switch session" RPC. Switching sessions simply means sending later requests with a different `session_id`.
+## 9. Run Interactive Turns
 
-## 4. Runtime Conversation Flow
-
-### 4.1 Start one turn
-
-Each time the player sends an input, the client calls:
+Each player turn uses:
 
 - `session.run_turn`
 
-This is a streaming request. At the HTTP layer, the response becomes `text/event-stream`. The first frame is `ack`, and the following frames are `message` events. Every frame carries protocol JSON.
+Execution order is fixed:
 
-### 4.2 What the engine does internally
+1. user input
+2. `Keeper` (after player input)
+3. `Director`
+4. `Narrator` / `Actor`
+5. `Keeper` (after turn outputs)
 
-The current turn order is fixed:
+The result is streamed as:
 
-1. Write the player input into shared memory
-2. Run `Keeper` with `AfterPlayerInput`
-3. Run `Director` to plan the beats
-4. Execute `Narrator` and `Actor` beats in order
-5. Run `Keeper` again with `AfterTurnOutputs`
-6. Write the new `RuntimeSnapshot` back into the store
+- unary `ack`
+- `started`
+- multiple `event` frames
+- `completed` or `failed`
 
-In other words:
+## 10. Switch Player Profile
 
-`player input -> Keeper -> Director -> Actors/Narrator -> Keeper`
+To switch the current session to another player profile:
 
-The key responsibilities are:
+- `session.set_player_profile`
 
-- `Actor` performs character expression
-- `Narrator` describes environment and results
-- `Keeper` converts observed facts into state updates
-- `Director` decides what should happen during the turn
+This updates:
 
-### 4.3 What the client receives as stream events
+- the active `player_profile_id`
+- the effective description text
 
-`session.run_turn` currently emits events such as:
+and keeps the existing `player_state`.
 
-- `turn_started`
-- `player_input_recorded`
-- `keeper_applied`
-- `director_completed`
-- `narrator_started`
-- `narrator_text_delta`
-- `narrator_completed`
-- `actor_started`
-- `actor_thought_delta`
-- `actor_action_complete`
-- `actor_dialogue_delta`
-- `actor_completed`
+## 11. Manually Override Player Description
 
-The stream ends in one of two ways:
+If the session should stop using a stored player profile and use ad hoc text instead:
 
-- `completed`
-- `failed`
+- `session.update_player_description`
 
-The `completed` frame includes the final aggregated result, so the frontend does not need to reconstruct the full turn result from deltas on its own.
+This:
 
-## 5. How Runtime State Is Saved
+- directly overwrites the current description text
+- clears `player_profile_id`
 
-### 5.1 Which objects are persisted
+## 12. Save, Restore, and Switch
 
-The system currently stores these objects in `ss-store`:
+The store persists:
 
-- character cards
-- story resources
-- generated stories
-- sessions
-- global config
+- `llm_api`
+- `schema`
+- `player_profile`
+- `character`
+- `story_resources`
+- `story`
+- `session`
 
-The core persisted content of a session is:
+That enables:
 
-- `session_id`
-- `story_id`
-- `RuntimeSnapshot`
-- session config mode and agent API configuration
+- browsing multiple stories with `story.list`
+- browsing multiple conversations with `session.list`
+- switching to another conversation by sending the target `session_id` on later requests
 
-### 5.2 How the system restores and continues a conversation
-
-When a new `session.run_turn` request arrives, the backend does not keep a single long-lived `Engine` instance in memory. Instead it:
-
-1. Loads the session record from `ss-store` using `session_id`
-2. Reads `RuntimeSnapshot`
-3. Rebuilds runtime state from the corresponding story, character cards, and schemas
-4. Creates a temporary `Engine`
-5. Executes the turn
-6. Writes the new snapshot back into the store
-
-This means:
-
-- sessions can be restored after service restart
-- multiple stories and sessions can coexist
-- switching conversations is fundamentally just loading another `session_id`
-
-## 6. How Configuration Affects Story Generation and Runtime
-
-Each agent can currently be bound to its own LLM API configuration, for example:
-
-- planner
-- architect
-- director
-- actor
-- narrator
-- keeper
-
-Configuration exists in three layers:
-
-- global config
-- session config
-- request override
-
-Priority is:
-
-`request override > session config / global config`
-
-Sessions can also run in one of two modes:
-
-- `UseGlobal`
-- `UseSession`
-
-Meaning:
-
-- `UseGlobal`: the session reads the latest global config on each run
-- `UseSession`: the session uses its own independent config
-
-Related requests include:
-
-- `config.get_global`
-- `config.update_global`
-- `session.get_config`
-- `session.update_config`
-
-## 7. A Complete User Journey
-
-Putting everything together, a typical end-to-end flow looks like this:
-
-1. Upload multiple `.chr` character cards
-2. Receive multiple `character_id` values
-3. Create `story resources`
-4. Optionally generate `planned_story`
-5. Optionally update `story resources`
-6. Call `story.generate`
-7. Receive `story_id`
-8. Call `story.start_session`
-9. Receive `session_id`
-10. Let the player repeatedly call `session.run_turn`
-11. Call `session.update_player_description` if needed
-12. Call `session.get_runtime_snapshot` if needed
-13. Use `session.list` to recover and continue prior conversations
-
-## 8. The Three Most Important Things for Frontend Integration
-
-- All regular requests go through `POST /rpc`
-- `session.run_turn` is streaming and returns SSE over HTTP
-- Switching stories or saves means switching `story_id` or `session_id`, not booting a different backend instance
-
-For exact request and response fields, continue with:
-
-- `docs/en/api/spec.md`
-- `docs/en/api/reference.md`
