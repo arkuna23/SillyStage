@@ -30,11 +30,11 @@ export async function getLlmApi(apiId: string, signal?: AbortSignal) {
 export async function createLlmApi(
   params: {
     api_id: string
-    api_key: string
-    base_url: string
+    api_key?: string
+    base_url?: string
     max_tokens?: number
-    model: string
-    provider: LlmProvider
+    model?: string
+    provider?: LlmProvider
     temperature?: number
   },
   signal?: AbortSignal,

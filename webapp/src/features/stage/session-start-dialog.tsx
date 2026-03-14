@@ -24,6 +24,7 @@ const NO_PLAYER_PROFILE_OPTION_VALUE = '__none__'
 
 type SessionStartDialogProps = {
   apis: ReadonlyArray<LlmApi>
+  defaultLlmConfigAvailable: boolean
   onCompleted: (result: { message: string; session: StartedSession }) => Promise<void> | void
   onOpenChange: (open: boolean) => void
   open: boolean
@@ -73,6 +74,7 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 export function SessionStartDialog({
   apis,
+  defaultLlmConfigAvailable,
   onCompleted,
   onOpenChange,
   open,
@@ -113,6 +115,8 @@ export function SessionStartDialog({
       })),
     [apis],
   )
+  const hasStoredApis = apiOptions.length > 0
+  const hasUsableLlm = hasStoredApis || defaultLlmConfigAvailable
 
   const selectedStory = useMemo(
     () => stories.find((story) => story.story_id === formState.storyId) ?? null,
@@ -151,7 +155,7 @@ export function SessionStartDialog({
       return
     }
 
-    if (formState.configMode === 'use_session') {
+    if (formState.configMode === 'use_session' && hasStoredApis) {
       const missingRole = agentApiRoleKeys.find(
         (roleKey) => !formState.sessionApiIds?.[roleKey]?.trim(),
       )
@@ -309,7 +313,9 @@ export function SessionStartDialog({
                       setFormState((current) => ({
                         ...current,
                         configMode: 'use_session',
-                        sessionApiIds: current.sessionApiIds ?? buildDefaultSessionApiIds(apis),
+                        sessionApiIds: hasStoredApis
+                          ? current.sessionApiIds ?? buildDefaultSessionApiIds(apis)
+                          : null,
                       }))
                     }}
                     type="button"
@@ -320,9 +326,13 @@ export function SessionStartDialog({
               </div>
 
               {formState.configMode === 'use_session' ? (
-                apiOptions.length === 0 || !formState.sessionApiIds ? (
+                !hasUsableLlm ? (
                   <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
                     {copy.createSession.emptyApis}
+                  </div>
+                ) : !hasStoredApis || !formState.sessionApiIds ? (
+                  <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                    {copy.createSession.defaultLlmFallback}
                   </div>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">

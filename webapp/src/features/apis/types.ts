@@ -55,6 +55,6 @@ export type DefaultLlmConfigState = {
 }
 
 export type GlobalConfigResult = {
-  api_ids: AgentApiIds
+  api_ids: AgentApiIds | null
   type: 'global_config'
 }

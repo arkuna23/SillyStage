@@ -258,6 +258,7 @@ const en = {
     assignments: {
       description: 'Choose which stored API each agent role should use by default.',
       empty: 'Create at least one API before assigning defaults.',
+      uninitialized: 'The global API defaults have not been initialized yet.',
       roles: {
         actor_api_id: 'Actor',
         architect_api_id: 'Architect',

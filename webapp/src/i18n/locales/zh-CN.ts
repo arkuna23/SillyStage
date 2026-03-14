@@ -254,6 +254,7 @@ const zhCN = {
     assignments: {
       description: '为每个角色选择默认使用的 API。',
       empty: '请先创建至少一个 API，再设置默认指派。',
+      uninitialized: '当前全局默认指派还没有初始化。',
       roles: {
         actor_api_id: '演员',
         architect_api_id: '架构师',

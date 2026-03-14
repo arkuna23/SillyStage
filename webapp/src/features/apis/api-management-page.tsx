@@ -719,6 +719,10 @@ export function ApiManagementPage() {
                 <div className="py-3 text-sm leading-7 text-[var(--color-text-secondary)]">
                   {t('apis.assignments.empty')}
                 </div>
+              ) : assignments === null || draftAssignments === null ? (
+                <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                  {t('apis.assignments.uninitialized')}
+                </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
                   {roleOrder.map((roleKey) => (
@@ -727,7 +731,7 @@ export function ApiManagementPage() {
                         {roleLabel(roleKey, roleLabels)}
                       </p>
                       <Select
-                        disabled={isSavingAssignments || draftAssignments === null}
+                        disabled={isSavingAssignments}
                         items={apiOptions}
                         onValueChange={(value) => {
                           setDraftAssignments((current) =>

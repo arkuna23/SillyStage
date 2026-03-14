@@ -46,6 +46,7 @@ const zh = {
     configMode: '配置模式',
     create: '创建会话',
     creating: '正在创建...',
+    defaultLlmFallback: '当前没有已存储 API，本场会话会直接使用默认 LLM 配置。',
     displayName: '会话名称',
     emptyApis: '当前没有可用 API，不能创建自定义会话配置。',
     emptyPlayerProfiles: '当前没有玩家档案，可直接创建空档案会话。',
@@ -128,6 +129,7 @@ const zh = {
   },
   settings: {
     api: {
+      defaultLlmFallback: '当前没有已存储 API，本场会话会直接使用默认 LLM 配置。',
       description: '调整当前会话采用的 API 组合，决定各个 agent 的执行来源。',
       effective: '当前生效',
       empty: '当前没有可用 API，暂时不能保存会话自定义配置。',
@@ -262,6 +264,7 @@ const en = {
     configMode: 'Config Mode',
     create: 'Create Session',
     creating: 'Creating...',
+    defaultLlmFallback: 'No stored APIs are available, so this session will use the default LLM config directly.',
     displayName: 'Session Name',
     emptyApis: 'No APIs are available, so a custom session config cannot be created yet.',
     emptyPlayerProfiles: 'No player profiles are available yet. You can still create a blank session.',
@@ -344,6 +347,7 @@ const en = {
   },
   settings: {
     api: {
+      defaultLlmFallback: 'No stored APIs are available, so this session will use the default LLM config directly.',
       description: 'Adjust which APIs the current session uses for each agent role.',
       effective: 'Effective',
       empty: 'No APIs are available yet, so a session-specific API setup cannot be saved.',

@@ -797,6 +797,7 @@ export function StagePage() {
   const [characters, setCharacters] = useState<CharacterSummary[]>([])
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([])
   const [apis, setApis] = useState<LlmApi[]>([])
+  const [defaultLlmConfigAvailable, setDefaultLlmConfigAvailable] = useState(false)
   const [storyDetails, setStoryDetails] = useState<Record<string, StoryDetail>>({})
   const [coverCache, setCoverCache] = useState<CoverCache>({})
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null)
@@ -937,12 +938,15 @@ export function StagePage() {
     }
 
     if (apisResult.status === 'fulfilled' && defaultConfigResult.status === 'fulfilled') {
+      const hasUsableLlm =
+        apisResult.value.length > 0 || Boolean(defaultConfigResult.value.effective)
+
+      setDefaultLlmConfigAvailable(Boolean(defaultConfigResult.value.effective))
       setStageAccessStatus(
-        apisResult.value.length === 0 && !defaultConfigResult.value.effective
-          ? 'blocked'
-          : 'ready',
+        hasUsableLlm ? 'ready' : 'blocked',
       )
     } else {
+      setDefaultLlmConfigAvailable(false)
       setStageAccessStatus('ready')
     }
 
@@ -1842,6 +1846,7 @@ export function StagePage() {
     <section className="flex h-full min-h-0 w-full flex-1 overflow-visible py-6 sm:py-8">
       <SessionStartDialog
         apis={apis}
+        defaultLlmConfigAvailable={defaultLlmConfigAvailable}
         onCompleted={(result) => handleCreateSession(result)}
         onOpenChange={setIsStartDialogOpen}
         open={isStartDialogOpen}
@@ -1968,9 +1973,9 @@ export function StagePage() {
                         copy.time.unknown
 
                       return (
-                        <button
+                        <div
                           className={cn(
-                            'w-full rounded-[1.4rem] border px-4 py-4 text-left transition',
+                            'w-full rounded-[1.4rem] border px-4 py-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-canvas)]',
                             isActive
                               ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)] shadow-[0_18px_40px_var(--color-accent-glow-soft)]'
                               : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
@@ -1979,7 +1984,14 @@ export function StagePage() {
                           onClick={() => {
                             selectSession(session.session_id)
                           }}
-                          type="button"
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault()
+                              selectSession(session.session_id)
+                            }
+                          }}
+                          role="button"
+                          tabIndex={0}
                         >
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 space-y-2">
@@ -2016,7 +2028,7 @@ export function StagePage() {
                               variant="danger"
                             />
                           </div>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -2065,6 +2077,7 @@ export function StagePage() {
                       config={selectedSession.config}
                       copy={copy}
                       currentPlayerProfileId={selectedSession.player_profile_id}
+                      defaultLlmConfigAvailable={defaultLlmConfigAvailable}
                       onRefreshSnapshot={handleRefreshRuntimeSnapshot}
                       onSavePlayerDescription={handleUpdatePlayerDescription}
                       onSavePlayerProfile={handleSetPlayerProfile}

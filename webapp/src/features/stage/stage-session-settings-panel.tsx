@@ -29,6 +29,7 @@ type StageSessionSettingsPanelProps = {
   config: SessionConfig
   copy: StageCopy
   currentPlayerProfileId?: string | null
+  defaultLlmConfigAvailable: boolean
   onRefreshSnapshot: () => Promise<void>
   onSavePlayerDescription: (playerDescription: string) => Promise<void>
   onSavePlayerProfile: (playerProfileId: string | null) => Promise<void>
@@ -65,6 +66,7 @@ export function StageSessionSettingsPanel({
   config,
   copy,
   currentPlayerProfileId,
+  defaultLlmConfigAvailable,
   onRefreshSnapshot,
   onSavePlayerDescription,
   onSavePlayerProfile,
@@ -107,6 +109,8 @@ export function StageSessionSettingsPanel({
       })),
     [apis],
   )
+  const hasStoredApis = apiItems.length > 0
+  const hasUsableLlm = hasStoredApis || defaultLlmConfigAvailable
 
   const playerProfileItems = useMemo(
     () => [
@@ -131,7 +135,7 @@ export function StageSessionSettingsPanel({
   )
 
   async function handleSaveConfig() {
-    if (mode === 'use_session' && !sessionApiIds) {
+    if (mode === 'use_session' && hasStoredApis && !sessionApiIds) {
       return
     }
 
@@ -280,7 +284,9 @@ export function StageSessionSettingsPanel({
                 )}
                 onClick={() => {
                   setMode('use_session')
-                  setSessionApiIds((current) => current ?? createSessionApiDefaults(config, apis))
+                  setSessionApiIds((current) =>
+                    hasStoredApis ? current ?? createSessionApiDefaults(config, apis) : null,
+                  )
                 }}
                 type="button"
               >
@@ -303,9 +309,13 @@ export function StageSessionSettingsPanel({
             </div>
 
             {mode === 'use_session' ? (
-              apiItems.length === 0 || !sessionApiIds ? (
+              !hasUsableLlm ? (
                 <div className="rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
                   {copy.settings.api.empty}
+                </div>
+              ) : !hasStoredApis || !sessionApiIds ? (
+                <div className="rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                  {copy.settings.api.defaultLlmFallback}
                 </div>
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
@@ -341,7 +351,10 @@ export function StageSessionSettingsPanel({
             )}
 
             <div className="flex justify-end">
-              <Button disabled={isSavingConfig || (mode === 'use_session' && !sessionApiIds)} onClick={() => void handleSaveConfig()}>
+              <Button
+                disabled={isSavingConfig || (mode === 'use_session' && hasStoredApis && !sessionApiIds)}
+                onClick={() => void handleSaveConfig()}
+              >
                 {isSavingConfig ? copy.settings.api.saving : copy.settings.api.save}
               </Button>
             </div>
@@ -373,14 +386,14 @@ export function StageSessionSettingsPanel({
             </label>
 
             {selectedPlayerProfile ? (
-              <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
+              <div className="mt-2 rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
                 <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.playerProfile.preview}</p>
                 <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
                   {selectedPlayerProfile.description}
                 </p>
               </div>
             ) : (
-              <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+              <div className="mt-2 rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
                 {copy.settings.playerProfile.noProfileHint}
               </div>
             )}

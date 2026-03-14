@@ -33,7 +33,7 @@ export type DashboardSessionSummary = {
 export type DashboardPayload = {
   counts: DashboardCounts
   global_config: {
-    api_ids: AgentApiIds
+    api_ids: AgentApiIds | null
   }
   health: DashboardHealth
   recent_sessions: DashboardSessionSummary[]

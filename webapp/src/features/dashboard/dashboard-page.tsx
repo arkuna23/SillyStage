@@ -18,16 +18,6 @@ type Notice = {
   tone: NoticeTone
 }
 
-const emptyApiIds: AgentApiIds = {
-  actor_api_id: '',
-  architect_api_id: '',
-  director_api_id: '',
-  keeper_api_id: '',
-  narrator_api_id: '',
-  planner_api_id: '',
-  replyer_api_id: '',
-}
-
 const emptyDashboard: DashboardPayload = {
   counts: {
     characters_total: 0,
@@ -37,7 +27,7 @@ const emptyDashboard: DashboardPayload = {
     story_resources_total: 0,
   },
   global_config: {
-    api_ids: emptyApiIds,
+    api_ids: null,
   },
   health: {
     status: 'ok',
@@ -50,7 +40,11 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function countAssignedApis(apiIds: AgentApiIds) {
+function countAssignedApis(apiIds: AgentApiIds | null | undefined) {
+  if (!apiIds) {
+    return 0
+  }
+
   return agentApiRoleKeys.reduce((count, roleKey) => {
     return count + (apiIds[roleKey].trim() ? 1 : 0)
   }, 0)
@@ -366,7 +360,7 @@ export function DashboardPage() {
 
                       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                         {agentApiRoleKeys.map((roleKey) => {
-                          const apiId = currentDashboard.global_config.api_ids[roleKey]
+                          const apiId = currentDashboard.global_config.api_ids?.[roleKey]
 
                           return (
                             <div
