@@ -9,6 +9,8 @@ use handler::HandlerEventStream;
 use protocol::JsonRpcResponseMessage;
 use serde::Serialize;
 
+use super::logging::log_stream_event;
+
 pub fn stream_response(
     ack: JsonRpcResponseMessage,
     events: HandlerEventStream,
@@ -18,6 +20,7 @@ pub fn stream_response(
 
         let mut events = events;
         while let Some(message) = events.next().await {
+            log_stream_event(&message);
             yield Ok(sse_event("message", &message));
         }
     };

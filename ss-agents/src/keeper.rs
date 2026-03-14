@@ -103,14 +103,27 @@ pub struct Keeper {
     llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
 }
 
 impl Keeper {
     pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, KeeperError> {
+        Self::new_with_options(llm, model, None, None)
+    }
+
+    pub fn new_with_options(
+        llm: Arc<dyn LlmApi>,
+        model: impl Into<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, KeeperError> {
         Ok(Self {
             llm,
             model: model.into(),
             system_prompt: include_str!("./prompts/keeper.txt").to_owned(),
+            temperature,
+            max_tokens,
         })
     }
 
@@ -124,6 +137,8 @@ impl Keeper {
             llm,
             model: model.into(),
             system_prompt,
+            temperature: None,
+            max_tokens: None,
         })
     }
 
@@ -133,14 +148,20 @@ impl Keeper {
         let user_prompt = self.build_user_prompt(&request)?;
         let output = self
             .llm
-            .chat(
-                ChatRequest::builder()
+            .chat({
+                let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
                     .user_message(user_prompt)
-                    .response_format(llm::ResponseFormat::JsonObject)
-                    .build()?,
-            )
+                    .response_format(llm::ResponseFormat::JsonObject);
+                if let Some(temperature) = self.temperature {
+                    builder = builder.temperature(temperature);
+                }
+                if let Some(max_tokens) = self.max_tokens {
+                    builder = builder.max_tokens(max_tokens);
+                }
+                builder.build()?
+            })
             .await?;
 
         let update: StateUpdate = output

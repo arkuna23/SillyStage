@@ -4,10 +4,12 @@ use ss_protocol::{
     CharacterCardSummaryPayload, CharacterChrExportPayload, CharacterCoverMimeType,
     CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload,
     DashboardCountsPayload, DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
-    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, ErrorCode, ErrorPayload,
-    GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage,
-    JsonRpcResponseMessage, LlmApiPayload, RequestParams, ResponseResult, RuntimeSnapshotPayload,
-    ServerEventMessage, StoryPlannedPayload, StreamEventBody, StreamFrame,
+    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, DefaultLlmConfigPayload,
+    DefaultLlmConfigStatePayload, ErrorCode, ErrorPayload, GenerateStoryPlanParams,
+    GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage, JsonRpcResponseMessage,
+    LlmApiPayload, RequestParams, ResponseResult, RuntimeSnapshotPayload, ServerEventMessage,
+    SessionDetailPayload, SessionMessageKind, SessionMessagePayload, StoryPlannedPayload,
+    StreamEventBody, StreamFrame,
 };
 use state::WorldState;
 use store::LlmProvider;
@@ -32,6 +34,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor-default".to_owned(),
         narrator_api_id: "narrator-default".to_owned(),
         keeper_api_id: "keeper-default".to_owned(),
+        replyer_api_id: "replyer-default".to_owned(),
     }
 }
 
@@ -240,6 +243,8 @@ fn json_rpc_request_and_response_round_trip() {
             provider: LlmProvider::OpenAi,
             base_url: "https://api.openai.example/v1".to_owned(),
             model: "gpt-4.1-mini".to_owned(),
+            temperature: Some(0.4),
+            max_tokens: Some(2048),
             has_api_key: true,
             api_key_masked: Some("sk****et".to_owned()),
         }),
@@ -251,6 +256,94 @@ fn json_rpc_request_and_response_round_trip() {
     assert!(matches!(
         llm_api_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::LlmApi(_))
+    ));
+
+    let default_llm_config_response = JsonRpcResponseMessage::ok(
+        "req-10",
+        None::<String>,
+        ResponseResult::DefaultLlmConfig(DefaultLlmConfigStatePayload {
+            saved: Some(DefaultLlmConfigPayload {
+                provider: LlmProvider::OpenAi,
+                base_url: "https://api.openai.example/v1".to_owned(),
+                model: "gpt-4.1-mini".to_owned(),
+                temperature: Some(0.4),
+                max_tokens: Some(2048),
+                has_api_key: true,
+                api_key_masked: Some("sk****et".to_owned()),
+            }),
+            effective: Some(DefaultLlmConfigPayload {
+                provider: LlmProvider::OpenAi,
+                base_url: "https://override.example/v1".to_owned(),
+                model: "gpt-4.1".to_owned(),
+                temperature: Some(0.5),
+                max_tokens: Some(4096),
+                has_api_key: true,
+                api_key_masked: Some("sk****de".to_owned()),
+            }),
+        }),
+    );
+    let default_llm_config_json = serde_json::to_string_pretty(&default_llm_config_response)
+        .expect("default llm config response should serialize");
+    let default_llm_config_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&default_llm_config_json)
+            .expect("default llm config response should deserialize");
+    assert!(matches!(
+        default_llm_config_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::DefaultLlmConfig(_))
+    ));
+
+    let session_response = JsonRpcResponseMessage::ok(
+        "req-10",
+        Some("session-1"),
+        ResponseResult::Session(Box::new(SessionDetailPayload {
+            session_id: "session-1".to_owned(),
+            story_id: "story-1".to_owned(),
+            display_name: "Courier Run".to_owned(),
+            player_profile_id: Some("profile-courier".to_owned()),
+            player_schema_id: "schema-player".to_owned(),
+            snapshot: sample_runtime_snapshot(),
+            history: vec![
+                SessionMessagePayload {
+                    message_id: "message-1".to_owned(),
+                    kind: SessionMessageKind::PlayerInput,
+                    sequence: 0,
+                    turn_index: 1,
+                    recorded_at_ms: 1_000,
+                    created_at_ms: 1_000,
+                    updated_at_ms: 1_000,
+                    speaker_id: "player".to_owned(),
+                    speaker_name: "Player".to_owned(),
+                    text: "Open the gate.".to_owned(),
+                },
+                SessionMessagePayload {
+                    message_id: "message-2".to_owned(),
+                    kind: SessionMessageKind::Narration,
+                    sequence: 1,
+                    turn_index: 1,
+                    recorded_at_ms: 1_001,
+                    created_at_ms: 1_001,
+                    updated_at_ms: 1_001,
+                    speaker_id: "narrator".to_owned(),
+                    speaker_name: "Narrator".to_owned(),
+                    text: "Water churned beneath the dock.".to_owned(),
+                },
+            ],
+            created_at_ms: Some(500),
+            updated_at_ms: Some(1_001),
+            config: ss_protocol::SessionConfigPayload {
+                mode: engine::SessionConfigMode::UseGlobal,
+                session_api_ids: None,
+                effective_api_ids: sample_api_ids(),
+            },
+        })),
+    );
+    let session_json =
+        serde_json::to_string_pretty(&session_response).expect("session should serialize");
+    let session_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&session_json).expect("session should deserialize");
+    assert!(matches!(
+        session_round_trip.outcome,
+        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::Session(_))
     ));
 }
 

@@ -22,14 +22,27 @@ pub struct Planner {
     client: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
 }
 
 impl Planner {
     pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, PlannerError> {
+        Self::new_with_options(client, model, None, None)
+    }
+
+    pub fn new_with_options(
+        client: Arc<dyn LlmApi>,
+        model: impl Into<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, PlannerError> {
         Ok(Self {
             client,
             model: model.into(),
             system_prompt: include_str!("./prompts/planner.txt").to_owned(),
+            temperature,
+            max_tokens,
         })
     }
 
@@ -44,6 +57,8 @@ impl Planner {
             client,
             model: model.into(),
             system_prompt,
+            temperature: None,
+            max_tokens: None,
         })
     }
 
@@ -51,13 +66,19 @@ impl Planner {
         let user_prompt = self.build_user_prompt(&request)?;
         let output = self
             .client
-            .chat(
-                ChatRequest::builder()
+            .chat({
+                let mut builder = ChatRequest::builder()
                     .model(self.model.clone())
                     .system_message(self.system_prompt.clone())
-                    .user_message(user_prompt)
-                    .build()?,
-            )
+                    .user_message(user_prompt);
+                if let Some(temperature) = self.temperature {
+                    builder = builder.temperature(temperature);
+                }
+                if let Some(max_tokens) = self.max_tokens {
+                    builder = builder.max_tokens(max_tokens);
+                }
+                builder.build()?
+            })
             .await?;
 
         Ok(PlannerResponse {

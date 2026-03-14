@@ -1,22 +1,35 @@
+use std::collections::HashSet;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use agents::actor::ActorSegmentKind;
 use agents::actor::CharacterCard;
+use agents::architect::{
+    Architect, ArchitectDraftContinueRequest, ArchitectDraftInitRequest, ArchitectError,
+    GraphSummaryNode, NodeTransitionPatch,
+};
+use agents::replyer::{
+    ReplyHistoryKind, ReplyHistoryMessage, ReplyOption, Replyer, ReplyerError, ReplyerRequest,
+};
 use async_stream::stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
-use state::{PlayerStateSchema, WorldStateSchema};
+use state::{PlayerStateSchema, StateFieldSchema, WorldStateSchema};
 use store::{
     AgentApiIdOverrides, AgentApiIds, CharacterCardRecord, LlmApiRecord, RuntimeSnapshot,
-    SchemaRecord, SessionConfigMode, SessionEngineConfig, SessionRecord, Store, StoreError,
-    StoryRecord, StoryResourcesRecord,
+    SchemaRecord, SessionConfigMode, SessionEngineConfig, SessionMessageKind, SessionMessageRecord,
+    SessionRecord, Store, StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord,
+    StoryResourcesRecord,
 };
+use story::{NarrativeNode, StoryGraph};
 
 use crate::{
-    Engine, EngineError, EngineEvent, LlmApiRegistry, RegistryError, RuntimeError, RuntimeState,
-    StoryResources, generate_story_graph, generate_story_plan,
+    Engine, EngineError, EngineEvent, EngineTurnResult, ExecutedBeat, LlmApiRegistry,
+    RegistryError, RuntimeError, RuntimeState, StoryResources, generate_story_plan,
 };
+
+const DEFAULT_ARCHITECT_CHUNK_NODE_COUNT: usize = 4;
 
 pub type ManagedTurnStream<'a> =
     Pin<Box<dyn Stream<Item = Result<EngineEvent, ManagerError>> + Send + 'a>>;
@@ -36,12 +49,14 @@ impl EngineManager {
     pub async fn new(
         store: Arc<dyn Store>,
         registry: LlmApiRegistry,
-        initial_global_config: AgentApiIds,
+        initial_global_config: Option<AgentApiIds>,
     ) -> Result<Self, ManagerError> {
-        validate_api_ids(&registry, &initial_global_config)?;
+        if let Some(initial_global_config) = initial_global_config {
+            validate_api_ids(&registry, &initial_global_config)?;
 
-        if store.get_global_config().await?.is_none() {
-            store.set_global_config(initial_global_config).await?;
+            if store.get_global_config().await?.is_none() {
+                store.set_global_config(initial_global_config).await?;
+            }
         }
 
         Ok(Self { store, registry })
@@ -110,11 +125,50 @@ impl EngineManager {
         display_name: Option<String>,
         architect_api_id: Option<String>,
     ) -> Result<StoryRecord, ManagerError> {
-        let resource = self
+        let mut draft = self
+            .start_story_draft(resource_id, display_name, architect_api_id.clone())
+            .await?;
+
+        while draft.status == StoryDraftStatus::Building {
+            draft = self
+                .continue_story_draft(&draft.draft_id, architect_api_id.clone())
+                .await?;
+        }
+
+        let story = self.finalize_story_draft(&draft.draft_id).await?;
+        let _ = self.delete_story_draft(&draft.draft_id).await?;
+        Ok(story)
+    }
+
+    pub async fn start_story_draft(
+        &self,
+        resource_id: &str,
+        display_name: Option<String>,
+        architect_api_id: Option<String>,
+    ) -> Result<StoryDraftRecord, ManagerError> {
+        let mut resource = self
             .store
             .get_story_resources(resource_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(resource_id.to_owned()))?;
+
+        if resource.planned_story.is_none() {
+            let planner = self.generate_story_plan(resource_id, None).await?;
+            resource.planned_story = Some(planner.story_script);
+            self.store.save_story_resources(resource.clone()).await?;
+        }
+
+        let planned_story = resource
+            .planned_story
+            .clone()
+            .ok_or_else(|| ManagerError::InvalidDraft("planned_story is missing".to_owned()))?;
+        let outline_sections = extract_outline_sections(&planned_story);
+        if outline_sections.is_empty() {
+            return Err(ManagerError::InvalidDraft(
+                "planned_story did not contain any outline sections".to_owned(),
+            ));
+        }
+
         let api_ids = self
             .get_global_config()
             .await?
@@ -126,43 +180,242 @@ impl EngineManager {
 
         let story_resources = self.build_engine_story_resources(&resource).await?;
         let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
-        let story_id = format!("story-{}", self.store.list_stories().await?.len());
-        let response = generate_story_graph(&generation_configs, &story_resources).await?;
-        let world_schema = SchemaRecord {
-            schema_id: format!("schema-{}", self.store.list_schemas().await?.len()),
-            display_name: format!("{story_id} world schema"),
-            tags: vec!["world".to_owned(), "generated".to_owned(), story_id.clone()],
-            fields: response.world_state_schema.fields.clone(),
-        };
-        self.store.save_schema(world_schema.clone()).await?;
+        let architect = Architect::new_with_options(
+            Arc::clone(&generation_configs.architect.client),
+            generation_configs.architect.model.clone(),
+            generation_configs.architect.temperature,
+            generation_configs.architect.max_tokens,
+        );
 
-        let player_schema = SchemaRecord {
-            schema_id: format!("schema-{}", self.store.list_schemas().await?.len()),
-            display_name: format!("{story_id} player schema"),
-            tags: vec![
-                "player".to_owned(),
-                "generated".to_owned(),
-                story_id.clone(),
-            ],
-            fields: response.player_state_schema.fields.clone(),
-        };
-        self.store.save_schema(player_schema.clone()).await?;
+        let init = architect
+            .start_draft(ArchitectDraftInitRequest {
+                story_concept: story_resources.story_concept(),
+                planned_story: &planned_story,
+                current_section: &outline_sections[0],
+                section_index: 0,
+                total_sections: outline_sections.len(),
+                graph_summary: &[],
+                recent_nodes: &[],
+                target_node_count: DEFAULT_ARCHITECT_CHUNK_NODE_COUNT,
+                world_state_schema: story_resources.world_state_schema_seed(),
+                player_state_schema: story_resources.player_state_schema_seed(),
+                available_characters: story_resources.character_cards(),
+            })
+            .await?;
 
         let now = now_timestamp_ms();
-        let story = StoryRecord {
-            story_id: story_id.clone(),
+        let draft_id = format!("draft-{}", self.store.list_story_drafts().await?.len());
+        let story_id_tag = format!("draft:{draft_id}");
+        let world_schema = self
+            .create_generated_schema(
+                format!(
+                    "{} world schema",
+                    display_name
+                        .as_deref()
+                        .unwrap_or(resource.story_concept.as_str())
+                ),
+                vec![
+                    "world".to_owned(),
+                    "generated".to_owned(),
+                    story_id_tag.clone(),
+                ],
+                init.world_state_schema.fields.clone(),
+            )
+            .await?;
+        let player_schema = self
+            .create_generated_schema(
+                format!(
+                    "{} player schema",
+                    display_name
+                        .as_deref()
+                        .unwrap_or(resource.story_concept.as_str())
+                ),
+                vec!["player".to_owned(), "generated".to_owned(), story_id_tag],
+                init.player_state_schema.fields.clone(),
+            )
+            .await?;
+
+        let mut partial_graph = StoryGraph::new(init.start_node.clone(), init.nodes.clone());
+        apply_transition_patches(&mut partial_graph, &init.transition_patches)?;
+        validate_story_graph(&partial_graph)?;
+
+        let draft = StoryDraftRecord {
+            draft_id,
             display_name: display_name.unwrap_or_else(|| resource.story_concept.clone()),
             resource_id: resource.resource_id,
-            graph: response.graph,
+            planned_story,
+            outline_sections,
+            next_section_index: 1,
+            partial_graph,
             world_schema_id: world_schema.schema_id,
             player_schema_id: player_schema.schema_id,
-            introduction: response.introduction,
+            introduction: init.introduction,
+            section_summaries: vec![init.section_summary],
+            section_node_ids: vec![init.nodes.into_iter().map(|node| node.id).collect()],
+            status: StoryDraftStatus::Building,
+            final_story_id: None,
             created_at_ms: Some(now),
             updated_at_ms: Some(now),
         };
 
+        let draft = self.refresh_draft_status(draft);
+        self.store.save_story_draft(draft.clone()).await?;
+        Ok(draft)
+    }
+
+    pub async fn continue_story_draft(
+        &self,
+        draft_id: &str,
+        architect_api_id: Option<String>,
+    ) -> Result<StoryDraftRecord, ManagerError> {
+        let mut draft = self
+            .store
+            .get_story_draft(draft_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryDraft(draft_id.to_owned()))?;
+
+        if draft.status != StoryDraftStatus::Building {
+            return Err(ManagerError::InvalidDraft(format!(
+                "story draft '{draft_id}' is not in building state"
+            )));
+        }
+
+        let resource = self
+            .store
+            .get_story_resources(&draft.resource_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryResources(draft.resource_id.clone()))?;
+        let api_ids = self
+            .get_global_config()
+            .await?
+            .apply_overrides(&AgentApiIdOverrides {
+                architect_api_id,
+                ..AgentApiIdOverrides::default()
+            });
+        validate_api_ids(&self.registry, &api_ids)?;
+
+        let story_resources = self.build_engine_story_resources(&resource).await?;
+        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
+        let architect = Architect::new_with_options(
+            Arc::clone(&generation_configs.architect.client),
+            generation_configs.architect.model.clone(),
+            generation_configs.architect.temperature,
+            generation_configs.architect.max_tokens,
+        );
+        let world_schema = self.resolve_world_schema(&draft.world_schema_id).await?;
+        let player_schema = self.resolve_player_schema(&draft.player_schema_id).await?;
+        let graph_summary = build_graph_summary(&draft.partial_graph);
+        let recent_nodes = self.recent_draft_nodes(&draft);
+        let current_section = draft
+            .outline_sections
+            .get(draft.next_section_index)
+            .ok_or_else(|| {
+                ManagerError::InvalidDraft("story draft has no remaining section".to_owned())
+            })?
+            .clone();
+
+        let chunk = architect
+            .continue_draft(ArchitectDraftContinueRequest {
+                story_concept: story_resources.story_concept(),
+                planned_story: &draft.planned_story,
+                current_section: &current_section,
+                section_index: draft.next_section_index,
+                total_sections: draft.outline_sections.len(),
+                graph_summary: &graph_summary,
+                recent_nodes: &recent_nodes,
+                target_node_count: DEFAULT_ARCHITECT_CHUNK_NODE_COUNT,
+                world_state_schema: &world_schema,
+                player_state_schema: &player_schema,
+                available_characters: story_resources.character_cards(),
+            })
+            .await?;
+
+        merge_story_chunk(
+            &mut draft.partial_graph,
+            &chunk.nodes,
+            &chunk.transition_patches,
+        )?;
+        draft.section_summaries.push(chunk.section_summary);
+        draft
+            .section_node_ids
+            .push(chunk.nodes.iter().map(|node| node.id.clone()).collect());
+        draft.next_section_index += 1;
+        draft.updated_at_ms = Some(now_timestamp_ms());
+        draft = self.refresh_draft_status(draft);
+        self.store.save_story_draft(draft.clone()).await?;
+        Ok(draft)
+    }
+
+    pub async fn finalize_story_draft(&self, draft_id: &str) -> Result<StoryRecord, ManagerError> {
+        let mut draft = self
+            .store
+            .get_story_draft(draft_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryDraft(draft_id.to_owned()))?;
+
+        if draft.status == StoryDraftStatus::Finalized {
+            let story_id = draft.final_story_id.clone().ok_or_else(|| {
+                ManagerError::InvalidDraft("finalized draft is missing final_story_id".to_owned())
+            })?;
+            return self
+                .store
+                .get_story(&story_id)
+                .await?
+                .ok_or(ManagerError::MissingStory(story_id));
+        }
+
+        draft = self.refresh_draft_status(draft);
+        if draft.status != StoryDraftStatus::ReadyToFinalize {
+            return Err(ManagerError::InvalidDraft(format!(
+                "story draft '{draft_id}' is not ready to finalize"
+            )));
+        }
+
+        validate_story_graph(&draft.partial_graph)?;
+        let resource = self
+            .store
+            .get_story_resources(&draft.resource_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryResources(draft.resource_id.clone()))?;
+        let now = now_timestamp_ms();
+        let story = StoryRecord {
+            story_id: format!("story-{}", self.store.list_stories().await?.len()),
+            display_name: draft.display_name.clone(),
+            resource_id: draft.resource_id.clone(),
+            graph: draft.partial_graph.clone(),
+            world_schema_id: draft.world_schema_id.clone(),
+            player_schema_id: draft.player_schema_id.clone(),
+            introduction: draft.introduction.clone(),
+            created_at_ms: Some(now),
+            updated_at_ms: Some(now),
+        };
         self.store.save_story(story.clone()).await?;
+
+        draft.status = StoryDraftStatus::Finalized;
+        draft.final_story_id = Some(story.story_id.clone());
+        draft.updated_at_ms = Some(now);
+        if resource.resource_id == draft.resource_id {
+            self.store.save_story_draft(draft).await?;
+        }
         Ok(story)
+    }
+
+    pub async fn delete_story_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<StoryDraftRecord, ManagerError> {
+        let draft = self
+            .store
+            .delete_story_draft(draft_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryDraft(draft_id.to_owned()))?;
+
+        if draft.final_story_id.is_none() {
+            let _ = self.store.delete_schema(&draft.world_schema_id).await?;
+            let _ = self.store.delete_schema(&draft.player_schema_id).await?;
+        }
+
+        Ok(draft)
     }
 
     pub async fn start_session_from_story(
@@ -228,6 +481,52 @@ impl EngineManager {
             .await?
             .map(|session| session.snapshot)
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))
+    }
+
+    pub async fn suggest_replies(
+        &self,
+        session_id: &str,
+        limit: usize,
+        api_overrides: Option<AgentApiIdOverrides>,
+    ) -> Result<Vec<ReplyOption>, ManagerError> {
+        let session = self
+            .store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        let story = self
+            .store
+            .get_story(&session.story_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStory(session.story_id.clone()))?;
+        let runtime_state = self
+            .build_runtime_state_from_session(&story, &session)
+            .await?;
+        let global = self.get_global_config().await?;
+        let effective_api_ids = effective_session_api_ids(&session.config, &global)
+            .apply_overrides(&api_overrides.unwrap_or_default());
+        let replyer_config = self.registry.build_replyer_config(&effective_api_ids)?;
+        let history = self.load_reply_history(session_id).await?;
+        let current_node = runtime_state.current_node()?;
+        let replyer = Replyer::new_with_options(
+            Arc::clone(&replyer_config.client),
+            replyer_config.model.clone(),
+            replyer_config.temperature,
+            replyer_config.max_tokens,
+        )?;
+        let response = replyer
+            .suggest(ReplyerRequest {
+                current_node,
+                character_cards: runtime_state.character_cards(),
+                player_description: runtime_state.player_description(),
+                player_state_schema: runtime_state.player_state_schema(),
+                world_state: runtime_state.world_state(),
+                history: &history,
+                limit,
+            })
+            .await?;
+
+        Ok(response.replies)
     }
 
     pub async fn update_player_description(
@@ -375,10 +674,30 @@ impl EngineManager {
                     EngineEvent::TurnCompleted { result } => {
                         let mut updated_session = session_record.clone();
                         updated_session.snapshot = result.snapshot.clone();
-                        updated_session.updated_at_ms = Some(now_timestamp_ms());
+                        let recorded_at_ms = now_timestamp_ms();
+                        updated_session.updated_at_ms = Some(recorded_at_ms);
                         if let Err(error) = store.save_session(updated_session).await {
                             yield Err(ManagerError::Store(error));
                             return;
+                        }
+                        let messages = build_session_messages(
+                            &session_record.session_id,
+                            &session_record,
+                            result,
+                            recorded_at_ms,
+                            match store.list_session_messages(&session_record.session_id).await {
+                                Ok(existing) => next_session_message_sequence(&existing),
+                                Err(error) => {
+                                    yield Err(ManagerError::Store(error));
+                                    return;
+                                }
+                            },
+                        );
+                        for message in messages {
+                            if let Err(error) = store.save_session_message(message).await {
+                                yield Err(ManagerError::Store(error));
+                                return;
+                            }
                         }
                     }
                     EngineEvent::TurnFailed { snapshot, .. } => {
@@ -551,6 +870,73 @@ impl EngineManager {
             system_prompt: record.content.system_prompt.clone(),
         })
     }
+
+    async fn load_reply_history(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<ReplyHistoryMessage>, ManagerError> {
+        let mut messages = self.store.list_session_messages(session_id).await?;
+        messages.sort_by_key(|message| message.sequence);
+        Ok(messages
+            .into_iter()
+            .map(|message| ReplyHistoryMessage {
+                kind: match message.kind {
+                    SessionMessageKind::PlayerInput => ReplyHistoryKind::PlayerInput,
+                    SessionMessageKind::Narration => ReplyHistoryKind::Narration,
+                    SessionMessageKind::Dialogue => ReplyHistoryKind::Dialogue,
+                    SessionMessageKind::Action => ReplyHistoryKind::Action,
+                },
+                turn_index: message.turn_index,
+                speaker_id: message.speaker_id,
+                speaker_name: message.speaker_name,
+                text: message.text,
+            })
+            .collect())
+    }
+
+    async fn create_generated_schema(
+        &self,
+        display_name: String,
+        tags: Vec<String>,
+        fields: std::collections::HashMap<String, StateFieldSchema>,
+    ) -> Result<SchemaRecord, ManagerError> {
+        let mut next_index = self.store.list_schemas().await?.len();
+        loop {
+            let schema_id = format!("schema-generated-{next_index}");
+            if self.store.get_schema(&schema_id).await?.is_none() {
+                let record = SchemaRecord {
+                    schema_id,
+                    display_name: display_name.clone(),
+                    tags: tags.clone(),
+                    fields: fields.clone(),
+                };
+                self.store.save_schema(record.clone()).await?;
+                return Ok(record);
+            }
+            next_index += 1;
+        }
+    }
+
+    fn recent_draft_nodes(&self, draft: &StoryDraftRecord) -> Vec<NarrativeNode> {
+        draft
+            .section_node_ids
+            .last()
+            .into_iter()
+            .flatten()
+            .filter_map(|node_id| draft.partial_graph.get_node(node_id).cloned())
+            .collect()
+    }
+
+    fn refresh_draft_status(&self, mut draft: StoryDraftRecord) -> StoryDraftRecord {
+        draft.status = if draft.final_story_id.is_some() {
+            StoryDraftStatus::Finalized
+        } else if draft.next_section_index >= draft.outline_sections.len() {
+            StoryDraftStatus::ReadyToFinalize
+        } else {
+            StoryDraftStatus::Building
+        };
+        draft
+    }
 }
 
 fn now_timestamp_ms() -> u64 {
@@ -561,9 +947,263 @@ fn now_timestamp_ms() -> u64 {
         .min(u128::from(u64::MAX)) as u64
 }
 
+fn extract_outline_sections(planned_story: &str) -> Vec<String> {
+    let mut sections = Vec::new();
+    let mut in_suggested_beats = false;
+
+    for raw_line in planned_story.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        if let Some(opening) = line.strip_prefix("Opening Situation:") {
+            let opening = opening.trim();
+            if !opening.is_empty() {
+                sections.push(opening.to_owned());
+            }
+            in_suggested_beats = false;
+            continue;
+        }
+
+        if line == "Suggested Beats:" {
+            in_suggested_beats = true;
+            continue;
+        }
+
+        if matches!(
+            line,
+            "Title:" | "Core Conflict:" | "Character Roles:" | "State Hints:"
+        ) {
+            in_suggested_beats = false;
+            continue;
+        }
+
+        if in_suggested_beats {
+            let beat = line
+                .trim_start_matches(|c: char| {
+                    c == '-' || c == '*' || c.is_ascii_digit() || c == '.' || c == ')'
+                })
+                .trim();
+            if !beat.is_empty() {
+                sections.push(beat.to_owned());
+            }
+        }
+    }
+
+    if sections.is_empty() {
+        planned_story
+            .split("\n\n")
+            .map(str::trim)
+            .filter(|section| !section.is_empty() && !section.ends_with(':'))
+            .map(ToOwned::to_owned)
+            .collect()
+    } else {
+        sections
+    }
+}
+
+fn build_graph_summary(graph: &StoryGraph) -> Vec<GraphSummaryNode> {
+    graph
+        .nodes
+        .iter()
+        .map(|node| GraphSummaryNode {
+            id: node.id.clone(),
+            title: node.title.clone(),
+            scene_summary: truncate_text(&node.scene, 200),
+            goal: truncate_text(&node.goal, 120),
+            characters: node.characters.clone(),
+            transition_targets: node
+                .transitions
+                .iter()
+                .map(|transition| transition.to.clone())
+                .collect(),
+        })
+        .collect()
+}
+
+fn truncate_text(text: &str, max_chars: usize) -> String {
+    let mut out = String::new();
+    for (idx, ch) in text.chars().enumerate() {
+        if idx >= max_chars {
+            out.push_str("...");
+            break;
+        }
+        out.push(ch);
+    }
+    out
+}
+
+fn merge_story_chunk(
+    graph: &mut StoryGraph,
+    nodes: &[NarrativeNode],
+    transition_patches: &[NodeTransitionPatch],
+) -> Result<(), ManagerError> {
+    for node in nodes {
+        if graph.has_node(&node.id) {
+            return Err(ManagerError::InvalidDraft(format!(
+                "architect draft returned duplicate node id '{}'",
+                node.id
+            )));
+        }
+        graph.nodes.push(node.clone());
+    }
+
+    apply_transition_patches(graph, transition_patches)?;
+    validate_story_graph(graph)?;
+    Ok(())
+}
+
+fn apply_transition_patches(
+    graph: &mut StoryGraph,
+    transition_patches: &[NodeTransitionPatch],
+) -> Result<(), ManagerError> {
+    for patch in transition_patches {
+        let node = graph.get_node_mut(&patch.node_id).ok_or_else(|| {
+            ManagerError::InvalidDraft(format!(
+                "architect draft attempted to patch missing node '{}'",
+                patch.node_id
+            ))
+        })?;
+        node.transitions.extend(patch.add_transitions.clone());
+    }
+    Ok(())
+}
+
+fn validate_story_graph(graph: &StoryGraph) -> Result<(), ManagerError> {
+    if graph.is_empty() {
+        return Err(ManagerError::InvalidDraft(
+            "story graph must contain at least one node".to_owned(),
+        ));
+    }
+
+    let mut node_ids = HashSet::new();
+    for node in &graph.nodes {
+        if !node_ids.insert(node.id.clone()) {
+            return Err(ManagerError::InvalidDraft(format!(
+                "story graph contains duplicate node id '{}'",
+                node.id
+            )));
+        }
+    }
+
+    if !node_ids.contains(graph.start_node()) {
+        return Err(ManagerError::InvalidDraft(format!(
+            "story graph start node '{}' does not exist",
+            graph.start_node()
+        )));
+    }
+
+    for node in &graph.nodes {
+        for transition in &node.transitions {
+            if !node_ids.contains(&transition.to) {
+                return Err(ManagerError::InvalidDraft(format!(
+                    "transition from '{}' points to missing node '{}'",
+                    node.id, transition.to
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn next_session_message_sequence(existing: &[SessionMessageRecord]) -> u64 {
+    existing
+        .iter()
+        .map(|message| message.sequence)
+        .max()
+        .map(|sequence| sequence.saturating_add(1))
+        .unwrap_or(0)
+}
+
+fn build_session_messages(
+    session_id: &str,
+    session: &SessionRecord,
+    result: &EngineTurnResult,
+    recorded_at_ms: u64,
+    starting_sequence: u64,
+) -> Vec<SessionMessageRecord> {
+    let mut next_sequence = starting_sequence;
+    let mut messages = vec![SessionMessageRecord {
+        message_id: format!("{}-message-{}", session_id, next_sequence),
+        session_id: session.session_id.clone(),
+        kind: SessionMessageKind::PlayerInput,
+        sequence: next_sequence,
+        turn_index: result.turn_index,
+        recorded_at_ms,
+        created_at_ms: recorded_at_ms,
+        updated_at_ms: recorded_at_ms,
+        speaker_id: "player".to_owned(),
+        speaker_name: "Player".to_owned(),
+        text: result.player_input.clone(),
+    }];
+    next_sequence = next_sequence.saturating_add(1);
+
+    for beat in &result.completed_beats {
+        match beat {
+            ExecutedBeat::Narrator { response, .. } => {
+                let text = response.text.trim();
+                if !text.is_empty() {
+                    messages.push(SessionMessageRecord {
+                        message_id: format!("{}-message-{}", session_id, next_sequence),
+                        session_id: session.session_id.clone(),
+                        kind: SessionMessageKind::Narration,
+                        sequence: next_sequence,
+                        turn_index: result.turn_index,
+                        recorded_at_ms,
+                        created_at_ms: recorded_at_ms,
+                        updated_at_ms: recorded_at_ms,
+                        speaker_id: "narrator".to_owned(),
+                        speaker_name: "Narrator".to_owned(),
+                        text: text.to_owned(),
+                    });
+                    next_sequence = next_sequence.saturating_add(1);
+                }
+            }
+            ExecutedBeat::Actor { response, .. } => {
+                for segment in &response.segments {
+                    let kind = match segment.kind {
+                        ActorSegmentKind::Dialogue => Some(SessionMessageKind::Dialogue),
+                        ActorSegmentKind::Action => Some(SessionMessageKind::Action),
+                        ActorSegmentKind::Thought => None,
+                    };
+
+                    let Some(kind) = kind else {
+                        continue;
+                    };
+
+                    let text = segment.text.trim();
+                    if text.is_empty() {
+                        continue;
+                    }
+
+                    messages.push(SessionMessageRecord {
+                        message_id: format!("{}-message-{}", session_id, next_sequence),
+                        session_id: session.session_id.clone(),
+                        kind,
+                        sequence: next_sequence,
+                        turn_index: result.turn_index,
+                        recorded_at_ms,
+                        created_at_ms: recorded_at_ms,
+                        updated_at_ms: recorded_at_ms,
+                        speaker_id: response.speaker_id.clone(),
+                        speaker_name: response.speaker_name.clone(),
+                        text: text.to_owned(),
+                    });
+                    next_sequence = next_sequence.saturating_add(1);
+                }
+            }
+        }
+    }
+
+    messages
+}
+
 fn validate_api_ids(registry: &LlmApiRegistry, api_ids: &AgentApiIds) -> Result<(), ManagerError> {
     registry.build_story_generation_configs(api_ids)?;
     registry.build_runtime_configs(api_ids)?;
+    registry.build_replyer_config(api_ids)?;
     Ok(())
 }
 
@@ -589,12 +1229,20 @@ pub enum ManagerError {
     MissingPlayerProfile(String),
     #[error("story resources '{0}' not found")]
     MissingStoryResources(String),
+    #[error("story draft '{0}' not found")]
+    MissingStoryDraft(String),
     #[error("story '{0}' not found")]
     MissingStory(String),
     #[error("session '{0}' not found")]
     MissingSession(String),
     #[error("character_ids cannot be empty")]
     EmptyCharacterIds,
+    #[error("invalid story draft: {0}")]
+    InvalidDraft(String),
+    #[error(transparent)]
+    Architect(#[from] ArchitectError),
+    #[error(transparent)]
+    Replyer(#[from] ReplyerError),
     #[error(transparent)]
     Engine(#[from] EngineError),
     #[error(transparent)]

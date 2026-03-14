@@ -2,9 +2,10 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use ss_store::{
-    AgentApiIds, CharacterCardDefinition, CharacterCardRecord, InMemoryStore, LlmApiRecord,
-    LlmProvider, PlayerProfileRecord, RuntimeSnapshot, SchemaRecord, SessionConfigMode,
-    SessionEngineConfig, SessionRecord, Store, StoryRecord, StoryResourcesRecord,
+    AgentApiIds, CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord,
+    InMemoryStore, LlmApiRecord, LlmProvider, PlayerProfileRecord, RuntimeSnapshot, SchemaRecord,
+    SessionConfigMode, SessionEngineConfig, SessionMessageKind, SessionMessageRecord,
+    SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -17,6 +18,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor".to_owned(),
         narrator_api_id: "narrator".to_owned(),
         keeper_api_id: "keeper".to_owned(),
+        replyer_api_id: "replyer".to_owned(),
     }
 }
 
@@ -45,6 +47,19 @@ fn sample_llm_api_record() -> LlmApiRecord {
         base_url: "https://api.openai.example/v1".to_owned(),
         api_key: "sk-secret".to_owned(),
         model: "gpt-4.1-mini".to_owned(),
+        temperature: Some(0.2),
+        max_tokens: Some(512),
+    }
+}
+
+fn sample_default_llm_config_record() -> DefaultLlmConfigRecord {
+    DefaultLlmConfigRecord {
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: "sk-default".to_owned(),
+        model: "gpt-4.1-mini".to_owned(),
+        temperature: Some(0.1),
+        max_tokens: Some(1024),
     }
 }
 
@@ -106,6 +121,30 @@ fn sample_story() -> StoryRecord {
     }
 }
 
+fn sample_story_draft() -> StoryDraftRecord {
+    StoryDraftRecord {
+        draft_id: "draft-1".to_owned(),
+        display_name: "Flooded Harbor Draft".to_owned(),
+        resource_id: "resource-1".to_owned(),
+        planned_story: "Opening Situation:\nA courier arrives at dusk.".to_owned(),
+        outline_sections: vec![
+            "A courier arrives at dusk.".to_owned(),
+            "The merchant tests the courier.".to_owned(),
+        ],
+        next_section_index: 1,
+        partial_graph: sample_story_graph(),
+        world_schema_id: "schema-world-story-1".to_owned(),
+        player_schema_id: "schema-player-story-1".to_owned(),
+        introduction: "The courier reaches a flooded dock.".to_owned(),
+        section_summaries: vec!["The courier reaches the flooded dock.".to_owned()],
+        section_node_ids: vec![vec!["dock".to_owned()]],
+        status: StoryDraftStatus::Building,
+        final_story_id: None,
+        created_at_ms: Some(1_500),
+        updated_at_ms: Some(2_500),
+    }
+}
+
 fn sample_session() -> SessionRecord {
     SessionRecord {
         session_id: "session-1".to_owned(),
@@ -126,6 +165,22 @@ fn sample_session() -> SessionRecord {
         },
         created_at_ms: Some(3_000),
         updated_at_ms: Some(4_000),
+    }
+}
+
+fn sample_session_message() -> SessionMessageRecord {
+    SessionMessageRecord {
+        message_id: "session-message-1".to_owned(),
+        session_id: "session-1".to_owned(),
+        kind: SessionMessageKind::Narration,
+        sequence: 0,
+        turn_index: 0,
+        recorded_at_ms: 3_500,
+        created_at_ms: 3_500,
+        updated_at_ms: 3_500,
+        speaker_id: "narrator".to_owned(),
+        speaker_name: "Narrator".to_owned(),
+        text: "A courier steps onto the dock.".to_owned(),
     }
 }
 
@@ -170,6 +225,14 @@ async fn in_memory_store_persists_all_records() {
         .await
         .expect("save llm api");
     store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
+    store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
+    store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
             "Merchant Schema",
@@ -210,11 +273,19 @@ async fn in_memory_store_persists_all_records() {
         .save_story_resources(sample_story_resources())
         .await
         .expect("save resources");
+    store
+        .save_story_draft(sample_story_draft())
+        .await
+        .expect("save draft");
     store.save_story(sample_story()).await.expect("save story");
     store
         .save_session(sample_session())
         .await
         .expect("save session");
+    store
+        .save_session_message(sample_session_message())
+        .await
+        .expect("save session message");
 
     assert!(
         store
@@ -228,6 +299,13 @@ async fn in_memory_store_persists_all_records() {
             .get_llm_api("default")
             .await
             .expect("load llm api")
+            .is_some()
+    );
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("load default llm config")
             .is_some()
     );
     assert!(
@@ -260,6 +338,13 @@ async fn in_memory_store_persists_all_records() {
     );
     assert!(
         store
+            .get_story_draft("draft-1")
+            .await
+            .expect("load draft")
+            .is_some()
+    );
+    assert!(
+        store
             .get_story("story-1")
             .await
             .expect("load story")
@@ -272,6 +357,13 @@ async fn in_memory_store_persists_all_records() {
             .expect("load session")
             .is_some()
     );
+    assert!(
+        store
+            .get_session_message("session-message-1")
+            .await
+            .expect("load session message")
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -281,6 +373,10 @@ async fn in_memory_store_lists_and_deletes_records() {
         .save_llm_api(sample_llm_api_record())
         .await
         .expect("save llm api");
+    store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -300,19 +396,43 @@ async fn in_memory_store_lists_and_deletes_records() {
         .save_story_resources(sample_story_resources())
         .await
         .expect("save resources");
+    store
+        .save_story_draft(sample_story_draft())
+        .await
+        .expect("save draft");
     store.save_story(sample_story()).await.expect("save story");
     store
         .save_session(sample_session())
         .await
         .expect("save session");
+    store
+        .save_session_message(sample_session_message())
+        .await
+        .expect("save session message");
 
     assert_eq!(store.list_llm_apis().await.expect("list").len(), 1);
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("get default llm config")
+            .is_some()
+    );
     assert_eq!(store.list_schemas().await.expect("list").len(), 1);
     assert_eq!(store.list_player_profiles().await.expect("list").len(), 1);
     assert_eq!(store.list_characters().await.expect("list").len(), 1);
     assert_eq!(store.list_story_resources().await.expect("list").len(), 1);
+    assert_eq!(store.list_story_drafts().await.expect("list").len(), 1);
     assert_eq!(store.list_stories().await.expect("list").len(), 1);
     assert_eq!(store.list_sessions().await.expect("list").len(), 1);
+    assert_eq!(
+        store
+            .list_session_messages("session-1")
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
 
     assert!(
         store
@@ -337,9 +457,23 @@ async fn in_memory_store_lists_and_deletes_records() {
     );
     assert!(
         store
+            .delete_session_message("session-message-1")
+            .await
+            .expect("delete session message")
+            .is_some()
+    );
+    assert!(
+        store
             .delete_session("session-1")
             .await
             .expect("delete session")
+            .is_some()
+    );
+    assert!(
+        store
+            .delete_story_draft("draft-1")
+            .await
+            .expect("delete draft")
             .is_some()
     );
     assert!(
@@ -365,8 +499,16 @@ async fn in_memory_store_lists_and_deletes_records() {
     );
 
     assert!(store.list_sessions().await.expect("list").is_empty());
+    assert!(
+        store
+            .list_session_messages("session-1")
+            .await
+            .expect("list")
+            .is_empty()
+    );
     assert!(store.list_stories().await.expect("list").is_empty());
     assert!(store.list_story_resources().await.expect("list").is_empty());
+    assert!(store.list_story_drafts().await.expect("list").is_empty());
     assert!(store.list_characters().await.expect("list").is_empty());
     assert!(store.list_player_profiles().await.expect("list").is_empty());
     assert!(store.list_schemas().await.expect("list").is_empty());
@@ -405,8 +547,8 @@ fn story_and_session_records_deserialize_without_timestamps() {
         "display_name": "Legacy Story",
         "resource_id": "resource-legacy",
         "graph": sample_story_graph(),
-        "world_state_schema": sample_world_state_schema(),
-        "player_state_schema": sample_player_state_schema(),
+        "world_schema_id": "schema-world-legacy",
+        "player_schema_id": "schema-player-legacy",
         "introduction": "Legacy intro"
     }))
     .expect("legacy story should deserialize");
@@ -417,6 +559,8 @@ fn story_and_session_records_deserialize_without_timestamps() {
         "session_id": "session-legacy",
         "display_name": "Legacy Session",
         "story_id": "story-legacy",
+        "player_profile_id": null,
+        "player_schema_id": "schema-player-legacy",
         "snapshot": {
             "story_id": "story-legacy",
             "player_description": "A legacy player.",
@@ -431,4 +575,16 @@ fn story_and_session_records_deserialize_without_timestamps() {
     .expect("legacy session should deserialize");
     assert!(session.created_at_ms.is_none());
     assert!(session.updated_at_ms.is_none());
+}
+
+#[tokio::test]
+async fn in_memory_store_returns_none_for_missing_default_llm_config() {
+    let store = InMemoryStore::new();
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("default llm config lookup should succeed")
+            .is_none()
+    );
 }

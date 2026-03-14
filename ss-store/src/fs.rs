@@ -9,13 +9,15 @@ use tokio::io::AsyncWriteExt;
 use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardDefinition, CharacterCardRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord,
-    SessionRecord, StoryRecord, StoryResourcesRecord,
+    CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord,
+    PlayerProfileRecord, SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
+    StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
 const GLOBAL_DIR: &str = "global";
 const GLOBAL_CONFIG_FILE: &str = "config.json";
+const DEFAULT_LLM_CONFIG_FILE: &str = "default_llm_config.json";
 const LLM_APIS_DIR: &str = "llm_apis";
 const SCHEMAS_DIR: &str = "schemas";
 const PLAYER_PROFILES_DIR: &str = "player_profiles";
@@ -24,7 +26,9 @@ const CHARACTER_RECORD_FILE: &str = "record.json";
 const CHARACTER_COVER_FILE: &str = "cover.bin";
 const STORY_RESOURCES_DIR: &str = "story_resources";
 const STORIES_DIR: &str = "stories";
+const STORY_DRAFTS_DIR: &str = "story_drafts";
 const SESSIONS_DIR: &str = "sessions";
+const SESSION_MESSAGES_DIR: &str = "session_messages";
 
 #[derive(Debug, Clone)]
 pub struct FileSystemStore {
@@ -69,7 +73,9 @@ impl FileSystemStore {
         fs::create_dir_all(self.characters_dir()).await?;
         fs::create_dir_all(self.story_resources_dir()).await?;
         fs::create_dir_all(self.stories_dir()).await?;
+        fs::create_dir_all(self.story_drafts_dir()).await?;
         fs::create_dir_all(self.sessions_dir()).await?;
+        fs::create_dir_all(self.session_messages_dir()).await?;
         Ok(())
     }
 
@@ -79,6 +85,10 @@ impl FileSystemStore {
 
     fn global_config_path(&self) -> PathBuf {
         self.global_dir().join(GLOBAL_CONFIG_FILE)
+    }
+
+    fn default_llm_config_path(&self) -> PathBuf {
+        self.global_dir().join(DEFAULT_LLM_CONFIG_FILE)
     }
 
     fn llm_apis_dir(&self) -> PathBuf {
@@ -152,6 +162,16 @@ impl FileSystemStore {
             .join(format!("{}.json", validate_path_component(story_id)?)))
     }
 
+    fn story_drafts_dir(&self) -> PathBuf {
+        self.root.join(STORY_DRAFTS_DIR)
+    }
+
+    fn story_draft_path(&self, draft_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .story_drafts_dir()
+            .join(format!("{}.json", validate_path_component(draft_id)?)))
+    }
+
     fn sessions_dir(&self) -> PathBuf {
         self.root.join(SESSIONS_DIR)
     }
@@ -160,6 +180,16 @@ impl FileSystemStore {
         Ok(self
             .sessions_dir()
             .join(format!("{}.json", validate_path_component(session_id)?)))
+    }
+
+    fn session_messages_dir(&self) -> PathBuf {
+        self.root.join(SESSION_MESSAGES_DIR)
+    }
+
+    fn session_message_path(&self, message_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .session_messages_dir()
+            .join(format!("{}.json", validate_path_component(message_id)?)))
     }
 }
 
@@ -171,6 +201,17 @@ impl Store for FileSystemStore {
 
     async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
         write_json_atomic(&self.global_config_path(), &config).await
+    }
+
+    async fn get_default_llm_config(&self) -> Result<Option<DefaultLlmConfigRecord>, StoreError> {
+        read_optional_json_file(&self.default_llm_config_path()).await
+    }
+
+    async fn set_default_llm_config(
+        &self,
+        config: DefaultLlmConfigRecord,
+    ) -> Result<(), StoreError> {
+        write_json_atomic(&self.default_llm_config_path(), &config).await
     }
 
     async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
@@ -349,6 +390,28 @@ impl Store for FileSystemStore {
         delete_optional_json_file(&self.story_path(story_id)?).await
     }
 
+    async fn get_story_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<Option<StoryDraftRecord>, StoreError> {
+        read_optional_json_file(&self.story_draft_path(draft_id)?).await
+    }
+
+    async fn list_story_drafts(&self) -> Result<Vec<StoryDraftRecord>, StoreError> {
+        list_json_records(&self.story_drafts_dir()).await
+    }
+
+    async fn save_story_draft(&self, draft: StoryDraftRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.story_draft_path(&draft.draft_id)?, &draft).await
+    }
+
+    async fn delete_story_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<Option<StoryDraftRecord>, StoreError> {
+        delete_optional_json_file(&self.story_draft_path(draft_id)?).await
+    }
+
     async fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         read_optional_json_file(&self.session_path(session_id)?).await
     }
@@ -363,6 +426,33 @@ impl Store for FileSystemStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         delete_optional_json_file(&self.session_path(session_id)?).await
+    }
+
+    async fn get_session_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<SessionMessageRecord>, StoreError> {
+        read_optional_json_file(&self.session_message_path(message_id)?).await
+    }
+
+    async fn list_session_messages(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionMessageRecord>, StoreError> {
+        let mut records = list_json_records(&self.session_messages_dir()).await?;
+        records.retain(|message: &SessionMessageRecord| message.session_id == session_id);
+        Ok(records)
+    }
+
+    async fn save_session_message(&self, message: SessionMessageRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.session_message_path(&message.message_id)?, &message).await
+    }
+
+    async fn delete_session_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<SessionMessageRecord>, StoreError> {
+        delete_optional_json_file(&self.session_message_path(message_id)?).await
     }
 }
 

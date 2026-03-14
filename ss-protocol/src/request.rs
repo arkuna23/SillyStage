@@ -3,6 +3,7 @@ use crate::config::{
     ConfigGetGlobalParams, ConfigUpdateGlobalParams, SessionGetConfigParams,
     SessionUpdateConfigParams,
 };
+use crate::default_llm_config::{DefaultLlmConfigGetParams, DefaultLlmConfigUpdateParams};
 use crate::llm_api::{
     LlmApiCreateParams, LlmApiDeleteParams, LlmApiGetParams, LlmApiListParams, LlmApiUpdateParams,
 };
@@ -10,8 +11,13 @@ use crate::player_profile::{
     PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
     PlayerProfileListParams, PlayerProfileUpdateParams,
 };
+use crate::reply_suggestion::SuggestRepliesParams;
 use crate::schema::{
     SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
+};
+use crate::session_message::{
+    CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
+    ListSessionMessagesParams, UpdateSessionMessageParams,
 };
 use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
 use serde::{Deserialize, Serialize};
@@ -77,20 +83,48 @@ pub enum RequestMethod {
     StoryGenerate,
     #[serde(rename = "story.get")]
     StoryGet,
+    #[serde(rename = "story.update")]
+    StoryUpdate,
     #[serde(rename = "story.list")]
     StoryList,
     #[serde(rename = "story.delete")]
     StoryDelete,
+    #[serde(rename = "story_draft.start")]
+    StoryDraftStart,
+    #[serde(rename = "story_draft.get")]
+    StoryDraftGet,
+    #[serde(rename = "story_draft.list")]
+    StoryDraftList,
+    #[serde(rename = "story_draft.continue")]
+    StoryDraftContinue,
+    #[serde(rename = "story_draft.finalize")]
+    StoryDraftFinalize,
+    #[serde(rename = "story_draft.delete")]
+    StoryDraftDelete,
     #[serde(rename = "story.start_session")]
     StoryStartSession,
     #[serde(rename = "session.get")]
     SessionGet,
+    #[serde(rename = "session.update")]
+    SessionUpdate,
     #[serde(rename = "session.list")]
     SessionList,
     #[serde(rename = "session.delete")]
     SessionDelete,
+    #[serde(rename = "session_message.create")]
+    SessionMessageCreate,
+    #[serde(rename = "session_message.get")]
+    SessionMessageGet,
+    #[serde(rename = "session_message.list")]
+    SessionMessageList,
+    #[serde(rename = "session_message.update")]
+    SessionMessageUpdate,
+    #[serde(rename = "session_message.delete")]
+    SessionMessageDelete,
     #[serde(rename = "session.run_turn")]
     SessionRunTurn,
+    #[serde(rename = "session.suggest_replies")]
+    SessionSuggestReplies,
     #[serde(rename = "session.set_player_profile")]
     SessionSetPlayerProfile,
     #[serde(rename = "session.update_player_description")]
@@ -115,6 +149,10 @@ pub enum RequestMethod {
     LlmApiUpdate,
     #[serde(rename = "llm_api.delete")]
     LlmApiDelete,
+    #[serde(rename = "default_llm_config.get")]
+    DefaultLlmConfigGet,
+    #[serde(rename = "default_llm_config.update")]
+    DefaultLlmConfigUpdate,
     #[serde(rename = "dashboard.get")]
     DashboardGet,
 }
@@ -150,13 +188,27 @@ pub enum RequestParams {
     StoryGeneratePlan(GenerateStoryPlanParams),
     StoryGenerate(GenerateStoryParams),
     StoryGet(GetStoryParams),
+    StoryUpdate(UpdateStoryParams),
     StoryList(ListStoriesParams),
     StoryDelete(DeleteStoryParams),
+    StoryDraftStart(StartStoryDraftParams),
+    StoryDraftGet(GetStoryDraftParams),
+    StoryDraftList(ListStoryDraftsParams),
+    StoryDraftContinue(ContinueStoryDraftParams),
+    StoryDraftFinalize(FinalizeStoryDraftParams),
+    StoryDraftDelete(DeleteStoryDraftParams),
     StoryStartSession(StartSessionFromStoryParams),
     SessionGet(GetSessionParams),
+    SessionUpdate(UpdateSessionParams),
     SessionList(ListSessionsParams),
     SessionDelete(DeleteSessionParams),
+    SessionMessageCreate(CreateSessionMessageParams),
+    SessionMessageGet(GetSessionMessageParams),
+    SessionMessageList(ListSessionMessagesParams),
+    SessionMessageUpdate(UpdateSessionMessageParams),
+    SessionMessageDelete(DeleteSessionMessageParams),
     SessionRunTurn(RunTurnParams),
+    SessionSuggestReplies(SuggestRepliesParams),
     SessionSetPlayerProfile(SetPlayerProfileParams),
     SessionUpdatePlayerDescription(UpdatePlayerDescriptionParams),
     SessionGetRuntimeSnapshot(GetRuntimeSnapshotParams),
@@ -169,6 +221,8 @@ pub enum RequestParams {
     LlmApiList(LlmApiListParams),
     LlmApiUpdate(LlmApiUpdateParams),
     LlmApiDelete(LlmApiDeleteParams),
+    DefaultLlmConfigGet(DefaultLlmConfigGetParams),
+    DefaultLlmConfigUpdate(DefaultLlmConfigUpdateParams),
     DashboardGet(DashboardGetParams),
 }
 
@@ -204,13 +258,27 @@ impl RequestParams {
             Self::StoryGeneratePlan(_) => RequestMethod::StoryGeneratePlan,
             Self::StoryGenerate(_) => RequestMethod::StoryGenerate,
             Self::StoryGet(_) => RequestMethod::StoryGet,
+            Self::StoryUpdate(_) => RequestMethod::StoryUpdate,
             Self::StoryList(_) => RequestMethod::StoryList,
             Self::StoryDelete(_) => RequestMethod::StoryDelete,
+            Self::StoryDraftStart(_) => RequestMethod::StoryDraftStart,
+            Self::StoryDraftGet(_) => RequestMethod::StoryDraftGet,
+            Self::StoryDraftList(_) => RequestMethod::StoryDraftList,
+            Self::StoryDraftContinue(_) => RequestMethod::StoryDraftContinue,
+            Self::StoryDraftFinalize(_) => RequestMethod::StoryDraftFinalize,
+            Self::StoryDraftDelete(_) => RequestMethod::StoryDraftDelete,
             Self::StoryStartSession(_) => RequestMethod::StoryStartSession,
             Self::SessionGet(_) => RequestMethod::SessionGet,
+            Self::SessionUpdate(_) => RequestMethod::SessionUpdate,
             Self::SessionList(_) => RequestMethod::SessionList,
             Self::SessionDelete(_) => RequestMethod::SessionDelete,
+            Self::SessionMessageCreate(_) => RequestMethod::SessionMessageCreate,
+            Self::SessionMessageGet(_) => RequestMethod::SessionMessageGet,
+            Self::SessionMessageList(_) => RequestMethod::SessionMessageList,
+            Self::SessionMessageUpdate(_) => RequestMethod::SessionMessageUpdate,
+            Self::SessionMessageDelete(_) => RequestMethod::SessionMessageDelete,
             Self::SessionRunTurn(_) => RequestMethod::SessionRunTurn,
+            Self::SessionSuggestReplies(_) => RequestMethod::SessionSuggestReplies,
             Self::SessionSetPlayerProfile(_) => RequestMethod::SessionSetPlayerProfile,
             Self::SessionUpdatePlayerDescription(_) => {
                 RequestMethod::SessionUpdatePlayerDescription
@@ -225,6 +293,8 @@ impl RequestParams {
             Self::LlmApiList(_) => RequestMethod::LlmApiList,
             Self::LlmApiUpdate(_) => RequestMethod::LlmApiUpdate,
             Self::LlmApiDelete(_) => RequestMethod::LlmApiDelete,
+            Self::DefaultLlmConfigGet(_) => RequestMethod::DefaultLlmConfigGet,
+            Self::DefaultLlmConfigUpdate(_) => RequestMethod::DefaultLlmConfigUpdate,
             Self::DashboardGet(_) => RequestMethod::DashboardGet,
         }
     }
@@ -260,13 +330,27 @@ impl RequestParams {
             Self::StoryGeneratePlan(params) => serde_json::to_value(params),
             Self::StoryGenerate(params) => serde_json::to_value(params),
             Self::StoryGet(params) => serde_json::to_value(params),
+            Self::StoryUpdate(params) => serde_json::to_value(params),
             Self::StoryList(params) => serde_json::to_value(params),
             Self::StoryDelete(params) => serde_json::to_value(params),
+            Self::StoryDraftStart(params) => serde_json::to_value(params),
+            Self::StoryDraftGet(params) => serde_json::to_value(params),
+            Self::StoryDraftList(params) => serde_json::to_value(params),
+            Self::StoryDraftContinue(params) => serde_json::to_value(params),
+            Self::StoryDraftFinalize(params) => serde_json::to_value(params),
+            Self::StoryDraftDelete(params) => serde_json::to_value(params),
             Self::StoryStartSession(params) => serde_json::to_value(params),
             Self::SessionGet(params) => serde_json::to_value(params),
+            Self::SessionUpdate(params) => serde_json::to_value(params),
             Self::SessionList(params) => serde_json::to_value(params),
             Self::SessionDelete(params) => serde_json::to_value(params),
+            Self::SessionMessageCreate(params) => serde_json::to_value(params),
+            Self::SessionMessageGet(params) => serde_json::to_value(params),
+            Self::SessionMessageList(params) => serde_json::to_value(params),
+            Self::SessionMessageUpdate(params) => serde_json::to_value(params),
+            Self::SessionMessageDelete(params) => serde_json::to_value(params),
             Self::SessionRunTurn(params) => serde_json::to_value(params),
+            Self::SessionSuggestReplies(params) => serde_json::to_value(params),
             Self::SessionSetPlayerProfile(params) => serde_json::to_value(params),
             Self::SessionUpdatePlayerDescription(params) => serde_json::to_value(params),
             Self::SessionGetRuntimeSnapshot(params) => serde_json::to_value(params),
@@ -279,6 +363,8 @@ impl RequestParams {
             Self::LlmApiList(params) => serde_json::to_value(params),
             Self::LlmApiUpdate(params) => serde_json::to_value(params),
             Self::LlmApiDelete(params) => serde_json::to_value(params),
+            Self::DefaultLlmConfigGet(params) => serde_json::to_value(params),
+            Self::DefaultLlmConfigUpdate(params) => serde_json::to_value(params),
             Self::DashboardGet(params) => serde_json::to_value(params),
         }
     }
@@ -353,16 +439,52 @@ impl RequestParams {
             }
             RequestMethod::StoryGenerate => serde_json::from_value(value).map(Self::StoryGenerate),
             RequestMethod::StoryGet => serde_json::from_value(value).map(Self::StoryGet),
+            RequestMethod::StoryUpdate => serde_json::from_value(value).map(Self::StoryUpdate),
             RequestMethod::StoryList => serde_json::from_value(value).map(Self::StoryList),
             RequestMethod::StoryDelete => serde_json::from_value(value).map(Self::StoryDelete),
+            RequestMethod::StoryDraftStart => {
+                serde_json::from_value(value).map(Self::StoryDraftStart)
+            }
+            RequestMethod::StoryDraftGet => serde_json::from_value(value).map(Self::StoryDraftGet),
+            RequestMethod::StoryDraftList => {
+                serde_json::from_value(value).map(Self::StoryDraftList)
+            }
+            RequestMethod::StoryDraftContinue => {
+                serde_json::from_value(value).map(Self::StoryDraftContinue)
+            }
+            RequestMethod::StoryDraftFinalize => {
+                serde_json::from_value(value).map(Self::StoryDraftFinalize)
+            }
+            RequestMethod::StoryDraftDelete => {
+                serde_json::from_value(value).map(Self::StoryDraftDelete)
+            }
             RequestMethod::StoryStartSession => {
                 serde_json::from_value(value).map(Self::StoryStartSession)
             }
             RequestMethod::SessionGet => serde_json::from_value(value).map(Self::SessionGet),
+            RequestMethod::SessionUpdate => serde_json::from_value(value).map(Self::SessionUpdate),
             RequestMethod::SessionList => serde_json::from_value(value).map(Self::SessionList),
             RequestMethod::SessionDelete => serde_json::from_value(value).map(Self::SessionDelete),
+            RequestMethod::SessionMessageCreate => {
+                serde_json::from_value(value).map(Self::SessionMessageCreate)
+            }
+            RequestMethod::SessionMessageGet => {
+                serde_json::from_value(value).map(Self::SessionMessageGet)
+            }
+            RequestMethod::SessionMessageList => {
+                serde_json::from_value(value).map(Self::SessionMessageList)
+            }
+            RequestMethod::SessionMessageUpdate => {
+                serde_json::from_value(value).map(Self::SessionMessageUpdate)
+            }
+            RequestMethod::SessionMessageDelete => {
+                serde_json::from_value(value).map(Self::SessionMessageDelete)
+            }
             RequestMethod::SessionRunTurn => {
                 serde_json::from_value(value).map(Self::SessionRunTurn)
+            }
+            RequestMethod::SessionSuggestReplies => {
+                serde_json::from_value(value).map(Self::SessionSuggestReplies)
             }
             RequestMethod::SessionSetPlayerProfile => {
                 serde_json::from_value(value).map(Self::SessionSetPlayerProfile)
@@ -390,6 +512,12 @@ impl RequestParams {
             RequestMethod::LlmApiList => serde_json::from_value(value).map(Self::LlmApiList),
             RequestMethod::LlmApiUpdate => serde_json::from_value(value).map(Self::LlmApiUpdate),
             RequestMethod::LlmApiDelete => serde_json::from_value(value).map(Self::LlmApiDelete),
+            RequestMethod::DefaultLlmConfigGet => {
+                serde_json::from_value(value).map(Self::DefaultLlmConfigGet)
+            }
+            RequestMethod::DefaultLlmConfigUpdate => {
+                serde_json::from_value(value).map(Self::DefaultLlmConfigUpdate)
+            }
             RequestMethod::DashboardGet => serde_json::from_value(value).map(Self::DashboardGet),
         }
     }
@@ -551,12 +679,59 @@ pub struct GetStoryParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields)]
+pub struct UpdateStoryParams {
+    pub story_id: String,
+    pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
 pub struct ListStoriesParams {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct DeleteStoryParams {
     pub story_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct StartStoryDraftParams {
+    pub resource_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architect_api_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct GetStoryDraftParams {
+    pub draft_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct ListStoryDraftsParams {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct ContinueStoryDraftParams {
+    pub draft_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub architect_api_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct FinalizeStoryDraftParams {
+    pub draft_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DeleteStoryDraftParams {
+    pub draft_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -576,6 +751,12 @@ pub struct StartSessionFromStoryParams {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields)]
 pub struct GetSessionParams {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateSessionParams {
+    pub display_name: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(deny_unknown_fields)]

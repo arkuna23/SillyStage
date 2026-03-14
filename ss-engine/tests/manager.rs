@@ -13,7 +13,6 @@ use store::{
 };
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
-use agents::actor::CharacterCard;
 use common::{QueuedMockLlm, assistant_response};
 
 fn sample_api_ids() -> AgentApiIds {
@@ -24,6 +23,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor".to_owned(),
         narrator_api_id: "narrator".to_owned(),
         keeper_api_id: "keeper".to_owned(),
+        replyer_api_id: "replyer".to_owned(),
     }
 }
 
@@ -36,7 +36,8 @@ fn registry(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
         .register(ids.director_api_id, Arc::clone(&llm), "director-model")
         .register(ids.actor_api_id, Arc::clone(&llm), "actor-model")
         .register(ids.narrator_api_id, Arc::clone(&llm), "narrator-model")
-        .register(ids.keeper_api_id, llm, "keeper-model")
+        .register(ids.keeper_api_id, Arc::clone(&llm), "keeper-model")
+        .register(ids.replyer_api_id, llm, "replyer-model")
 }
 
 fn sample_character_record() -> CharacterCardRecord {
@@ -216,7 +217,7 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(llm.clone()), sample_api_ids())
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
         .await
         .expect("manager should build");
 
@@ -241,6 +242,81 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
     assert_eq!(snapshot.world_state.current_node(), "dock");
     assert!(session.created_at_ms.is_some());
     assert!(session.updated_at_ms.is_some());
+}
+
+#[tokio::test]
+async fn manager_suggests_replies_without_mutating_session() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{}",
+            Some(json!({
+                "replies": [
+                    { "id": "r1", "text": "Show me the fastest safe route." },
+                    { "id": "r2", "text": "What exactly are you charging?" },
+                    { "id": "r3", "text": "I need proof before I commit." }
+                ]
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story(&store).await;
+
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
+        .await
+        .expect("manager should build");
+    let session = manager
+        .start_session_from_story(
+            "story-1",
+            Some("Courier Run".to_owned()),
+            Some("profile-courier-a".to_owned()),
+            SessionConfigMode::UseGlobal,
+            None,
+        )
+        .await
+        .expect("session should start");
+
+    let before = store
+        .get_session(&session.session_id)
+        .await
+        .expect("session lookup should succeed")
+        .expect("session should exist");
+    let replies = manager
+        .suggest_replies(&session.session_id, 3, None)
+        .await
+        .expect("reply suggestions should succeed");
+    let after = store
+        .get_session(&session.session_id)
+        .await
+        .expect("session lookup should succeed")
+        .expect("session should exist");
+
+    assert_eq!(replies.len(), 3);
+    assert_eq!(before.story_id, after.story_id);
+    assert_eq!(before.display_name, after.display_name);
+    assert_eq!(before.player_profile_id, after.player_profile_id);
+    assert_eq!(before.player_schema_id, after.player_schema_id);
+    assert_eq!(before.snapshot.turn_index, after.snapshot.turn_index);
+    assert_eq!(before.snapshot.story_id, after.snapshot.story_id);
+    assert_eq!(
+        before.snapshot.player_description,
+        after.snapshot.player_description
+    );
+    assert_eq!(
+        before.snapshot.world_state.current_node(),
+        after.snapshot.world_state.current_node()
+    );
+    assert_eq!(
+        serde_json::to_value(&before.snapshot.world_state).expect("world state should serialize"),
+        serde_json::to_value(&after.snapshot.world_state).expect("world state should serialize")
+    );
+    assert!(
+        store
+            .list_session_messages(&session.session_id)
+            .await
+            .expect("message lookup should succeed")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -296,7 +372,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(llm.clone()), sample_api_ids())
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
         .await
         .expect("manager should build");
 

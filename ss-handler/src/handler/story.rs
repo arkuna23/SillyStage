@@ -1,18 +1,24 @@
 use protocol::{
-    CharacterCardSummaryPayload, CreateStoryResourcesParams, DeleteStoryParams,
-    DeleteStoryResourcesParams, GenerateStoryParams, GenerateStoryPlanParams, GetStoryParams,
-    GetStoryResourcesParams, JsonRpcResponseMessage, ResponseResult, SessionStartedPayload,
-    StartSessionFromStoryParams, StoriesListedPayload, StoryDeletedPayload, StoryDetailPayload,
-    StoryGeneratedPayload, StoryPlannedPayload, StoryResourcesDeletedPayload,
-    StoryResourcesListedPayload, StoryResourcesPayload, StorySummaryPayload,
-    UpdateStoryResourcesParams,
+    CharacterCardSummaryPayload, ContinueStoryDraftParams, CreateStoryResourcesParams,
+    DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
+    FinalizeStoryDraftParams, GenerateStoryParams, GenerateStoryPlanParams, GetStoryDraftParams,
+    GetStoryParams, GetStoryResourcesParams, JsonRpcResponseMessage, ResponseResult,
+    StartSessionFromStoryParams, StartStoryDraftParams, StoriesListedPayload, StoryDeletedPayload,
+    StoryDetailPayload, StoryDraftDeletedPayload, StoryDraftDetailPayload, StoryDraftStatusPayload,
+    StoryDraftSummaryPayload, StoryDraftsListedPayload, StoryGeneratedPayload, StoryPlannedPayload,
+    StoryResourcesDeletedPayload, StoryResourcesListedPayload, StoryResourcesPayload,
+    StorySummaryPayload, UpdateStoryParams, UpdateStoryResourcesParams,
 };
-use store::{CharacterCardRecord, StoryRecord, StoryResourcesRecord};
+use std::time::{SystemTime, UNIX_EPOCH};
+use store::{
+    CharacterCardRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+};
 
 use crate::error::HandlerError;
 
 use super::Handler;
 use super::config::build_session_config_payload;
+use super::session::{build_session_started_payload, load_session_message_payloads};
 
 impl Handler {
     pub(crate) async fn handle_story_resources_create(
@@ -147,6 +153,15 @@ impl Handler {
         {
             return Err(HandlerError::StoryResourcesInUse(params.resource_id));
         }
+        if self
+            .store
+            .list_story_drafts()
+            .await?
+            .into_iter()
+            .any(|draft| draft.resource_id == params.resource_id)
+        {
+            return Err(HandlerError::StoryResourcesDraftInUse(params.resource_id));
+        }
 
         self.store
             .delete_story_resources(&params.resource_id)
@@ -240,6 +255,28 @@ impl Handler {
         ))
     }
 
+    pub(crate) async fn handle_story_update(
+        &self,
+        request_id: &str,
+        params: UpdateStoryParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let mut story = self
+            .store
+            .get_story(&params.story_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
+
+        story.display_name = params.display_name;
+        story.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_story(story.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::Story(Box::new(story_detail_payload_from_record(&story))),
+        ))
+    }
+
     pub(crate) async fn handle_story_delete(
         &self,
         request_id: &str,
@@ -300,19 +337,123 @@ impl Handler {
                 .get_resolved_session_config(&session.session_id)
                 .await?,
         );
+        let history =
+            load_session_message_payloads(self.store.as_ref(), &session.session_id).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
-            Some(session.session_id),
-            ResponseResult::SessionStarted(Box::new(SessionStartedPayload {
-                story_id: story.story_id,
-                display_name: session.display_name,
-                snapshot: session.snapshot,
-                player_profile_id: session.player_profile_id,
-                player_schema_id: session.player_schema_id,
+            Some(session.session_id.clone()),
+            ResponseResult::SessionStarted(Box::new(build_session_started_payload(
+                &session,
+                history,
                 character_summaries,
                 config,
-            })),
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_start(
+        &self,
+        request_id: &str,
+        params: StartStoryDraftParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let draft = self
+            .manager
+            .start_story_draft(
+                &params.resource_id,
+                params.display_name,
+                params.architect_api_id,
+            )
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraft(Box::new(story_draft_detail_payload_from_record(&draft))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_get(
+        &self,
+        request_id: &str,
+        params: GetStoryDraftParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let draft = self
+            .store
+            .get_story_draft(&params.draft_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStoryDraft(params.draft_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraft(Box::new(story_draft_detail_payload_from_record(&draft))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_list(
+        &self,
+        request_id: &str,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let drafts = self
+            .store
+            .list_story_drafts()
+            .await?
+            .into_iter()
+            .map(|draft| story_draft_summary_payload_from_record(&draft))
+            .collect();
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraftsListed(StoryDraftsListedPayload { drafts }),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_continue(
+        &self,
+        request_id: &str,
+        params: ContinueStoryDraftParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let draft = self
+            .manager
+            .continue_story_draft(&params.draft_id, params.architect_api_id)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraft(Box::new(story_draft_detail_payload_from_record(&draft))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_finalize(
+        &self,
+        request_id: &str,
+        params: FinalizeStoryDraftParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let story = self.manager.finalize_story_draft(&params.draft_id).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryGenerated(Box::new(story_generated_payload_from_record(&story))),
+        ))
+    }
+
+    pub(crate) async fn handle_story_draft_delete(
+        &self,
+        request_id: &str,
+        params: DeleteStoryDraftParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        self.manager.delete_story_draft(&params.draft_id).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraftDeleted(StoryDraftDeletedPayload {
+                draft_id: params.draft_id,
+            }),
         ))
     }
 
@@ -417,4 +558,54 @@ fn story_detail_payload_from_record(record: &StoryRecord) -> StoryDetailPayload 
         player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
     }
+}
+
+fn story_draft_status_payload(status: StoryDraftStatus) -> StoryDraftStatusPayload {
+    match status {
+        StoryDraftStatus::Building => StoryDraftStatusPayload::Building,
+        StoryDraftStatus::ReadyToFinalize => StoryDraftStatusPayload::ReadyToFinalize,
+        StoryDraftStatus::Finalized => StoryDraftStatusPayload::Finalized,
+    }
+}
+
+fn story_draft_summary_payload_from_record(record: &StoryDraftRecord) -> StoryDraftSummaryPayload {
+    StoryDraftSummaryPayload {
+        draft_id: record.draft_id.clone(),
+        display_name: record.display_name.clone(),
+        resource_id: record.resource_id.clone(),
+        status: story_draft_status_payload(record.status),
+        next_section_index: record.next_section_index,
+        total_sections: record.outline_sections.len(),
+        partial_node_count: record.partial_graph.nodes.len(),
+        final_story_id: record.final_story_id.clone(),
+        created_at_ms: record.created_at_ms,
+        updated_at_ms: record.updated_at_ms,
+    }
+}
+
+fn story_draft_detail_payload_from_record(record: &StoryDraftRecord) -> StoryDraftDetailPayload {
+    StoryDraftDetailPayload {
+        draft_id: record.draft_id.clone(),
+        display_name: record.display_name.clone(),
+        resource_id: record.resource_id.clone(),
+        planned_story: record.planned_story.clone(),
+        outline_sections: record.outline_sections.clone(),
+        next_section_index: record.next_section_index,
+        partial_graph: record.partial_graph.clone(),
+        world_schema_id: record.world_schema_id.clone(),
+        player_schema_id: record.player_schema_id.clone(),
+        introduction: record.introduction.clone(),
+        section_summaries: record.section_summaries.clone(),
+        status: story_draft_status_payload(record.status),
+        final_story_id: record.final_story_id.clone(),
+        created_at_ms: record.created_at_ms,
+        updated_at_ms: record.updated_at_ms,
+    }
+}
+
+fn now_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_millis() as u64
 }

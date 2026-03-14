@@ -33,18 +33,22 @@ fn app_config() -> AppConfig {
                     base_url: "http://localhost:11434/v1".to_owned(),
                     api_key: "demo-key".to_owned(),
                     model: "demo-model".to_owned(),
+                    temperature: None,
+                    max_tokens: None,
                 },
             )]
             .into_iter()
             .collect(),
-            defaults: AgentApiIds {
+            defaults: Some(AgentApiIds {
                 planner_api_id: "default".to_owned(),
                 architect_api_id: "default".to_owned(),
                 director_api_id: "default".to_owned(),
                 actor_api_id: "default".to_owned(),
                 narrator_api_id: "default".to_owned(),
                 keeper_api_id: "default".to_owned(),
-            },
+                replyer_api_id: "default".to_owned(),
+            }),
+            default_config: None,
         },
     }
 }

@@ -4,9 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::json;
 use ss_store::{
-    AgentApiIds, CharacterCardDefinition, CharacterCardRecord, FileSystemStore, LlmApiRecord,
-    LlmProvider, PlayerProfileRecord, RuntimeSnapshot, SchemaRecord, SessionConfigMode,
-    SessionEngineConfig, SessionRecord, Store, StoryRecord, StoryResourcesRecord,
+    AgentApiIds, CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord,
+    FileSystemStore, LlmApiRecord, LlmProvider, PlayerProfileRecord, RuntimeSnapshot, SchemaRecord,
+    SessionConfigMode, SessionEngineConfig, SessionMessageKind, SessionMessageRecord,
+    SessionRecord, Store, StoryRecord, StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -41,6 +42,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor".to_owned(),
         narrator_api_id: "narrator".to_owned(),
         keeper_api_id: "keeper".to_owned(),
+        replyer_api_id: "replyer".to_owned(),
     }
 }
 
@@ -69,6 +71,19 @@ fn sample_llm_api_record() -> LlmApiRecord {
         base_url: "https://api.openai.example/v1".to_owned(),
         api_key: "sk-secret".to_owned(),
         model: "gpt-4.1-mini".to_owned(),
+        temperature: Some(0.2),
+        max_tokens: Some(512),
+    }
+}
+
+fn sample_default_llm_config_record() -> DefaultLlmConfigRecord {
+    DefaultLlmConfigRecord {
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: "sk-default".to_owned(),
+        model: "gpt-4.1-mini".to_owned(),
+        temperature: Some(0.1),
+        max_tokens: Some(1024),
     }
 }
 
@@ -153,6 +168,22 @@ fn sample_session() -> SessionRecord {
     }
 }
 
+fn sample_session_message() -> SessionMessageRecord {
+    SessionMessageRecord {
+        message_id: "session-message-1".to_owned(),
+        session_id: "session-1".to_owned(),
+        kind: SessionMessageKind::Narration,
+        sequence: 0,
+        turn_index: 0,
+        recorded_at_ms: 3_500,
+        created_at_ms: 3_500,
+        updated_at_ms: 3_500,
+        speaker_id: "narrator".to_owned(),
+        speaker_name: "Narrator".to_owned(),
+        text: "A courier steps onto the dock.".to_owned(),
+    }
+}
+
 fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
     let fields = if schema_id.contains("world") {
         sample_world_state_schema().fields
@@ -196,6 +227,14 @@ async fn filesystem_store_round_trips_all_records() {
         .save_llm_api(sample_llm_api_record())
         .await
         .expect("save llm api");
+    store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
+    store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -242,8 +281,13 @@ async fn filesystem_store_round_trips_all_records() {
         .save_session(sample_session())
         .await
         .expect("save session");
+    store
+        .save_session_message(sample_session_message())
+        .await
+        .expect("save session message");
 
     assert!(store.root().join("llm_apis/default.json").exists());
+    assert!(store.root().join("global/default_llm_config.json").exists());
     assert!(
         store
             .root()
@@ -269,6 +313,13 @@ async fn filesystem_store_round_trips_all_records() {
             .get_llm_api("default")
             .await
             .expect("load llm api")
+            .is_some()
+    );
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("load default llm config")
             .is_some()
     );
     assert!(
@@ -320,6 +371,13 @@ async fn filesystem_store_round_trips_all_records() {
             .expect("load session")
             .is_some()
     );
+    assert!(
+        store
+            .get_session_message("session-message-1")
+            .await
+            .expect("load session message")
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -333,6 +391,10 @@ async fn filesystem_store_lists_and_deletes_records() {
         .save_llm_api(sample_llm_api_record())
         .await
         .expect("save llm api");
+    store
+        .set_default_llm_config(sample_default_llm_config_record())
+        .await
+        .expect("save default llm config");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -357,14 +419,33 @@ async fn filesystem_store_lists_and_deletes_records() {
         .save_session(sample_session())
         .await
         .expect("save session");
+    store
+        .save_session_message(sample_session_message())
+        .await
+        .expect("save session message");
 
     assert_eq!(store.list_llm_apis().await.expect("list").len(), 1);
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("get default llm config")
+            .is_some()
+    );
     assert_eq!(store.list_schemas().await.expect("list").len(), 1);
     assert_eq!(store.list_player_profiles().await.expect("list").len(), 1);
     assert_eq!(store.list_characters().await.expect("list").len(), 1);
     assert_eq!(store.list_story_resources().await.expect("list").len(), 1);
     assert_eq!(store.list_stories().await.expect("list").len(), 1);
     assert_eq!(store.list_sessions().await.expect("list").len(), 1);
+    assert_eq!(
+        store
+            .list_session_messages("session-1")
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
 
     assert!(
         store
@@ -385,6 +466,13 @@ async fn filesystem_store_lists_and_deletes_records() {
             .delete_llm_api("default")
             .await
             .expect("delete llm api")
+            .is_some()
+    );
+    assert!(
+        store
+            .delete_session_message("session-message-1")
+            .await
+            .expect("delete session message")
             .is_some()
     );
     assert!(
@@ -422,6 +510,13 @@ async fn filesystem_store_lists_and_deletes_records() {
     assert!(store.list_characters().await.expect("list").is_empty());
     assert!(store.list_player_profiles().await.expect("list").is_empty());
     assert!(store.list_schemas().await.expect("list").is_empty());
+    assert!(
+        store
+            .list_session_messages("session-1")
+            .await
+            .expect("list")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -477,11 +572,16 @@ async fn filesystem_store_persists_story_and_session_timestamps() {
 
     let story = sample_story();
     let session = sample_session();
+    let message = sample_session_message();
     store.save_story(story.clone()).await.expect("save story");
     store
         .save_session(session.clone())
         .await
         .expect("save session");
+    store
+        .save_session_message(message.clone())
+        .await
+        .expect("save session message");
 
     let loaded_story = store
         .get_story(&story.story_id)
@@ -493,9 +593,31 @@ async fn filesystem_store_persists_story_and_session_timestamps() {
         .await
         .expect("load session")
         .expect("session should exist");
+    let loaded_message = store
+        .get_session_message(&message.message_id)
+        .await
+        .expect("load session message")
+        .expect("session message should exist");
 
     assert_eq!(loaded_story.created_at_ms, story.created_at_ms);
     assert_eq!(loaded_story.updated_at_ms, story.updated_at_ms);
     assert_eq!(loaded_session.created_at_ms, session.created_at_ms);
     assert_eq!(loaded_session.updated_at_ms, session.updated_at_ms);
+    assert_eq!(loaded_message.updated_at_ms, message.updated_at_ms);
+}
+
+#[tokio::test]
+async fn filesystem_store_returns_none_for_missing_default_llm_config() {
+    let temp_dir = TestDir::new();
+    let store = FileSystemStore::new(temp_dir.path.clone())
+        .await
+        .expect("filesystem store should build");
+
+    assert!(
+        store
+            .get_default_llm_config()
+            .await
+            .expect("default llm config lookup should succeed")
+            .is_none()
+    );
 }

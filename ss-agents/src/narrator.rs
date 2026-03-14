@@ -46,14 +46,27 @@ pub struct Narrator {
     llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
 }
 
 impl Narrator {
     pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, NarratorError> {
+        Self::new_with_options(llm, model, None, None)
+    }
+
+    pub fn new_with_options(
+        llm: Arc<dyn LlmApi>,
+        model: impl Into<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, NarratorError> {
         Ok(Self {
             llm,
             model: model.into(),
             system_prompt: include_str!("./prompts/narrator.txt").to_owned(),
+            temperature,
+            max_tokens,
         })
     }
 
@@ -67,6 +80,8 @@ impl Narrator {
             llm,
             model: model.into(),
             system_prompt,
+            temperature: None,
+            max_tokens: None,
         })
     }
 
@@ -99,13 +114,19 @@ impl Narrator {
         let user_prompt = self.build_user_prompt(&request)?;
         let stream = self
             .llm
-            .chat_stream(
-                ChatRequest::builder()
+            .chat_stream({
+                let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
-                    .user_message(user_prompt)
-                    .build()?,
-            )
+                    .user_message(user_prompt);
+                if let Some(temperature) = self.temperature {
+                    builder = builder.temperature(temperature);
+                }
+                if let Some(max_tokens) = self.max_tokens {
+                    builder = builder.max_tokens(max_tokens);
+                }
+                builder.build()?
+            })
             .await?;
 
         let state = NarratorEventStreamState {

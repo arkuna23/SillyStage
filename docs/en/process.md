@@ -6,7 +6,12 @@ This document describes the current flow from resource import to interactive pla
 
 ### 1.1 Configure LLM APIs
 
-Create one or more `llm_api` resources first:
+Optionally configure the persistent default template first:
+
+- `default_llm_config.get`
+- `default_llm_config.update`
+
+Then create one or more `llm_api` resources:
 
 - `llm_api.create`
 - `llm_api.list`
@@ -15,6 +20,9 @@ Create one or more `llm_api` resources first:
 
 These objects describe reusable model endpoints such as OpenAI-compatible APIs.  
 Global config and session config only reference `api_id`.
+
+If env vars or the app config file define a default LLM config, those values override the saved
+default for the current process. Otherwise the saved default is used.
 
 ### 1.2 Create Schema Resources
 
@@ -121,20 +129,39 @@ to store the new `planned_story`.
 
 ## 6. Generate the Story
 
-Call:
+Recommended flow:
+
+- `story_draft.start`
+- `story_draft.continue`
+- `story_draft.finalize`
+
+Compatibility flow:
 
 - `story.generate`
 
-This stage:
+The recommended draft flow works like this:
+
+1. `story_draft.start` reads `story_resources`
+2. if `planned_story` is missing, the server first runs `story.generate_plan`
+3. `Architect` generates only the first outline section plus the initial schemas and introduction
+4. the server stores the partial graph and progress in a `story_draft`
+5. each `story_draft.continue` call generates one more section and merges it into the same draft
+6. `story_draft.finalize` validates the merged graph and creates the final `story`
+
+`story.generate` still exists as a wrapper that internally runs the full draft flow for clients that want a one-shot call.
+
+During generation, the server:
 
 1. reads `story_resources`
-2. uses `Architect` to generate:
+2. keeps the already generated nodes in the server-side `story_draft`
+3. sends Architect a compact graph summary plus the current outline section, instead of replaying the full graph every time
+4. stores generated:
    - `graph`
    - world schema content
    - player schema content
    - `introduction`
-3. stores the generated schema bodies as standalone `schema` resources
-4. creates the final `story`
+5. stores the generated schema bodies as standalone `schema` resources
+6. creates the final `story`
 
 The resulting `story` stores:
 
@@ -160,6 +187,14 @@ Input may include:
 - optional `session_api_ids`
 
 This creates a new `session`.
+
+The returned `session` detail includes `history`, but that transcript is now backed by standalone `session_message` records.
+
+If the frontend wants a few clickable next-line suggestions for the player, it can call:
+
+- `session.suggest_replies`
+
+These suggestions are not written into the transcript; only real inputs sent to `session.run_turn` become history.
 
 ## 8. Session State
 
@@ -204,6 +239,16 @@ The result is streamed as:
 - multiple `event` frames
 - `completed` or `failed`
 
+After turns have been recorded, transcript editing is done through:
+
+- `session_message.create`
+- `session_message.get`
+- `session_message.list`
+- `session_message.update`
+- `session_message.delete`
+
+These operations only change transcript data. They do not replay or mutate the session snapshot.
+
 ## 10. Switch Player Profile
 
 To switch the current session to another player profile:
@@ -245,4 +290,3 @@ That enables:
 - browsing multiple stories with `story.list`
 - browsing multiple conversations with `session.list`
 - switching to another conversation by sending the target `session_id` on later requests
-

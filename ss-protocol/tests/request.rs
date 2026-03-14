@@ -4,17 +4,22 @@ use ss_protocol::{
     CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterDeleteParams,
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
     CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
-    ConfigUpdateGlobalParams, CreateStoryResourcesParams, DashboardGetParams, DeleteSessionParams,
-    DeleteStoryParams, DeleteStoryResourcesParams, GenerateStoryParams, GetRuntimeSnapshotParams,
-    GetSessionParams, GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
-    ListSessionsParams, ListStoriesParams, ListStoryResourcesParams, LlmApiCreateParams,
+    ConfigUpdateGlobalParams, ContinueStoryDraftParams, CreateSessionMessageParams,
+    CreateStoryResourcesParams, DashboardGetParams, DefaultLlmConfigGetParams,
+    DefaultLlmConfigUpdateParams, DeleteSessionMessageParams, DeleteSessionParams,
+    DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
+    FinalizeStoryDraftParams, GenerateStoryParams, GetRuntimeSnapshotParams,
+    GetSessionMessageParams, GetSessionParams, GetStoryDraftParams, GetStoryParams,
+    GetStoryResourcesParams, JsonRpcRequestMessage, ListSessionMessagesParams, ListSessionsParams,
+    ListStoriesParams, ListStoryDraftsParams, ListStoryResourcesParams, LlmApiCreateParams,
     LlmApiDeleteParams, LlmApiGetParams, LlmApiListParams, LlmApiUpdateParams,
     PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
     PlayerProfileListParams, PlayerProfileUpdateParams, RequestParams, RunTurnParams,
     SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
-    SessionGetConfigParams, SessionUpdateConfigParams, SetPlayerProfileParams,
-    StartSessionFromStoryParams, UpdateStoryResourcesParams, UploadChunkParams,
-    UploadCompleteParams, UploadInitParams, UploadTargetKind,
+    SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams, SetPlayerProfileParams,
+    StartSessionFromStoryParams, StartStoryDraftParams, SuggestRepliesParams,
+    UpdateSessionMessageParams, UpdateSessionParams, UpdateStoryParams, UpdateStoryResourcesParams,
+    UploadChunkParams, UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
 use state::{StateFieldSchema, StateValueType};
 use store::LlmProvider;
@@ -27,6 +32,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor-default".to_owned(),
         narrator_api_id: "narrator-default".to_owned(),
         keeper_api_id: "keeper-default".to_owned(),
+        replyer_api_id: "replyer-default".to_owned(),
     }
 }
 
@@ -125,6 +131,88 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
     let start_session_json =
         serde_json::to_string_pretty(&start_session).expect("start session should serialize");
     assert!(start_session_json.contains("\"method\": \"story.start_session\""));
+
+    let draft_start = JsonRpcRequestMessage::new(
+        "story-draft-start",
+        None::<String>,
+        RequestParams::StoryDraftStart(StartStoryDraftParams {
+            resource_id: "res-1".to_owned(),
+            display_name: Some("Draft Harbor".to_owned()),
+            architect_api_id: Some("architect-fast".to_owned()),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&draft_start)
+            .expect("draft start should serialize")
+            .contains("\"method\": \"story_draft.start\"")
+    );
+
+    let draft_continue = JsonRpcRequestMessage::new(
+        "story-draft-continue",
+        None::<String>,
+        RequestParams::StoryDraftContinue(ContinueStoryDraftParams {
+            draft_id: "draft-1".to_owned(),
+            architect_api_id: None,
+        }),
+    );
+    let draft_continue_round_trip: JsonRpcRequestMessage = serde_json::from_str(
+        &serde_json::to_string(&draft_continue).expect("draft continue should serialize"),
+    )
+    .expect("draft continue should deserialize");
+    assert!(matches!(
+        draft_continue_round_trip.params,
+        RequestParams::StoryDraftContinue(ContinueStoryDraftParams { draft_id, .. }) if draft_id == "draft-1"
+    ));
+
+    let draft_finalize = JsonRpcRequestMessage::new(
+        "story-draft-finalize",
+        None::<String>,
+        RequestParams::StoryDraftFinalize(FinalizeStoryDraftParams {
+            draft_id: "draft-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&draft_finalize)
+            .expect("draft finalize should serialize")
+            .contains("\"method\": \"story_draft.finalize\"")
+    );
+
+    let draft_get = JsonRpcRequestMessage::new(
+        "story-draft-get",
+        None::<String>,
+        RequestParams::StoryDraftGet(GetStoryDraftParams {
+            draft_id: "draft-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&draft_get)
+            .expect("draft get should serialize")
+            .contains("\"method\": \"story_draft.get\"")
+    );
+
+    let draft_list = JsonRpcRequestMessage::new(
+        "story-draft-list",
+        None::<String>,
+        RequestParams::StoryDraftList(ListStoryDraftsParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&draft_list)
+            .expect("draft list should serialize")
+            .contains("\"method\": \"story_draft.list\"")
+    );
+
+    let draft_delete = JsonRpcRequestMessage::new(
+        "story-draft-delete",
+        None::<String>,
+        RequestParams::StoryDraftDelete(DeleteStoryDraftParams {
+            draft_id: "draft-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&draft_delete)
+            .expect("draft delete should serialize")
+            .contains("\"method\": \"story_draft.delete\"")
+    );
 }
 
 #[test]
@@ -253,10 +341,12 @@ fn object_crud_requests_keep_stable_method_names() {
         None::<String>,
         RequestParams::LlmApiCreate(LlmApiCreateParams {
             api_id: "default".to_owned(),
-            provider: LlmProvider::OpenAi,
-            base_url: "https://api.openai.example/v1".to_owned(),
-            api_key: "sk-secret".to_owned(),
-            model: "gpt-4.1-mini".to_owned(),
+            provider: Some(LlmProvider::OpenAi),
+            base_url: Some("https://api.openai.example/v1".to_owned()),
+            api_key: Some("sk-secret".to_owned()),
+            model: Some("gpt-4.1-mini".to_owned()),
+            temperature: Some(0.3),
+            max_tokens: Some(512),
         }),
     );
     assert!(
@@ -298,6 +388,8 @@ fn object_crud_requests_keep_stable_method_names() {
             base_url: Some("https://api.alt.example/v1".to_owned()),
             api_key: None,
             model: Some("gpt-4.1".to_owned()),
+            temperature: Some(0.7),
+            max_tokens: Some(1_024),
         }),
     );
     assert!(
@@ -317,6 +409,35 @@ fn object_crud_requests_keep_stable_method_names() {
         serde_json::to_string_pretty(&llm_api_delete)
             .expect("llm api delete should serialize")
             .contains("\"method\": \"llm_api.delete\"")
+    );
+
+    let default_llm_config_get = JsonRpcRequestMessage::new(
+        "default-llm-config-get",
+        None::<String>,
+        RequestParams::DefaultLlmConfigGet(DefaultLlmConfigGetParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&default_llm_config_get)
+            .expect("default llm config get should serialize")
+            .contains("\"method\": \"default_llm_config.get\"")
+    );
+
+    let default_llm_config_update = JsonRpcRequestMessage::new(
+        "default-llm-config-update",
+        None::<String>,
+        RequestParams::DefaultLlmConfigUpdate(DefaultLlmConfigUpdateParams {
+            provider: LlmProvider::OpenAi,
+            base_url: "https://api.openai.example/v1".to_owned(),
+            api_key: "sk-secret".to_owned(),
+            model: "gpt-4.1-mini".to_owned(),
+            temperature: Some(0.2),
+            max_tokens: Some(1_024),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&default_llm_config_update)
+            .expect("default llm config update should serialize")
+            .contains("\"method\": \"default_llm_config.update\"")
     );
 
     let character_delete = JsonRpcRequestMessage::new(
@@ -534,6 +655,20 @@ fn object_crud_requests_keep_stable_method_names() {
             .contains("\"method\": \"story.list\"")
     );
 
+    let story_update = JsonRpcRequestMessage::new(
+        "story-update",
+        None::<String>,
+        RequestParams::StoryUpdate(UpdateStoryParams {
+            story_id: "story-1".to_owned(),
+            display_name: "Updated Flooded Harbor".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&story_update)
+            .expect("story update should serialize")
+            .contains("\"method\": \"story.update\"")
+    );
+
     let story_delete = JsonRpcRequestMessage::new(
         "story-delete",
         None::<String>,
@@ -567,6 +702,19 @@ fn object_crud_requests_keep_stable_method_names() {
         serde_json::to_string_pretty(&session_list)
             .expect("session list should serialize")
             .contains("\"method\": \"session.list\"")
+    );
+
+    let session_update = JsonRpcRequestMessage::new(
+        "session-update",
+        Some("session-1"),
+        RequestParams::SessionUpdate(UpdateSessionParams {
+            display_name: "Updated Courier Run".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&session_update)
+            .expect("session update should serialize")
+            .contains("\"method\": \"session.update\"")
     );
 
     let session_delete = JsonRpcRequestMessage::new(
@@ -634,6 +782,92 @@ fn session_requests_keep_stable_method_names() {
         serde_json::to_string_pretty(&set_player_profile)
             .expect("set player profile should serialize")
             .contains("\"method\": \"session.set_player_profile\"")
+    );
+
+    let suggest_replies = JsonRpcRequestMessage::new(
+        "req-suggest",
+        Some("session-1"),
+        RequestParams::SessionSuggestReplies(SuggestRepliesParams {
+            limit: Some(3),
+            api_overrides: Some(AgentApiIdOverrides {
+                replyer_api_id: Some("replyer-alt".to_owned()),
+                ..AgentApiIdOverrides::default()
+            }),
+        }),
+    );
+    let suggest_replies_json = serde_json::to_string_pretty(&suggest_replies)
+        .expect("suggest replies request should serialize");
+    assert!(suggest_replies_json.contains("\"method\": \"session.suggest_replies\""));
+    assert!(suggest_replies_json.contains("\"replyer_api_id\": \"replyer-alt\""));
+
+    let create_message = JsonRpcRequestMessage::new(
+        "req-message-create",
+        Some("session-1"),
+        RequestParams::SessionMessageCreate(CreateSessionMessageParams {
+            kind: SessionMessageKind::Narration,
+            speaker_id: "narrator".to_owned(),
+            speaker_name: "Narrator".to_owned(),
+            text: "The fog rolls across the harbor.".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&create_message)
+            .expect("session message create should serialize")
+            .contains("\"method\": \"session_message.create\"")
+    );
+
+    let get_message = JsonRpcRequestMessage::new(
+        "req-message-get",
+        Some("session-1"),
+        RequestParams::SessionMessageGet(GetSessionMessageParams {
+            message_id: "message-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&get_message)
+            .expect("session message get should serialize")
+            .contains("\"method\": \"session_message.get\"")
+    );
+
+    let list_messages = JsonRpcRequestMessage::new(
+        "req-message-list",
+        Some("session-1"),
+        RequestParams::SessionMessageList(ListSessionMessagesParams::default()),
+    );
+    assert!(
+        serde_json::to_string_pretty(&list_messages)
+            .expect("session message list should serialize")
+            .contains("\"method\": \"session_message.list\"")
+    );
+
+    let update_message = JsonRpcRequestMessage::new(
+        "req-message-update",
+        Some("session-1"),
+        RequestParams::SessionMessageUpdate(UpdateSessionMessageParams {
+            message_id: "message-1".to_owned(),
+            kind: SessionMessageKind::Dialogue,
+            speaker_id: "merchant".to_owned(),
+            speaker_name: "Haru".to_owned(),
+            text: "The tide is turning.".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&update_message)
+            .expect("session message update should serialize")
+            .contains("\"method\": \"session_message.update\"")
+    );
+
+    let delete_message = JsonRpcRequestMessage::new(
+        "req-message-delete",
+        Some("session-1"),
+        RequestParams::SessionMessageDelete(DeleteSessionMessageParams {
+            message_id: "message-1".to_owned(),
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&delete_message)
+            .expect("session message delete should serialize")
+            .contains("\"method\": \"session_message.delete\"")
     );
 }
 

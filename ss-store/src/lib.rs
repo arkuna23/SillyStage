@@ -12,7 +12,8 @@ pub use error::StoreError;
 pub use fs::FileSystemStore;
 pub use memory::InMemoryStore;
 pub use record::{
-    CharacterCardDefinition, CharacterCardRecord, LlmApiRecord, PlayerProfileRecord,
-    RuntimeSnapshot, SchemaRecord, SessionRecord, StoryRecord, StoryResourcesRecord,
+    CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord,
+    PlayerProfileRecord, RuntimeSnapshot, SchemaRecord, SessionMessageKind, SessionMessageRecord,
+    SessionRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 pub use store::Store;

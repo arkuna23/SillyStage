@@ -86,6 +86,20 @@
 
 `completed` 会携带最终聚合结果，前端不需要自己拼完整 turn 结果。
 
+除了 `session.run_turn` 之外，session 绑定接口也可以返回普通 unary JSON-RPC。当前一个典型例子是：
+
+- `session.suggest_replies`
+  - 需要顶层 `session_id`
+  - `params`:
+    - `limit?: number`
+    - `api_overrides?: AgentApiIdOverrides`
+  - 返回：
+    - `type = "suggested_replies"`
+    - `replies: [{ reply_id, text }]`
+  - 说明：
+    - 只生成建议，不写入 session transcript
+    - 默认返回 3 条，允许 `2..=5`
+
 ## 2. 资源模型
 
 ### 2.1 `llm_api`
@@ -97,6 +111,8 @@
 - `base_url`
 - `api_key`
 - `model`
+- `temperature`
+- `max_tokens`
 
 读取接口不会返回明文 `api_key`，而是返回：
 
@@ -104,6 +120,49 @@
 - `api_key_masked`
 
 global config 和 session config 只引用 `api_id`，不内联 provider 配置。
+
+`llm_api.create` 可以省略 `provider`、`base_url`、`api_key`、`model`、`temperature`、
+`max_tokens`，缺失值会从当前生效的 `default_llm_config` 补齐。
+
+当前协议里，LLM API 定义对象直接支持的常用生成参数是：
+
+- `temperature`
+- `max_tokens`
+
+当前 `AgentApiIds` / `AgentApiIdOverrides` 字段：
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+### 2.1.1 `default_llm_config`
+
+`default_llm_config` 是一个单例默认模板，用于给新建的 `llm_api` 提供默认值。
+
+字段：
+
+- `provider`
+- `base_url`
+- `api_key`
+- `model`
+- `temperature`
+- `max_tokens`
+
+接口形态：
+
+- `default_llm_config.get` 返回：
+  - `saved`：store 中持久化保存的默认配置，可为空
+  - `effective`：叠加环境变量或配置文件覆盖后的当前进程默认配置，可为空
+- `default_llm_config.update` 只替换 `saved`
+
+说明：
+
+- 环境变量或配置文件覆盖优先级高于已保存配置
+- 环境变量或配置文件覆盖不会自动回写到 store
 
 ### 2.2 `schema`
 
@@ -204,6 +263,9 @@ session 绑定一个 story 和一份运行时快照。
 - `player_profile_id`
 - `player_schema_id`
 - `snapshot`
+- `history`
+- `created_at_ms`
+- `updated_at_ms`
 - `config`
 
 说明：
@@ -211,6 +273,13 @@ session 绑定一个 story 和一份运行时快照。
 - `player_profile_id` 可为空；为空表示当前 session 使用手动覆盖后的 `player_description`。
 - `player_schema_id` 固定引用该 session 使用的玩家状态 schema。
 - `snapshot` 保存当前动态运行状态，包括 `world_state`、`turn_index`，以及当前生效的 `player_description` 文本。
+- `history` 保存可见 transcript，按时间顺序记录：
+  - 玩家输入
+  - 旁白
+  - 角色可见动作
+  - 角色台词
+- `history` 由独立的 `session_message` 记录聚合生成
+- `created_at_ms` / `updated_at_ms` 使用 Unix 毫秒时间戳。
 
 ## 3. 角色卡文件 `.chr`
 
@@ -237,7 +306,9 @@ session 绑定一个 story 和一份运行时快照。
 - `character.*`
 - `story_resources.*`
 - `story.*`
+- `story_draft.*`
 - `session.*`
+- `session_message.*`
 - `config.*`
 - `dashboard.get`
 
@@ -253,6 +324,20 @@ session 绑定一个 story 和一份运行时快照。
 - `config_mode`
 - 可选 `session_api_ids`
 
+`story.update` 只更新 story 的元数据，当前仅支持：
+
+- `story_id`
+- `display_name`
+
+### 5.1.1 draft story 生成
+
+`story_draft.*` 是大体量 story 的推荐生成路径，用来避免一次 Architect 调用塞入过多节点。
+
+- `story_draft.start` 创建服务端 draft，并生成第一段
+- `story_draft.continue` 继续把下一个 outline section 合并进 partial graph
+- `story_draft.finalize` 校验合并后的图，并创建最终 `story`
+- `story.generate` 仍保留，作为对整套 draft 流程的兼容封装
+
 ### 5.2 切换玩家设定
 
 `session.set_player_profile` 只切换当前 session 的 `player_profile_id` 和生效描述，不切换 `player_state`。
@@ -261,10 +346,27 @@ session 绑定一个 story 和一份运行时快照。
 
 `session.update_player_description` 会直接覆盖当前 session 的描述文本，并把 `player_profile_id` 置空。
 
+### 5.4 更新 session 元数据
+
+`session.update` 只更新 session 的元数据，当前仅支持修改 `display_name`。
+
+### 5.5 编辑 session transcript 消息
+
+`session_message.*` 用来管理某个 session 的独立 transcript 消息资源。
+
+- `session_message.create` 会把一条可见消息追加到 transcript 末尾
+- `session_message.get` 和 `session_message.list` 返回 transcript 消息资源
+- `session_message.update` 原地修改 transcript 数据
+- `session_message.delete` 从 transcript 中移除一条消息
+
+注意：
+
+- transcript 编辑不会重放历史
+- transcript 编辑不会修改 `snapshot` 或 `world_state`
+
 ## 6. 删除约束
 
 - `schema.delete`: 若 schema 仍被角色卡、resources、story 或 session 引用，则返回 `conflict`
 - `player_profile.delete`: 若 profile 仍被 session 引用，则返回 `conflict`
 - `character.delete`: 若角色卡仍被 `story_resources` 引用，则返回 `conflict`
 - `story.delete`: 若 story 仍有关联 session，则返回 `conflict`
-

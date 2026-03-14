@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use engine::{AgentApiIds, EngineManager, LlmApiRegistry};
 use futures_core::Stream;
 use protocol::{JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, ServerEventMessage};
-use store::{InMemoryStore, Store};
+use store::{DefaultLlmConfigRecord, InMemoryStore, Store};
 
 use crate::error::HandlerError;
 use crate::store::UploadStore;
@@ -32,6 +32,7 @@ pub enum HandlerReply {
 pub struct Handler {
     store: Arc<dyn Store>,
     manager: EngineManager,
+    effective_default_llm_config: Option<DefaultLlmConfigRecord>,
     uploads: UploadStore,
     id_generator: IdGenerator,
 }
@@ -40,7 +41,8 @@ impl Handler {
     pub async fn new(
         store: Arc<dyn Store>,
         registry: LlmApiRegistry,
-        initial_global_config: AgentApiIds,
+        initial_global_config: Option<AgentApiIds>,
+        effective_default_llm_config: Option<DefaultLlmConfigRecord>,
     ) -> Result<Self, HandlerError> {
         let manager =
             EngineManager::new(Arc::clone(&store), registry, initial_global_config).await?;
@@ -48,6 +50,7 @@ impl Handler {
         Ok(Self {
             store,
             manager,
+            effective_default_llm_config,
             uploads: UploadStore::new(),
             id_generator: IdGenerator::default(),
         })
@@ -55,12 +58,14 @@ impl Handler {
 
     pub async fn with_in_memory_store(
         registry: LlmApiRegistry,
-        initial_global_config: AgentApiIds,
+        initial_global_config: Option<AgentApiIds>,
+        effective_default_llm_config: Option<DefaultLlmConfigRecord>,
     ) -> Result<Self, HandlerError> {
         Self::new(
             Arc::new(InMemoryStore::new()),
             registry,
             initial_global_config,
+            effective_default_llm_config,
         )
         .await
     }
@@ -150,9 +155,28 @@ impl Handler {
                 self.handle_story_generate(&request_id, params).await
             }
             RequestParams::StoryGet(params) => self.handle_story_get(&request_id, params).await,
+            RequestParams::StoryUpdate(params) => {
+                self.handle_story_update(&request_id, params).await
+            }
             RequestParams::StoryList(_) => self.handle_story_list(&request_id).await,
             RequestParams::StoryDelete(params) => {
                 self.handle_story_delete(&request_id, params).await
+            }
+            RequestParams::StoryDraftStart(params) => {
+                self.handle_story_draft_start(&request_id, params).await
+            }
+            RequestParams::StoryDraftGet(params) => {
+                self.handle_story_draft_get(&request_id, params).await
+            }
+            RequestParams::StoryDraftList(_) => self.handle_story_draft_list(&request_id).await,
+            RequestParams::StoryDraftContinue(params) => {
+                self.handle_story_draft_continue(&request_id, params).await
+            }
+            RequestParams::StoryDraftFinalize(params) => {
+                self.handle_story_draft_finalize(&request_id, params).await
+            }
+            RequestParams::StoryDraftDelete(params) => {
+                self.handle_story_draft_delete(&request_id, params).await
             }
             RequestParams::StoryStartSession(params) => {
                 self.handle_story_start_session(&request_id, params).await
@@ -161,15 +185,43 @@ impl Handler {
                 self.handle_session_get(&request_id, session_id.clone())
                     .await
             }
+            RequestParams::SessionUpdate(params) => {
+                self.handle_session_update(&request_id, session_id.clone(), params)
+                    .await
+            }
             RequestParams::SessionList(_) => self.handle_session_list(&request_id).await,
             RequestParams::SessionDelete(_) => {
                 self.handle_session_delete(&request_id, session_id.clone())
+                    .await
+            }
+            RequestParams::SessionMessageCreate(params) => {
+                self.handle_session_message_create(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionMessageGet(params) => {
+                self.handle_session_message_get(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionMessageList(params) => {
+                self.handle_session_message_list(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionMessageUpdate(params) => {
+                self.handle_session_message_update(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionMessageDelete(params) => {
+                self.handle_session_message_delete(&request_id, session_id.clone(), params)
                     .await
             }
             RequestParams::SessionRunTurn(params) => {
                 return self
                     .handle_session_run_turn(request_id, session_id, params)
                     .await;
+            }
+            RequestParams::SessionSuggestReplies(params) => {
+                self.handle_session_suggest_replies(&request_id, session_id.clone(), params)
+                    .await
             }
             RequestParams::SessionSetPlayerProfile(params) => {
                 self.handle_session_set_player_profile(&request_id, session_id.clone(), params)
@@ -209,6 +261,13 @@ impl Handler {
             }
             RequestParams::LlmApiDelete(params) => {
                 self.handle_llm_api_delete(&request_id, params).await
+            }
+            RequestParams::DefaultLlmConfigGet(_) => {
+                self.handle_default_llm_config_get(&request_id).await
+            }
+            RequestParams::DefaultLlmConfigUpdate(params) => {
+                self.handle_default_llm_config_update(&request_id, params)
+                    .await
             }
             RequestParams::DashboardGet(_) => self.handle_dashboard_get(&request_id).await,
         };

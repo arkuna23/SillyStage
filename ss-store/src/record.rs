@@ -12,6 +12,30 @@ pub struct RuntimeSnapshot {
     pub turn_index: u64,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionMessageKind {
+    PlayerInput,
+    Narration,
+    Dialogue,
+    Action,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionMessageRecord {
+    pub message_id: String,
+    pub session_id: String,
+    pub kind: SessionMessageKind,
+    pub sequence: u64,
+    pub turn_index: u64,
+    pub recorded_at_ms: u64,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+    pub speaker_id: String,
+    pub speaker_name: String,
+    pub text: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemaRecord {
     pub schema_id: String,
@@ -54,6 +78,22 @@ pub struct LlmApiRecord {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DefaultLlmConfigRecord {
+    pub provider: crate::config::LlmProvider,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +115,39 @@ pub struct StoryRecord {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StoryDraftStatus {
+    Building,
+    ReadyToFinalize,
+    Finalized,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryDraftRecord {
+    pub draft_id: String,
+    pub display_name: String,
+    pub resource_id: String,
+    pub planned_story: String,
+    pub outline_sections: Vec<String>,
+    pub next_section_index: usize,
+    pub partial_graph: StoryGraph,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
+    pub introduction: String,
+    #[serde(default)]
+    pub section_summaries: Vec<String>,
+    #[serde(default)]
+    pub section_node_ids: Vec<Vec<String>>,
+    pub status: StoryDraftStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub final_story_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

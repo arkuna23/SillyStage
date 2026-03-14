@@ -4,11 +4,16 @@ use story::StoryGraph;
 
 use crate::character::{CharacterCardContent, CharacterCardSummaryPayload, CharacterCoverMimeType};
 use crate::config::{GlobalConfigPayload, SessionConfigPayload};
+use crate::default_llm_config::DefaultLlmConfigStatePayload;
 use crate::llm_api::{LlmApiDeletedPayload, LlmApiPayload, LlmApisListedPayload};
 use crate::player_profile::{
     PlayerProfileDeletedPayload, PlayerProfilePayload, PlayerProfilesListedPayload,
 };
+use crate::reply_suggestion::SuggestedRepliesPayload;
 use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
+use crate::session_message::{
+    SessionMessageDeletedPayload, SessionMessagePayload, SessionMessagesListedPayload,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -39,15 +44,23 @@ pub enum ResponseResult {
     Story(Box<StoryDetailPayload>),
     StoriesListed(StoriesListedPayload),
     StoryDeleted(StoryDeletedPayload),
+    StoryDraft(Box<StoryDraftDetailPayload>),
+    StoryDraftsListed(StoryDraftsListedPayload),
+    StoryDraftDeleted(StoryDraftDeletedPayload),
     SessionStarted(Box<SessionStartedPayload>),
     Session(Box<SessionDetailPayload>),
     SessionsListed(SessionsListedPayload),
     SessionDeleted(SessionDeletedPayload),
+    SuggestedReplies(SuggestedRepliesPayload),
+    SessionMessage(Box<SessionMessagePayload>),
+    SessionMessagesListed(SessionMessagesListedPayload),
+    SessionMessageDeleted(SessionMessageDeletedPayload),
     GlobalConfig(GlobalConfigPayload),
     SessionConfig(SessionConfigPayload),
     LlmApi(LlmApiPayload),
     LlmApisListed(LlmApisListedPayload),
     LlmApiDeleted(LlmApiDeletedPayload),
+    DefaultLlmConfig(DefaultLlmConfigStatePayload),
     Dashboard(Box<DashboardPayload>),
     TurnStreamAccepted(TurnStreamAcceptedPayload),
     TurnCompleted(Box<TurnCompletedPayload>),
@@ -189,6 +202,57 @@ pub struct StoryDeletedPayload {
     pub story_id: String,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StoryDraftStatusPayload {
+    Building,
+    ReadyToFinalize,
+    Finalized,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryDraftSummaryPayload {
+    pub draft_id: String,
+    pub display_name: String,
+    pub resource_id: String,
+    pub status: StoryDraftStatusPayload,
+    pub next_section_index: usize,
+    pub total_sections: usize,
+    pub partial_node_count: usize,
+    pub final_story_id: Option<String>,
+    pub created_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryDraftDetailPayload {
+    pub draft_id: String,
+    pub display_name: String,
+    pub resource_id: String,
+    pub planned_story: String,
+    pub outline_sections: Vec<String>,
+    pub next_section_index: usize,
+    pub partial_graph: StoryGraph,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
+    pub introduction: String,
+    pub section_summaries: Vec<String>,
+    pub status: StoryDraftStatusPayload,
+    pub final_story_id: Option<String>,
+    pub created_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StoryDraftsListedPayload {
+    pub drafts: Vec<StoryDraftSummaryPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoryDraftDeletedPayload {
+    pub draft_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionStartedPayload {
     pub story_id: String,
@@ -196,6 +260,9 @@ pub struct SessionStartedPayload {
     pub snapshot: RuntimeSnapshot,
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
+    pub history: Vec<SessionMessagePayload>,
+    pub created_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
     pub character_summaries: Vec<CharacterCardSummaryPayload>,
     pub config: SessionConfigPayload,
 }
@@ -208,6 +275,8 @@ pub struct SessionSummaryPayload {
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
     pub turn_index: u64,
+    pub created_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -218,6 +287,9 @@ pub struct SessionDetailPayload {
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
     pub snapshot: RuntimeSnapshot,
+    pub history: Vec<SessionMessagePayload>,
+    pub created_at_ms: Option<u64>,
+    pub updated_at_ms: Option<u64>,
     pub config: SessionConfigPayload,
 }
 

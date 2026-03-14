@@ -6,17 +6,28 @@ use store::{AgentApiIds, LlmApiRecord, LlmProvider};
 
 use crate::engine::{AgentModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs};
 
+const DEFAULT_ARCHITECT_MAX_TOKENS: u32 = 8_192;
+
 #[derive(Clone)]
 pub struct RegisteredApi {
     pub client: Arc<dyn LlmApi>,
     pub model: String,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
 }
 
 impl RegisteredApi {
-    pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
+    pub fn new(
+        client: Arc<dyn LlmApi>,
+        model: impl Into<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Self {
         Self {
             client,
             model: model.into(),
+            temperature,
+            max_tokens,
         }
     }
 }
@@ -40,7 +51,7 @@ impl LlmApiRegistry {
         self.apis
             .write()
             .expect("llm api registry write lock should not be poisoned")
-            .insert(api_id.into(), RegisteredApi::new(client, model));
+            .insert(api_id.into(), RegisteredApi::new(client, model, None, None));
         self
     }
 
@@ -52,7 +63,12 @@ impl LlmApiRegistry {
                     .base_url(&record.base_url)
                     .default_model(&record.model)
                     .build()?;
-                RegisteredApi::new(Arc::new(OpenAiClient::new(config)?), &record.model)
+                RegisteredApi::new(
+                    Arc::new(OpenAiClient::new(config)?),
+                    &record.model,
+                    record.temperature,
+                    record.max_tokens,
+                )
             }
         };
 
@@ -83,9 +99,17 @@ impl LlmApiRegistry {
         &self,
         api_ids: &AgentApiIds,
     ) -> Result<StoryGenerationAgentConfigs, RegistryError> {
+        let planner = self.resolve(&api_ids.planner_api_id)?;
+        let architect = self.resolve(&api_ids.architect_api_id)?;
         Ok(StoryGenerationAgentConfigs {
-            planner: self.resolve_story_agent(&api_ids.planner_api_id)?,
-            architect: self.resolve_story_agent(&api_ids.architect_api_id)?,
+            planner: AgentModelConfig::new(planner.client, planner.model)
+                .with_temperature(planner.temperature)
+                .with_max_tokens(planner.max_tokens),
+            architect: AgentModelConfig::new(architect.client, architect.model)
+                .with_temperature(architect.temperature)
+                .with_max_tokens(Some(
+                    architect.max_tokens.unwrap_or(DEFAULT_ARCHITECT_MAX_TOKENS),
+                )),
         })
     }
 
@@ -101,14 +125,18 @@ impl LlmApiRegistry {
         })
     }
 
-    fn resolve_story_agent(&self, api_id: &str) -> Result<AgentModelConfig, RegistryError> {
-        let api = self.resolve(api_id)?;
-        Ok(AgentModelConfig::new(api.client, api.model))
+    pub fn build_replyer_config(
+        &self,
+        api_ids: &AgentApiIds,
+    ) -> Result<AgentModelConfig, RegistryError> {
+        self.resolve_runtime_agent(&api_ids.replyer_api_id)
     }
 
     fn resolve_runtime_agent(&self, api_id: &str) -> Result<AgentModelConfig, RegistryError> {
         let api = self.resolve(api_id)?;
-        Ok(AgentModelConfig::new(api.client, api.model))
+        Ok(AgentModelConfig::new(api.client, api.model)
+            .with_temperature(api.temperature)
+            .with_max_tokens(api.max_tokens))
     }
 }
 

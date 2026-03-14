@@ -525,6 +525,8 @@ async fn generate_story_graph_uses_architect_independently() {
     );
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].max_tokens, Some(16_384));
+    assert_eq!(requests[0].temperature, None);
     assert!(user_message_content(&requests[0]).contains("STORY_CONCEPT"));
     assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
 }
@@ -550,6 +552,8 @@ async fn generate_story_plan_uses_planner_independently() {
     assert!(response.story_script.contains("Title:"));
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0].max_tokens, None);
+    assert_eq!(requests[0].temperature, None);
     assert!(user_message_content(&requests[0]).contains("AVAILABLE_CHARACTERS"));
 }
 

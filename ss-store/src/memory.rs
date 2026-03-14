@@ -6,21 +6,24 @@ use tokio::sync::RwLock;
 use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord, SessionRecord,
-    StoryRecord, StoryResourcesRecord,
+    CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord,
+    SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
 #[derive(Default)]
 pub struct InMemoryStore {
     global_config: RwLock<Option<AgentApiIds>>,
+    default_llm_config: RwLock<Option<DefaultLlmConfigRecord>>,
     llm_apis: RwLock<HashMap<String, LlmApiRecord>>,
     schemas: RwLock<HashMap<String, SchemaRecord>>,
     player_profiles: RwLock<HashMap<String, PlayerProfileRecord>>,
     characters: RwLock<HashMap<String, CharacterCardRecord>>,
     story_resources: RwLock<HashMap<String, StoryResourcesRecord>>,
     stories: RwLock<HashMap<String, StoryRecord>>,
+    story_drafts: RwLock<HashMap<String, StoryDraftRecord>>,
     sessions: RwLock<HashMap<String, SessionRecord>>,
+    session_messages: RwLock<HashMap<String, SessionMessageRecord>>,
 }
 
 impl InMemoryStore {
@@ -37,6 +40,18 @@ impl Store for InMemoryStore {
 
     async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
         *self.global_config.write().await = Some(config);
+        Ok(())
+    }
+
+    async fn get_default_llm_config(&self) -> Result<Option<DefaultLlmConfigRecord>, StoreError> {
+        Ok(self.default_llm_config.read().await.clone())
+    }
+
+    async fn set_default_llm_config(
+        &self,
+        config: DefaultLlmConfigRecord,
+    ) -> Result<(), StoreError> {
+        *self.default_llm_config.write().await = Some(config);
         Ok(())
     }
 
@@ -198,6 +213,32 @@ impl Store for InMemoryStore {
         Ok(self.stories.write().await.remove(story_id))
     }
 
+    async fn get_story_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<Option<StoryDraftRecord>, StoreError> {
+        Ok(self.story_drafts.read().await.get(draft_id).cloned())
+    }
+
+    async fn list_story_drafts(&self) -> Result<Vec<StoryDraftRecord>, StoreError> {
+        Ok(self.story_drafts.read().await.values().cloned().collect())
+    }
+
+    async fn save_story_draft(&self, draft: StoryDraftRecord) -> Result<(), StoreError> {
+        self.story_drafts
+            .write()
+            .await
+            .insert(draft.draft_id.clone(), draft);
+        Ok(())
+    }
+
+    async fn delete_story_draft(
+        &self,
+        draft_id: &str,
+    ) -> Result<Option<StoryDraftRecord>, StoreError> {
+        Ok(self.story_drafts.write().await.remove(draft_id))
+    }
+
     async fn get_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         Ok(self.sessions.read().await.get(session_id).cloned())
     }
@@ -216,5 +257,41 @@ impl Store for InMemoryStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         Ok(self.sessions.write().await.remove(session_id))
+    }
+
+    async fn get_session_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<SessionMessageRecord>, StoreError> {
+        Ok(self.session_messages.read().await.get(message_id).cloned())
+    }
+
+    async fn list_session_messages(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionMessageRecord>, StoreError> {
+        Ok(self
+            .session_messages
+            .read()
+            .await
+            .values()
+            .filter(|message| message.session_id == session_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save_session_message(&self, message: SessionMessageRecord) -> Result<(), StoreError> {
+        self.session_messages
+            .write()
+            .await
+            .insert(message.message_id.clone(), message);
+        Ok(())
+    }
+
+    async fn delete_session_message(
+        &self,
+        message_id: &str,
+    ) -> Result<Option<SessionMessageRecord>, StoreError> {
+        Ok(self.session_messages.write().await.remove(message_id))
     }
 }

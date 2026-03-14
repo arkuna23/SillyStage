@@ -7,11 +7,12 @@ use axum::http::{Request, StatusCode, header};
 use engine::SessionConfigMode;
 use handler::Handler;
 use protocol::{
-    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterExportChrParams,
+    CharacterCoverMimeType, CharacterCreateParams, CharacterExportChrParams,
     CharacterGetCoverParams, CharacterSetCoverParams, CreateStoryResourcesParams,
     DashboardGetParams, ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage,
     JsonRpcResponseMessage, RequestParams, RunTurnParams, StartSessionFromStoryParams,
-    UploadChunkParams, UploadCompleteParams, UploadInitParams, UploadTargetKind,
+    SuggestRepliesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
+    UploadTargetKind,
 };
 use serde_json::json;
 use ss_server::http::build_router;
@@ -20,16 +21,64 @@ use tower::util::ServiceExt;
 
 use common::{
     QueuedMockLlm, assistant_response, default_api_ids, registry_with_ids, sample_archive,
-    sample_player_state_schema, sample_story_graph, sample_world_state_schema,
+    sample_character_content, sample_character_record, sample_player_profile,
+    sample_player_state_schema, sample_schema_record, sample_story_graph,
+    sample_world_state_schema,
 };
+
+async fn seed_schema_records(store: &InMemoryStore) {
+    store
+        .save_schema(sample_schema_record(
+            "schema-character-merchant",
+            "Merchant Schema",
+        ))
+        .await
+        .expect("save character schema");
+    store
+        .save_schema(sample_schema_record("schema-player-default", "Player Seed"))
+        .await
+        .expect("save player seed");
+    store
+        .save_schema(sample_schema_record("schema-world-default", "World Seed"))
+        .await
+        .expect("save world seed");
+    store
+        .save_schema(sample_schema_record(
+            "schema-player-story-1",
+            "Player Story Schema",
+        ))
+        .await
+        .expect("save story player schema");
+    store
+        .save_schema(sample_schema_record(
+            "schema-world-story-1",
+            "World Story Schema",
+        ))
+        .await
+        .expect("save story world schema");
+}
+
+async fn seed_player_profiles(store: &InMemoryStore) {
+    store
+        .save_player_profile(sample_player_profile(
+            "profile-courier-a",
+            "A cautious courier.",
+        ))
+        .await
+        .expect("save player profile");
+}
 
 #[tokio::test]
 async fn rpc_unary_request_returns_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let handler = Arc::new(
-        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::with_in_memory_store(
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -39,8 +88,8 @@ async fn rpc_unary_request_returns_json_rpc_response() {
         RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec![],
-            player_state_schema_seed: sample_player_state_schema(),
-            world_state_schema_seed: Some(sample_world_state_schema()),
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
             planned_story: None,
         }),
     ))
@@ -77,27 +126,16 @@ async fn rpc_unary_request_returns_json_rpc_response() {
 async fn rpc_character_get_cover_returns_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let archive = sample_archive();
     store
-        .save_character(store::CharacterCardRecord {
-            character_id: archive.content.id.clone(),
-            content: archive.content.clone().into(),
-            cover_file_name: Some(archive.manifest.cover_path.clone()),
-            cover_mime_type: Some(
-                serde_json::to_string(&archive.manifest.cover_mime_type)
-                    .expect("cover mime type should serialize")
-                    .trim_matches('"')
-                    .to_owned(),
-            ),
-            cover_bytes: Some(archive.cover_bytes.clone()),
-        })
+        .save_character(sample_character_record())
         .await
         .expect("character should save");
     let handler = Arc::new(
         Handler::new(
             store,
             registry_with_ids(Arc::clone(&llm)),
-            default_api_ids(),
+            Some(default_api_ids()),
+            None,
         )
         .await
         .expect("handler should build"),
@@ -147,27 +185,16 @@ async fn rpc_character_get_cover_returns_json_rpc_response() {
 async fn rpc_character_export_chr_returns_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let archive = sample_archive();
     store
-        .save_character(store::CharacterCardRecord {
-            character_id: archive.content.id.clone(),
-            content: archive.content.clone().into(),
-            cover_file_name: Some(archive.manifest.cover_path.clone()),
-            cover_mime_type: Some(
-                serde_json::to_string(&archive.manifest.cover_mime_type)
-                    .expect("cover mime type should serialize")
-                    .trim_matches('"')
-                    .to_owned(),
-            ),
-            cover_bytes: Some(archive.cover_bytes.clone()),
-        })
+        .save_character(sample_character_record())
         .await
         .expect("character should save");
     let handler = Arc::new(
         Handler::new(
             store,
             registry_with_ids(Arc::clone(&llm)),
-            default_api_ids(),
+            Some(default_api_ids()),
+            None,
         )
         .await
         .expect("handler should build"),
@@ -216,9 +243,13 @@ async fn rpc_character_export_chr_returns_json_rpc_response() {
 async fn rpc_dashboard_get_returns_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let handler = Arc::new(
-        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::with_in_memory_store(
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -254,16 +285,151 @@ async fn rpc_dashboard_get_returns_json_rpc_response() {
 }
 
 #[tokio::test]
+async fn rpc_session_suggest_replies_returns_json_rpc_response() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{}",
+            Some(json!({
+                "replies": [
+                    { "id": "r1", "text": "Show me the fastest safe route." },
+                    { "id": "r2", "text": "What exactly are you charging?" },
+                    { "id": "r3", "text": "I need proof before I commit." }
+                ]
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_player_profiles(&store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("character should save");
+    store
+        .save_story_resources(store::StoryResourcesRecord {
+            resource_id: "resource-1".to_owned(),
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned()],
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
+            planned_story: None,
+        })
+        .await
+        .expect("resources should save");
+    store
+        .save_story(store::StoryRecord {
+            story_id: "story-1".to_owned(),
+            display_name: "Flooded Harbor".to_owned(),
+            resource_id: "resource-1".to_owned(),
+            graph: sample_story_graph(),
+            world_schema_id: "schema-world-story-1".to_owned(),
+            player_schema_id: "schema-player-story-1".to_owned(),
+            introduction: "The courier reaches a flooded dock.".to_owned(),
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(1_000),
+        })
+        .await
+        .expect("story should save");
+    let handler = Arc::new(
+        Handler::new(
+            store.clone(),
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
+    );
+    let router = build_router(handler.clone());
+
+    let start_body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-session-start",
+        None::<String>,
+        RequestParams::StoryStartSession(StartSessionFromStoryParams {
+            story_id: "story-1".to_owned(),
+            display_name: Some("Courier Run".to_owned()),
+            player_profile_id: Some("profile-courier-a".to_owned()),
+            config_mode: SessionConfigMode::UseGlobal,
+            session_api_ids: None,
+        }),
+    ))
+    .expect("request should serialize");
+    let start_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(start_body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+    let start_bytes = to_bytes(start_response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let start_value: serde_json::Value =
+        serde_json::from_slice(&start_bytes).expect("response should deserialize");
+    let session_id = start_value["session_id"]
+        .as_str()
+        .expect("session id should be present")
+        .to_owned();
+
+    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
+        "req-suggest",
+        Some(session_id),
+        RequestParams::SessionSuggestReplies(SuggestRepliesParams {
+            limit: Some(3),
+            api_overrides: None,
+        }),
+    ))
+    .expect("request should serialize");
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/rpc")
+                .header(header::CONTENT_TYPE, "application/json")
+                .body(Body::from(body))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/json"
+    );
+
+    let bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let value: serde_json::Value =
+        serde_json::from_slice(&bytes).expect("response should deserialize");
+
+    assert_eq!(value["id"], "req-suggest");
+    assert_eq!(value["result"]["type"], "suggested_replies");
+    assert_eq!(value["result"]["replies"][0]["reply_id"], "r1");
+}
+
+#[tokio::test]
 async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
     let llm = Arc::new(QueuedMockLlm::new(
         vec![
             Ok(assistant_response(
-                "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\"}",
+                "{\"nodes\":[],\"start_node\":\"dock\",\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\",\"section_summary\":\"Opening dock scene.\"}",
                 Some(json!({
-                    "graph": sample_story_graph(),
+                    "nodes": sample_story_graph().nodes,
+                    "transition_patches": [],
+                    "start_node": "dock",
                     "world_state_schema": sample_world_state_schema(),
                     "player_state_schema": sample_player_state_schema(),
-                    "introduction": "At the dock."
+                    "introduction": "At the dock.",
+                    "section_summary": "Opening dock scene."
                 })),
             )),
             Ok(assistant_response("{\"ops\":[]}", Some(json!({"ops": []})))),
@@ -290,11 +456,15 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
             }),
         ])],
     ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_player_profiles(&store).await;
     let handler = Arc::new(
         Handler::new(
-            Arc::new(InMemoryStore::new()),
+            store,
             registry_with_ids(Arc::clone(&llm)),
-            default_api_ids(),
+            Some(default_api_ids()),
+            None,
         )
         .await
         .expect("handler should build"),
@@ -365,9 +535,12 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
             RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
                 story_concept: "A flooded harbor story.".to_owned(),
                 character_ids: vec![character_id],
-                player_state_schema_seed: sample_player_state_schema(),
-                world_state_schema_seed: Some(sample_world_state_schema()),
-                planned_story: None,
+                player_schema_id_seed: Some("schema-player-default".to_owned()),
+                world_schema_id_seed: Some("schema-world-default".to_owned()),
+                planned_story: Some(
+                    "Title:\nFlooded Harbor\n\nOpening Situation:\nA courier arrives at a flooded dock.\n\nCore Conflict:\nTrade routes are collapsing.\n\nCharacter Roles:\nHaru (merchant) watches the tide.\n\nSuggested Beats:\n- The courier arrives at the dock.\n\nState Hints:\nTrack the flood level."
+                        .to_owned(),
+                ),
             }),
         ),
     )
@@ -403,7 +576,7 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id,
                 display_name: None,
-                player_description: "A cautious courier.".to_owned(),
+                player_profile_id: Some("profile-courier-a".to_owned()),
                 config_mode: SessionConfigMode::UseGlobal,
                 session_api_ids: None,
             }),
@@ -461,10 +634,17 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
 #[tokio::test]
 async fn rpc_character_create_and_set_cover_return_json_rpc_response() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
     let handler = Arc::new(
-        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::new(
+            store,
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -474,15 +654,7 @@ async fn rpc_character_create_and_set_cover_return_json_rpc_response() {
             "req-create",
             None::<String>,
             RequestParams::CharacterCreate(CharacterCreateParams {
-                content: CharacterCardContent {
-                    id: "merchant".to_owned(),
-                    name: "Haru".to_owned(),
-                    personality: "greedy but friendly trader".to_owned(),
-                    style: "talkative, casual".to_owned(),
-                    tendencies: vec!["likes profitable deals".to_owned()],
-                    state_schema: Default::default(),
-                    system_prompt: "Stay in character.".to_owned(),
-                },
+                content: sample_character_content(),
             }),
         ),
     )
@@ -515,10 +687,17 @@ async fn rpc_character_create_and_set_cover_return_json_rpc_response() {
 #[tokio::test]
 async fn rpc_character_export_chr_without_cover_returns_conflict() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
     let handler = Arc::new(
-        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::new(
+            store,
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 
@@ -528,15 +707,7 @@ async fn rpc_character_export_chr_without_cover_returns_conflict() {
             "req-create",
             None::<String>,
             RequestParams::CharacterCreate(CharacterCreateParams {
-                content: CharacterCardContent {
-                    id: "merchant".to_owned(),
-                    name: "Haru".to_owned(),
-                    personality: "greedy but friendly trader".to_owned(),
-                    style: "talkative, casual".to_owned(),
-                    tendencies: vec!["likes profitable deals".to_owned()],
-                    state_schema: Default::default(),
-                    system_prompt: "Stay in character.".to_owned(),
-                },
+                content: sample_character_content(),
             }),
         ),
     )
@@ -565,9 +736,13 @@ async fn rpc_character_export_chr_without_cover_returns_conflict() {
 async fn invalid_json_returns_standard_error_payload() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let handler = Arc::new(
-        Handler::with_in_memory_store(registry_with_ids(Arc::clone(&llm)), default_api_ids())
-            .await
-            .expect("handler should build"),
+        Handler::with_in_memory_store(
+            registry_with_ids(Arc::clone(&llm)),
+            Some(default_api_ids()),
+            None,
+        )
+        .await
+        .expect("handler should build"),
     );
     let router = build_router(handler);
 

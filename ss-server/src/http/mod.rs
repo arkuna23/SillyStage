@@ -1,3 +1,4 @@
+mod logging;
 mod router;
 mod rpc;
 mod sse;

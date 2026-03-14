@@ -30,6 +30,8 @@ pub type EngineTurnStream<'a> = Pin<Box<dyn Stream<Item = EngineEvent> + Send + 
 pub struct AgentModelConfig {
     pub client: Arc<dyn LlmApi>,
     pub model: String,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
 }
 
 impl AgentModelConfig {
@@ -37,7 +39,19 @@ impl AgentModelConfig {
         Self {
             client,
             model: model.into(),
+            temperature: None,
+            max_tokens: None,
         }
+    }
+
+    pub fn with_temperature(mut self, temperature: Option<f32>) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
+        self.max_tokens = max_tokens;
+        self
     }
 }
 
@@ -53,7 +67,7 @@ impl StoryGenerationAgentConfigs {
 
         Self {
             planner: AgentModelConfig::new(Arc::clone(&client), model.clone()),
-            architect: AgentModelConfig::new(client, model),
+            architect: AgentModelConfig::new(client, model).with_max_tokens(Some(16_384)),
         }
     }
 }
@@ -94,10 +108,30 @@ impl Engine {
     ) -> Result<Self, EngineError> {
         Ok(Self {
             runtime_state,
-            director: Director::new(agent_configs.director.client, agent_configs.director.model)?,
-            actor: Actor::new(agent_configs.actor.client, agent_configs.actor.model)?,
-            narrator: Narrator::new(agent_configs.narrator.client, agent_configs.narrator.model)?,
-            keeper: Keeper::new(agent_configs.keeper.client, agent_configs.keeper.model)?,
+            director: Director::new_with_options(
+                agent_configs.director.client,
+                agent_configs.director.model,
+                agent_configs.director.temperature,
+                agent_configs.director.max_tokens,
+            )?,
+            actor: Actor::new_with_options(
+                agent_configs.actor.client,
+                agent_configs.actor.model,
+                agent_configs.actor.temperature,
+                agent_configs.actor.max_tokens,
+            )?,
+            narrator: Narrator::new_with_options(
+                agent_configs.narrator.client,
+                agent_configs.narrator.model,
+                agent_configs.narrator.temperature,
+                agent_configs.narrator.max_tokens,
+            )?,
+            keeper: Keeper::new_with_options(
+                agent_configs.keeper.client,
+                agent_configs.keeper.model,
+                agent_configs.keeper.temperature,
+                agent_configs.keeper.max_tokens,
+            )?,
         })
     }
 
@@ -626,9 +660,11 @@ pub async fn generate_story_plan(
     agent_configs: &StoryGenerationAgentConfigs,
     resources: &StoryResources,
 ) -> Result<PlannerResponse, EngineError> {
-    let planner = Planner::new(
+    let planner = Planner::new_with_options(
         Arc::clone(&agent_configs.planner.client),
         agent_configs.planner.model.clone(),
+        agent_configs.planner.temperature,
+        agent_configs.planner.max_tokens,
     )?;
     planner
         .plan(PlannerRequest {
@@ -643,9 +679,11 @@ pub async fn generate_story_graph(
     agent_configs: &StoryGenerationAgentConfigs,
     resources: &StoryResources,
 ) -> Result<ArchitectResponse, EngineError> {
-    let architect = Architect::new(
+    let architect = Architect::new_with_options(
         Arc::clone(&agent_configs.architect.client),
         agent_configs.architect.model.clone(),
+        agent_configs.architect.temperature,
+        agent_configs.architect.max_tokens,
     );
     architect
         .generate_graph(ArchitectRequest {

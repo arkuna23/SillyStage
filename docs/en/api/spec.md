@@ -86,6 +86,20 @@ Stream frame types:
 
 `completed` includes the final aggregate turn result, so the frontend does not need to rebuild it from deltas.
 
+Session-bound APIs can also return ordinary unary JSON-RPC results. The current example is:
+
+- `session.suggest_replies`
+  - requires top-level `session_id`
+  - `params`:
+    - `limit?: number`
+    - `api_overrides?: AgentApiIdOverrides`
+  - returns:
+    - `type = "suggested_replies"`
+    - `replies: [{ reply_id, text }]`
+  - notes:
+    - it only generates suggestions and does not write them into the session transcript
+    - it returns 3 suggestions by default and accepts `2..=5`
+
 ## 2. Resource Model
 
 ### 2.1 `llm_api`
@@ -99,6 +113,8 @@ Fields:
 - `base_url`
 - `api_key`
 - `model`
+- `temperature`
+- `max_tokens`
 
 Read APIs never return the raw `api_key`. They return:
 
@@ -106,6 +122,49 @@ Read APIs never return the raw `api_key`. They return:
 - `api_key_masked`
 
 Global config and session config only reference `api_id`.
+
+`llm_api.create` may omit `provider`, `base_url`, `api_key`, `model`, `temperature`, or
+`max_tokens`. Missing values are filled from the current effective `default_llm_config`.
+
+The currently supported generation defaults on an `llm_api` object are:
+
+- `temperature`
+- `max_tokens`
+
+Current `AgentApiIds` / `AgentApiIdOverrides` fields:
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+### 2.1.1 `default_llm_config`
+
+`default_llm_config` is a singleton default template for new `llm_api` records.
+
+Fields:
+
+- `provider`
+- `base_url`
+- `api_key`
+- `model`
+- `temperature`
+- `max_tokens`
+
+API shape:
+
+- `default_llm_config.get` returns:
+  - `saved`: the persisted default config in store, optional
+  - `effective`: the runtime default config after env/file overrides, optional
+- `default_llm_config.update` replaces the `saved` config only
+
+Notes:
+
+- env/file overrides take precedence over the saved config
+- env/file overrides do not write back into store
 
 ### 2.2 `schema`
 
@@ -206,6 +265,9 @@ Fields:
 - `player_profile_id`
 - `player_schema_id`
 - `snapshot`
+- `history`
+- `created_at_ms`
+- `updated_at_ms`
 - `config`
 
 Notes:
@@ -213,6 +275,13 @@ Notes:
 - `player_profile_id` may be `null`; that means the session currently uses a manually overridden player description.
 - `player_schema_id` points to the player-state schema used by the session.
 - `snapshot` stores dynamic runtime state, including `world_state`, `turn_index`, and the effective `player_description` text.
+- `history` stores the visible session transcript in chronological order:
+  - player input
+  - narration
+  - visible actor actions
+  - actor dialogue
+- `history` is assembled from standalone `session_message` records
+- `created_at_ms` / `updated_at_ms` are Unix timestamps in milliseconds.
 
 ## 3. Character Card Archive `.chr`
 
@@ -239,7 +308,9 @@ Current protocol families:
 - `character.*`
 - `story_resources.*`
 - `story.*`
+- `story_draft.*`
 - `session.*`
+- `session_message.*`
 - `config.*`
 - `dashboard.get`
 
@@ -255,6 +326,20 @@ Current protocol families:
 - `config_mode`
 - optional `session_api_ids`
 
+`story.update` only updates story metadata. For now it supports:
+
+- `story_id`
+- `display_name`
+
+### 5.1.1 Draft Story Generation
+
+`story_draft.*` is the preferred generation flow when a story is large enough that a single Architect call would become too expensive.
+
+- `story_draft.start` creates a server-side draft and generates the first section
+- `story_draft.continue` appends one more outline section to the partial graph
+- `story_draft.finalize` validates the merged graph and creates the final `story`
+- `story.generate` remains available as a compatibility wrapper around the full draft flow
+
 ### 5.2 Switching Player Profile
 
 `session.set_player_profile` only switches the active `player_profile_id` and the effective description. It does not switch `player_state`.
@@ -263,10 +348,27 @@ Current protocol families:
 
 `session.update_player_description` directly overwrites the session description text and clears `player_profile_id`.
 
+### 5.4 Updating Session Metadata
+
+`session.update` only updates session metadata. For now it supports changing `display_name`.
+
+### 5.5 Editing Session Transcript Messages
+
+`session_message.*` manages standalone transcript messages for a session.
+
+- `session_message.create` appends a visible message to the end of the transcript
+- `session_message.get` and `session_message.list` return transcript message resources
+- `session_message.update` edits transcript data in place
+- `session_message.delete` removes a message from the transcript
+
+Important:
+
+- transcript edits do not replay history
+- transcript edits do not mutate `snapshot` or `world_state`
+
 ## 6. Delete Constraints
 
 - `schema.delete`: returns `conflict` if the schema is still referenced by characters, resources, stories, or sessions
 - `player_profile.delete`: returns `conflict` if any session still references it
 - `character.delete`: returns `conflict` if any `story_resources` record still references it
 - `story.delete`: returns `conflict` if any session still references it
-

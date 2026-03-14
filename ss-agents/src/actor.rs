@@ -9,6 +9,7 @@ use futures_util::{StreamExt, stream};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 use state::schema::StateFieldSchema;
+use tracing::error;
 
 use crate::director::ActorPurpose;
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
@@ -121,14 +122,27 @@ pub struct Actor {
     llm: Arc<dyn LlmApi>,
     model: String,
     system_prompt: String,
+    temperature: Option<f32>,
+    max_tokens: Option<u32>,
 }
 
 impl Actor {
     pub fn new(llm: Arc<dyn LlmApi>, model: impl Into<String>) -> Result<Self, ActorError> {
+        Self::new_with_options(llm, model, None, None)
+    }
+
+    pub fn new_with_options(
+        llm: Arc<dyn LlmApi>,
+        model: impl Into<String>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ActorError> {
         Ok(Self {
             llm,
             model: model.into(),
             system_prompt: include_str!("./prompts/actor.txt").to_owned(),
+            temperature,
+            max_tokens,
         })
     }
 
@@ -142,6 +156,8 @@ impl Actor {
             llm,
             model: model.into(),
             system_prompt,
+            temperature: None,
+            max_tokens: None,
         })
     }
 
@@ -175,14 +191,20 @@ impl Actor {
         let user_prompt = self.build_user_prompt(&request, world_state)?;
         let stream = self
             .llm
-            .chat_stream(
-                ChatRequest::builder()
+            .chat_stream({
+                let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
                     .system_message(character_prompt)
-                    .user_message(user_prompt)
-                    .build()?,
-            )
+                    .user_message(user_prompt);
+                if let Some(temperature) = self.temperature {
+                    builder = builder.temperature(temperature);
+                }
+                if let Some(max_tokens) = self.max_tokens {
+                    builder = builder.max_tokens(max_tokens);
+                }
+                builder.build()?
+            })
             .await?;
 
         let state = ActorEventStreamState {
@@ -216,12 +238,16 @@ impl Actor {
                 match state.llm_stream.next().await {
                     Some(Ok(chunk)) => {
                         if let Err(error) = state.parser.ingest(&chunk.delta) {
+                            state.parser.log_stream_parse_error("ingest", &error);
                             state.terminated = true;
                             return Some((Err(error), state));
                         }
 
                         if chunk.done {
                             if let Err(error) = state.parser.finish() {
+                                state
+                                    .parser
+                                    .log_stream_parse_error("finish_after_done", &error);
                                 state.terminated = true;
                                 return Some((Err(error), state));
                             }
@@ -234,6 +260,9 @@ impl Actor {
                     }
                     None => {
                         if let Err(error) = state.parser.finish() {
+                            state
+                                .parser
+                                .log_stream_parse_error("finish_on_stream_end", &error);
                             state.terminated = true;
                             return Some((Err(error), state));
                         }
@@ -454,6 +483,28 @@ impl ActorStreamParser {
         self.queued_events.pop_front()
     }
 
+    fn log_stream_parse_error(&self, context: &str, error: &ActorError) {
+        if !matches!(error, ActorError::StreamParse(_)) {
+            return;
+        }
+
+        error!(
+            speaker_id = %self.speaker_id,
+            speaker_name = %self.speaker_name,
+            context,
+            error = %error,
+            raw_output = %self.raw_output,
+            completed_segments = %self.completed_segments_for_log(),
+            pending = %self.pending,
+            "actor stream parse failed"
+        );
+    }
+
+    fn completed_segments_for_log(&self) -> String {
+        serde_json::to_string_pretty(&self.completed_segments)
+            .unwrap_or_else(|error| format!("{{\"serialization_error\":\"{error}\"}}"))
+    }
+
     fn ingest(&mut self, delta: &str) -> Result<(), ActorError> {
         if self.finished {
             return Err(ActorError::StreamParse(
@@ -564,15 +615,6 @@ impl ActorStreamParser {
                             )));
                         }
 
-                        if self.completed_segments.last().is_some_and(|previous| {
-                            completed.kind.order_rank() < previous.kind.order_rank()
-                        }) {
-                            return Err(ActorError::StreamParse(
-                                "actor segments must appear in thought, action, dialogue order"
-                                    .to_owned(),
-                            ));
-                        }
-
                         if matches!(completed.kind, ActorSegmentKind::Action) {
                             self.queued_events
                                 .push_back(ActorStreamEvent::ActionComplete {
@@ -668,14 +710,6 @@ impl ActorSegmentKind {
             Self::Dialogue => "dialogue",
             Self::Thought => "thought",
             Self::Action => "action",
-        }
-    }
-
-    fn order_rank(&self) -> u8 {
-        match self {
-            Self::Thought => 0,
-            Self::Action => 1,
-            Self::Dialogue => 2,
         }
     }
 }

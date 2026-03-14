@@ -1,11 +1,18 @@
 use async_stream::stream;
+use engine::ReplyOption;
 use futures_util::StreamExt;
 use protocol::{
-    JsonRpcResponseMessage, ResponseResult, RunTurnParams, RuntimeSnapshotPayload,
-    ServerEventMessage, SessionDeletedPayload, SessionDetailPayload, SessionSummaryPayload,
-    SessionsListedPayload, SetPlayerProfileParams, StreamEventBody, TurnCompletedPayload,
-    TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams,
+    CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
+    JsonRpcResponseMessage, ListSessionMessagesParams, ResponseResult, RunTurnParams,
+    RuntimeSnapshotPayload, ServerEventMessage, SessionDeletedPayload, SessionDetailPayload,
+    SessionMessageDeletedPayload, SessionMessageKind as SessionMessagePayloadKind,
+    SessionMessagePayload, SessionMessagesListedPayload, SessionStartedPayload,
+    SessionSummaryPayload, SessionsListedPayload, SetPlayerProfileParams, StreamEventBody,
+    SuggestRepliesParams, SuggestedRepliesPayload, TurnCompletedPayload, TurnStreamAcceptedPayload,
+    UpdatePlayerDescriptionParams, UpdateSessionMessageParams, UpdateSessionParams,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+use store::{SessionMessageKind, SessionMessageRecord, SessionRecord, Store};
 
 use crate::error::HandlerError;
 
@@ -29,19 +36,14 @@ impl Handler {
                 .get_resolved_session_config(&session_id)
                 .await?,
         );
+        let history = load_session_message_payloads(self.store.as_ref(), &session_id).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             Some(session_id),
-            ResponseResult::Session(Box::new(SessionDetailPayload {
-                session_id: session.session_id,
-                story_id: session.story_id,
-                display_name: session.display_name,
-                player_profile_id: session.player_profile_id,
-                player_schema_id: session.player_schema_id,
-                snapshot: session.snapshot,
-                config,
-            })),
+            ResponseResult::Session(Box::new(build_session_detail_payload(
+                &session, history, config,
+            ))),
         ))
     }
 
@@ -54,14 +56,7 @@ impl Handler {
             .list_sessions()
             .await?
             .into_iter()
-            .map(|session| SessionSummaryPayload {
-                session_id: session.session_id,
-                story_id: session.story_id,
-                display_name: session.display_name,
-                player_profile_id: session.player_profile_id,
-                player_schema_id: session.player_schema_id,
-                turn_index: session.snapshot.turn_index,
-            })
+            .map(|session| build_session_summary_payload(&session))
             .collect();
 
         Ok(JsonRpcResponseMessage::ok(
@@ -71,12 +66,49 @@ impl Handler {
         ))
     }
 
+    pub(crate) async fn handle_session_update(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: UpdateSessionParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let mut session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        session.display_name = params.display_name;
+        session.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_session(session.clone()).await?;
+
+        let config = build_session_config_payload(
+            self.manager
+                .get_resolved_session_config(&session_id)
+                .await?,
+        );
+        let history = load_session_message_payloads(self.store.as_ref(), &session_id).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id.clone()),
+            ResponseResult::Session(Box::new(build_session_detail_payload(
+                &session, history, config,
+            ))),
+        ))
+    }
+
     pub(crate) async fn handle_session_delete(
         &self,
         request_id: &str,
         session_id: Option<String>,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
         let session_id = require_session_id(session_id)?;
+        for message in self.store.list_session_messages(&session_id).await? {
+            self.store
+                .delete_session_message(&message.message_id)
+                .await?;
+        }
         self.store
             .delete_session(&session_id)
             .await?
@@ -345,6 +377,31 @@ impl Handler {
         }
     }
 
+    pub(crate) async fn handle_session_suggest_replies(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: SuggestRepliesParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let limit = parse_suggested_reply_limit(params.limit)?;
+        let replies = self
+            .manager
+            .suggest_replies(&session_id, limit, params.api_overrides)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SuggestedReplies(SuggestedRepliesPayload {
+                replies: replies
+                    .into_iter()
+                    .map(reply_option_payload_from_reply_option)
+                    .collect(),
+            }),
+        ))
+    }
+
     pub(crate) async fn handle_session_update_player_description(
         &self,
         request_id: &str,
@@ -382,19 +439,14 @@ impl Handler {
                 .get_resolved_session_config(&session_id)
                 .await?,
         );
+        let history = load_session_message_payloads(self.store.as_ref(), &session_id).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             Some(session_id),
-            ResponseResult::Session(Box::new(SessionDetailPayload {
-                session_id: session.session_id,
-                story_id: session.story_id,
-                display_name: session.display_name,
-                player_profile_id: session.player_profile_id,
-                player_schema_id: session.player_schema_id,
-                snapshot: session.snapshot,
-                config,
-            })),
+            ResponseResult::Session(Box::new(build_session_detail_payload(
+                &session, history, config,
+            ))),
         ))
     }
 
@@ -411,5 +463,288 @@ impl Handler {
             Some(session_id),
             ResponseResult::RuntimeSnapshot(Box::new(RuntimeSnapshotPayload { snapshot })),
         ))
+    }
+
+    pub(crate) async fn handle_session_message_create(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: CreateSessionMessageParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let mut session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let now = now_timestamp_ms();
+        let sequence =
+            next_session_message_sequence(&self.store.list_session_messages(&session_id).await?);
+        let message = SessionMessageRecord {
+            message_id: self.id_generator.next("session-message"),
+            session_id: session_id.clone(),
+            kind: session_message_kind_from_payload(params.kind),
+            sequence,
+            turn_index: session.snapshot.turn_index,
+            recorded_at_ms: now,
+            created_at_ms: now,
+            updated_at_ms: now,
+            speaker_id: params.speaker_id,
+            speaker_name: params.speaker_name,
+            text: params.text,
+        };
+        self.store.save_session_message(message.clone()).await?;
+        session.updated_at_ms = Some(now);
+        self.store.save_session(session).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionMessage(Box::new(build_session_message_payload(&message))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_message_get(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: GetSessionMessageParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let message = self
+            .store
+            .get_session_message(&params.message_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSessionMessage(params.message_id.clone()))?;
+        ensure_session_message_belongs_to(&session_id, &message)?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionMessage(Box::new(build_session_message_payload(&message))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_message_list(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        _params: ListSessionMessagesParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        self.store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let messages = load_session_message_payloads(self.store.as_ref(), &session_id).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionMessagesListed(SessionMessagesListedPayload { messages }),
+        ))
+    }
+
+    pub(crate) async fn handle_session_message_update(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: UpdateSessionMessageParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let mut session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let mut message = self
+            .store
+            .get_session_message(&params.message_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSessionMessage(params.message_id.clone()))?;
+        ensure_session_message_belongs_to(&session_id, &message)?;
+
+        message.kind = session_message_kind_from_payload(params.kind);
+        message.speaker_id = params.speaker_id;
+        message.speaker_name = params.speaker_name;
+        message.text = params.text;
+        message.updated_at_ms = now_timestamp_ms();
+        self.store.save_session_message(message.clone()).await?;
+        session.updated_at_ms = Some(message.updated_at_ms);
+        self.store.save_session(session).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionMessage(Box::new(build_session_message_payload(&message))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_message_delete(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: DeleteSessionMessageParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let mut session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let message = self
+            .store
+            .get_session_message(&params.message_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSessionMessage(params.message_id.clone()))?;
+        ensure_session_message_belongs_to(&session_id, &message)?;
+        self.store
+            .delete_session_message(&params.message_id)
+            .await?;
+        session.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_session(session).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionMessageDeleted(SessionMessageDeletedPayload {
+                message_id: params.message_id,
+            }),
+        ))
+    }
+}
+
+fn now_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system time should be after unix epoch")
+        .as_millis() as u64
+}
+
+pub(crate) fn build_session_started_payload(
+    session: &SessionRecord,
+    history: Vec<SessionMessagePayload>,
+    character_summaries: Vec<protocol::CharacterCardSummaryPayload>,
+    config: protocol::SessionConfigPayload,
+) -> SessionStartedPayload {
+    SessionStartedPayload {
+        story_id: session.story_id.clone(),
+        display_name: session.display_name.clone(),
+        snapshot: session.snapshot.clone(),
+        player_profile_id: session.player_profile_id.clone(),
+        player_schema_id: session.player_schema_id.clone(),
+        history,
+        created_at_ms: session.created_at_ms,
+        updated_at_ms: session.updated_at_ms,
+        character_summaries,
+        config,
+    }
+}
+
+pub(crate) fn build_session_detail_payload(
+    session: &SessionRecord,
+    history: Vec<SessionMessagePayload>,
+    config: protocol::SessionConfigPayload,
+) -> SessionDetailPayload {
+    SessionDetailPayload {
+        session_id: session.session_id.clone(),
+        story_id: session.story_id.clone(),
+        display_name: session.display_name.clone(),
+        player_profile_id: session.player_profile_id.clone(),
+        player_schema_id: session.player_schema_id.clone(),
+        snapshot: session.snapshot.clone(),
+        history,
+        created_at_ms: session.created_at_ms,
+        updated_at_ms: session.updated_at_ms,
+        config,
+    }
+}
+
+pub(crate) fn build_session_summary_payload(session: &SessionRecord) -> SessionSummaryPayload {
+    SessionSummaryPayload {
+        session_id: session.session_id.clone(),
+        story_id: session.story_id.clone(),
+        display_name: session.display_name.clone(),
+        player_profile_id: session.player_profile_id.clone(),
+        player_schema_id: session.player_schema_id.clone(),
+        turn_index: session.snapshot.turn_index,
+        created_at_ms: session.created_at_ms,
+        updated_at_ms: session.updated_at_ms,
+    }
+}
+
+pub(crate) async fn load_session_message_payloads(
+    store: &dyn Store,
+    session_id: &str,
+) -> Result<Vec<SessionMessagePayload>, HandlerError> {
+    let mut messages = store.list_session_messages(session_id).await?;
+    messages.sort_by_key(|message| message.sequence);
+    Ok(messages.iter().map(build_session_message_payload).collect())
+}
+
+fn build_session_message_payload(message: &SessionMessageRecord) -> SessionMessagePayload {
+    SessionMessagePayload {
+        message_id: message.message_id.clone(),
+        kind: match message.kind {
+            SessionMessageKind::PlayerInput => SessionMessagePayloadKind::PlayerInput,
+            SessionMessageKind::Narration => SessionMessagePayloadKind::Narration,
+            SessionMessageKind::Dialogue => SessionMessagePayloadKind::Dialogue,
+            SessionMessageKind::Action => SessionMessagePayloadKind::Action,
+        },
+        sequence: message.sequence,
+        turn_index: message.turn_index,
+        recorded_at_ms: message.recorded_at_ms,
+        created_at_ms: message.created_at_ms,
+        updated_at_ms: message.updated_at_ms,
+        speaker_id: message.speaker_id.clone(),
+        speaker_name: message.speaker_name.clone(),
+        text: message.text.clone(),
+    }
+}
+
+fn session_message_kind_from_payload(kind: SessionMessagePayloadKind) -> SessionMessageKind {
+    match kind {
+        SessionMessagePayloadKind::PlayerInput => SessionMessageKind::PlayerInput,
+        SessionMessagePayloadKind::Narration => SessionMessageKind::Narration,
+        SessionMessagePayloadKind::Dialogue => SessionMessageKind::Dialogue,
+        SessionMessagePayloadKind::Action => SessionMessageKind::Action,
+    }
+}
+
+fn ensure_session_message_belongs_to(
+    session_id: &str,
+    message: &SessionMessageRecord,
+) -> Result<(), HandlerError> {
+    if message.session_id == session_id {
+        return Ok(());
+    }
+
+    Err(HandlerError::MissingSessionMessage(
+        message.message_id.clone(),
+    ))
+}
+
+fn next_session_message_sequence(existing: &[SessionMessageRecord]) -> u64 {
+    existing
+        .iter()
+        .map(|message| message.sequence)
+        .max()
+        .map(|sequence| sequence.saturating_add(1))
+        .unwrap_or(0)
+}
+
+fn parse_suggested_reply_limit(limit: Option<u32>) -> Result<usize, HandlerError> {
+    let limit = limit.unwrap_or(3);
+    if !(2..=5).contains(&limit) {
+        return Err(HandlerError::InvalidSuggestedReplyLimit(limit));
+    }
+
+    Ok(limit as usize)
+}
+
+fn reply_option_payload_from_reply_option(reply: ReplyOption) -> protocol::ReplyOptionPayload {
+    protocol::ReplyOptionPayload {
+        reply_id: reply.id,
+        text: reply.text,
     }
 }

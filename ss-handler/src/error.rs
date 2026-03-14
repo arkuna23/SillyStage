@@ -18,10 +18,14 @@ pub enum HandlerError {
     MissingCharacter(String),
     #[error("story resources '{0}' not found")]
     MissingStoryResources(String),
+    #[error("story draft '{0}' not found")]
+    MissingStoryDraft(String),
     #[error("story '{0}' not found")]
     MissingStory(String),
     #[error("session '{0}' not found")]
     MissingSession(String),
+    #[error("session message '{0}' not found")]
+    MissingSessionMessage(String),
     #[error("llm api '{0}' not found")]
     MissingLlmApi(String),
     #[error("character '{0}' already exists")]
@@ -52,8 +56,12 @@ pub enum HandlerError {
     CharacterInUse(String),
     #[error("llm api '{0}' is still referenced by config")]
     LlmApiInUse(String),
+    #[error("llm api.create is missing required fields: {0}")]
+    IncompleteLlmApiCreate(String),
     #[error("story resources '{0}' already has generated stories")]
     StoryResourcesInUse(String),
+    #[error("story resources '{0}' is still referenced by a draft")]
+    StoryResourcesDraftInUse(String),
     #[error("story '{0}' still has active sessions")]
     StoryHasSessions(String),
     #[error("character_ids cannot be empty")]
@@ -68,10 +76,16 @@ pub enum HandlerError {
     InvalidUploadChunkPayload(String),
     #[error("invalid character cover payload: {0}")]
     InvalidCharacterCoverPayload(String),
+    #[error("suggested reply limit must be between 2 and 5, got {0}")]
+    InvalidSuggestedReplyLimit(u32),
     #[error("session config for use_session requires api ids")]
     MissingSessionApiIds,
     #[error("invalid session config: {0}")]
     InvalidSessionConfig(String),
+    #[error("invalid story draft: {0}")]
+    InvalidStoryDraft(String),
+    #[error("{0}")]
+    Manager(String),
     #[error(transparent)]
     Archive(#[from] protocol::CharacterArchiveError),
     #[error(transparent)]
@@ -99,6 +113,8 @@ impl HandlerError {
             | Self::CharacterIdMismatch { .. }
             | Self::EmptyLlmApiId
             | Self::InvalidCharacterCoverPayload(_)
+            | Self::InvalidSuggestedReplyLimit(_)
+            | Self::IncompleteLlmApiCreate(_)
             | Self::MissingSessionApiIds
             | Self::InvalidSessionConfig(_)
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
@@ -108,8 +124,10 @@ impl HandlerError {
             | Self::MissingPlayerProfile(_)
             | Self::MissingCharacter(_)
             | Self::MissingStoryResources(_)
+            | Self::MissingStoryDraft(_)
             | Self::MissingStory(_)
             | Self::MissingSession(_)
+            | Self::MissingSessionMessage(_)
             | Self::MissingLlmApi(_) => ErrorPayload::new(ErrorCode::NotFound, self.to_string()),
             Self::DuplicateCharacter(_)
             | Self::DuplicateSchema(_)
@@ -121,7 +139,11 @@ impl HandlerError {
             | Self::CharacterInUse(_)
             | Self::LlmApiInUse(_)
             | Self::StoryResourcesInUse(_)
+            | Self::StoryResourcesDraftInUse(_)
             | Self::StoryHasSessions(_) => ErrorPayload::new(ErrorCode::Conflict, self.to_string()),
+            Self::InvalidStoryDraft(_) => {
+                ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
+            }
             Self::Registry(error) => match error {
                 RegistryError::UnknownApiId(_) => {
                     ErrorPayload::new(ErrorCode::NotFound, self.to_string())
@@ -130,7 +152,7 @@ impl HandlerError {
                     ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
                 }
             },
-            Self::Engine(_) | Self::Runtime(_) | Self::Store(_) => {
+            Self::Manager(_) | Self::Engine(_) | Self::Runtime(_) | Self::Store(_) => {
                 ErrorPayload::new(ErrorCode::BackendError, self.to_string())
             }
         }
@@ -145,9 +167,13 @@ impl From<ManagerError> for HandlerError {
             ManagerError::MissingCharacter(id) => Self::MissingCharacter(id),
             ManagerError::MissingPlayerProfile(id) => Self::MissingPlayerProfile(id),
             ManagerError::MissingStoryResources(id) => Self::MissingStoryResources(id),
+            ManagerError::MissingStoryDraft(id) => Self::MissingStoryDraft(id),
             ManagerError::MissingStory(id) => Self::MissingStory(id),
             ManagerError::MissingSession(id) => Self::MissingSession(id),
             ManagerError::EmptyCharacterIds => Self::EmptyCharacterIds,
+            ManagerError::InvalidDraft(message) => Self::InvalidStoryDraft(message),
+            ManagerError::Architect(error) => Self::Manager(error.to_string()),
+            ManagerError::Replyer(error) => Self::Manager(error.to_string()),
             ManagerError::Engine(error) => Self::Engine(error),
             ManagerError::Runtime(error) => Self::Runtime(error),
             ManagerError::Registry(error) => Self::Registry(error),

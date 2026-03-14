@@ -15,6 +15,7 @@ fn sample_api_ids() -> AgentApiIds {
         actor_api_id: "actor".to_owned(),
         narrator_api_id: "narrator".to_owned(),
         keeper_api_id: "keeper".to_owned(),
+        replyer_api_id: "replyer".to_owned(),
     }
 }
 
@@ -45,7 +46,8 @@ fn registry_builds_story_generation_and_runtime_configs() {
             Arc::clone(&llm_api),
             "narrator-model",
         )
-        .register(&api_ids.keeper_api_id, llm_api, "keeper-model");
+        .register(&api_ids.keeper_api_id, Arc::clone(&llm_api), "keeper-model")
+        .register(&api_ids.replyer_api_id, llm_api, "replyer-model");
 
     let generation = registry
         .build_story_generation_configs(&api_ids)
@@ -53,13 +55,20 @@ fn registry_builds_story_generation_and_runtime_configs() {
     let runtime = registry
         .build_runtime_configs(&api_ids)
         .expect("runtime config should resolve");
+    let replyer = registry
+        .build_replyer_config(&api_ids)
+        .expect("replyer config should resolve");
 
     assert_eq!(generation.planner.model, "planner-model");
     assert_eq!(generation.architect.model, "architect-model");
+    assert_eq!(generation.planner.temperature, None);
+    assert_eq!(generation.planner.max_tokens, None);
+    assert_eq!(generation.architect.max_tokens, Some(8_192));
     assert_eq!(runtime.director.model, "director-model");
     assert_eq!(runtime.actor.model, "actor-model");
     assert_eq!(runtime.narrator.model, "narrator-model");
     assert_eq!(runtime.keeper.model, "keeper-model");
+    assert_eq!(replyer.model, "replyer-model");
 }
 
 #[test]
@@ -85,6 +94,8 @@ fn registry_can_upsert_and_remove_records() {
         base_url: "https://api.openai.example/v1".to_owned(),
         api_key: "sk-secret".to_owned(),
         model: "gpt-4.1-mini".to_owned(),
+        temperature: Some(0.3),
+        max_tokens: Some(512),
     };
 
     registry
@@ -92,6 +103,8 @@ fn registry_can_upsert_and_remove_records() {
         .expect("record should build into client");
     let resolved = registry.resolve("default").expect("api should resolve");
     assert_eq!(resolved.model, "gpt-4.1-mini");
+    assert_eq!(resolved.temperature, Some(0.3));
+    assert_eq!(resolved.max_tokens, Some(512));
 
     registry.remove("default");
     let error = registry

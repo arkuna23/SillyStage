@@ -4,6 +4,7 @@ pub mod manager;
 pub mod registry;
 pub mod runtime;
 
+pub use agents::replyer::ReplyOption;
 pub use engine::{
     AgentModelConfig, Engine, EngineError, EngineTurnResult, EngineTurnStream, ExecutedBeat,
     RuntimeAgentConfigs, StoryGenerationAgentConfigs, generate_story_graph, generate_story_plan,

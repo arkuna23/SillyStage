@@ -20,12 +20,31 @@ This document lists the currently implemented JSON-RPC methods.
 | `llm_api.update` | No | `llm_api` | Update an LLM API definition |
 | `llm_api.delete` | No | `llm_api_deleted` | Delete an LLM API definition |
 
+The currently supported generation defaults on `llm_api` are:
+
+- `temperature`
+- `max_tokens`
+
 Notes:
 
 - Read APIs never return the raw `api_key`
 - Delete returns `conflict` if the API is still referenced by global or session config
+- `llm_api.create` may omit connection or model fields; missing values are filled from the current effective `default_llm_config`
 
-## 3. schema
+## 3. default_llm_config
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `default_llm_config.get` | No | `default_llm_config` | Get saved and effective default config |
+| `default_llm_config.update` | No | `default_llm_config` | Replace the saved default config |
+
+Notes:
+
+- `saved` is the persistent default config stored in the backend
+- `effective` is the runtime default config after applying env/file overrides
+- env/file overrides do not overwrite the saved record
+
+## 4. schema
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -40,7 +59,7 @@ Notes:
 - A schema has no fixed kind; classification is expressed through `tags`
 - Delete returns `conflict` if the schema is still referenced by characters, resources, stories, or sessions
 
-## 4. player_profile
+## 5. player_profile
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -55,7 +74,7 @@ Notes:
 - A player profile contains `player_profile_id`, `display_name`, and `description`
 - Delete returns `conflict` if any session still references it
 
-## 5. character
+## 6. character
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -84,7 +103,7 @@ Notes:
 - Cover upload is a separate update step
 - `.chr` export requires the character to have a cover
 
-## 6. story_resources
+## 7. story_resources
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -102,13 +121,14 @@ Fields:
 - `world_schema_id_seed`
 - `planned_story`
 
-## 7. story
+## 8. story
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
 | `story.generate_plan` | No | `story_planned` | Run Planner and get editable script text |
-| `story.generate` | No | `story_generated` | Generate graph and schema references |
+| `story.generate` | No | `story_generated` | Compatibility wrapper: `story_draft.start -> continue* -> finalize` |
 | `story.get` | No | `story` | Get story details |
+| `story.update` | No | `story` | Update story metadata |
 | `story.list` | No | `stories_listed` | List stories |
 | `story.delete` | No | `story_deleted` | Delete a story |
 | `story.start_session` | No | `session_started` | Create a new session from a story |
@@ -130,14 +150,38 @@ Important `story_generated` fields:
 - `config_mode`
 - optional `session_api_ids`
 
-## 8. session
+`story.update` input:
+
+- `story_id`
+- `display_name`
+
+## 9. story_draft
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `story_draft.start` | No | `story_draft` | Start chunked Architect generation and create the first partial graph |
+| `story_draft.get` | No | `story_draft` | Get draft details including the current partial graph |
+| `story_draft.list` | No | `story_drafts_listed` | List draft summaries |
+| `story_draft.continue` | No | `story_draft` | Generate the next outline section and merge it into the draft |
+| `story_draft.finalize` | No | `story_generated` | Validate the completed draft and create the final story |
+| `story_draft.delete` | No | `story_draft_deleted` | Delete a draft |
+
+Notes:
+
+- Draft generation is section-based, not fixed-node-count based.
+- The server keeps the partial graph in a `story_draft` object. Clients do not need to send generated nodes back.
+- `story.generate` remains available for clients that still want a one-shot call, but new clients should prefer `story_draft.*`.
+
+## 10. session
 
 | Method | session_id | Result | Streaming |
 | --- | --- | --- | --- |
 | `session.get` | Yes | `session` | No |
+| `session.update` | Yes | `session` | No |
 | `session.list` | No | `sessions_listed` | No |
 | `session.delete` | Yes | `session_deleted` | No |
 | `session.run_turn` | Yes | `turn_stream_accepted` / `turn_completed` | Yes |
+| `session.suggest_replies` | Yes | `suggested_replies` | No |
 | `session.set_player_profile` | Yes | `session` | No |
 | `session.update_player_description` | Yes | `player_description_updated` | No |
 | `session.get_runtime_snapshot` | Yes | `runtime_snapshot` | No |
@@ -146,17 +190,60 @@ Important `story_generated` fields:
 
 Notes:
 
+- `session.update` only updates the session `display_name`
+- `session.suggest_replies` generates player reply suggestions on demand and does not write to `history`
+- `session.suggest_replies` returns 3 suggestions by default and accepts `limit` values in `2..=5`
+- `story.start_session` and `session.get` now return session details with:
+  - `created_at_ms`
+  - `updated_at_ms`
+  - `history`
+- `session.list` summaries now include:
+  - `created_at_ms`
+  - `updated_at_ms`
+- `history` stores the visible session transcript in chronological order. It currently includes:
+  - `player_input`
+  - `narration`
+  - `dialogue`
+  - `action`
+- `history` is now backed by standalone `session_message` records; `session.get` returns the aggregated ordered list
 - `session.set_player_profile` switches the active player profile only; it does not switch `player_state`
 - `session.update_player_description` clears `player_profile_id` and uses the manual description instead
 
-## 9. config
+## 11. session_message
+
+| Method | session_id | Result | Streaming |
+| --- | --- | --- | --- |
+| `session_message.create` | Yes | `session_message` | No |
+| `session_message.get` | Yes | `session_message` | No |
+| `session_message.list` | Yes | `session_messages_listed` | No |
+| `session_message.update` | Yes | `session_message` | No |
+| `session_message.delete` | Yes | `session_message_deleted` | No |
+
+Notes:
+
+- message CRUD only changes transcript data
+- editing or deleting a message does not replay or mutate the session snapshot
+- manual `create` appends to the end of the current session transcript
+- `session.get.history` and `session_message.list` use the same ordered message shape
+
+## 12. config
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
 | `config.get_global` | No | `global_config` | Get global agent API selections |
 | `config.update_global` | No | `global_config` | Update global agent API selections |
 
-## 10. dashboard
+The current agent selection fields in `global_config`, `session_config`, and request-level `api_overrides` are:
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+## 13. dashboard
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -169,4 +256,3 @@ Notes:
 - `global_config`
 - `recent_stories`
 - `recent_sessions`
-

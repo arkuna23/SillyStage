@@ -14,6 +14,7 @@ pub struct AgentApiIds {
     pub actor_api_id: String,
     pub narrator_api_id: String,
     pub keeper_api_id: String,
+    pub replyer_api_id: String,
 }
 
 impl AgentApiIds {
@@ -43,6 +44,10 @@ impl AgentApiIds {
                 .keeper_api_id
                 .clone()
                 .unwrap_or_else(|| self.keeper_api_id.clone()),
+            replyer_api_id: overrides
+                .replyer_api_id
+                .clone()
+                .unwrap_or_else(|| self.replyer_api_id.clone()),
         }
     }
 }
@@ -55,6 +60,7 @@ pub struct AgentApiIdOverrides {
     pub actor_api_id: Option<String>,
     pub narrator_api_id: Option<String>,
     pub keeper_api_id: Option<String>,
+    pub replyer_api_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]

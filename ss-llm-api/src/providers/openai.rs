@@ -6,6 +6,7 @@ use futures_util::StreamExt;
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::{debug, error, info, warn};
 
 use crate::api::{
     ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, Message, ResponseFormat, Role, Usage,
@@ -14,6 +15,8 @@ use crate::error::LlmError;
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_TIMEOUT_SECS: u64 = 60;
+const MAX_LOGGED_PROMPT_CHARS: usize = 1_200;
+const MAX_LOGGED_RESPONSE_CHARS: usize = 2_000;
 
 #[derive(Debug, Clone)]
 pub struct OpenAiConfig {
@@ -141,13 +144,21 @@ impl OpenAiClient {
         stream: bool,
     ) -> Result<reqwest::Response, LlmError> {
         request.validate()?;
+        let request_body = self.build_request_body(request, stream);
+
+        log_llm_payload(
+            stream,
+            self.completions_url(),
+            &request_body,
+            "sending llm request",
+        );
 
         let response = self
             .http
             .post(self.completions_url())
             .header(AUTHORIZATION, format!("Bearer {}", self.config.api_key))
             .header(CONTENT_TYPE, "application/json")
-            .json(&self.build_request_body(request, stream))
+            .json(&request_body)
             .send()
             .await?;
 
@@ -163,6 +174,12 @@ impl OpenAiClient {
         }
 
         let body = response.text().await?;
+        warn!(
+            provider = "openai",
+            status = status.as_u16(),
+            body = %body,
+            "llm request failed"
+        );
         let message = serde_json::from_str::<OpenAiErrorEnvelope>(&body)
             .ok()
             .map(|payload| payload.error.message)
@@ -183,8 +200,28 @@ impl OpenAiClient {
 impl LlmApi for OpenAiClient {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, LlmError> {
         let response = self.send_request(&request, false).await?;
-        let payload: OpenAiChatResponse = response.json().await?;
-        payload.into_chat_response(request.response_format.as_ref())
+        let body = response.text().await?;
+        info!(
+            provider = "openai",
+            body = %body,
+            "received llm response body"
+        );
+        let payload: OpenAiChatResponse = serde_json::from_str(&body).map_err(|error| {
+            error!(
+                provider = "openai",
+                error = %error,
+                body = %truncate_response_for_log(&body),
+                "llm provider returned an invalid json response body"
+            );
+            LlmError::from(error)
+        })?;
+        let response = payload.into_chat_response(request.response_format.as_ref())?;
+        info!(
+            provider = "openai",
+            payload = %json_for_log(&response),
+            "parsed llm response"
+        );
+        Ok(response)
     }
 
     async fn chat_stream(&self, request: ChatRequest) -> Result<ChatStream, LlmError> {
@@ -209,28 +246,140 @@ impl LlmApi for OpenAiClient {
 
 fn map_stream_event(data: String) -> Result<ChatChunk, LlmError> {
     if data == "[DONE]" {
-        return Ok(ChatChunk {
+        let chunk = ChatChunk {
             delta: String::new(),
             model: None,
             finish_reason: None,
             done: true,
             usage: None,
-        });
+        };
+        debug!(
+            provider = "openai",
+            payload = %json_for_log(&chunk),
+            "received llm stream chunk"
+        );
+        return Ok(chunk);
     }
 
+    debug!(
+        provider = "openai",
+        body = %data,
+        "received llm stream event body"
+    );
     let payload: OpenAiStreamResponse = serde_json::from_str(&data)?;
     let choice =
         payload.choices.into_iter().next().ok_or_else(|| {
             LlmError::StreamParse("stream response contained no choices".to_owned())
         })?;
 
-    Ok(ChatChunk {
+    let chunk = ChatChunk {
         delta: choice.delta.content.unwrap_or_default(),
         model: payload.model,
         finish_reason: choice.finish_reason,
         done: false,
         usage: payload.usage.map(Usage::from),
-    })
+    };
+    debug!(
+        provider = "openai",
+        payload = %json_for_log(&chunk),
+        "received llm stream chunk"
+    );
+    Ok(chunk)
+}
+
+fn json_for_log<T: Serialize>(payload: &T) -> String {
+    serde_json::to_string(payload)
+        .unwrap_or_else(|error| format!("{{\"serialization_error\":\"{error}\"}}"))
+}
+
+fn log_llm_payload<T: Serialize>(stream: bool, url: String, payload: &T, message: &str) {
+    let payload = json_for_llm_request_log(payload);
+    if stream {
+        debug!(
+            provider = "openai",
+            stream,
+            url = %url,
+            payload = %payload,
+            "{message}"
+        );
+    } else {
+        info!(
+            provider = "openai",
+            stream,
+            url = %url,
+            payload = %payload,
+            "{message}"
+        );
+    }
+}
+
+fn json_for_llm_request_log<T: Serialize>(payload: &T) -> String {
+    let mut value = match serde_json::to_value(payload) {
+        Ok(value) => value,
+        Err(error) => return format!("{{\"serialization_error\":\"{error}\"}}"),
+    };
+
+    shape_prompt_for_log_value(&mut value);
+
+    serde_json::to_string_pretty(&value)
+        .unwrap_or_else(|error| format!("{{\"serialization_error\":\"{error}\"}}"))
+}
+
+fn shape_prompt_for_log_value(value: &mut Value) {
+    let Some(messages) = value.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+
+    for message in messages {
+        let Some(message_object) = message.as_object_mut() else {
+            continue;
+        };
+
+        let Some(content) = message_object
+            .get("content")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            continue;
+        };
+
+        let total_chars = content.chars().count();
+        let truncated = total_chars > MAX_LOGGED_PROMPT_CHARS;
+        let preview = if truncated {
+            truncate_for_log(&content, MAX_LOGGED_PROMPT_CHARS)
+        } else {
+            content
+        };
+        let content_lines = preview
+            .lines()
+            .map(|line| Value::String(line.to_owned()))
+            .collect::<Vec<_>>();
+
+        message_object.remove("content");
+        message_object.insert("content_lines".to_owned(), Value::Array(content_lines));
+        message_object.insert(
+            "content_char_count".to_owned(),
+            Value::Number(serde_json::Number::from(total_chars as u64)),
+        );
+        message_object.insert("content_truncated".to_owned(), Value::Bool(truncated));
+    }
+}
+
+fn truncate_for_log(content: &str, max_chars: usize) -> String {
+    let total_chars = content.chars().count();
+    let truncated: String = content.chars().take(max_chars).collect();
+    format!(
+        "{truncated}...[truncated {}/{} chars]",
+        max_chars, total_chars
+    )
+}
+
+fn truncate_response_for_log(content: &str) -> String {
+    if content.chars().count() <= MAX_LOGGED_RESPONSE_CHARS {
+        return content.to_owned();
+    }
+
+    truncate_for_log(content, MAX_LOGGED_RESPONSE_CHARS)
 }
 
 #[derive(Debug, Serialize)]
@@ -317,9 +466,17 @@ fn parse_structured_output(
     content: &str,
 ) -> Result<Option<Value>, LlmError> {
     match response_format {
-        Some(ResponseFormat::JsonObject) => serde_json::from_str(content)
-            .map(Some)
-            .map_err(|error| LlmError::StructuredOutputParse(error.to_string())),
+        Some(ResponseFormat::JsonObject) => {
+            serde_json::from_str(content).map(Some).map_err(|error| {
+                error!(
+                    provider = "openai",
+                    error = %error,
+                    content = %truncate_response_for_log(content),
+                    "llm returned invalid structured json content"
+                );
+                LlmError::StructuredOutputParse(error.to_string())
+            })
+        }
         None => Ok(None),
     }
 }
@@ -429,5 +586,46 @@ mod tests {
             .expect_err("invalid json should fail");
 
         assert!(matches!(error, LlmError::StructuredOutputParse(_)));
+    }
+
+    #[test]
+    fn llm_request_log_truncates_long_prompt_content() {
+        let original = format!("line1\n{}", "a".repeat(MAX_LOGGED_PROMPT_CHARS + 25));
+        let payload = OpenAiChatRequest {
+            model: "gpt-4.1".to_owned(),
+            messages: vec![OpenAiMessage {
+                role: "user",
+                content: original.clone(),
+            }],
+            temperature: Some(0.2),
+            max_tokens: Some(128),
+            response_format: None,
+            stream: false,
+        };
+
+        let json = json_for_llm_request_log(&payload);
+
+        assert!(json.contains("\"content_lines\""));
+        assert!(json.contains("\"content_truncated\": true"));
+        assert!(json.contains(&format!(
+            "\"content_char_count\": {}",
+            original.chars().count()
+        )));
+        assert!(json.contains("[truncated"));
+        assert!(!json.contains("\\n"));
+    }
+
+    #[test]
+    fn llm_response_log_truncates_long_content() {
+        let original = "b".repeat(MAX_LOGGED_RESPONSE_CHARS + 40);
+
+        let truncated = truncate_response_for_log(&original);
+
+        assert!(truncated.contains(&format!(
+            "[truncated {}/{} chars]",
+            MAX_LOGGED_RESPONSE_CHARS,
+            original.chars().count()
+        )));
+        assert!(!truncated.contains(&original));
     }
 }

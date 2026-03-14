@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use engine::{AgentApiIds, LlmApiRegistry};
 use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
-use protocol::CharacterArchive;
+use protocol::{CharacterArchive, CharacterCardContent};
 use serde_json::json;
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
+use store::{CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord, SchemaRecord};
 use story::{NarrativeNode, StoryGraph};
 
 use agents::actor::CharacterCard;
@@ -90,6 +91,7 @@ pub fn default_api_ids() -> AgentApiIds {
         actor_api_id: "actor-default".to_owned(),
         narrator_api_id: "narrator-default".to_owned(),
         keeper_api_id: "keeper-default".to_owned(),
+        replyer_api_id: "replyer-default".to_owned(),
     }
 }
 
@@ -107,7 +109,8 @@ pub fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
         .register(default.director_api_id, Arc::clone(&llm), "director-model")
         .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
         .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")
-        .register(default.keeper_api_id, llm, "keeper-model")
+        .register(default.keeper_api_id, Arc::clone(&llm), "keeper-model")
+        .register(default.replyer_api_id, llm, "replyer-model")
 }
 
 pub fn sample_character_card() -> CharacterCard {
@@ -121,6 +124,18 @@ pub fn sample_character_card() -> CharacterCard {
             "trust".to_owned(),
             StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
         )]),
+        system_prompt: "Stay in character.".to_owned(),
+    }
+}
+
+pub fn sample_character_content() -> CharacterCardContent {
+    CharacterCardContent {
+        id: "merchant".to_owned(),
+        name: "Haru".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative, casual".to_owned(),
+        tendencies: vec!["likes profitable deals".to_owned()],
+        schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
     }
 }
@@ -160,8 +175,60 @@ pub fn sample_world_state_schema() -> WorldStateSchema {
 
 pub fn sample_archive() -> CharacterArchive {
     CharacterArchive::new(
-        protocol::CharacterCardContent::from(sample_character_card()),
+        sample_character_content(),
         protocol::CharacterCoverMimeType::Png,
         b"cover-bytes".to_vec(),
     )
+}
+
+pub fn sample_character_record() -> CharacterCardRecord {
+    let archive = sample_archive();
+    CharacterCardRecord {
+        character_id: archive.content.id.clone(),
+        content: CharacterCardDefinition {
+            id: archive.content.id.clone(),
+            name: archive.content.name.clone(),
+            personality: archive.content.personality.clone(),
+            style: archive.content.style.clone(),
+            tendencies: archive.content.tendencies.clone(),
+            schema_id: archive.content.schema_id.clone(),
+            system_prompt: archive.content.system_prompt.clone(),
+        },
+        cover_file_name: Some(archive.manifest.cover_path.clone()),
+        cover_mime_type: Some(
+            serde_json::to_string(&archive.manifest.cover_mime_type)
+                .expect("cover mime type should serialize")
+                .trim_matches('"')
+                .to_owned(),
+        ),
+        cover_bytes: Some(archive.cover_bytes.clone()),
+    }
+}
+
+pub fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
+    let fields = if schema_id.contains("world") {
+        sample_world_state_schema().fields
+    } else if schema_id.contains("player") {
+        sample_player_state_schema().fields
+    } else {
+        HashMap::from([(
+            "trust".to_owned(),
+            StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+        )])
+    };
+
+    SchemaRecord {
+        schema_id: schema_id.to_owned(),
+        display_name: display_name.to_owned(),
+        tags: vec!["test".to_owned()],
+        fields,
+    }
+}
+
+pub fn sample_player_profile(id: &str, description: &str) -> PlayerProfileRecord {
+    PlayerProfileRecord {
+        player_profile_id: id.to_owned(),
+        display_name: id.to_owned(),
+        description: description.to_owned(),
+    }
 }

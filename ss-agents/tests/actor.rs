@@ -202,7 +202,7 @@ async fn perform_stream_rejects_text_outside_tags() {
 }
 
 #[tokio::test]
-async fn perform_stream_rejects_out_of_order_segments() {
+async fn perform_stream_accepts_out_of_order_segments() {
     let llm = Arc::new(MockLlm::with_stream_chunks(vec![
         Ok(ChatChunk {
             delta: "<dialogue>Too early.</dialogue><thought>Should have started here.</thought>"
@@ -230,17 +230,27 @@ async fn perform_stream_rejects_out_of_order_segments() {
         .await
         .expect("perform_stream should start");
 
-    let error = stream
-        .next()
-        .await
-        .expect("error event should exist")
-        .expect_err("stream should fail on out-of-order segments");
-
-    assert!(
-        error
-            .to_string()
-            .contains("thought, action, dialogue order")
+    assert_eq!(
+        stream.next().await.expect("event").expect("ok"),
+        ActorStreamEvent::DialogueDelta {
+            delta: "Too early.".to_owned()
+        }
     );
+    assert_eq!(
+        stream.next().await.expect("event").expect("ok"),
+        ActorStreamEvent::ThoughtDelta {
+            delta: "Should have started here.".to_owned()
+        }
+    );
+
+    let ActorStreamEvent::Done { response } = stream.next().await.expect("event").expect("ok")
+    else {
+        panic!("expected done event");
+    };
+
+    assert_eq!(response.segments.len(), 2);
+    assert_eq!(response.segments[0].kind, ActorSegmentKind::Dialogue);
+    assert_eq!(response.segments[1].kind, ActorSegmentKind::Thought);
 }
 
 #[test]

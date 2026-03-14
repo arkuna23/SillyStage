@@ -9,13 +9,16 @@ use futures_util::StreamExt;
 use protocol::{
     CharacterArchive, CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams,
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterSetCoverParams,
-    CharacterUpdateParams, ConfigUpdateGlobalParams, CreateStoryResourcesParams,
-    DashboardGetParams, DeleteSessionParams, ErrorCode, GenerateStoryParams, GetSessionParams,
-    GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage, LlmApiCreateParams,
+    CharacterUpdateParams, ConfigUpdateGlobalParams, CreateSessionMessageParams,
+    CreateStoryResourcesParams, DashboardGetParams, DefaultLlmConfigGetParams,
+    DefaultLlmConfigUpdateParams, DeleteSessionMessageParams, DeleteSessionParams, ErrorCode,
+    GenerateStoryParams, GetSessionMessageParams, GetSessionParams, GetStoryResourcesParams,
+    JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams, LlmApiCreateParams,
     LlmApiDeleteParams, LlmApiGetParams, LlmApiUpdateParams, RequestParams, ResponseResult,
-    RunTurnParams, SessionUpdateConfigParams, StartSessionFromStoryParams, StreamFrame,
-    UpdatePlayerDescriptionParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    RunTurnParams, SessionMessageKind, SessionUpdateConfigParams, StartSessionFromStoryParams,
+    StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionMessageParams,
+    UpdateSessionParams, UpdateStoryParams, UploadChunkParams, UploadCompleteParams,
+    UploadInitParams, UploadTargetKind,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
@@ -25,9 +28,9 @@ use store::{
 };
 
 use common::{
-    QueuedMockLlm, assistant_response, sample_archive, sample_character_record,
-    sample_player_state_schema, sample_story_graph, sample_story_payload, sample_story_record,
-    sample_world_state_schema,
+    QueuedMockLlm, assistant_response, sample_archive, sample_character_content,
+    sample_character_record, sample_player_profile, sample_player_state_schema,
+    sample_schema_record, sample_story_graph, sample_story_record, sample_world_state_schema,
 };
 
 fn default_api_ids() -> AgentApiIds {
@@ -38,6 +41,7 @@ fn default_api_ids() -> AgentApiIds {
         actor_api_id: "actor-default".to_owned(),
         narrator_api_id: "narrator-default".to_owned(),
         keeper_api_id: "keeper-default".to_owned(),
+        replyer_api_id: "replyer-default".to_owned(),
     }
 }
 
@@ -49,6 +53,7 @@ fn alternate_api_ids() -> AgentApiIds {
         actor_api_id: "actor-alt".to_owned(),
         narrator_api_id: "narrator-alt".to_owned(),
         keeper_api_id: "keeper-alt".to_owned(),
+        replyer_api_id: "replyer-alt".to_owned(),
     }
 }
 
@@ -68,6 +73,7 @@ fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
         .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
         .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")
         .register(default.keeper_api_id, Arc::clone(&llm), "keeper-model")
+        .register(default.replyer_api_id, Arc::clone(&llm), "replyer-model")
         .register(
             alternate.planner_api_id,
             Arc::clone(&llm),
@@ -89,7 +95,12 @@ fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
             Arc::clone(&llm),
             "narrator-alt-model",
         )
-        .register(alternate.keeper_api_id, llm, "keeper-alt-model")
+        .register(
+            alternate.keeper_api_id,
+            Arc::clone(&llm),
+            "keeper-alt-model",
+        )
+        .register(alternate.replyer_api_id, llm, "replyer-alt-model")
 }
 
 fn unary_result(reply: HandlerReply) -> ResponseResult {
@@ -109,15 +120,102 @@ fn sample_llm_api_record(api_id: &str, model: &str) -> LlmApiRecord {
         base_url: "https://api.openai.example/v1".to_owned(),
         api_key: "sk-secret-token".to_owned(),
         model: model.to_owned(),
+        temperature: Some(0.4),
+        max_tokens: Some(768),
     }
+}
+
+async fn build_handler(llm: Arc<QueuedMockLlm>) -> (Arc<InMemoryStore>, Handler) {
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
+    (store, handler)
+}
+
+async fn seed_schema_records(store: &InMemoryStore) {
+    store
+        .save_schema(sample_schema_record(
+            "schema-character-merchant",
+            "Merchant Schema",
+        ))
+        .await
+        .expect("save character schema");
+    store
+        .save_schema(sample_schema_record("schema-player-default", "Player Seed"))
+        .await
+        .expect("save player seed");
+    store
+        .save_schema(sample_schema_record("schema-world-default", "World Seed"))
+        .await
+        .expect("save world seed");
+    store
+        .save_schema(sample_schema_record(
+            "schema-player-story-1",
+            "Player Story Schema",
+        ))
+        .await
+        .expect("save story player schema");
+    store
+        .save_schema(sample_schema_record(
+            "schema-world-story-1",
+            "World Story Schema",
+        ))
+        .await
+        .expect("save story world schema");
+}
+
+async fn seed_player_profiles(store: &InMemoryStore) {
+    store
+        .save_player_profile(sample_player_profile(
+            "profile-courier-a",
+            "A determined courier.",
+        ))
+        .await
+        .expect("save player profile a");
+    store
+        .save_player_profile(sample_player_profile(
+            "profile-courier-b",
+            "A cautious courier.",
+        ))
+        .await
+        .expect("save player profile b");
+}
+
+async fn seed_story_records(store: &InMemoryStore) {
+    seed_schema_records(store).await;
+    seed_player_profiles(store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-1".to_owned(),
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned()],
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
+            planned_story: None,
+        })
+        .await
+        .expect("save resources");
+    store
+        .save_story(sample_story_record("resource-1", "story-1"))
+        .await
+        .expect("save story");
 }
 
 #[tokio::test]
 async fn upload_character_card_and_create_resources_via_character_id() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let handler = Handler::with_in_memory_store(registry_with_ids(llm.clone()), default_api_ids())
-        .await
-        .expect("handler should build");
+    let (store, handler) = build_handler(llm.clone()).await;
+    seed_schema_records(&store).await;
     let archive_bytes = sample_archive()
         .to_chr_bytes()
         .expect("archive should serialize");
@@ -256,8 +354,8 @@ async fn upload_character_card_and_create_resources_via_character_id() {
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec![character_id.clone()],
-                    player_state_schema_seed: sample_player_state_schema(),
-                    world_state_schema_seed: Some(sample_world_state_schema()),
+                    player_schema_id_seed: Some("schema-player-default".to_owned()),
+                    world_schema_id_seed: Some("schema-world-default".to_owned()),
                     planned_story: Some(
                         "Opening Situation:\nA courier arrives at dusk.".to_owned(),
                     ),
@@ -291,9 +389,8 @@ async fn upload_character_card_and_create_resources_via_character_id() {
 #[tokio::test]
 async fn character_create_then_set_cover_enables_cover_and_chr_export() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let handler = Handler::with_in_memory_store(registry_with_ids(llm), default_api_ids())
-        .await
-        .expect("handler should build");
+    let (store, handler) = build_handler(llm).await;
+    seed_schema_records(&store).await;
 
     let created = unary_result(
         handler
@@ -301,15 +398,7 @@ async fn character_create_then_set_cover_enables_cover_and_chr_export() {
                 "req-create",
                 None::<String>,
                 RequestParams::CharacterCreate(CharacterCreateParams {
-                    content: CharacterCardContent {
-                        id: "merchant".to_owned(),
-                        name: "Haru".to_owned(),
-                        personality: "greedy but friendly trader".to_owned(),
-                        style: "talkative, casual".to_owned(),
-                        tendencies: vec!["likes profitable deals".to_owned()],
-                        state_schema: Default::default(),
-                        system_prompt: "Stay in character.".to_owned(),
-                    },
+                    content: sample_character_content(),
                 }),
             ))
             .await,
@@ -452,9 +541,8 @@ async fn character_create_then_set_cover_enables_cover_and_chr_export() {
 #[tokio::test]
 async fn character_update_replaces_content_and_preserves_cover() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let handler = Handler::with_in_memory_store(registry_with_ids(llm), default_api_ids())
-        .await
-        .expect("handler should build");
+    let (store, handler) = build_handler(llm).await;
+    seed_schema_records(&store).await;
 
     unary_result(
         handler
@@ -462,15 +550,7 @@ async fn character_update_replaces_content_and_preserves_cover() {
                 "req-create",
                 None::<String>,
                 RequestParams::CharacterCreate(CharacterCreateParams {
-                    content: CharacterCardContent {
-                        id: "merchant".to_owned(),
-                        name: "Haru".to_owned(),
-                        personality: "greedy but friendly trader".to_owned(),
-                        style: "talkative, casual".to_owned(),
-                        tendencies: vec!["likes profitable deals".to_owned()],
-                        state_schema: Default::default(),
-                        system_prompt: "Stay in character.".to_owned(),
-                    },
+                    content: sample_character_content(),
                 }),
             ))
             .await,
@@ -505,7 +585,7 @@ async fn character_update_replaces_content_and_preserves_cover() {
                             "likes profitable deals".to_owned(),
                             "keeps an eye on the tide".to_owned(),
                         ],
-                        state_schema: Default::default(),
+                        schema_id: "schema-character-merchant".to_owned(),
                         system_prompt: "Stay in character and watch the waterline.".to_owned(),
                     },
                 }),
@@ -549,9 +629,8 @@ async fn character_update_replaces_content_and_preserves_cover() {
 #[tokio::test]
 async fn character_update_rejects_mismatched_content_id() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let handler = Handler::with_in_memory_store(registry_with_ids(llm), default_api_ids())
-        .await
-        .expect("handler should build");
+    let (store, handler) = build_handler(llm).await;
+    seed_schema_records(&store).await;
 
     unary_result(
         handler
@@ -559,15 +638,7 @@ async fn character_update_rejects_mismatched_content_id() {
                 "req-create",
                 None::<String>,
                 RequestParams::CharacterCreate(CharacterCreateParams {
-                    content: CharacterCardContent {
-                        id: "merchant".to_owned(),
-                        name: "Haru".to_owned(),
-                        personality: "greedy but friendly trader".to_owned(),
-                        style: "talkative, casual".to_owned(),
-                        tendencies: vec!["likes profitable deals".to_owned()],
-                        state_schema: Default::default(),
-                        system_prompt: "Stay in character.".to_owned(),
-                    },
+                    content: sample_character_content(),
                 }),
             ))
             .await,
@@ -585,7 +656,7 @@ async fn character_update_rejects_mismatched_content_id() {
                     personality: "greedy but friendly trader".to_owned(),
                     style: "talkative, casual".to_owned(),
                     tendencies: vec!["likes profitable deals".to_owned()],
-                    state_schema: Default::default(),
+                    schema_id: "schema-character-merchant".to_owned(),
                     system_prompt: "Stay in character.".to_owned(),
                 },
             }),
@@ -605,17 +676,22 @@ async fn character_update_rejects_mismatched_content_id() {
 async fn story_and_session_crud_follow_store_objects() {
     let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
-            "{\"graph\":{\"start_node\":\"dock\",\"nodes\":[]},\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\"}",
+            "{\"nodes\":[],\"start_node\":\"dock\",\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\",\"section_summary\":\"Opening dock scene.\"}",
             Some(json!({
-                "graph": sample_story_graph(),
+                "nodes": sample_story_graph().nodes,
+                "transition_patches": [],
+                "start_node": "dock",
                 "world_state_schema": sample_world_state_schema(),
                 "player_state_schema": sample_player_state_schema(),
-                "introduction": "At the dock."
+                "introduction": "At the dock.",
+                "section_summary": "Opening dock scene."
             })),
         ))],
         vec![],
     ));
     let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_player_profiles(&store).await;
     store
         .save_character(sample_character_record())
         .await
@@ -624,7 +700,8 @@ async fn story_and_session_crud_follow_store_objects() {
     let handler = Handler::new(
         store.clone(),
         registry_with_ids(llm.clone()),
-        default_api_ids(),
+        Some(default_api_ids()),
+        None,
     )
     .await
     .expect("handler should build");
@@ -637,9 +714,12 @@ async fn story_and_session_crud_follow_store_objects() {
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec!["merchant".to_owned()],
-                    player_state_schema_seed: sample_player_state_schema(),
-                    world_state_schema_seed: Some(sample_world_state_schema()),
-                    planned_story: None,
+                    player_schema_id_seed: Some("schema-player-default".to_owned()),
+                    world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    planned_story: Some(
+                        "Title:\nFlooded Harbor\n\nOpening Situation:\nA courier arrives at a flooded dock.\n\nCore Conflict:\nTrade routes are collapsing.\n\nCharacter Roles:\nHaru (merchant) watches the tide.\n\nSuggested Beats:\n- The courier arrives at the dock.\n\nState Hints:\nTrack the flood level."
+                            .to_owned(),
+                    ),
                 }),
             ))
             .await,
@@ -677,7 +757,7 @@ async fn story_and_session_crud_follow_store_objects() {
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id: story_id.clone(),
                 display_name: Some("Courier Run".to_owned()),
-                player_description: "A determined courier.".to_owned(),
+                player_profile_id: Some("profile-courier-a".to_owned()),
                 config_mode: SessionConfigMode::UseGlobal,
                 session_api_ids: None,
             }),
@@ -694,6 +774,9 @@ async fn story_and_session_crud_follow_store_objects() {
             ResponseResult::SessionStarted(payload) => {
                 assert_eq!(payload.story_id, story_id);
                 assert_eq!(payload.display_name, "Courier Run");
+                assert!(payload.history.is_empty());
+                assert!(payload.created_at_ms.is_some());
+                assert!(payload.updated_at_ms.is_some());
             }
             other => panic!("unexpected response: {other:?}"),
         },
@@ -713,6 +796,9 @@ async fn story_and_session_crud_follow_store_objects() {
         ResponseResult::Session(payload) => {
             assert_eq!(payload.session_id, session_id);
             assert_eq!(payload.display_name, "Courier Run");
+            assert!(payload.history.is_empty());
+            assert!(payload.created_at_ms.is_some());
+            assert!(payload.updated_at_ms.is_some());
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -733,47 +819,357 @@ async fn story_and_session_crud_follow_store_objects() {
 }
 
 #[tokio::test]
-async fn session_config_can_switch_between_session_and_global_modes() {
+async fn story_update_changes_display_name() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
     let handler = Handler::new(
         store.clone(),
-        registry_with_ids(llm.clone()),
-        default_api_ids(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
     )
     .await
     .expect("handler should build");
 
-    let character = sample_character_record();
-    let resource = StoryResourcesRecord {
-        resource_id: "resource-1".to_owned(),
-        story_concept: "A flooded harbor story.".to_owned(),
-        character_ids: vec![character.character_id.clone()],
-        player_state_schema_seed: sample_player_state_schema(),
-        world_state_schema_seed: Some(sample_world_state_schema()),
-        planned_story: None,
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-update",
+                None::<String>,
+                RequestParams::StoryUpdate(UpdateStoryParams {
+                    story_id: "story-1".to_owned(),
+                    display_name: "Updated Flooded Harbor".to_owned(),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::Story(payload) => {
+            assert_eq!(payload.story_id, "story-1");
+            assert_eq!(payload.display_name, "Updated Flooded Harbor");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn session_update_changes_display_name() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "session-start",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: Some("Courier Run".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                config_mode: SessionConfigMode::UseGlobal,
+                session_api_ids: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
     };
-    let story = StoryRecord {
-        story_id: "story-1".to_owned(),
-        display_name: "Flooded Harbor".to_owned(),
-        resource_id: resource.resource_id.clone(),
-        graph: sample_story_graph(),
-        world_state_schema: sample_world_state_schema(),
-        player_state_schema: sample_player_state_schema(),
-        introduction: "The courier reaches a flooded dock.".to_owned(),
-        created_at_ms: Some(1_000),
-        updated_at_ms: Some(1_000),
+    let session_id = started.session_id.expect("session id should exist");
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-update",
+                Some(session_id.clone()),
+                RequestParams::SessionUpdate(UpdateSessionParams {
+                    display_name: "Updated Courier Run".to_owned(),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::Session(payload) => {
+            assert_eq!(payload.session_id, session_id);
+            assert_eq!(payload.display_name, "Updated Courier Run");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn session_message_crud_round_trips_and_updates_session_history() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "session-start",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: Some("Courier Run".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                config_mode: SessionConfigMode::UseGlobal,
+                session_api_ids: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    let created = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-create",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageCreate(CreateSessionMessageParams {
+                    kind: SessionMessageKind::Narration,
+                    speaker_id: "narrator".to_owned(),
+                    speaker_name: "Narrator".to_owned(),
+                    text: "Fog spills over the flooded dock.".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    let message_id = match created {
+        ResponseResult::SessionMessage(payload) => {
+            assert_eq!(payload.kind, SessionMessageKind::Narration);
+            assert_eq!(payload.sequence, 0);
+            assert_eq!(payload.text, "Fog spills over the flooded dock.");
+            payload.message_id.clone()
+        }
+        other => panic!("unexpected response: {other:?}"),
     };
 
-    store
-        .save_character(character)
+    let fetched = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-get",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageGet(GetSessionMessageParams {
+                    message_id: message_id.clone(),
+                }),
+            ))
+            .await,
+    );
+    match fetched {
+        ResponseResult::SessionMessage(payload) => {
+            assert_eq!(payload.message_id, message_id);
+            assert_eq!(payload.speaker_id, "narrator");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-update",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageUpdate(UpdateSessionMessageParams {
+                    message_id: message_id.clone(),
+                    kind: SessionMessageKind::Dialogue,
+                    speaker_id: "merchant".to_owned(),
+                    speaker_name: "Haru".to_owned(),
+                    text: "The tide will turn soon.".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match updated {
+        ResponseResult::SessionMessage(payload) => {
+            assert_eq!(payload.message_id, message_id);
+            assert_eq!(payload.kind, SessionMessageKind::Dialogue);
+            assert_eq!(payload.speaker_name, "Haru");
+            assert_eq!(payload.text, "The tide will turn soon.");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let listed = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-list",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageList(ListSessionMessagesParams::default()),
+            ))
+            .await,
+    );
+    match listed {
+        ResponseResult::SessionMessagesListed(payload) => {
+            assert_eq!(payload.messages.len(), 1);
+            assert_eq!(payload.messages[0].message_id, message_id);
+            assert_eq!(payload.messages[0].sequence, 0);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let session = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-get",
+                Some(session_id.clone()),
+                RequestParams::SessionGet(GetSessionParams::default()),
+            ))
+            .await,
+    );
+    match session {
+        ResponseResult::Session(payload) => {
+            assert_eq!(payload.history.len(), 1);
+            assert_eq!(payload.history[0].message_id, message_id);
+            assert_eq!(payload.history[0].speaker_name, "Haru");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let deleted = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-delete",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageDelete(DeleteSessionMessageParams {
+                    message_id: message_id.clone(),
+                }),
+            ))
+            .await,
+    );
+    match deleted {
+        ResponseResult::SessionMessageDeleted(payload) => {
+            assert_eq!(payload.message_id, message_id);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let listed_after_delete = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-message-list",
+                Some(session_id.clone()),
+                RequestParams::SessionMessageList(ListSessionMessagesParams::default()),
+            ))
+            .await,
+    );
+    match listed_after_delete {
+        ResponseResult::SessionMessagesListed(payload) => {
+            assert!(payload.messages.is_empty());
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn session_suggest_replies_returns_unary_payload() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{}",
+            Some(json!({
+                "replies": [
+                    { "id": "r1", "text": "Show me the fastest safe route." },
+                    { "id": "r2", "text": "What exactly are you charging?" },
+                    { "id": "r3", "text": "I need proof before I commit." }
+                ]
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "session-start",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: Some("Courier Run".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                config_mode: SessionConfigMode::UseGlobal,
+                session_api_ids: None,
+            }),
+        ))
         .await
-        .expect("save character");
-    store
-        .save_story_resources(resource)
-        .await
-        .expect("save resources");
-    store.save_story(story).await.expect("save story");
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    let suggested = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "suggest-replies",
+                Some(session_id),
+                RequestParams::SessionSuggestReplies(SuggestRepliesParams {
+                    limit: Some(3),
+                    api_overrides: None,
+                }),
+            ))
+            .await,
+    );
+
+    match suggested {
+        ResponseResult::SuggestedReplies(payload) => {
+            assert_eq!(payload.replies.len(), 3);
+            assert_eq!(payload.replies[0].reply_id, "r1");
+            assert_eq!(payload.replies[0].text, "Show me the fastest safe route.");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    assert!(
+        store
+            .list_sessions()
+            .await
+            .expect("sessions should load")
+            .len()
+            == 1
+    );
+}
+
+#[tokio::test]
+async fn session_config_can_switch_between_session_and_global_modes() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm.clone()),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -782,7 +1178,7 @@ async fn session_config_can_switch_between_session_and_global_modes() {
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id: "story-1".to_owned(),
                 display_name: None,
-                player_description: "A determined courier.".to_owned(),
+                player_profile_id: Some("profile-courier-a".to_owned()),
                 config_mode: SessionConfigMode::UseSession,
                 session_api_ids: Some(alternate_api_ids()),
             }),
@@ -865,9 +1261,15 @@ async fn session_config_can_switch_between_session_and_global_modes() {
 async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(llm), default_api_ids())
-        .await
-        .expect("handler should build");
+    seed_schema_records(&store).await;
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
 
     let character_with_cover = sample_character_record();
     let mut character_without_cover = sample_character_record();
@@ -893,8 +1295,8 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                 resource_id: format!("resource-{index}"),
                 story_concept: format!("Story concept {index}"),
                 character_ids: vec!["merchant".to_owned()],
-                player_state_schema_seed: sample_player_state_schema(),
-                world_state_schema_seed: Some(sample_world_state_schema()),
+                player_schema_id_seed: Some("schema-player-default".to_owned()),
+                world_schema_id_seed: Some("schema-world-default".to_owned()),
                 planned_story: None,
             })
             .await
@@ -906,8 +1308,8 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                 display_name: format!("Story {index}"),
                 resource_id: format!("resource-{index}"),
                 graph: sample_story_graph(),
-                world_state_schema: sample_world_state_schema(),
-                player_state_schema: sample_player_state_schema(),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
                 introduction: format!("Intro {index}"),
                 created_at_ms: Some(index),
                 updated_at_ms: if index == 0 { None } else { Some(index * 100) },
@@ -920,6 +1322,8 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                 session_id: format!("session-{index}"),
                 display_name: format!("Session {index}"),
                 story_id: format!("story-{index}"),
+                player_profile_id: None,
+                player_schema_id: "schema-player-story-1".to_owned(),
                 snapshot: engine::RuntimeSnapshot {
                     story_id: format!("story-{index}"),
                     player_description: format!("Player {index}"),
@@ -1047,43 +1451,15 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
         ])],
     ));
     let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
     let handler = Handler::new(
         store.clone(),
         registry_with_ids(llm.clone()),
-        default_api_ids(),
+        Some(default_api_ids()),
+        None,
     )
     .await
     .expect("handler should build");
-    let character = sample_character_record();
-    let resource = StoryResourcesRecord {
-        resource_id: "resource-1".to_owned(),
-        story_concept: "A flooded harbor story.".to_owned(),
-        character_ids: vec![character.character_id.clone()],
-        player_state_schema_seed: sample_player_state_schema(),
-        world_state_schema_seed: Some(sample_world_state_schema()),
-        planned_story: None,
-    };
-    let story = StoryRecord {
-        story_id: "story-1".to_owned(),
-        display_name: "Flooded Harbor".to_owned(),
-        resource_id: resource.resource_id.clone(),
-        graph: sample_story_graph(),
-        world_state_schema: sample_world_state_schema(),
-        player_state_schema: sample_player_state_schema(),
-        introduction: "The courier reaches a flooded dock.".to_owned(),
-        created_at_ms: Some(1_000),
-        updated_at_ms: Some(1_000),
-    };
-
-    store
-        .save_character(character)
-        .await
-        .expect("save character");
-    store
-        .save_story_resources(resource)
-        .await
-        .expect("save resources");
-    store.save_story(story).await.expect("save story");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1092,7 +1468,7 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id: "story-1".to_owned(),
                 display_name: None,
-                player_description: "A determined courier.".to_owned(),
+                player_profile_id: Some("profile-courier-a".to_owned()),
                 config_mode: SessionConfigMode::UseGlobal,
                 session_api_ids: None,
             }),
@@ -1145,49 +1521,32 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
         session.snapshot.world_state.state("gate_open"),
         Some(&json!(true))
     );
+    let mut messages = store
+        .list_session_messages(&session_id)
+        .await
+        .expect("load session messages");
+    messages.sort_by_key(|message| message.sequence);
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].speaker_id, "player");
+    assert_eq!(messages[0].text, "Open the gate.");
+    assert_eq!(messages[1].kind, store::SessionMessageKind::Narration);
+    assert_eq!(messages[1].speaker_id, "narrator");
+    assert_eq!(messages[1].text, "Water churned beneath the dock.");
 }
 
 #[tokio::test]
 async fn update_player_description_persists_to_session_snapshot() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
     let handler = Handler::new(
         store.clone(),
         registry_with_ids(llm.clone()),
-        default_api_ids(),
+        Some(default_api_ids()),
+        None,
     )
     .await
     .expect("handler should build");
-
-    let character = sample_character_record();
-    let resource = StoryResourcesRecord {
-        resource_id: "resource-1".to_owned(),
-        story_concept: "A flooded harbor story.".to_owned(),
-        character_ids: vec![character.character_id.clone()],
-        player_state_schema_seed: sample_player_state_schema(),
-        world_state_schema_seed: Some(sample_world_state_schema()),
-        planned_story: None,
-    };
-    let story = StoryRecord {
-        story_id: "story-1".to_owned(),
-        display_name: "Flooded Harbor".to_owned(),
-        resource_id: resource.resource_id.clone(),
-        graph: sample_story_graph(),
-        world_state_schema: sample_world_state_schema(),
-        player_state_schema: sample_player_state_schema(),
-        introduction: sample_story_payload("resource-1", "story-1").introduction,
-        created_at_ms: Some(1_000),
-        updated_at_ms: Some(1_000),
-    };
-    store
-        .save_character(character)
-        .await
-        .expect("save character");
-    store
-        .save_story_resources(resource)
-        .await
-        .expect("save resources");
-    store.save_story(story).await.expect("save story");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1196,7 +1555,7 @@ async fn update_player_description_persists_to_session_snapshot() {
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id: "story-1".to_owned(),
                 display_name: None,
-                player_description: "A determined courier.".to_owned(),
+                player_profile_id: Some("profile-courier-a".to_owned()),
                 config_mode: SessionConfigMode::UseGlobal,
                 session_api_ids: None,
             }),
@@ -1230,9 +1589,14 @@ async fn update_player_description_persists_to_session_snapshot() {
 async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(llm), default_api_ids())
-        .await
-        .expect("handler should build");
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        None,
+    )
+    .await
+    .expect("handler should build");
 
     let created = unary_result(
         handler
@@ -1241,10 +1605,12 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
                 None::<String>,
                 RequestParams::LlmApiCreate(LlmApiCreateParams {
                     api_id: "managed".to_owned(),
-                    provider: LlmProvider::OpenAi,
-                    base_url: "https://api.openai.example/v1".to_owned(),
-                    api_key: "sk-secret-token".to_owned(),
-                    model: "gpt-4.1-mini".to_owned(),
+                    provider: Some(LlmProvider::OpenAi),
+                    base_url: Some("https://api.openai.example/v1".to_owned()),
+                    api_key: Some("sk-secret-token".to_owned()),
+                    model: Some("gpt-4.1-mini".to_owned()),
+                    temperature: Some(0.3),
+                    max_tokens: Some(1_024),
                 }),
             ))
             .await,
@@ -1252,6 +1618,8 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     match created {
         ResponseResult::LlmApi(payload) => {
             assert_eq!(payload.api_id, "managed");
+            assert_eq!(payload.temperature, Some(0.3));
+            assert_eq!(payload.max_tokens, Some(1_024));
             assert!(payload.has_api_key);
             assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
         }
@@ -1272,6 +1640,8 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     match fetched {
         ResponseResult::LlmApi(payload) => {
             assert_eq!(payload.model, "gpt-4.1-mini");
+            assert_eq!(payload.temperature, Some(0.3));
+            assert_eq!(payload.max_tokens, Some(1_024));
             assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
         }
         other => panic!("unexpected response: {other:?}"),
@@ -1304,6 +1674,8 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
                     base_url: Some("https://api.alt.example/v1".to_owned()),
                     api_key: None,
                     model: Some("gpt-4.1".to_owned()),
+                    temperature: Some(0.6),
+                    max_tokens: Some(2_048),
                 }),
             ))
             .await,
@@ -1312,6 +1684,8 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
         ResponseResult::LlmApi(payload) => {
             assert_eq!(payload.base_url, "https://api.alt.example/v1");
             assert_eq!(payload.model, "gpt-4.1");
+            assert_eq!(payload.temperature, Some(0.6));
+            assert_eq!(payload.max_tokens, Some(2_048));
             assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
         }
         other => panic!("unexpected response: {other:?}"),
@@ -1323,6 +1697,8 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
         .expect("llm api should load")
         .expect("llm api should exist");
     assert_eq!(stored.api_key, "sk-secret-token");
+    assert_eq!(stored.temperature, Some(0.6));
+    assert_eq!(stored.max_tokens, Some(2_048));
 
     let deleted = unary_result(
         handler
@@ -1342,9 +1718,160 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
 }
 
 #[tokio::test]
+async fn default_llm_config_get_and_update_work_with_runtime_override() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        Some(store::DefaultLlmConfigRecord {
+            provider: LlmProvider::OpenAi,
+            base_url: "https://runtime.example/v1".to_owned(),
+            api_key: "sk-runtime".to_owned(),
+            model: "runtime-model".to_owned(),
+            temperature: Some(0.6),
+            max_tokens: Some(4_096),
+        }),
+    )
+    .await
+    .expect("handler should build");
+
+    let initial = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "default-get-1",
+                None::<String>,
+                RequestParams::DefaultLlmConfigGet(DefaultLlmConfigGetParams::default()),
+            ))
+            .await,
+    );
+    match initial {
+        ResponseResult::DefaultLlmConfig(payload) => {
+            assert!(payload.saved.is_none());
+            let effective = payload.effective.expect("effective config should exist");
+            assert_eq!(effective.base_url, "https://runtime.example/v1");
+            assert_eq!(effective.model, "runtime-model");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "default-update",
+                None::<String>,
+                RequestParams::DefaultLlmConfigUpdate(DefaultLlmConfigUpdateParams {
+                    provider: LlmProvider::OpenAi,
+                    base_url: "https://saved.example/v1".to_owned(),
+                    api_key: "sk-saved".to_owned(),
+                    model: "saved-model".to_owned(),
+                    temperature: Some(0.2),
+                    max_tokens: Some(1_024),
+                }),
+            ))
+            .await,
+    );
+    match updated {
+        ResponseResult::DefaultLlmConfig(payload) => {
+            let saved = payload.saved.expect("saved config should exist");
+            assert_eq!(saved.base_url, "https://saved.example/v1");
+            let effective = payload.effective.expect("effective config should exist");
+            assert_eq!(effective.base_url, "https://runtime.example/v1");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn llm_api_create_uses_effective_default_llm_config_when_fields_are_missing() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(
+        store.clone(),
+        registry_with_ids(llm),
+        Some(default_api_ids()),
+        Some(store::DefaultLlmConfigRecord {
+            provider: LlmProvider::OpenAi,
+            base_url: "https://runtime.example/v1".to_owned(),
+            api_key: "sk-runtime".to_owned(),
+            model: "runtime-model".to_owned(),
+            temperature: Some(0.7),
+            max_tokens: Some(2_048),
+        }),
+    )
+    .await
+    .expect("handler should build");
+
+    let created = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "llm-create-defaulted",
+                None::<String>,
+                RequestParams::LlmApiCreate(LlmApiCreateParams {
+                    api_id: "managed-defaulted".to_owned(),
+                    provider: None,
+                    base_url: None,
+                    api_key: None,
+                    model: None,
+                    temperature: None,
+                    max_tokens: None,
+                }),
+            ))
+            .await,
+    );
+
+    match created {
+        ResponseResult::LlmApi(payload) => {
+            assert_eq!(payload.api_id, "managed-defaulted");
+            assert_eq!(payload.base_url, "https://runtime.example/v1");
+            assert_eq!(payload.model, "runtime-model");
+            assert_eq!(payload.temperature, Some(0.7));
+            assert_eq!(payload.max_tokens, Some(2_048));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn llm_api_create_fails_when_required_fields_are_missing_and_no_default_exists() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store, registry_with_ids(llm), Some(default_api_ids()), None)
+        .await
+        .expect("handler should build");
+
+    match handler
+        .handle(JsonRpcRequestMessage::new(
+            "llm-create-incomplete",
+            None::<String>,
+            RequestParams::LlmApiCreate(LlmApiCreateParams {
+                api_id: "incomplete".to_owned(),
+                provider: None,
+                base_url: None,
+                api_key: None,
+                model: None,
+                temperature: None,
+                max_tokens: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => match response.outcome {
+            JsonRpcOutcome::Err(error) => {
+                assert_eq!(error.code, ErrorCode::InvalidRequest.rpc_code())
+            }
+            JsonRpcOutcome::Ok(result) => panic!("unexpected success response: {result:?}"),
+        },
+        HandlerReply::Stream { .. } => panic!("expected unary error reply"),
+    }
+}
+
+#[tokio::test]
 async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
     store
         .save_llm_api(sample_llm_api_record("planner-default", "planner-model"))
         .await
@@ -1353,31 +1880,12 @@ async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() 
         .save_llm_api(sample_llm_api_record("session-only", "session-model"))
         .await
         .expect("seed session llm api");
-    store
-        .save_character(sample_character_record())
-        .await
-        .expect("save character");
-    store
-        .save_story_resources(StoryResourcesRecord {
-            resource_id: "resource-1".to_owned(),
-            story_concept: "A flooded harbor story.".to_owned(),
-            character_ids: vec!["merchant".to_owned()],
-            player_state_schema_seed: sample_player_state_schema(),
-            world_state_schema_seed: Some(sample_world_state_schema()),
-            planned_story: None,
-        })
-        .await
-        .expect("save resources");
-    store
-        .save_story(sample_story_record("resource-1", "story-1"))
-        .await
-        .expect("save story");
 
     let registry = {
         let extra_llm: Arc<dyn llm::LlmApi> = llm.clone();
         registry_with_ids(llm).register("session-only", extra_llm, "session-model")
     };
-    let handler = Handler::new(store.clone(), registry, default_api_ids())
+    let handler = Handler::new(store.clone(), registry, Some(default_api_ids()), None)
         .await
         .expect("handler should build");
 
@@ -1409,8 +1917,8 @@ async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() 
             RequestParams::StoryStartSession(StartSessionFromStoryParams {
                 story_id: "story-1".to_owned(),
                 display_name: Some("Config Test".to_owned()),
-                player_description: "A courier.".to_owned(),
-                config_mode: StoreSessionConfigMode::UseSession,
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                config_mode: SessionConfigMode::UseSession,
                 session_api_ids: Some(session_api_ids),
             }),
         ))

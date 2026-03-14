@@ -6,7 +6,12 @@
 
 ### 1.1 配置 LLM API
 
-先创建一个或多个 `llm_api` 资源：
+可以先配置持久化的默认模板：
+
+- `default_llm_config.get`
+- `default_llm_config.update`
+
+然后再创建一个或多个 `llm_api` 资源：
 
 - `llm_api.create`
 - `llm_api.list`
@@ -15,6 +20,9 @@
 
 这些对象描述可用的大模型入口，例如 OpenAI-compatible API。  
 后续 global config 和 session config 只引用 `api_id`。
+
+如果环境变量或配置文件定义了默认 LLM 配置，那么当前进程会优先使用这些覆盖值；
+否则就使用持久化保存的默认配置。
 
 ### 1.2 创建 schema 资源
 
@@ -121,20 +129,39 @@
 
 ## 6. 生成 story
 
-调用：
+推荐流程：
+
+- `story_draft.start`
+- `story_draft.continue`
+- `story_draft.finalize`
+
+兼容流程：
 
 - `story.generate`
+
+推荐的 draft 流程如下：
+
+1. `story_draft.start` 先读取 `story_resources`
+2. 如果缺少 `planned_story`，服务端会先内部执行一次 `story.generate_plan`
+3. `Architect` 只生成第一段大纲对应的节点，以及初始 schema 和 introduction
+4. 服务端把 partial graph 和进度保存到 `story_draft`
+5. 每次 `story_draft.continue` 再生成下一段 section，并合并进同一个 draft
+6. `story_draft.finalize` 对合并后的图做校验，再创建最终 `story`
+
+`story.generate` 仍然保留，作为一次性封装，内部就是跑完整个 draft 流程。
 
 这一阶段会：
 
 1. 读取 `story_resources`
-2. 通过 `Architect` 生成：
+2. 把已生成节点保存在服务端 `story_draft`
+3. 后续继续生成时，只把图摘要和当前 section 传给 Architect，而不是把完整旧图反复回放
+4. 生成：
    - `graph`
    - world schema 内容
    - player schema 内容
    - `introduction`
-3. 把生成出的 schema 内容先落库成独立 `schema`
-4. 创建最终 `story`
+5. 把生成出的 schema 内容先落库成独立 `schema`
+6. 创建最终 `story`
 
 最终 `story` 保存：
 
@@ -160,6 +187,14 @@
 - 可选 `session_api_ids`
 
 启动后得到一个新的 `session`。
+
+返回的 `session` 详情里仍然有 `history`，但这份 transcript 现在由独立的 `session_message` 记录支撑。
+
+如果前端需要为玩家展示几个可点击的下一句建议，可以调用：
+
+- `session.suggest_replies`
+
+这些建议不会写入 transcript；只有真正提交到 `session.run_turn` 的输入才会进入历史。
 
 ## 8. session 内部状态
 
@@ -204,6 +239,16 @@ session 现在同时保存：
 - 多个 `event`
 - `completed` 或 `failed`
 
+如果后续要编辑 transcript，则使用：
+
+- `session_message.create`
+- `session_message.get`
+- `session_message.list`
+- `session_message.update`
+- `session_message.delete`
+
+这些操作只改 transcript 数据，不会重放历史，也不会修改 session snapshot。
+
 ## 10. 切换玩家设定
 
 如果当前 session 想切换到另一个玩家设定：
@@ -244,4 +289,3 @@ session 现在同时保存：
 - 用 `story.list` 浏览多个 story
 - 用 `session.list` 浏览多个对话
 - 后续请求直接带另一个 `session_id`，实现“切换到另一段对话”
-
