@@ -14,7 +14,9 @@ import type {
   CharacterCoverResult,
   CharacterCoverUpdatedResult,
   CharacterCreateResult,
+  CharacterDeletedResult,
   CharacterExportResult,
+  CharacterSchemaResult,
   CharactersListedResult,
   CharacterSummary,
   UploadChunkAcceptedResult,
@@ -51,6 +53,29 @@ export async function createCharacter(content: CharacterCardContent, signal?: Ab
     'character.create',
     { content },
     { signal },
+  )
+}
+
+export async function getCharacter(characterId: string, signal?: AbortSignal) {
+  return rpcRequest<{ character_id: string }, CharacterSchemaResult>(
+    'character.get',
+    { character_id: characterId },
+    { signal },
+  )
+}
+
+export async function updateCharacter(args: {
+  characterId: string
+  content: CharacterCardContent
+  signal?: AbortSignal
+}) {
+  return rpcRequest<{ character_id: string; content: CharacterCardContent }, CharacterSchemaResult>(
+    'character.update',
+    {
+      character_id: args.characterId,
+      content: args.content,
+    },
+    { signal: args.signal },
   )
 }
 
@@ -163,6 +188,14 @@ export async function importCharacterArchive(file: File) {
   >('upload.complete', { upload_id: initialized.upload_id })
 
   return completed.character_summary
+}
+
+export async function deleteCharacter(characterId: string, signal?: AbortSignal) {
+  return rpcRequest<{ character_id: string }, CharacterDeletedResult>(
+    'character.delete',
+    { character_id: characterId },
+    { signal },
+  )
 }
 
 export function createCoverDataUrl(args: {

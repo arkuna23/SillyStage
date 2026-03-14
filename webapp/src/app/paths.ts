@@ -1,7 +1,12 @@
 export const appPaths = {
+  apis: '/workspace/apis',
   characters: '/workspace/characters',
+  dashboard: '/workspace/dashboard',
   home: '/',
-  workspace: '/workspace/characters',
+  playerProfiles: '/workspace/player-profiles',
+  schemas: '/workspace/schemas',
+  storyResources: '/workspace/story-resources',
+  workspace: '/workspace/dashboard',
   workspaceRoot: '/workspace',
 } as const
 

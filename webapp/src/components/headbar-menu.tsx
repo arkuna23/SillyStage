@@ -61,7 +61,7 @@ export function HeadbarMenu({ className }: { className?: string }) {
         <button
           aria-label={t('common.menu')}
           className={cn(
-            'inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 data-[state=open]:bg-[var(--color-bg-elevated)] data-[state=open]:text-[var(--color-text-primary)]',
+            'inline-flex h-10 w-10 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] data-[state=open]:bg-[var(--color-bg-elevated)] data-[state=open]:text-[var(--color-text-primary)]',
             className,
           )}
           type="button"

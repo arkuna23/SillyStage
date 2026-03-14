@@ -20,7 +20,7 @@ export const PopupMenuContent = forwardRef<
     <PopupMenuPortal>
       <DropdownMenu.Content
         className={cn(
-          'popup-menu-content z-50 min-w-56 origin-[var(--radix-dropdown-menu-content-transform-origin)] rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-2 text-[var(--color-text-primary)] shadow-[0_22px_70px_rgba(0,0,0,0.32)] outline-none backdrop-blur-xl',
+          'popup-menu-content z-50 min-w-56 origin-[var(--radix-dropdown-menu-content-transform-origin)] rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-2 text-[var(--color-text-primary)] shadow-[var(--shadow-floating)] outline-none backdrop-blur-xl',
           className,
         )}
         ref={ref}
@@ -74,8 +74,8 @@ export const PopupMenuRadioItem = forwardRef<
       {...props}
     >
       <span className="flex h-4 w-4 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-white/5">
-        <DropdownMenu.ItemIndicator>
-          <span className="block h-2 w-2 rounded-full bg-[var(--color-accent-gold)]" />
+        <DropdownMenu.ItemIndicator className="flex h-2 w-2 items-center justify-center leading-none">
+          <span className="h-2 w-2 rounded-full bg-[var(--color-accent-gold)]" />
         </DropdownMenu.ItemIndicator>
       </span>
       <span className="flex-1">{children}</span>

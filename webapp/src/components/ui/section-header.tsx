@@ -20,18 +20,18 @@ export function SectionHeader({
   return (
     <div
       className={cn(
-        'flex flex-col gap-4 md:flex-row md:items-end md:justify-between',
+        'flex flex-col gap-3 md:flex-row md:items-center md:justify-between',
         className,
       )}
     >
-      <div className="space-y-3">
+      <div className="min-w-0 space-y-2">
         {eyebrow ? (
           <p className="text-xs uppercase text-[var(--color-accent-copper)]">
             {eyebrow}
           </p>
         ) : null}
-        <div className="space-y-3">
-          <h2 className="font-display text-3xl leading-tight text-[var(--color-text-primary)] sm:text-4xl">
+        <div className="min-w-0 space-y-2">
+          <h2 className="font-display text-3xl leading-tight text-[var(--color-text-primary)] sm:text-[2.2rem] md:truncate md:whitespace-nowrap">
             {title}
           </h2>
           {description ? (

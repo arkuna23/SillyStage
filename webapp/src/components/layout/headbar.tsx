@@ -1,4 +1,8 @@
 import { useEffect, useState } from 'react'
+import type { ReactNode } from 'react'
+import { faHouse } from '@fortawesome/free-solid-svg-icons/faHouse'
+import { faTableColumns } from '@fortawesome/free-solid-svg-icons/faTableColumns'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -8,9 +12,14 @@ import { cn } from '../../lib/cn'
 import { SegmentedSelector } from '../ui/segmented-selector'
 
 const navigationItems = [
-  { key: 'nav.home', to: appPaths.home },
-  { key: 'nav.workspace', to: appPaths.workspace },
+  { icon: <FontAwesomeIcon fixedWidth icon={faHouse} />, key: 'nav.home', to: appPaths.home },
+  {
+    icon: <FontAwesomeIcon fixedWidth icon={faTableColumns} />,
+    key: 'nav.workspace',
+    to: appPaths.workspace,
+  },
 ] as const satisfies ReadonlyArray<{
+  icon: ReactNode
   key: 'nav.home' | 'nav.workspace'
   to: typeof appPaths.home | typeof appPaths.workspace
 }>
@@ -74,6 +83,7 @@ export function Headbar() {
               ariaLabel={t('common.navigation')}
               className="w-full justify-center md:w-auto md:shrink-0"
               items={navigationItems.map((item) => ({
+                icon: item.icon,
                 label: t(item.key),
                 value: item.to,
               }))}

@@ -44,7 +44,7 @@ export const DialogContent = forwardRef<
       >
         <div
           className={cn(
-            'dialog-surface w-full rounded-[1.9rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] shadow-[0_34px_110px_rgba(0,0,0,0.42)] backdrop-blur-xl',
+            'dialog-surface w-full rounded-[1.9rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] shadow-[var(--shadow-dialog)] backdrop-blur-xl',
             className,
           )}
         >
@@ -92,7 +92,7 @@ export function DialogHeader({
 }
 
 export function DialogBody({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
-  return <div className={cn('px-6 pb-6 md:px-7 md:pb-7', className)} {...props} />
+  return <div className={cn('scrollbar-none px-6 pb-6 md:px-7 md:pb-7', className)} {...props} />
 }
 
 export function DialogFooter({

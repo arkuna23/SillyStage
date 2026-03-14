@@ -11,6 +11,7 @@ type SelectOption = {
 type SelectProps = Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Root>, 'children'> & {
   items: SelectOption[]
   placeholder?: string
+  textAlign?: 'start' | 'center'
   triggerId?: string
   triggerClassName?: string
 }
@@ -38,6 +39,7 @@ function ChevronDownIcon() {
 export function Select({
   items,
   placeholder,
+  textAlign = 'start',
   triggerClassName,
   triggerId,
   ...props
@@ -46,12 +48,19 @@ export function Select({
     <SelectPrimitive.Root {...props}>
       <SelectPrimitive.Trigger
         className={cn(
-          'inline-flex h-12 w-full items-center justify-between rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 text-sm text-[var(--color-text-primary)] outline-none transition focus:border-[var(--color-accent-copper)] focus:ring-2 focus:ring-amber-200/40 data-[placeholder]:text-[var(--color-text-muted)]',
+          'inline-flex h-12 w-full items-center justify-between gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-[1.125rem] text-sm text-[var(--color-text-primary)] outline-none transition focus:border-[var(--color-accent-copper)] focus:ring-2 focus:ring-[var(--color-focus-ring)] data-[placeholder]:text-[var(--color-text-muted)]',
           triggerClassName,
         )}
         id={triggerId}
       >
-        <SelectPrimitive.Value placeholder={placeholder} />
+        <div
+          className={cn(
+            'min-w-0 flex-1 pr-2',
+            textAlign === 'center' ? 'text-center' : 'text-left',
+          )}
+        >
+          <SelectPrimitive.Value placeholder={placeholder} />
+        </div>
         <SelectPrimitive.Icon className="text-[var(--color-text-secondary)]">
           <ChevronDownIcon />
         </SelectPrimitive.Icon>
@@ -59,15 +68,18 @@ export function Select({
 
       <SelectPrimitive.Portal>
         <SelectPrimitive.Content
-          className="select-content z-50 max-h-[var(--radix-select-content-available-height)] w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] origin-[var(--radix-select-content-transform-origin)] overflow-hidden rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 shadow-[0_24px_80px_rgba(0,0,0,0.35)] backdrop-blur"
+          className="select-content z-50 max-h-[var(--radix-select-content-available-height)] w-[var(--radix-select-trigger-width)] min-w-[var(--radix-select-trigger-width)] origin-[var(--radix-select-content-transform-origin)] overflow-hidden rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1.5 shadow-[var(--shadow-select)] backdrop-blur"
           position="popper"
           sideOffset={8}
         >
-          <SelectPrimitive.Viewport className="w-full space-y-1">
+          <SelectPrimitive.Viewport className="scrollbar-none w-full space-y-1.5">
             {items.map((item) => (
               <SelectPrimitive.Item
                 key={item.value}
-                className="relative flex cursor-pointer select-none items-center rounded-xl px-3 py-2.5 text-sm text-[var(--color-text-primary)] outline-none transition hover:bg-white/10 focus:bg-white/10 data-[state=checked]:text-[var(--color-accent-gold-strong)]"
+                className={cn(
+                  'relative flex cursor-pointer select-none items-center rounded-xl px-4 py-3 text-sm text-[var(--color-text-primary)] outline-none transition hover:bg-white/10 focus:bg-white/10 data-[state=checked]:text-[var(--color-accent-gold-strong)]',
+                  textAlign === 'center' ? 'justify-center text-center' : 'justify-start text-left',
+                )}
                 value={item.value}
               >
                 <SelectPrimitive.ItemText>{item.label}</SelectPrimitive.ItemText>

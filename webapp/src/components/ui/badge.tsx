@@ -9,7 +9,8 @@ const badgeVariants: Record<BadgeVariant, string> = {
     'border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-accent-gold-strong)]',
   subtle:
     'border border-[var(--color-border-subtle)] bg-white/6 text-[var(--color-text-secondary)]',
-  info: 'border border-[var(--color-info-blue-line)] bg-[var(--color-info-blue-soft)] text-sky-100',
+  info:
+    'border border-[var(--color-state-info-line)] bg-[var(--color-state-info-soft)] text-[var(--color-text-primary)]',
 }
 
 export type BadgeProps = HTMLAttributes<HTMLSpanElement> & {

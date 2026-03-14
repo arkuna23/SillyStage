@@ -4,38 +4,13 @@ export const characterCoverMimeTypes = [
   'image/webp',
 ] as const
 
-export const stateValueTypes = [
-  'bool',
-  'int',
-  'float',
-  'string',
-  'array',
-  'object',
-  'null',
-] as const
-
 export type CharacterCoverMimeType = (typeof characterCoverMimeTypes)[number]
-export type StateValueType = (typeof stateValueTypes)[number]
-
-export type JsonValue =
-  | boolean
-  | null
-  | number
-  | string
-  | JsonValue[]
-  | { [key: string]: JsonValue }
-
-export type StateFieldSchema = {
-  default?: JsonValue
-  description?: string | null
-  value_type: StateValueType
-}
 
 export type CharacterCardContent = {
   id: string
   name: string
   personality: string
-  state_schema: Record<string, StateFieldSchema>
+  schema_id: string
   style: string
   system_prompt: string
   tendencies: string[]
@@ -55,6 +30,14 @@ export type CharacterCreateResult = {
   character_id: string
   character_summary: CharacterSummary
   type: 'character_created'
+}
+
+export type CharacterSchemaResult = {
+  character_id: string
+  content: CharacterCardContent
+  cover_file_name: string | null
+  cover_mime_type: CharacterCoverMimeType | null
+  type: 'character'
 }
 
 export type CharacterCoverResult = {
@@ -83,6 +66,11 @@ export type CharacterExportResult = {
 export type CharactersListedResult = {
   characters: CharacterSummary[]
   type: 'characters_listed'
+}
+
+export type CharacterDeletedResult = {
+  character_id: string
+  type: 'character_deleted'
 }
 
 export type CharacterCardUploadedResult = {

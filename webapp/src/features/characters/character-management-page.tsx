@@ -1,513 +1,1195 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
-import { useTranslation } from 'react-i18next'
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { faCheckDouble } from "@fortawesome/free-solid-svg-icons/faCheckDouble";
+import { faList } from "@fortawesome/free-solid-svg-icons/faList";
+import { faPen } from "@fortawesome/free-solid-svg-icons/faPen";
+import { faPlus } from "@fortawesome/free-solid-svg-icons/faPlus";
+import { faSquareCheck } from "@fortawesome/free-solid-svg-icons/faSquareCheck";
+import { faTableCellsLarge } from "@fortawesome/free-solid-svg-icons/faTableCellsLarge";
+import { faTrashCan } from "@fortawesome/free-solid-svg-icons/faTrashCan";
+import { faUpload } from "@fortawesome/free-solid-svg-icons/faUpload";
+import { faXmark } from "@fortawesome/free-solid-svg-icons/faXmark";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, CSSProperties, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
-import { Badge } from '../../components/ui/badge'
-import { Button } from '../../components/ui/button'
+import { Button } from "../../components/ui/button";
+import { IconButton } from "../../components/ui/icon-button";
+import { WorkspacePanelShell } from "../../components/layout/workspace-panel-shell";
+import { useWorkspaceLayoutContext } from "../../components/layout/workspace-context";
+import { Badge } from "../../components/ui/badge";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '../../components/ui/card'
-import { SectionHeader } from '../../components/ui/section-header'
-import { cn } from '../../lib/cn'
-import { isRpcConflict } from '../../lib/rpc'
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "../../components/ui/card";
+import { SectionHeader } from "../../components/ui/section-header";
+import { cn } from "../../lib/cn";
+import { isRpcConflict } from "../../lib/rpc";
 import {
-  createCoverDataUrl,
-  downloadCharacterArchive,
-  getCharacterCover,
-  hasCharacterCardExtension,
-  importCharacterArchive,
-  listCharacters,
-} from './api'
-import { CreateCharacterDialog } from './create-character-dialog'
-import type { CharacterSummary } from './types'
+	createCoverDataUrl,
+	deleteCharacter,
+	downloadCharacterArchive,
+	getCharacterCover,
+	hasCharacterCardExtension,
+	importCharacterArchive,
+	listCharacters,
+} from "./api";
+import { CharacterFormDialog } from "./create-character-dialog";
+import { DeleteCharacterDialog } from "./delete-character-dialog";
+import { CharacterDetailsDialog } from "./character-details-dialog";
+import type { CharacterSummary } from "./types";
 
-type NoticeTone = 'error' | 'success' | 'warning'
+type NoticeTone = "error" | "success" | "warning";
+type CharacterViewMode = "grid" | "list";
 
 type Notice = {
-  message: string
-  tone: NoticeTone
-}
+	message: string;
+	tone: NoticeTone;
+};
+
+const COVER_OBJECT_POSITION = "center 26%";
+const CARD_EXCERPT_STYLE: CSSProperties = {
+	WebkitBoxOrient: "vertical",
+	WebkitLineClamp: 2,
+	display: "-webkit-box",
+	overflow: "hidden",
+};
+const LIST_EXCERPT_STYLE: CSSProperties = {
+	overflow: "hidden",
+	textOverflow: "ellipsis",
+	whiteSpace: "nowrap",
+};
 
 function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
+	return error instanceof Error ? error.message : fallback;
 }
 
-function StatusNotice({
-  notice,
+function getCharacterMonogram(name: string) {
+	return Array.from(name.trim())[0] ?? "?";
+}
+
+function normalizeSummaryText(text: string) {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+function truncateSummaryText(text: string, maxLength: number) {
+	const normalizedText = normalizeSummaryText(text);
+	const characters = Array.from(normalizedText);
+
+	if (characters.length <= maxLength) {
+		return normalizedText;
+	}
+
+	return `${characters.slice(0, maxLength).join("").trimEnd()}…`;
+}
+
+function CharacterArtwork({
+	coverUrl,
+	mode,
+	name,
 }: {
-  notice: Notice
+	coverUrl?: string;
+	mode: "card" | "dialog" | "list";
+	name: string;
 }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur',
-        notice.tone === 'success'
-          ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'border-[var(--color-accent-copper-soft)] bg-[color-mix(in_srgb,var(--color-accent-copper-soft)_55%,transparent)] text-[var(--color-text-primary)]'
-            : 'border-[rgba(239,68,68,0.24)] bg-[rgba(127,29,29,0.24)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
+	const { t } = useTranslation();
+	const monogram = getCharacterMonogram(name);
+	const baseClasses =
+		mode === "list"
+			? "size-[4.25rem] rounded-full border border-[var(--color-border-subtle)] shadow-[0_12px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
+			: mode === "dialog"
+				? "aspect-[4/3] rounded-[1.7rem] border border-[var(--color-border-subtle)]"
+				: "aspect-[4/3] border-b border-[var(--color-border-subtle)]";
+
+	return (
+		<div
+			className={cn(
+				"overflow-hidden bg-[linear-gradient(135deg,var(--color-accent-gold-soft),var(--color-accent-copper-soft))]",
+				baseClasses,
+			)}
+		>
+			{coverUrl ? (
+				<img
+					alt={t("characters.card.coverAlt", { name })}
+					className="h-full w-full object-cover transition duration-300 ease-out group-hover:scale-[1.02]"
+					src={coverUrl}
+					style={{ objectPosition: COVER_OBJECT_POSITION }}
+				/>
+			) : (
+				<div className="flex h-full w-full items-center justify-center">
+					<span
+						className={cn(
+							"inline-flex items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(18,10,31,0.34)] font-display text-[var(--color-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+							mode === "list"
+								? "size-11 text-lg"
+								: mode === "dialog"
+									? "size-24 text-4xl"
+									: "size-16 text-[1.75rem]",
+						)}
+					>
+						{monogram}
+					</span>
+				</div>
+			)}
+		</div>
+	);
+}
+
+function ViewModeToggle({
+	onChange,
+	value,
+}: {
+	onChange: (value: CharacterViewMode) => void;
+	value: CharacterViewMode;
+}) {
+	const { t } = useTranslation();
+	const prefersReducedMotion = useReducedMotion();
+	const items: Array<{
+		icon: ReactNode;
+		label: string;
+		value: CharacterViewMode;
+	}> = [
+		{
+			icon: <FontAwesomeIcon icon={faTableCellsLarge} />,
+			label: t("characters.views.grid"),
+			value: "grid",
+		},
+		{
+			icon: <FontAwesomeIcon icon={faList} />,
+			label: t("characters.views.list"),
+			value: "list",
+		},
+	];
+
+	return (
+		<div
+			aria-label={t("characters.views.label")}
+			className="inline-flex items-center gap-1 rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]"
+			role="group"
+		>
+			{items.map((item) => {
+				const selected = item.value === value;
+
+				return (
+					<button
+						aria-label={item.label}
+						aria-pressed={selected}
+						className={cn(
+							"relative inline-flex size-10 items-center justify-center rounded-[0.9rem] transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]",
+							selected
+								? "text-[color:var(--color-accent-ink)]"
+								: "text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
+						)}
+						key={item.value}
+						onClick={() => {
+							if (item.value !== value) {
+								onChange(item.value);
+							}
+						}}
+						title={item.label}
+						type="button"
+					>
+						{selected ? (
+							<motion.span
+								className="absolute inset-0 rounded-[0.9rem] border border-[var(--color-accent-gold-line)] bg-[linear-gradient(135deg,var(--color-accent-gold),var(--color-accent-gold-strong))] shadow-[0_10px_28px_var(--color-accent-glow-soft)]"
+								layoutId="characters-view-toggle-active"
+								transition={
+									prefersReducedMotion
+										? { duration: 0 }
+										: {
+												damping: 34,
+												mass: 0.34,
+												stiffness: 420,
+												type: "spring",
+											}
+								}
+							/>
+						) : null}
+						<span className="relative z-10">
+							{item.icon}
+						</span>
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
+function SelectionIndicator({ selected }: { selected: boolean }) {
+	return (
+		<span
+			aria-hidden="true"
+			className={cn(
+				"inline-flex size-7 items-center justify-center rounded-full border text-xs shadow-[0_10px_24px_rgba(0,0,0,0.16)] transition",
+				selected
+					? "border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold)] text-[color:var(--color-accent-ink)]"
+					: "border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] text-[var(--color-text-muted)]",
+			)}
+		>
+			{selected ? "✓" : ""}
+		</span>
+	);
+}
+
+function CharacterQuickActions({
+	onDelete,
+	onEdit,
+}: {
+	onDelete: () => void;
+	onEdit: () => void;
+}) {
+	const { t } = useTranslation();
+
+	return (
+		<div className="flex items-center gap-1.5">
+			<IconButton
+				icon={<FontAwesomeIcon icon={faPen} />}
+				label={t("characters.actions.edit")}
+				onClick={onEdit}
+				size="sm"
+				variant="ghost"
+			/>
+			<IconButton
+				className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
+				icon={<FontAwesomeIcon icon={faTrashCan} />}
+				label={t("characters.actions.delete")}
+				onClick={onDelete}
+				size="sm"
+				variant="ghost"
+			/>
+		</div>
+	);
+}
+
+function StatusNotice({ notice }: { notice: Notice }) {
+	return (
+		<div
+			className={cn(
+				"rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur",
+				notice.tone === "success"
+					? "border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]"
+					: notice.tone === "warning"
+						? "border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]"
+						: "border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]",
+			)}
+			role="status"
+		>
+			{notice.message}
+		</div>
+	);
 }
 
 function LoadingGrid() {
-  return (
-    <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          className={cn(
-            'overflow-hidden rounded-[1.75rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.18)]',
-            index > 0 ? 'panel-enter panel-enter-delay-1' : 'panel-enter',
-          )}
-          key={index}
-        >
-          <div className="h-44 animate-pulse bg-[color-mix(in_srgb,var(--color-accent-gold-soft)_55%,var(--color-bg-elevated))]" />
-          <div className="space-y-3 p-6">
-            <div className="h-3 w-20 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-            <div className="h-7 w-2/3 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-            <div className="h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-            <div className="h-3 w-4/5 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-          </div>
-        </div>
-      ))}
-    </div>
-  )
+	return (
+		<div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+			{Array.from({ length: 6 }).map((_, index) => (
+				<div
+					className="overflow-hidden rounded-[1.75rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
+					key={index}
+				>
+					<div className="h-48 animate-pulse bg-[color-mix(in_srgb,var(--color-accent-gold-soft)_55%,var(--color-bg-elevated))]" />
+					<div className="space-y-3 p-4">
+						<div className="h-7 w-2/3 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+						<div className="h-3 w-28 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+						<div className="h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+						<div className="h-3 w-5/6 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+					</div>
+				</div>
+			))}
+		</div>
+	);
+}
+
+function LoadingList() {
+	return (
+		<div className="space-y-3">
+			{Array.from({ length: 6 }).map((_, index) => (
+				<div
+					className="overflow-hidden rounded-[1.75rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
+					key={index}
+				>
+					<div className="grid gap-3.5 p-3 sm:grid-cols-[4.25rem_minmax(0,10.5rem)_minmax(0,1fr)] sm:items-center">
+						<div className="size-[4.25rem] animate-pulse rounded-full border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-accent-gold-soft)_55%,var(--color-bg-elevated))]" />
+						<div className="space-y-2.5">
+							<div className="h-5 w-36 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+							<div className="h-3 w-28 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
+						</div>
+						<div className="hidden h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-elevated)] sm:block" />
+						<div className="h-3 w-5/6 animate-pulse rounded-full bg-[var(--color-bg-elevated)] sm:hidden" />
+					</div>
+				</div>
+			))}
+		</div>
+	);
 }
 
 function CharacterCard({
-  coverUrl,
-  exporting,
-  onExport,
-  summary,
+	coverUrl,
+	onDelete,
+	onEdit,
+	onOpenDetails,
+	onToggleSelect,
+	selected,
+	selectionMode,
+	summary,
 }: {
-  coverUrl?: string
-  exporting: boolean
-  onExport: () => void
-  summary: CharacterSummary
+	coverUrl?: string;
+	onDelete: () => void;
+	onEdit: () => void;
+	onOpenDetails: () => void;
+	onToggleSelect: () => void;
+	selected: boolean;
+	selectionMode: boolean;
+	summary: CharacterSummary;
 }) {
-  const { t } = useTranslation()
+	const personalitySummary = truncateSummaryText(summary.personality, 72);
 
-  return (
-    <Card className="h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
-      <div className="relative aspect-[4/3] overflow-hidden border-b border-[var(--color-border-subtle)] bg-[linear-gradient(135deg,rgba(217,167,74,0.12),rgba(115,183,255,0.14))]">
-        {coverUrl ? (
-          <img
-            alt={t('characters.card.coverAlt', { name: summary.name })}
-            className="h-full w-full object-cover"
-            src={coverUrl}
-          />
-        ) : (
-          <div className="flex h-full w-full items-end justify-between p-4">
-            <Badge variant="subtle">{summary.character_id}</Badge>
-            <div className="text-right">
-              <p className="text-xs uppercase text-[var(--color-text-muted)]">
-                {t('characters.card.coverPending')}
-              </p>
-              <p className="mt-1 text-sm text-[var(--color-text-secondary)]">
-                {t('characters.card.coverMissing')}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
+	return (
+		<Card className="relative h-full overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
+			<div className="absolute right-3 top-3 z-10">
+				{selectionMode ? (
+					<SelectionIndicator selected={selected} />
+				) : (
+					<CharacterQuickActions onDelete={onDelete} onEdit={onEdit} />
+				)}
+			</div>
 
-      <CardHeader className="gap-2 p-5 pb-3">
-        <div className="space-y-1.5">
-          <CardTitle className="text-[1.6rem]">{summary.name}</CardTitle>
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="text-[0.68rem] uppercase text-[var(--color-text-muted)]">
-              {t('characters.card.idLabel')}
-            </p>
-            <CardDescription className="font-mono text-[0.72rem] leading-5 uppercase text-[var(--color-text-muted)]">
-              {summary.character_id}
-            </CardDescription>
-          </div>
-        </div>
-      </CardHeader>
+			<button
+				aria-pressed={selectionMode ? selected : undefined}
+				className="group flex h-full w-full flex-col text-left"
+				onClick={selectionMode ? onToggleSelect : onOpenDetails}
+				type="button"
+			>
+				<CharacterArtwork coverUrl={coverUrl} mode="card" name={summary.name} />
 
-      <CardContent className="space-y-3 px-5 pb-5 pt-0">
-        <div className="space-y-1.5">
-          <p className="text-[0.68rem] uppercase text-[var(--color-text-muted)]">
-            {t('characters.card.personality')}
-          </p>
-          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-            {summary.personality}
-          </p>
-        </div>
+				<CardHeader className="gap-2 p-4 pb-2">
+					<div className="space-y-1">
+						<CardTitle className="text-[1.48rem] leading-tight">
+							{summary.name}
+						</CardTitle>
+						<CardDescription className="truncate font-mono text-[0.76rem] leading-5 text-[var(--color-text-muted)]">
+							{summary.character_id}
+						</CardDescription>
+					</div>
+				</CardHeader>
 
-        <div className="space-y-1.5">
-          <p className="text-[0.68rem] uppercase text-[var(--color-text-muted)]">
-            {t('characters.card.style')}
-          </p>
-          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-            {summary.style}
-          </p>
-        </div>
+				<CardContent className="px-4 pb-4 pt-0">
+					<p
+						className="text-sm leading-6 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
+						style={CARD_EXCERPT_STYLE}
+					>
+						{personalitySummary}
+					</p>
+				</CardContent>
+			</button>
+		</Card>
+	);
+}
 
-        <div className="space-y-1.5">
-          <p className="text-[0.68rem] uppercase text-[var(--color-text-muted)]">
-            {t('characters.card.tendencies')}
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {summary.tendencies.length > 0 ? (
-              summary.tendencies.map((tendency) => (
-                <Badge
-                  className="normal-case px-3 py-1"
-                  key={tendency}
-                  variant="subtle"
-                >
-                  {tendency}
-                </Badge>
-              ))
-            ) : (
-              <Badge className="normal-case px-3 py-1" variant="subtle">
-                {t('characters.card.noTendencies')}
-              </Badge>
-            )}
-          </div>
-        </div>
-      </CardContent>
+function CharacterListRow({
+	coverUrl,
+	onDelete,
+	onEdit,
+	onOpenDetails,
+	onToggleSelect,
+	selected,
+	selectionMode,
+	summary,
+}: {
+	coverUrl?: string;
+	onDelete: () => void;
+	onEdit: () => void;
+	onOpenDetails: () => void;
+	onToggleSelect: () => void;
+	selected: boolean;
+	selectionMode: boolean;
+	summary: CharacterSummary;
+}) {
+	const personalitySummary = normalizeSummaryText(summary.personality);
 
-      <CardFooter className="border-t border-[var(--color-border-subtle)] px-5 pb-5 pt-3">
-        <Button
-          className="w-full"
-          disabled={exporting}
-          onClick={onExport}
-          size="md"
-          variant="secondary"
-        >
-          {exporting ? t('characters.actions.exporting') : t('characters.actions.export')}
-        </Button>
-      </CardFooter>
-    </Card>
-  )
+	return (
+		<Card className="overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
+			<div className="grid gap-3.5 p-3 sm:grid-cols-[4.25rem_minmax(0,10.5rem)_minmax(0,1fr)_auto] sm:items-center">
+				<button
+					aria-pressed={selectionMode ? selected : undefined}
+					className="group contents text-left"
+					onClick={selectionMode ? onToggleSelect : onOpenDetails}
+					type="button"
+				>
+					<div className="relative flex items-center justify-center">
+						<CharacterArtwork
+							coverUrl={coverUrl}
+							mode="list"
+							name={summary.name}
+						/>
+						{selectionMode ? (
+							<span className="absolute -right-1 -top-1 sm:hidden">
+								<SelectionIndicator selected={selected} />
+							</span>
+						) : null}
+					</div>
+
+					<div className="min-w-0 space-y-0.5">
+						<CardTitle className="truncate text-[1.08rem] leading-tight">
+							{summary.name}
+						</CardTitle>
+						<CardDescription className="truncate font-mono text-[0.72rem] leading-5 text-[var(--color-text-muted)]">
+							{summary.character_id}
+						</CardDescription>
+					</div>
+
+					<div className="min-w-0 pl-1 sm:pl-2">
+						<p
+							className="text-[0.92rem] leading-5 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
+							style={LIST_EXCERPT_STYLE}
+						>
+							{personalitySummary}
+						</p>
+					</div>
+				</button>
+
+				{selectionMode ? (
+					<div className="hidden sm:flex sm:justify-end">
+						<SelectionIndicator selected={selected} />
+					</div>
+				) : (
+					<div className="flex justify-start sm:justify-end">
+						<CharacterQuickActions onDelete={onDelete} onEdit={onEdit} />
+					</div>
+				)}
+				</div>
+		</Card>
+	);
+}
+
+function CharacterResults({
+	characters,
+	coverUrls,
+	isLoading,
+	onDelete,
+	onEdit,
+	onOpenDetails,
+	onToggleSelect,
+	selectedCharacterIds,
+	selectionMode,
+	viewMode,
+}: {
+	characters: CharacterSummary[];
+	coverUrls: Record<string, string>;
+	isLoading: boolean;
+	onDelete: (characterId: string) => void;
+	onEdit: (characterId: string) => void;
+	onOpenDetails: (characterId: string) => void;
+	onToggleSelect: (characterId: string) => void;
+	selectedCharacterIds: ReadonlySet<string>;
+	selectionMode: boolean;
+	viewMode: CharacterViewMode;
+}) {
+	const prefersReducedMotion = useReducedMotion();
+
+	let content: ReactNode;
+	let contentKey: string = viewMode;
+
+	if (isLoading) {
+		content = viewMode === "list" ? <LoadingList /> : <LoadingGrid />;
+		contentKey = `loading-${viewMode}`;
+	} else if (viewMode === "list") {
+		content = (
+			<div className="space-y-3">
+				{characters.map((summary) => (
+					<div key={summary.character_id}>
+						<CharacterListRow
+							coverUrl={coverUrls[summary.character_id]}
+							onDelete={() => {
+								onDelete(summary.character_id);
+							}}
+							onEdit={() => {
+								onEdit(summary.character_id);
+							}}
+							onOpenDetails={() => {
+								onOpenDetails(summary.character_id);
+							}}
+							onToggleSelect={() => {
+								onToggleSelect(summary.character_id);
+							}}
+							selected={selectedCharacterIds.has(summary.character_id)}
+							selectionMode={selectionMode}
+							summary={summary}
+						/>
+					</div>
+				))}
+			</div>
+		);
+	} else {
+		content = (
+			<div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+				{characters.map((summary) => (
+					<div key={summary.character_id}>
+						<CharacterCard
+							coverUrl={coverUrls[summary.character_id]}
+							onDelete={() => {
+								onDelete(summary.character_id);
+							}}
+							onEdit={() => {
+								onEdit(summary.character_id);
+							}}
+							onOpenDetails={() => {
+								onOpenDetails(summary.character_id);
+							}}
+							onToggleSelect={() => {
+								onToggleSelect(summary.character_id);
+							}}
+							selected={selectedCharacterIds.has(summary.character_id)}
+							selectionMode={selectionMode}
+							summary={summary}
+						/>
+					</div>
+				))}
+			</div>
+		);
+	}
+
+	return (
+		<AnimatePresence initial={false} mode="wait">
+			<motion.div
+				animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+				exit={prefersReducedMotion ? undefined : { opacity: 0, y: 8 }}
+				initial={prefersReducedMotion ? undefined : { opacity: 0, y: -8 }}
+				key={contentKey}
+				transition={
+					prefersReducedMotion
+						? { duration: 0 }
+						: { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+				}
+			>
+				{content}
+			</motion.div>
+		</AnimatePresence>
+	);
 }
 
 export function CharacterManagementPage() {
-  const { t } = useTranslation()
-  const importInputRef = useRef<HTMLInputElement | null>(null)
-  const coverCacheRef = useRef<Map<string, string>>(new Map())
-  const [characters, setCharacters] = useState<CharacterSummary[]>([])
-  const [coverUrls, setCoverUrls] = useState<Record<string, string>>({})
-  const [exportingCharacterId, setExportingCharacterId] = useState<string | null>(null)
-  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [isImporting, setIsImporting] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const [notice, setNotice] = useState<Notice | null>(null)
+	const { t } = useTranslation();
+	const { setRailContent } = useWorkspaceLayoutContext();
+	const importInputRef = useRef<HTMLInputElement | null>(null);
+	const coverCacheRef = useRef<Map<string, string>>(new Map());
+	const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+	const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
+	const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
+	const [editingCharacterId, setEditingCharacterId] = useState<string | null>(
+		null,
+	);
+	const [exportingCharacterId, setExportingCharacterId] = useState<
+		string | null
+	>(null);
+	const [isDeleting, setIsDeleting] = useState(false);
+	const [isCharacterFormOpen, setIsCharacterFormOpen] = useState(false);
+	const [isImporting, setIsImporting] = useState(false);
+	const [isLoading, setIsLoading] = useState(true);
+	const [notice, setNotice] = useState<Notice | null>(null);
+	const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(
+		null,
+	);
+	const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
+	const [selectionMode, setSelectionMode] = useState(false);
+	const [viewMode, setViewMode] = useState<CharacterViewMode>("grid");
 
-  const coveredCharacters = characters.filter(
-    (character) => character.cover_file_name && character.cover_mime_type,
-  ).length
+	const selectedCharacter =
+		selectedCharacterId !== null
+			? (characters.find(
+					(character) => character.character_id === selectedCharacterId,
+				) ?? null)
+			: null;
+	const selectedCharacterSet = useMemo(
+		() => new Set(selectedCharacterIds),
+		[selectedCharacterIds],
+	);
+	const deleteTargets = useMemo(
+		() =>
+			deleteTargetIds
+				.map((characterId) =>
+					characters.find(
+						(character) => character.character_id === characterId,
+					),
+				)
+				.filter((character): character is CharacterSummary => character !== undefined),
+		[characters, deleteTargetIds],
+	);
 
-  const refreshCharacters = useCallback(
-    async (signal?: AbortSignal) => {
-      setIsLoading(true)
+	const refreshCharacters = useCallback(
+		async (signal?: AbortSignal) => {
+			setIsLoading(true);
 
-      try {
-        const summaries = await listCharacters(signal)
+			try {
+				const summaries = await listCharacters(signal);
 
-        if (signal?.aborted) {
-          return
-        }
+				if (signal?.aborted) {
+					return;
+				}
 
-        setCharacters(summaries)
+				setCharacters(summaries);
 
-        const cachedCoverUrls: Record<string, string> = {}
+				const cachedCoverUrls: Record<string, string> = {};
 
-        for (const summary of summaries) {
-          const cachedCoverUrl = coverCacheRef.current.get(summary.character_id)
+				for (const summary of summaries) {
+					const cachedCoverUrl = coverCacheRef.current.get(
+						summary.character_id,
+					);
 
-          if (cachedCoverUrl) {
-            cachedCoverUrls[summary.character_id] = cachedCoverUrl
-          }
-        }
+					if (cachedCoverUrl) {
+						cachedCoverUrls[summary.character_id] = cachedCoverUrl;
+					}
+				}
 
-        setCoverUrls(cachedCoverUrls)
+				setCoverUrls(cachedCoverUrls);
 
-        const summariesNeedingCover = summaries.filter(
-          (summary) =>
-            summary.cover_file_name &&
-            summary.cover_mime_type &&
-            !coverCacheRef.current.has(summary.character_id),
-        )
+				const summariesNeedingCover = summaries.filter(
+					(summary) =>
+						summary.cover_file_name &&
+						summary.cover_mime_type &&
+						!coverCacheRef.current.has(summary.character_id),
+				);
 
-        if (summariesNeedingCover.length === 0) {
-          return
-        }
+				if (summariesNeedingCover.length === 0) {
+					return;
+				}
 
-        const coverResults = await Promise.allSettled(
-          summariesNeedingCover.map(async (summary) => {
-            const cover = await getCharacterCover(summary.character_id, signal)
+				const coverResults = await Promise.allSettled(
+					summariesNeedingCover.map(async (summary) => {
+						const cover = await getCharacterCover(summary.character_id, signal);
 
-            return {
-              characterId: summary.character_id,
-              coverUrl: createCoverDataUrl({
-                coverBase64: cover.cover_base64,
-                coverMimeType: cover.cover_mime_type,
-              }),
-            }
-          }),
-        )
+						return {
+							characterId: summary.character_id,
+							coverUrl: createCoverDataUrl({
+								coverBase64: cover.cover_base64,
+								coverMimeType: cover.cover_mime_type,
+							}),
+						};
+					}),
+				);
 
-        if (signal?.aborted) {
-          return
-        }
+				if (signal?.aborted) {
+					return;
+				}
 
-        const nextCoverUrls: Record<string, string> = {}
+				const nextCoverUrls: Record<string, string> = {};
 
-        for (const result of coverResults) {
-          if (result.status !== 'fulfilled') {
-            continue
-          }
+				for (const result of coverResults) {
+					if (result.status !== "fulfilled") {
+						continue;
+					}
 
-          coverCacheRef.current.set(result.value.characterId, result.value.coverUrl)
-          nextCoverUrls[result.value.characterId] = result.value.coverUrl
-        }
+					coverCacheRef.current.set(
+						result.value.characterId,
+						result.value.coverUrl,
+					);
+					nextCoverUrls[result.value.characterId] = result.value.coverUrl;
+				}
 
-        if (Object.keys(nextCoverUrls).length > 0) {
-          setCoverUrls((currentCoverUrls) => ({
-            ...currentCoverUrls,
-            ...nextCoverUrls,
-          }))
-        }
-      } catch (error) {
-        if (signal?.aborted) {
-          return
-        }
+				if (Object.keys(nextCoverUrls).length > 0) {
+					setCoverUrls((currentCoverUrls) => ({
+						...currentCoverUrls,
+						...nextCoverUrls,
+					}));
+				}
+			} catch (error) {
+				if (signal?.aborted) {
+					return;
+				}
 
-        setNotice({
-          message: getErrorMessage(error, t('characters.feedback.loadFailed')),
-          tone: 'error',
-        })
-      } finally {
-        if (!signal?.aborted) {
-          setIsLoading(false)
-        }
-      }
-    },
-    [t],
-  )
+				setNotice({
+					message: getErrorMessage(error, t("characters.feedback.loadFailed")),
+					tone: "error",
+				});
+			} finally {
+				if (!signal?.aborted) {
+					setIsLoading(false);
+				}
+			}
+		},
+		[t],
+	);
 
-  useEffect(() => {
-    const controller = new AbortController()
+	useEffect(() => {
+		const controller = new AbortController();
 
-    void refreshCharacters(controller.signal)
+		void refreshCharacters(controller.signal);
 
-    return () => {
-      controller.abort()
-    }
-  }, [refreshCharacters])
+		return () => {
+			controller.abort();
+		};
+	}, [refreshCharacters]);
 
-  async function handleImportSelection(event: ChangeEvent<HTMLInputElement>) {
-    const selectedFile = event.target.files?.[0]
+	useEffect(() => {
+		const availableIds = new Set(characters.map((character) => character.character_id));
 
-    event.target.value = ''
+		setSelectedCharacterIds((currentSelection) =>
+			currentSelection.filter((characterId) => availableIds.has(characterId)),
+		);
+		setDeleteTargetIds((currentSelection) =>
+			currentSelection.filter((characterId) => availableIds.has(characterId)),
+		);
 
-    if (!selectedFile) {
-      return
-    }
+		if (
+			selectedCharacterId !== null &&
+			!availableIds.has(selectedCharacterId)
+		) {
+			setSelectedCharacterId(null);
+		}
 
-    if (!hasCharacterCardExtension(selectedFile.name)) {
-      setNotice({
-        message: t('characters.feedback.invalidImportType'),
-        tone: 'error',
-      })
-      return
-    }
+		if (
+			editingCharacterId !== null &&
+			!availableIds.has(editingCharacterId)
+		) {
+			setEditingCharacterId(null);
+		}
+	}, [characters, editingCharacterId, selectedCharacterId]);
 
-    setIsImporting(true)
+	useLayoutEffect(() => {
+		setRailContent({
+			description: t("characters.rail.description"),
+			stats: [
+				{
+					label: t("characters.metrics.total"),
+					value: characters.length,
+				},
+			],
+			title: t("characters.title"),
+		});
 
-    try {
-      const importedCharacter = await importCharacterArchive(selectedFile)
+		return () => {
+			setRailContent(null);
+		};
+	}, [characters.length, setRailContent, t]);
 
-      setNotice({
-        message: t('characters.feedback.imported', { name: importedCharacter.name }),
-        tone: 'success',
-      })
+	function clearCoverEntries(characterIds: ReadonlyArray<string>) {
+		if (characterIds.length === 0) {
+			return;
+		}
 
-      await refreshCharacters()
-    } catch (error) {
-      setNotice({
-        message: getErrorMessage(error, t('characters.feedback.importFailed')),
-        tone: 'error',
-      })
-    } finally {
-      setIsImporting(false)
-    }
-  }
+		for (const characterId of characterIds) {
+			coverCacheRef.current.delete(characterId);
+		}
 
-  async function handleExport(summary: CharacterSummary) {
-    setExportingCharacterId(summary.character_id)
+		setCoverUrls((currentCoverUrls) =>
+			Object.fromEntries(
+				Object.entries(currentCoverUrls).filter(
+					([characterId]) => !characterIds.includes(characterId),
+				),
+			),
+		);
+	}
 
-    try {
-      await downloadCharacterArchive(summary.character_id)
+	function openCreateDialog() {
+		setEditingCharacterId(null);
+		setIsCharacterFormOpen(true);
+	}
 
-      setNotice({
-        message: t('characters.feedback.exported', { name: summary.name }),
-        tone: 'success',
-      })
-    } catch (error) {
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('characters.feedback.exportNeedsCover', { name: summary.name })
-          : getErrorMessage(error, t('characters.feedback.exportFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
-    } finally {
-      setExportingCharacterId(null)
-    }
-  }
+	function openEditDialog(characterId: string) {
+		setSelectedCharacterId(null);
+		setEditingCharacterId(characterId);
+		setIsCharacterFormOpen(true);
+	}
 
-  return (
-    <div className="flex flex-col gap-6">
-      <CreateCharacterDialog
-        onCompleted={async (result) => {
-          setNotice({
-            message: result.message,
-            tone: result.tone,
-          })
+	function exitSelectionMode() {
+		setSelectionMode(false);
+		setSelectedCharacterIds([]);
+	}
 
-          await refreshCharacters()
-        }}
-        onOpenChange={setIsCreateDialogOpen}
-        open={isCreateDialogOpen}
-      />
+	function toggleCharacterSelection(characterId: string) {
+		setSelectedCharacterIds((currentSelection) =>
+			currentSelection.includes(characterId)
+				? currentSelection.filter((currentId) => currentId !== characterId)
+				: [...currentSelection, characterId],
+		);
+	}
 
-      <input
-        accept=".chr,application/octet-stream"
-        className="sr-only"
-        onChange={(event) => {
-          void handleImportSelection(event)
-        }}
-        ref={importInputRef}
-        type="file"
-      />
+	function requestDelete(characterIds: string[]) {
+		if (characterIds.length === 0) {
+			return;
+		}
 
-      <Card className="panel-enter overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)]">
-        <CardHeader className="gap-6 border-b border-[var(--color-border-subtle)]">
-          <SectionHeader
-            actions={
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  onClick={() => {
-                    setIsCreateDialogOpen(true)
-                  }}
-                  size="md"
-                >
-                  {t('characters.actions.create')}
-                </Button>
+		setDeleteTargetIds(characterIds);
+	}
 
-                <Button
-                  disabled={isImporting}
-                  onClick={() => {
-                    importInputRef.current?.click()
-                  }}
-                  size="md"
-                  variant="secondary"
-                >
-                  {isImporting
-                    ? t('characters.actions.importing')
-                    : t('characters.actions.import')}
-                </Button>
-              </div>
-            }
-            title={t('characters.title')}
-          />
+	async function handleImportSelection(event: ChangeEvent<HTMLInputElement>) {
+		const selectedFile = event.target.files?.[0];
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:max-w-[28rem]">
-            <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-              <p className="text-xs uppercase text-[var(--color-text-muted)]">
-                {t('characters.metrics.total')}
-              </p>
-              <p className="mt-3 font-display text-4xl text-[var(--color-text-primary)]">
-                {characters.length}
-              </p>
-            </div>
+		event.target.value = "";
 
-            <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-              <p className="text-xs uppercase text-[var(--color-text-muted)]">
-                {t('characters.metrics.covered')}
-              </p>
-              <p className="mt-3 font-display text-4xl text-[var(--color-text-primary)]">
-                {coveredCharacters}
-              </p>
-            </div>
-          </div>
-        </CardHeader>
+		if (!selectedFile) {
+			return;
+		}
 
-        <CardContent className="pt-6">
-          {notice ? <StatusNotice notice={notice} /> : null}
+		if (!hasCharacterCardExtension(selectedFile.name)) {
+			setNotice({
+				message: t("characters.feedback.invalidImportType"),
+				tone: "error",
+			});
+			return;
+		}
 
-          <div className={notice ? 'mt-5' : undefined}>
-            {isLoading ? (
-              <LoadingGrid />
-            ) : characters.length === 0 ? (
-              <div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
-                <h3 className="font-display text-3xl text-[var(--color-text-primary)]">
-                  {t('characters.empty.title')}
-                </h3>
+		setIsImporting(true);
 
-                <div className="mt-7 flex flex-wrap justify-center gap-3">
-                  <Button
-                    onClick={() => {
-                      setIsCreateDialogOpen(true)
-                    }}
-                    size="md"
-                  >
-                    {t('characters.actions.create')}
-                  </Button>
-                  <Button
-                    disabled={isImporting}
-                    onClick={() => {
-                      importInputRef.current?.click()
-                    }}
-                    size="md"
-                    variant="secondary"
-                  >
-                    {t('characters.actions.import')}
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-                  {characters.map((summary, index) => (
-                    <div
-                      className={cn(
-                        'panel-enter',
-                        index % 3 === 1
-                          ? 'panel-enter-delay-1'
-                          : index % 3 === 2
-                            ? 'panel-enter-delay-2'
-                            : undefined,
-                      )}
-                      key={summary.character_id}
-                    >
-                      <CharacterCard
-                        coverUrl={coverUrls[summary.character_id]}
-                        exporting={exportingCharacterId === summary.character_id}
-                        onExport={() => {
-                          void handleExport(summary)
-                        }}
-                        summary={summary}
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
+		try {
+			const importedCharacter = await importCharacterArchive(selectedFile);
+
+			setNotice({
+				message: t("characters.feedback.imported", {
+					name: importedCharacter.name,
+				}),
+				tone: "success",
+			});
+
+			await refreshCharacters();
+		} catch (error) {
+			setNotice({
+				message: getErrorMessage(error, t("characters.feedback.importFailed")),
+				tone: "error",
+			});
+		} finally {
+			setIsImporting(false);
+		}
+	}
+
+	async function handleExport(summary: CharacterSummary) {
+		setExportingCharacterId(summary.character_id);
+
+		try {
+			await downloadCharacterArchive(summary.character_id);
+
+			setNotice({
+				message: t("characters.feedback.exported", { name: summary.name }),
+				tone: "success",
+			});
+		} catch (error) {
+			setNotice({
+				message: isRpcConflict(error)
+					? t("characters.feedback.exportNeedsCover", { name: summary.name })
+					: getErrorMessage(error, t("characters.feedback.exportFailed")),
+				tone: isRpcConflict(error) ? "warning" : "error",
+			});
+		} finally {
+			setExportingCharacterId(null);
+		}
+	}
+
+	async function handleDeleteCharacters() {
+		if (deleteTargets.length === 0) {
+			return;
+		}
+
+		setIsDeleting(true);
+
+		const deletedIds: string[] = [];
+		const failedTargets: CharacterSummary[] = [];
+
+		try {
+			for (const target of deleteTargets) {
+				try {
+					await deleteCharacter(target.character_id);
+					deletedIds.push(target.character_id);
+				} catch {
+					failedTargets.push(target);
+				}
+			}
+
+			clearCoverEntries(deletedIds);
+			setDeleteTargetIds([]);
+
+			if (deletedIds.length > 0) {
+				setSelectedCharacterIds((currentSelection) =>
+					currentSelection.filter(
+						(characterId) => !deletedIds.includes(characterId),
+					),
+				);
+
+				if (
+					selectedCharacterId !== null &&
+					deletedIds.includes(selectedCharacterId)
+				) {
+					setSelectedCharacterId(null);
+				}
+			}
+
+			if (failedTargets.length === 0) {
+				setNotice({
+					message:
+						deletedIds.length > 1
+							? t("characters.feedback.deletedMany", {
+								count: deletedIds.length,
+							})
+							: t("characters.feedback.deleted", {
+								name: deleteTargets[0]?.name ?? "",
+							}),
+					tone: "success",
+				});
+			} else if (deletedIds.length > 0) {
+				setNotice({
+					message: t("characters.feedback.deletedPartial", {
+						failed: failedTargets.length,
+						success: deletedIds.length,
+					}),
+					tone: "warning",
+				});
+			} else {
+				setNotice({
+					message: t("characters.feedback.deleteFailed"),
+					tone: "error",
+				});
+			}
+
+			if (selectionMode && deletedIds.length > 0 && failedTargets.length === 0) {
+				exitSelectionMode();
+			}
+
+			await refreshCharacters();
+		} finally {
+			setIsDeleting(false);
+		}
+	}
+
+	return (
+		<div className="flex h-full min-h-0 flex-col gap-6">
+			<CharacterDetailsDialog
+				coverUrl={
+					selectedCharacter
+						? coverUrls[selectedCharacter.character_id]
+						: undefined
+				}
+				exporting={
+					selectedCharacter !== null &&
+					exportingCharacterId === selectedCharacter.character_id
+				}
+				deleting={
+					isDeleting &&
+					selectedCharacter !== null &&
+					deleteTargetIds.includes(selectedCharacter.character_id)
+				}
+				onDelete={() => {
+					if (!selectedCharacter) {
+						return;
+					}
+
+					requestDelete([selectedCharacter.character_id]);
+				}}
+				onEdit={() => {
+					if (!selectedCharacter) {
+						return;
+					}
+
+					openEditDialog(selectedCharacter.character_id);
+				}}
+				onExport={() => {
+					if (!selectedCharacter) {
+						return;
+					}
+
+					void handleExport(selectedCharacter);
+				}}
+				onOpenChange={(open) => {
+					if (!open) {
+						setSelectedCharacterId(null);
+					}
+				}}
+				open={selectedCharacter !== null}
+				summary={selectedCharacter}
+			/>
+
+			<CharacterFormDialog
+				characterId={editingCharacterId}
+				mode={editingCharacterId === null ? "create" : "edit"}
+				onCompleted={async (result) => {
+					setNotice({
+						message: result.message,
+						tone: result.tone,
+					});
+
+					if (result.coverUpdated) {
+						clearCoverEntries([result.characterId]);
+					}
+
+					await refreshCharacters();
+				}}
+				onOpenChange={(open) => {
+					setIsCharacterFormOpen(open);
+
+					if (!open) {
+						setEditingCharacterId(null);
+					}
+				}}
+				open={isCharacterFormOpen}
+			/>
+
+			<DeleteCharacterDialog
+				deleting={isDeleting}
+				onConfirm={() => {
+					void handleDeleteCharacters();
+				}}
+				onOpenChange={() => {
+					setDeleteTargetIds([]);
+				}}
+				targets={deleteTargets}
+			/>
+
+			<input
+				accept=".chr,application/octet-stream"
+				className="sr-only"
+				onChange={(event) => {
+					void handleImportSelection(event);
+				}}
+				ref={importInputRef}
+				type="file"
+			/>
+
+			<WorkspacePanelShell className="flex min-h-0 flex-1">
+				<Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+				<CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
+					<SectionHeader
+						actions={
+							<div className="flex min-h-10 flex-wrap items-center justify-end gap-2.5 md:flex-nowrap">
+								<ViewModeToggle onChange={setViewMode} value={viewMode} />
+
+								{selectionMode ? (
+									<>
+										<Badge className="normal-case px-3.5 py-2" variant="subtle">
+											{t("characters.selection.count", {
+												count: selectedCharacterIds.length,
+											})}
+										</Badge>
+
+										<IconButton
+											disabled={characters.length === 0}
+											icon={<FontAwesomeIcon icon={faCheckDouble} />}
+											label={t("characters.actions.selectAll")}
+											onClick={() => {
+												setSelectedCharacterIds(
+													characters.map(
+														(character) => character.character_id,
+													),
+												);
+											}}
+											size="md"
+											variant="secondary"
+										/>
+
+										<IconButton
+											className="text-[var(--color-state-error)] hover:bg-[var(--color-state-error-soft)] hover:text-[var(--color-text-primary)]"
+											disabled={selectedCharacterIds.length === 0}
+											icon={<FontAwesomeIcon icon={faTrashCan} />}
+											label={t("characters.actions.deleteSelected")}
+											onClick={() => {
+												requestDelete(selectedCharacterIds);
+											}}
+											size="md"
+											variant="ghost"
+										/>
+
+										<IconButton
+											icon={<FontAwesomeIcon icon={faXmark} />}
+											label={t("characters.actions.cancelSelection")}
+											onClick={exitSelectionMode}
+											size="md"
+											variant="secondary"
+										/>
+									</>
+								) : (
+									<>
+										<IconButton
+											icon={<FontAwesomeIcon icon={faSquareCheck} />}
+											label={t("characters.actions.selectMode")}
+											onClick={() => {
+												setSelectedCharacterId(null);
+												setSelectedCharacterIds([]);
+												setSelectionMode(true);
+											}}
+											size="md"
+											variant="secondary"
+										/>
+
+										<IconButton
+											icon={<FontAwesomeIcon icon={faPlus} />}
+											label={t("characters.actions.create")}
+											onClick={openCreateDialog}
+											size="md"
+										/>
+
+										<IconButton
+											disabled={isImporting}
+											icon={<FontAwesomeIcon icon={faUpload} />}
+											label={
+												isImporting
+													? t("characters.actions.importing")
+													: t("characters.actions.import")
+											}
+											onClick={() => {
+												importInputRef.current?.click();
+											}}
+											size="md"
+											variant="secondary"
+										/>
+									</>
+								)}
+							</div>
+						}
+						title={t("characters.title")}
+					/>
+				</CardHeader>
+
+				<CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
+					<div className="space-y-5">
+						{notice ? <StatusNotice notice={notice} /> : null}
+
+						{characters.length === 0 && !isLoading ? (
+							<div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
+								<h3 className="font-display text-3xl text-[var(--color-text-primary)]">
+									{t("characters.empty.title")}
+								</h3>
+
+								<div className="mt-7 flex flex-wrap justify-center gap-3">
+									<Button
+										onClick={() => {
+											openCreateDialog();
+										}}
+										size="md"
+									>
+										{t("characters.actions.create")}
+									</Button>
+									<Button
+										disabled={isImporting}
+										onClick={() => {
+											importInputRef.current?.click();
+										}}
+										size="md"
+										variant="secondary"
+									>
+										{t("characters.actions.import")}
+									</Button>
+								</div>
+							</div>
+						) : (
+							<CharacterResults
+								characters={characters}
+								coverUrls={coverUrls}
+								isLoading={isLoading}
+								onDelete={(characterId) => {
+									requestDelete([characterId]);
+								}}
+								onEdit={openEditDialog}
+								onOpenDetails={setSelectedCharacterId}
+								onToggleSelect={toggleCharacterSelection}
+								selectedCharacterIds={selectedCharacterSet}
+								selectionMode={selectionMode}
+								viewMode={viewMode}
+							/>
+						)}
+					</div>
+				</CardContent>
+				</Card>
+			</WorkspacePanelShell>
+		</div>
+	);
 }

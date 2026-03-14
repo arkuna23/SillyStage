@@ -5,6 +5,7 @@ import { cn } from '../../lib/cn'
 
 type SegmentedSelectorItem = {
   disabled?: boolean
+  icon?: ReactNode
   label: ReactNode
   value: string
 }
@@ -32,7 +33,7 @@ export function SegmentedSelector({
     <div
       aria-label={ariaLabel}
       className={cn(
-        'relative inline-flex items-center gap-1 rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]',
+        'relative inline-flex items-stretch gap-1 rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]',
         className,
       )}
       role="group"
@@ -44,9 +45,9 @@ export function SegmentedSelector({
           <button
             aria-current={selected ? 'page' : undefined}
             className={cn(
-              'relative inline-flex min-w-[5.75rem] items-center justify-center rounded-[0.95rem] px-3.5 py-2 text-[0.82rem] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70 sm:min-w-[6.5rem] disabled:pointer-events-none disabled:opacity-40',
+              'relative inline-flex h-10 min-w-[5.75rem] items-center justify-center self-stretch rounded-[0.95rem] px-3.5 text-[0.82rem] font-medium leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] sm:h-10.5 sm:min-w-[6.5rem] disabled:pointer-events-none disabled:opacity-40',
               selected
-                ? 'text-[var(--color-accent-ink)]'
+                ? 'text-[color:var(--color-accent-ink)]'
                 : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
             )}
             disabled={item.disabled}
@@ -62,7 +63,7 @@ export function SegmentedSelector({
           >
             {selected ? (
               <motion.span
-                className="absolute inset-0 rounded-[0.95rem] border border-[var(--color-accent-gold-line)] bg-[linear-gradient(135deg,rgba(243,211,140,0.98),rgba(217,167,74,0.96))] shadow-[0_10px_28px_rgba(217,167,74,0.22)]"
+                className="absolute inset-0 rounded-[0.95rem] border border-[var(--color-accent-gold-line)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-gold)_86%,var(--color-bg-curtain)),color-mix(in_srgb,var(--color-accent-gold-strong)_82%,var(--color-bg-curtain)))] shadow-[0_10px_24px_var(--color-accent-glow-soft)]"
                 layoutId={layoutId}
                 transition={
                   prefersReducedMotion
@@ -71,7 +72,14 @@ export function SegmentedSelector({
                 }
               />
             ) : null}
-            <span className="relative z-10">{item.label}</span>
+            <span className="relative z-10 inline-flex items-center gap-2.5">
+              {item.icon ? (
+                <span aria-hidden="true" className="inline-flex size-4 items-center justify-center">
+                  {item.icon}
+                </span>
+              ) : null}
+              <span>{item.label}</span>
+            </span>
           </button>
         )
       })}

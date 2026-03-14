@@ -53,10 +53,10 @@ export function LanguageToggle({
               key={option.key}
               aria-pressed={selected}
               className={cn(
-                'cursor-pointer rounded-full font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-200/70',
+                'cursor-pointer rounded-full font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
                 compact ? 'px-2.5 py-1.5 text-[0.82rem]' : 'px-3 py-2 text-sm',
                 selected
-                  ? 'bg-[var(--color-accent-gold)] text-[var(--color-accent-ink)] shadow-[0_10px_30px_rgba(217,167,74,0.28)]'
+                  ? 'bg-[var(--color-accent-gold)] text-[color:var(--color-accent-ink)] shadow-[0_10px_30px_var(--color-accent-glow)]'
                   : 'text-[var(--color-text-secondary)] hover:bg-white/5 hover:text-[var(--color-text-primary)]',
               )}
               lang={option.key}
