@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$Target
+    [string[]]$Target = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -146,11 +146,11 @@ function Package-Target {
     Write-PackagedConfig -PackageDir $packageDir
     Write-ReleaseNotes -PackageDir $packageDir -BinaryName $binaryName
 
-    Compress-Archive -Path $packageDir -DestinationPath $archivePath -CompressionLevel Optimal
+    Compress-Archive -Path $packageDir -DestinationPath $archivePath -CompressionLevel Optimal -Force
     Write-Host "packaged $RustTarget -> $archivePath"
 }
 
-if ($Target.Count -gt 0 -and $Target[0] -in @("-h", "--help", "/?")) {
+if ($Target.Length -gt 0 -and $Target[0] -in @("-h", "--help", "/?")) {
     Write-Usage
     exit 0
 }
@@ -163,7 +163,7 @@ Require-Command -Name rustc
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $distRoot = Join-Path $repoRoot "dist"
 
-if ($Target.Count -eq 0) {
+if ($Target.Length -eq 0) {
     $Target = @(Get-HostTarget)
 }
 
@@ -175,7 +175,8 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "pnpm build failed"
     }
-} finally {
+}
+finally {
     Pop-Location
 }
 

@@ -14,7 +14,7 @@ use crate::api::{
 use crate::error::LlmError;
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_TIMEOUT_SECS: u64 = 60;
+const DEFAULT_TIMEOUT_SECS: u64 = 180;
 const MAX_LOGGED_PROMPT_CHARS: usize = 1_200;
 const MAX_LOGGED_RESPONSE_CHARS: usize = 2_000;
 
@@ -109,7 +109,10 @@ pub struct OpenAiClient {
 
 impl OpenAiClient {
     pub fn new(config: OpenAiConfig) -> Result<Self, LlmError> {
-        let http = reqwest::Client::builder().timeout(config.timeout).build()?;
+        let http = reqwest::Client::builder()
+            .tls_backend_rustls()
+            .timeout(config.timeout)
+            .build()?;
         Ok(Self { http, config })
     }
 
@@ -160,7 +163,17 @@ impl OpenAiClient {
             .header(CONTENT_TYPE, "application/json")
             .json(&request_body)
             .send()
-            .await?;
+            .await
+            .map_err(|error| {
+                error!(
+                    provider = "openai",
+                    url = %self.completions_url(),
+                    error = %error,
+                    error_chain = %error_chain_for_log(&error),
+                    "failed to send llm request"
+                );
+                LlmError::from(error)
+            })?;
 
         Self::handle_error_status(response).await
     }
@@ -692,6 +705,17 @@ mod tests {
             .expect("config should build");
 
         assert_eq!(config.base_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn builder_uses_180_second_default_timeout() {
+        let config = OpenAiConfig::builder()
+            .api_key("test-key")
+            .default_model("gpt-4o-mini")
+            .build()
+            .expect("config should build");
+
+        assert_eq!(config.timeout, Duration::from_secs(180));
     }
 
     #[test]
