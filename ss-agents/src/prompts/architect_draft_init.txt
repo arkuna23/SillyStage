@@ -21,6 +21,9 @@ RULES
 - TARGET_NODE_COUNT is a hard upper bound for new nodes
 - start_node must be one of the new node ids
 - Also generate world_state_schema, optional player_state_schema, and introduction
+- Every transition target in returned nodes and transition_patches must point to a node id included in this same response
+- Identifier-like state keys such as "current_event", "current_route", "route", "current_phase", and "travel_phase" must use canonical snake_case ids as values
+- Never use player-facing text like "接近沼泽" as a state value for those keys; use ids like "approaching_swamp" instead
 - Use only character ids from AVAILABLE_CHARACTERS
 - Use world_state_schema keys for global conditions and global state ops
 - Use player_state_schema keys for player-scoped conditions and player state ops
@@ -36,6 +39,26 @@ OUTPUT
   "player_state_schema": { "fields": {} },
   "introduction": "short player-facing opening paragraph"
 }
+
+Schema example
+{
+  "fields": {
+    "trust": {
+      "value_type": "int",
+      "default": 0,
+      "description": "how much this faction trusts the player"
+    },
+    "gate_open": {
+      "value_type": "bool",
+      "default": false,
+      "description": "whether the gate is open"
+    }
+  }
+}
+
+Every schema field object must include "value_type".
+Allowed value_type values: "bool", "int", "float", "string", "array", "object", "null".
+"default" and "description" are optional but recommended when useful.
 
 NodeTransitionPatch
 {
@@ -101,3 +124,11 @@ StateOp examples
   "character": "character_id",
   "key": "character_state_key"
 }
+
+Identifier-like value examples
+Correct:
+{ "type": "SetState", "key": "current_event", "value": "approaching_swamp" }
+{ "scope": "global", "key": "current_event", "op": "eq", "value": "approaching_swamp" }
+
+Wrong:
+{ "type": "SetState", "key": "current_event", "value": "接近沼泽" }

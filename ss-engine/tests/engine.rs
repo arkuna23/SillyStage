@@ -167,14 +167,14 @@ fn sample_story_resources() -> StoryResources {
     .with_world_state_schema_seed(sample_world_state_schema())
 }
 
-fn user_message_content(request: &llm::ChatRequest) -> &str {
+fn user_message_content(request: &llm::ChatRequest) -> String {
     request
         .messages
         .iter()
-        .find(|message| matches!(message.role, Role::User))
-        .expect("user message should exist")
-        .content
-        .as_str()
+        .filter(|message| matches!(message.role, Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 #[tokio::test]

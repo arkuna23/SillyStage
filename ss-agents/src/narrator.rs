@@ -8,10 +8,13 @@ use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
+use crate::prompt::{
+    compact_json, render_character_summaries, render_observable_world_state, render_optional_node,
+    render_sections, render_state_schema_fields,
+};
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
 
@@ -112,14 +115,15 @@ impl Narrator {
     ) -> Result<NarratorEventStream<'b>, NarratorError> {
         Self::validate_request(&request)?;
 
-        let user_prompt = self.build_user_prompt(&request)?;
+        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
         let stream = self
             .llm
             .chat_stream({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
-                    .user_message(user_prompt);
+                    .user_message(stable_prompt)
+                    .user_message(dynamic_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -233,48 +237,46 @@ impl Narrator {
         Ok(())
     }
 
-    fn build_user_prompt(&self, request: &NarratorRequest<'_>) -> Result<String, NarratorError> {
-        let purpose_json =
-            serde_json::to_string(&request.purpose).map_err(NarratorError::SerializePromptData)?;
-        let previous_node_json = serde_json::to_string_pretty(
-            &request.previous_node.as_ref().map_or(Value::Null, |node| {
-                serde_json::to_value(node).unwrap_or(Value::Null)
-            }),
-        )
-        .map_err(NarratorError::SerializePromptData)?;
-        let previous_cast_json = serde_json::to_string_pretty(
-            &self
-                .previous_cast_summaries(request)?
-                .map_or(Value::Null, |summaries| {
-                    serde_json::to_value(summaries).unwrap_or(Value::Null)
-                }),
-        )
-        .map_err(NarratorError::SerializePromptData)?;
-        let current_node_json = serde_json::to_string_pretty(&request.current_node)
-            .map_err(NarratorError::SerializePromptData)?;
-        let current_cast_json =
-            serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
-                .map_err(NarratorError::SerializePromptData)?;
-        let player_name_json = serde_json::to_string_pretty(&request.player_name)
-            .map_err(NarratorError::SerializePromptData)?;
-        let world_state_json =
-            serde_json::to_string_pretty(&filtered_narrator_world_state(request.world_state)?)
-                .map_err(NarratorError::SerializePromptData)?;
-        let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
-            .map_err(NarratorError::SerializePromptData)?;
+    fn build_user_prompts(
+        &self,
+        request: &NarratorRequest<'_>,
+    ) -> Result<(String, String), NarratorError> {
+        let stable_prompt = render_sections(&[
+            (
+                "NARRATOR_PURPOSE",
+                compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?,
+            ),
+            (
+                "PLAYER_NAME",
+                request.player_name.unwrap_or("null").to_owned(),
+            ),
+            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
+            ("PREVIOUS_NODE", render_optional_node(request.previous_node)),
+            (
+                "PREVIOUS_CAST",
+                self.previous_cast_summaries(request)?
+                    .map(|summaries| render_character_summaries(&summaries))
+                    .unwrap_or_else(|| "null".to_owned()),
+            ),
+            (
+                "CURRENT_NODE",
+                crate::prompt::render_node(request.current_node),
+            ),
+            (
+                "CURRENT_CAST",
+                render_character_summaries(&self.current_cast_summaries(request)?),
+            ),
+            (
+                "PLAYER_STATE_SCHEMA",
+                render_state_schema_fields(&request.player_state_schema.fields),
+            ),
+        ]);
+        let dynamic_prompt = render_sections(&[(
+            "WORLD_STATE",
+            render_observable_world_state(&filtered_narrator_world_state(request.world_state)?),
+        )]);
 
-        Ok(format!(
-            "NARRATOR_PURPOSE:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
-            purpose_json,
-            player_name_json,
-            request.player_description,
-            previous_node_json,
-            previous_cast_json,
-            current_node_json,
-            current_cast_json,
-            player_state_schema_json,
-            world_state_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 
     fn current_cast_summaries<'b>(
@@ -342,21 +344,8 @@ fn cast_summaries<'a>(
         .collect()
 }
 
-fn filtered_narrator_world_state(world_state: &WorldState) -> Result<Value, NarratorError> {
-    let mut value = serde_json::to_value(world_state.observable_prompt_view())
-        .map_err(NarratorError::SerializePromptData)?;
-
-    if let Some(history) = value
-        .get_mut("actor_shared_history")
-        .and_then(Value::as_array_mut)
-    {
-        history.retain(|entry| {
-            entry
-                .get("speaker_id")
-                .and_then(Value::as_str)
-                .is_none_or(|speaker_id| speaker_id != "narrator")
-        });
-    }
-
-    Ok(value)
+fn filtered_narrator_world_state(world_state: &WorldState) -> Result<WorldState, NarratorError> {
+    let mut clone = world_state.clone();
+    clone.actor_shared_history.retain(|entry| entry.speaker_id != "narrator");
+    Ok(clone)
 }

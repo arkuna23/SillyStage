@@ -17,6 +17,16 @@ use story::NarrativeNode;
 
 use common::MockLlm;
 
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -279,41 +289,21 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
-    assert!(user_message.content.contains("CURRENT_NODE"));
-    assert!(user_message.content.contains("PREVIOUS_NODE"));
-    assert!(user_message.content.contains("\"actor_shared_history\""));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
-    assert!(user_message.content.contains("PLAYER_NAME"));
-    assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
-    assert!(
-        user_message
-            .content
-            .contains("A cautious courier trying to get medicine through the flooded district.")
-    );
-    assert!(user_message.content.contains("\"player_state\""));
-    assert!(user_message.content.contains("\"coins\": 12"));
-    assert!(user_message.content.contains("\"state_schema\""));
-    assert!(
-        user_message
-            .content
-            .contains("Can you open the gate before the tide turns?")
-    );
-    assert!(user_message.content.contains("The gate is still jammed."));
-    assert!(
-        !user_message
-            .content
-            .contains("The dock rocked in the dark.")
-    );
-    assert!(!user_message.content.contains("\"actor_private_memory\""));
-    assert!(
-        !user_message
-            .content
-            .contains("I should not reveal the shortcut yet.")
-    );
+    assert!(user_message.contains("CURRENT_NODE"));
+    assert!(user_message.contains("PREVIOUS_NODE"));
+    assert!(user_message.contains("shared_history"));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(user_message.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("A cautious courier trying to get medicine through the flooded district."));
+    assert!(user_message.contains("player_state"));
+    assert!(user_message.contains("coins=12"));
+    assert!(user_message.contains("coins:"));
+    assert!(user_message.contains("Can you open the gate before the tide turns?"));
+    assert!(user_message.contains("The gate is still jammed."));
+    assert!(!user_message.contains("The dock rocked in the dark."));
+    assert!(!user_message.contains("actor_private_memory"));
+    assert!(!user_message.contains("I should not reveal the shortcut yet."));
 }

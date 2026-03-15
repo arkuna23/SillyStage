@@ -7,6 +7,10 @@ use llm::{ChatRequest, LlmApi, ResponseFormat};
 use serde::{Deserialize, Serialize};
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
+use crate::prompt::{
+    render_character_summaries, render_node, render_observable_world_state, render_sections,
+    render_state_schema_fields,
+};
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
 
@@ -106,14 +110,15 @@ impl Replyer {
     ) -> Result<ReplyerResponse, ReplyerError> {
         Self::validate_request(&request)?;
 
-        let user_prompt = self.build_user_prompt(&request)?;
+        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
         let output = self
             .llm
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
-                    .user_message(user_prompt)
+                    .user_message(stable_prompt)
+                    .user_message(dynamic_prompt)
                     .response_format(ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -160,33 +165,36 @@ impl Replyer {
         Ok(())
     }
 
-    fn build_user_prompt(&self, request: &ReplyerRequest<'_>) -> Result<String, ReplyerError> {
-        let current_node_json = serde_json::to_string_pretty(request.current_node)
-            .map_err(ReplyerError::SerializePromptData)?;
-        let current_cast_json =
-            serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
-                .map_err(ReplyerError::SerializePromptData)?;
-        let player_name_json = serde_json::to_string_pretty(&request.player_name)
-            .map_err(ReplyerError::SerializePromptData)?;
-        let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
-            .map_err(ReplyerError::SerializePromptData)?;
-        let world_state_json =
-            serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
-                .map_err(ReplyerError::SerializePromptData)?;
-        let history_json = serde_json::to_string_pretty(request.history)
-            .map_err(ReplyerError::SerializePromptData)?;
+    fn build_user_prompts(
+        &self,
+        request: &ReplyerRequest<'_>,
+    ) -> Result<(String, String), ReplyerError> {
+        let stable_prompt = render_sections(&[
+            ("REPLY_LIMIT", request.limit.to_string()),
+            (
+                "PLAYER_NAME",
+                request.player_name.unwrap_or("null").to_owned(),
+            ),
+            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
+            (
+                "CURRENT_CAST",
+                render_character_summaries(&self.current_cast_summaries(request)?),
+            ),
+            ("CURRENT_NODE", render_node(request.current_node)),
+            (
+                "PLAYER_STATE_SCHEMA",
+                render_state_schema_fields(&request.player_state_schema.fields),
+            ),
+        ]);
+        let dynamic_prompt = render_sections(&[
+            (
+                "WORLD_STATE",
+                render_observable_world_state(request.world_state),
+            ),
+            ("SESSION_HISTORY", render_reply_history(request.history)),
+        ]);
 
-        Ok(format!(
-            "REPLY_LIMIT:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nSESSION_HISTORY:\n{}",
-            request.limit,
-            player_name_json,
-            request.player_description,
-            current_cast_json,
-            current_node_json,
-            player_state_schema_json,
-            world_state_json,
-            history_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 
     fn current_cast_summaries<'a>(
@@ -215,6 +223,27 @@ impl Replyer {
             })
             .collect()
     }
+}
+
+fn render_reply_history(history: &[ReplyHistoryMessage]) -> String {
+    if history.is_empty() {
+        return "- none".to_owned();
+    }
+
+    history
+        .iter()
+        .map(|message| {
+            format!(
+                "- [turn:{}|{}|{}|{}] {}",
+                message.turn_index,
+                message.speaker_id,
+                message.speaker_name,
+                serde_json::to_string(&message.kind).unwrap_or_default(),
+                crate::prompt::normalize_inline_text(&message.text)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn sanitize_replies(

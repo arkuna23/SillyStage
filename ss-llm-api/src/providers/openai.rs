@@ -149,12 +149,7 @@ impl OpenAiClient {
         request.validate()?;
         let request_body = self.build_request_body(request, stream);
 
-        log_llm_payload(
-            stream,
-            self.completions_url(),
-            &request_body,
-            "sending llm request",
-        );
+        log_llm_payload(stream, self.completions_url(), &request_body, "sending llm request");
 
         let response = self
             .http
@@ -305,14 +300,45 @@ fn json_for_log<T: Serialize>(payload: &T) -> String {
         .unwrap_or_else(|error| format!("{{\"serialization_error\":\"{error}\"}}"))
 }
 
-fn log_llm_payload<T: Serialize>(stream: bool, url: String, payload: &T, message: &str) {
-    let payload = json_for_llm_request_log(payload);
+fn log_llm_payload(stream: bool, url: String, payload: &OpenAiChatRequest, message: &str) {
+    let payload_for_log = json_for_llm_request_log(payload);
+    let message_char_counts = payload
+        .messages
+        .iter()
+        .map(|message| message.content.chars().count().to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    let stable_prefix_chars = payload
+        .messages
+        .iter()
+        .take(payload.messages.len().saturating_sub(1))
+        .map(|message| message.content.chars().count())
+        .sum::<usize>();
+    let last_message_chars = payload
+        .messages
+        .last()
+        .map(|message| message.content.chars().count())
+        .unwrap_or_default();
+    let stable_prefix_hash = hash_messages(
+        &payload.messages[..payload.messages.len().saturating_sub(1)],
+    );
+    let last_message_hash = payload
+        .messages
+        .last()
+        .map(hash_message)
+        .unwrap_or_else(|| "none".to_owned());
     if stream {
         debug!(
             provider = "openai",
             stream,
             url = %url,
-            payload = %payload,
+            message_count = payload.messages.len(),
+            message_char_counts = %message_char_counts,
+            stable_prefix_chars,
+            last_message_chars,
+            stable_prefix_hash = %stable_prefix_hash,
+            last_message_hash = %last_message_hash,
+            payload = %payload_for_log,
             "{message}"
         );
     } else {
@@ -320,7 +346,13 @@ fn log_llm_payload<T: Serialize>(stream: bool, url: String, payload: &T, message
             provider = "openai",
             stream,
             url = %url,
-            payload = %payload,
+            message_count = payload.messages.len(),
+            message_char_counts = %message_char_counts,
+            stable_prefix_chars,
+            last_message_chars,
+            stable_prefix_hash = %stable_prefix_hash,
+            last_message_hash = %last_message_hash,
+            payload = %payload_for_log,
             "{message}"
         );
     }
@@ -393,6 +425,33 @@ fn truncate_response_for_log(content: &str) -> String {
     }
 
     truncate_for_log(content, MAX_LOGGED_RESPONSE_CHARS)
+}
+
+fn hash_messages(messages: &[OpenAiMessage]) -> String {
+    if messages.is_empty() {
+        return "none".to_owned();
+    }
+
+    let mut hash = 0xcbf29ce484222325u64;
+    for message in messages {
+        hash_bytes(message.role.as_bytes(), &mut hash);
+        hash_bytes(&[0], &mut hash);
+        hash_bytes(message.content.as_bytes(), &mut hash);
+        hash_bytes(&[0xff], &mut hash);
+    }
+    format!("{hash:016x}")
+}
+
+fn hash_message(message: &OpenAiMessage) -> String {
+    hash_messages(std::slice::from_ref(message))
+}
+
+fn hash_bytes(bytes: &[u8], hash: &mut u64) {
+    const FNV_PRIME: u64 = 0x100000001b3;
+    for byte in bytes {
+        *hash ^= u64::from(*byte);
+        *hash = hash.wrapping_mul(FNV_PRIME);
+    }
 }
 
 async fn read_response_body(

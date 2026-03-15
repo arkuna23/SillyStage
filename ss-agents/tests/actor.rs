@@ -315,43 +315,45 @@ async fn perform_stream_sends_character_specific_system_prompt() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    assert_eq!(request.messages.len(), 3);
+    assert_eq!(request.messages.len(), 4);
     assert!(request.messages[1].content.contains("traveling merchant"));
-    assert!(request.messages[2].content.contains("SHARED_SCENE_HISTORY"));
-    assert!(
-        request.messages[2]
-            .content
-            .contains("Stay close to the lantern light.")
-    );
-    assert!(
-        request.messages[2]
-            .content
-            .contains("Can you get us through the flooded gate?")
-    );
+    assert!(request.messages[2].content.contains("PLAYER_NAME"));
+    assert!(request.messages[2].content.contains("CURRENT_NODE"));
     assert!(
         request.messages[2]
             .content
             .contains("A cautious courier carrying a sealed satchel")
     );
-    assert!(!request.messages[2].content.contains("\"player_state\""));
-    assert!(!request.messages[2].content.contains("\"coins\": 12"));
+    assert!(request.messages[3].content.contains("SHARED_SCENE_HISTORY"));
     assert!(
-        request.messages[2]
+        request.messages[3]
+            .content
+            .contains("Stay close to the lantern light.")
+    );
+    assert!(
+        request.messages[3]
+            .content
+            .contains("Can you get us through the flooded gate?")
+    );
+    assert!(!request.messages[3].content.contains("\"player_state\""));
+    assert!(!request.messages[3].content.contains("\"coins\": 12"));
+    assert!(
+        request.messages[3]
             .content
             .contains("PRIVATE_CHARACTER_MEMORY")
     );
     assert!(
-        request.messages[2]
+        request.messages[3]
             .content
             .contains("If I play this right, the route stays mine.")
     );
     assert!(
-        !request.messages[2]
+        !request.messages[3]
             .content
             .contains("\"actor_shared_history\"")
     );
     assert!(
-        !request.messages[2]
+        !request.messages[3]
             .content
             .contains("\"actor_private_memory\"")
     );

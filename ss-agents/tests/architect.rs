@@ -6,12 +6,23 @@ use std::sync::Arc;
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{
-    Architect, ArchitectDraftContinueRequest, ArchitectRequest, GraphSummaryNode,
+    Architect, ArchitectDraftContinueRequest, ArchitectDraftInitRequest, ArchitectRequest,
+    GraphSummaryNode,
 };
 use state::schema::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::NarrativeNode;
 
 use common::{MockLlm, assistant_response};
+
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
 
 fn sample_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
@@ -87,24 +98,20 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
     let system_message = request
         .messages
         .iter()
         .find(|message| matches!(message.role, llm::Role::System))
         .expect("system message should exist");
 
-    assert!(user_message.content.contains("WORLD_STATE_SCHEMA_SEED"));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
-    assert!(user_message.content.contains("\"id\": \"merchant\""));
-    assert!(user_message.content.contains("\"state_schema_keys\""));
-    assert!(user_message.content.contains("\"role_summary\""));
-    assert!(user_message.content.contains("\"coins\""));
-    assert!(!user_message.content.contains("Stay in character."));
+    assert!(user_message.contains("WORLD_STATE_SCHEMA_SEED"));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(user_message.contains("merchant | Old Merchant"));
+    assert!(user_message.contains("state_schema"));
+    assert!(user_message.contains("role="));
+    assert!(user_message.contains("coins:"));
+    assert!(!user_message.contains("Stay in character."));
     assert!(system_message.content.contains("\"type\": \"SetState\""));
     assert!(
         system_message
@@ -120,6 +127,15 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
         system_message
             .content
             .contains("\"type\": \"SetCharacterState\"")
+    );
+    assert!(system_message.content.contains("\"key\": \"current_event\""));
+    assert!(system_message.content.contains("\"value\": \"approaching_swamp\""));
+    assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
+    assert!(system_message.content.contains("\"value_type\": \"bool\""));
+    assert!(
+        system_message
+            .content
+            .contains("Every schema field object must include \"value_type\"")
     );
 }
 
@@ -185,15 +201,11 @@ async fn architect_can_generate_schema_without_seed() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
-    assert!(user_message.content.contains("WORLD_STATE_SCHEMA_SEED"));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
-    assert!(user_message.content.contains("null"));
+    assert!(user_message.contains("WORLD_STATE_SCHEMA_SEED"));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(user_message.contains("null"));
 }
 
 #[tokio::test]
@@ -239,15 +251,11 @@ async fn architect_prefers_planned_story_when_provided() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
-    assert!(user_message.content.contains("PLANNED_STORY"));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
-    assert!(user_message.content.contains(planned_story));
+    assert!(user_message.contains("PLANNED_STORY"));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(user_message.contains(planned_story));
 }
 
 #[tokio::test]
@@ -321,21 +329,17 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
     let system_message = request
         .messages
         .iter()
         .find(|message| matches!(message.role, llm::Role::System))
         .expect("system message should exist");
 
-    assert!(user_message.content.contains("SECTION_SUMMARIES"));
-    assert!(user_message.content.contains("RECENT_SECTION_DETAIL"));
-    assert!(!user_message.content.contains("PLANNED_STORY"));
-    assert!(!user_message.content.contains("Suggested Beats:"));
+    assert!(user_message.contains("SECTION_SUMMARIES"));
+    assert!(user_message.contains("RECENT_SECTION_DETAIL"));
+    assert!(!user_message.contains("PLANNED_STORY"));
+    assert!(!user_message.contains("Suggested Beats:"));
     assert!(!system_message.content.contains("PLANNED_STORY"));
     assert!(!system_message.content.contains("also return introduction"));
     assert!(!system_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
@@ -348,6 +352,91 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
         system_message
             .content
             .contains("\"type\": \"SetPlayerState\"")
+    );
+    assert!(system_message.content.contains("\"key\": \"current_event\""));
+    assert!(system_message.content.contains("\"value\": \"approaching_swamp\""));
+    assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
+}
+
+#[tokio::test]
+async fn architect_draft_init_prompt_requires_value_type_in_schema_fields() {
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
+        "{\"nodes\":[{\"id\":\"start\",\"title\":\"Gate\",\"scene\":\"The courier reaches the city gate.\",\"goal\":\"Open the story.\",\"characters\":[\"merchant\"],\"transitions\":[],\"on_enter_updates\":[]}],\"transition_patches\":[],\"section_summary\":\"The courier reaches the gate and faces the first obstacle.\",\"start_node\":\"start\",\"world_state_schema\":{\"fields\":{\"gate_open\":{\"value_type\":\"bool\",\"default\":false,\"description\":\"Whether the gate is open\"}}},\"player_state_schema\":{\"fields\":{\"coins\":{\"value_type\":\"int\",\"default\":0,\"description\":\"How many coins the player carries\"}}},\"introduction\":\"The courier arrives at the city gate as the merchant watches.\"}",
+        Some(json!({
+            "nodes": [{
+                "id": "start",
+                "title": "Gate",
+                "scene": "The courier reaches the city gate.",
+                "goal": "Open the story.",
+                "characters": ["merchant"],
+                "transitions": [],
+                "on_enter_updates": []
+            }],
+            "transition_patches": [],
+            "section_summary": "The courier reaches the gate and faces the first obstacle.",
+            "start_node": "start",
+            "world_state_schema": {
+                "fields": {
+                    "gate_open": {
+                        "value_type": "bool",
+                        "default": false,
+                        "description": "Whether the gate is open"
+                    }
+                }
+            },
+            "player_state_schema": {
+                "fields": {
+                    "coins": {
+                        "value_type": "int",
+                        "default": 0,
+                        "description": "How many coins the player carries"
+                    }
+                }
+            },
+            "introduction": "The courier arrives at the city gate as the merchant watches."
+        })),
+    )));
+    let architect = Architect::new(llm.clone(), "test-model");
+    let available_characters = vec![CharacterCard {
+        id: "merchant".to_owned(),
+        name: "Old Merchant".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative".to_owned(),
+        tendencies: vec!["likes profitable deals".to_owned()],
+        state_schema: sample_state_schema(),
+        system_prompt: "Stay in character.".to_owned(),
+    }];
+
+    architect
+        .start_draft(ArchitectDraftInitRequest {
+            story_concept: "A courier tries to enter a city.",
+            planned_story: "The courier reaches the gate and must negotiate passage.",
+            current_section: "Opening at the gate.",
+            section_index: 0,
+            total_sections: 2,
+            graph_summary: &[],
+            recent_nodes: &[],
+            target_node_count: 3,
+            world_state_schema: None,
+            player_state_schema: None,
+            available_characters: &available_characters,
+        })
+        .await
+        .expect("draft init should succeed");
+
+    let requests = llm.recorded_requests();
+    let request = requests.first().expect("request should be recorded");
+    let system_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::System))
+        .expect("system message should exist");
+
+    assert!(system_message.content.contains("\"value_type\": \"bool\""));
+    assert!(
+        system_message
+            .content
+            .contains("Every schema field object must include \"value_type\"")
     );
 }
 
@@ -409,4 +498,115 @@ async fn architect_attempts_repair_after_invalid_json_output() {
         .expect("repair user message should exist");
     assert!(repair_user_message.content.contains("RAW_OUTPUT"));
     assert!(repair_user_message.content.contains("not valid json"));
+    assert!(repair_user_message.content.contains("\"value_type\": \"bool\""));
+    assert!(
+        repair_user_message
+            .content
+            .contains("\"value_type\": \"int\"")
+    );
+}
+
+#[tokio::test]
+async fn architect_draft_continue_repairs_missing_future_transition_targets() {
+    let llm = Arc::new(MockLlm::with_chat_responses(vec![
+        Ok(assistant_response(
+            "{\"nodes\":[{\"id\":\"node-12\",\"title\":\"Dock Choice\",\"scene\":\"The courier reaches a choice at the dock.\",\"goal\":\"Choose a path.\",\"characters\":[\"merchant\"],\"transitions\":[{\"to\":\"node-13\"}],\"on_enter_updates\":[]}],\"transition_patches\":[],\"section_summary\":\"The courier faces a branching choice.\"}",
+            Some(json!({
+                "nodes": [{
+                    "id": "node-12",
+                    "title": "Dock Choice",
+                    "scene": "The courier reaches a choice at the dock.",
+                    "goal": "Choose a path.",
+                    "characters": ["merchant"],
+                    "transitions": [{
+                        "to": "node-13"
+                    }],
+                    "on_enter_updates": []
+                }],
+                "transition_patches": [],
+                "section_summary": "The courier faces a branching choice."
+            })),
+        )),
+        Ok(assistant_response(
+            "{\"nodes\":[{\"id\":\"node-12\",\"title\":\"Dock Choice\",\"scene\":\"The courier reaches a choice at the dock.\",\"goal\":\"Choose a path.\",\"characters\":[\"merchant\"],\"transitions\":[{\"to\":\"start\"}],\"on_enter_updates\":[]}],\"transition_patches\":[],\"section_summary\":\"The courier faces a branching choice.\"}",
+            Some(json!({
+                "nodes": [{
+                    "id": "node-12",
+                    "title": "Dock Choice",
+                    "scene": "The courier reaches a choice at the dock.",
+                    "goal": "Choose a path.",
+                    "characters": ["merchant"],
+                    "transitions": [{
+                        "to": "start"
+                    }],
+                    "on_enter_updates": []
+                }],
+                "transition_patches": [],
+                "section_summary": "The courier faces a branching choice."
+            })),
+        )),
+    ]));
+    let architect = Architect::new(llm.clone(), "test-model");
+    let available_characters = vec![CharacterCard {
+        id: "merchant".to_owned(),
+        name: "Old Merchant".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative".to_owned(),
+        tendencies: vec!["likes profitable deals".to_owned()],
+        state_schema: sample_state_schema(),
+        system_prompt: "Stay in character.".to_owned(),
+    }];
+    let mut world_schema = WorldStateSchema::new();
+    world_schema.insert_field(
+        "flood_gate_open",
+        StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
+    );
+    let player_state_schema = sample_player_state_schema();
+
+    let chunk = architect
+        .continue_draft(ArchitectDraftContinueRequest {
+            story_concept: "A courier must escape a flooded market district.",
+            current_section: "The courier reaches a fork between the flooded dock and the watchtower.",
+            section_index: 1,
+            total_sections: 3,
+            section_summaries: &[
+                "The courier entered the district and found the dock half-submerged.".to_owned(),
+            ],
+            graph_summary: &[GraphSummaryNode {
+                id: "start".to_owned(),
+                title: "Flooded Gate".to_owned(),
+                scene_summary: "The courier arrives at the gate.".to_owned(),
+                goal: "Open the story.".to_owned(),
+                characters: vec!["merchant".to_owned()],
+                transition_targets: vec!["node-12".to_owned()],
+            }],
+            recent_nodes: &[NarrativeNode {
+                id: "start".to_owned(),
+                title: "Flooded Gate".to_owned(),
+                scene: "The courier arrives at the flooded gate while the merchant waits nearby.".to_owned(),
+                goal: "Open the story.".to_owned(),
+                characters: vec!["merchant".to_owned()],
+                transitions: vec![],
+                on_enter_updates: vec![],
+            }],
+            target_node_count: 3,
+            world_state_schema: &world_schema,
+            player_state_schema: &player_state_schema,
+            available_characters: &available_characters,
+        })
+        .await
+        .expect("draft continue should be repaired");
+
+    assert_eq!(chunk.nodes[0].transitions[0].to, "start");
+
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 2, "initial request plus repair request");
+    let repair_request = requests.last().expect("repair request should exist");
+    let repair_user_message = repair_request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::User))
+        .expect("repair user message should exist");
+    assert!(repair_user_message.content.contains("node-13"));
+    assert!(repair_user_message.content.contains("allowed targets are existing graph nodes [start] or returned nodes [node-12]"));
 }

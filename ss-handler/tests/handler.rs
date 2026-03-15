@@ -1013,6 +1013,45 @@ async fn story_update_graph_rejects_invalid_graph() {
 }
 
 #[tokio::test]
+async fn story_update_graph_rejects_noncanonical_identifier_values() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let mut graph = sample_story_graph();
+    graph.nodes[0].on_enter_updates = vec![StateOp::SetState {
+        key: "current_event".to_owned(),
+        value: json!("接近沼泽"),
+    }];
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-update-graph-current-event-invalid",
+            None::<String>,
+            RequestParams::StoryUpdateGraph(UpdateStoryGraphParams {
+                story_id: "story-1".to_owned(),
+                graph,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("current_event")
+                && error.message.contains("canonical snake_case identifier")
+    ));
+}
+
+#[tokio::test]
 async fn story_draft_update_graph_replaces_partial_graph() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());

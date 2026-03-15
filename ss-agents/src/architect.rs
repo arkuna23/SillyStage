@@ -1,7 +1,8 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use crate::actor::CharacterCard;
+use crate::prompt::{compact_json, render_sections};
 use llm::{ChatRequest, LlmApi};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -183,11 +184,11 @@ impl Architect {
         &self,
         req: ArchitectRequest<'_>,
     ) -> Result<ArchitectResponse, ArchitectError> {
-        let user_prompt = self.build_user_prompt(&req)?;
+        let user_messages = self.build_user_messages(&req)?;
         let (bundle, output) = self
             .chat_json_with_repair(
                 include_str!("./prompts/architect.txt"),
-                user_prompt,
+                user_messages,
                 ArchitectRepairTarget::FullGraph,
                 Self::parse_json_output::<ArchitectOutputBundle>,
                 |_| Ok(()),
@@ -211,7 +212,7 @@ impl Architect {
         &self,
         req: ArchitectDraftInitRequest<'_>,
     ) -> Result<ArchitectDraftInitResponse, ArchitectError> {
-        let chat_request = self.build_draft_chat_request(
+        let user_messages = self.build_draft_user_messages(
             DraftPromptKind::Init,
             DraftPromptInput {
                 story_concept: req.story_concept,
@@ -231,7 +232,7 @@ impl Architect {
         let (bundle, output) = self
             .chat_json_with_repair(
                 include_str!("./prompts/architect_draft_init.txt"),
-                chat_request.messages[1].content.clone(),
+                user_messages,
                 ArchitectRepairTarget::DraftInit,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
                 validate_draft_init_bundle,
@@ -270,7 +271,7 @@ impl Architect {
         &self,
         req: ArchitectDraftContinueRequest<'_>,
     ) -> Result<ArchitectDraftChunkResponse, ArchitectError> {
-        let chat_request = self.build_draft_chat_request(
+        let user_messages = self.build_draft_user_messages(
             DraftPromptKind::Continue,
             DraftPromptInput {
                 story_concept: req.story_concept,
@@ -290,10 +291,15 @@ impl Architect {
         let (bundle, output) = self
             .chat_json_with_repair(
                 include_str!("./prompts/architect_draft_continue.txt"),
-                chat_request.messages[1].content.clone(),
+                user_messages,
                 ArchitectRepairTarget::DraftContinue,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
-                validate_draft_continue_bundle,
+                |bundle| {
+                    validate_draft_continue_bundle(
+                        bundle,
+                        &req.graph_summary.iter().map(|node| node.id.as_str()).collect(),
+                    )
+                },
             )
             .await?;
 
@@ -309,201 +315,150 @@ impl Architect {
         })
     }
 
-    fn build_user_prompt(&self, req: &ArchitectRequest<'_>) -> Result<String, ArchitectError> {
-        let world_schema_json = serde_json::to_string_pretty(&compact_schema_map(
-            req.world_state_schema.map(|schema| &schema.fields),
-        ))
-        .map_err(ArchitectError::SerializeSchema)?;
-        let player_schema_json = serde_json::to_string_pretty(&compact_schema_map(
-            req.player_state_schema.map(|schema| &schema.fields),
-        ))
-        .map_err(ArchitectError::SerializePlayerSchema)?;
-        let planned_story = req.planned_story.unwrap_or("null");
-
+    fn build_user_messages(
+        &self,
+        req: &ArchitectRequest<'_>,
+    ) -> Result<Vec<String>, ArchitectError> {
         let character_summaries: Vec<ArchitectCharacterSummary> = req
             .available_characters
             .iter()
             .map(compact_character_summary)
             .collect();
-        let characters_json = serde_json::to_string_pretty(&character_summaries)
-            .map_err(ArchitectError::SerializeCharacters)?;
+        let stable = render_sections(&[
+            ("STORY_CONCEPT", req.story_concept.to_owned()),
+            ("PLANNED_STORY", req.planned_story.unwrap_or("null").to_owned()),
+            (
+                "AVAILABLE_CHARACTERS",
+                render_architect_character_summaries(&character_summaries),
+            ),
+        ]);
+        let dynamic = render_sections(&[
+            (
+                "WORLD_STATE_SCHEMA_SEED",
+                render_compact_schema_text(req.world_state_schema.map(|schema| &schema.fields)),
+            ),
+            (
+                "PLAYER_STATE_SCHEMA_SEED",
+                render_compact_schema_text(req.player_state_schema.map(|schema| &schema.fields)),
+            ),
+        ]);
 
-        Ok(format!(
-            r#"STORY_CONCEPT:
-{}
-
-PLANNED_STORY:
-{}
-
-WORLD_STATE_SCHEMA_SEED:
-{}
-
-PLAYER_STATE_SCHEMA_SEED:
-{}
-
-AVAILABLE_CHARACTERS:
-{}
-"#,
-            req.story_concept,
-            planned_story,
-            world_schema_json,
-            player_schema_json,
-            characters_json
-        ))
+        Ok(vec![stable, dynamic])
     }
 
-    fn build_draft_chat_request(
+    fn build_draft_user_messages(
         &self,
         kind: DraftPromptKind,
         input: DraftPromptInput<'_>,
-    ) -> Result<ChatRequest, ArchitectError> {
-        let mut builder = ChatRequest::builder()
-            .model(self.model.clone())
-            .system_message(kind.system_prompt())
-            .user_message(self.build_draft_user_prompt(kind, input)?)
-            .response_format(llm::ResponseFormat::JsonObject);
-        if let Some(temperature) = self.temperature {
-            builder = builder.temperature(temperature);
-        }
-        if let Some(max_tokens) = self.max_tokens {
-            builder = builder.max_tokens(max_tokens);
-        }
-        builder.build().map_err(ArchitectError::from)
-    }
-
-    fn build_draft_user_prompt(
-        &self,
-        kind: DraftPromptKind,
-        input: DraftPromptInput<'_>,
-    ) -> Result<String, ArchitectError> {
-        let graph_summary_json = serde_json::to_string_pretty(&input.graph_summary)
-            .map_err(ArchitectError::SerializeGraphSummary)?;
-        let section_summaries_json = serde_json::to_string_pretty(&input.section_summaries)
-            .map_err(ArchitectError::SerializeSectionSummaries)?;
-        let recent_nodes_json = serde_json::to_string_pretty(
-            &input
-                .recent_nodes
-                .iter()
-                .map(compact_recent_section_node)
-                .collect::<Vec<_>>(),
-        )
-        .map_err(ArchitectError::SerializeRecentNodes)?;
-        let world_schema_json = serde_json::to_string_pretty(&compact_schema_map(
-            input.world_state_schema.map(|schema| &schema.fields),
-        ))
-        .map_err(ArchitectError::SerializeSchema)?;
-        let player_schema_json = serde_json::to_string_pretty(&compact_schema_map(
-            input.player_state_schema.map(|schema| &schema.fields),
-        ))
-        .map_err(ArchitectError::SerializePlayerSchema)?;
+    ) -> Result<Vec<String>, ArchitectError> {
         let character_summaries: Vec<ArchitectCharacterSummary> = input
             .available_characters
             .iter()
             .map(compact_character_summary)
             .collect();
-        let characters_json = serde_json::to_string_pretty(&character_summaries)
-            .map_err(ArchitectError::SerializeCharacters)?;
 
         match kind {
-            DraftPromptKind::Init => Ok(format!(
-                r#"STORY_CONCEPT:
-{}
-
-PLANNED_STORY:
-{}
-
-CURRENT_SECTION:
-{}
-
-SECTION_INDEX:
-{}
-
-TOTAL_SECTIONS:
-{}
-
-TARGET_NODE_COUNT:
-{}
-
-GRAPH_SUMMARY:
-{}
-
-RECENT_SECTION_DETAIL:
-{}
-
-WORLD_STATE_SCHEMA_SEED:
-{}
-
-PLAYER_STATE_SCHEMA_SEED:
-{}
-
-AVAILABLE_CHARACTERS:
-{}
-"#,
-                input.story_concept,
-                input.planned_story.unwrap_or("null"),
-                input.current_section,
-                input.section_index,
-                input.total_sections,
-                input.target_node_count,
-                graph_summary_json,
-                recent_nodes_json,
-                world_schema_json,
-                player_schema_json,
-                characters_json
-            )),
-            DraftPromptKind::Continue => Ok(format!(
-                r#"STORY_CONCEPT:
-{}
-
-CURRENT_SECTION:
-{}
-
-SECTION_INDEX:
-{}
-
-TOTAL_SECTIONS:
-{}
-
-SECTION_SUMMARIES:
-{}
-
-TARGET_NODE_COUNT:
-{}
-
-GRAPH_SUMMARY:
-{}
-
-RECENT_SECTION_DETAIL:
-{}
-
-WORLD_STATE_SCHEMA:
-{}
-
-PLAYER_STATE_SCHEMA:
-{}
-
-AVAILABLE_CHARACTERS:
-{}
-"#,
-                input.story_concept,
-                input.current_section,
-                input.section_index,
-                input.total_sections,
-                section_summaries_json,
-                input.target_node_count,
-                graph_summary_json,
-                recent_nodes_json,
-                world_schema_json,
-                player_schema_json,
-                characters_json
-            )),
+            DraftPromptKind::Init => Ok(vec![
+                render_sections(&[
+                    ("STORY_CONCEPT", input.story_concept.to_owned()),
+                    (
+                        "PLANNED_STORY",
+                        input.planned_story.unwrap_or("null").to_owned(),
+                    ),
+                    (
+                        "AVAILABLE_CHARACTERS",
+                        render_architect_character_summaries(&character_summaries),
+                    ),
+                    (
+                        "WORLD_STATE_SCHEMA_SEED",
+                        render_compact_schema_text(
+                            input.world_state_schema.map(|schema| &schema.fields),
+                        ),
+                    ),
+                    (
+                        "PLAYER_STATE_SCHEMA_SEED",
+                        render_compact_schema_text(
+                            input.player_state_schema.map(|schema| &schema.fields),
+                        ),
+                    ),
+                ]),
+                render_sections(&[
+                    ("CURRENT_SECTION", input.current_section.to_owned()),
+                    ("SECTION_INDEX", input.section_index.to_string()),
+                    ("TOTAL_SECTIONS", input.total_sections.to_string()),
+                    ("TARGET_NODE_COUNT", input.target_node_count.to_string()),
+                    (
+                        "GRAPH_SUMMARY",
+                        compact_json(&input.graph_summary)
+                            .map_err(ArchitectError::SerializeGraphSummary)?,
+                    ),
+                    (
+                        "RECENT_SECTION_DETAIL",
+                        compact_json(
+                            &input
+                                .recent_nodes
+                                .iter()
+                                .map(compact_recent_section_node)
+                                .collect::<Vec<_>>(),
+                        )
+                        .map_err(ArchitectError::SerializeRecentNodes)?,
+                    ),
+                ]),
+            ]),
+            DraftPromptKind::Continue => Ok(vec![
+                render_sections(&[
+                    ("STORY_CONCEPT", input.story_concept.to_owned()),
+                    (
+                        "AVAILABLE_CHARACTERS",
+                        render_architect_character_summaries(&character_summaries),
+                    ),
+                    (
+                        "WORLD_STATE_SCHEMA",
+                        render_compact_schema_text(
+                            input.world_state_schema.map(|schema| &schema.fields),
+                        ),
+                    ),
+                    (
+                        "PLAYER_STATE_SCHEMA",
+                        render_compact_schema_text(
+                            input.player_state_schema.map(|schema| &schema.fields),
+                        ),
+                    ),
+                    (
+                        "SECTION_SUMMARIES",
+                        render_section_summaries(input.section_summaries),
+                    ),
+                ]),
+                render_sections(&[
+                    ("CURRENT_SECTION", input.current_section.to_owned()),
+                    ("SECTION_INDEX", input.section_index.to_string()),
+                    ("TOTAL_SECTIONS", input.total_sections.to_string()),
+                    ("TARGET_NODE_COUNT", input.target_node_count.to_string()),
+                    (
+                        "GRAPH_SUMMARY",
+                        compact_json(&input.graph_summary)
+                            .map_err(ArchitectError::SerializeGraphSummary)?,
+                    ),
+                    (
+                        "RECENT_SECTION_DETAIL",
+                        compact_json(
+                            &input
+                                .recent_nodes
+                                .iter()
+                                .map(compact_recent_section_node)
+                                .collect::<Vec<_>>(),
+                        )
+                        .map_err(ArchitectError::SerializeRecentNodes)?,
+                    ),
+                ]),
+            ]),
         }
     }
 
     async fn chat_json_with_repair<T, P, V>(
         &self,
         system_prompt: &str,
-        user_prompt: String,
+        user_messages: Vec<String>,
         repair_target: ArchitectRepairTarget,
         parse: P,
         validate: V,
@@ -513,7 +468,7 @@ AVAILABLE_CHARACTERS:
         P: Fn(&llm::ChatResponse) -> Result<T, ArchitectError>,
         V: Fn(&T) -> Result<(), ArchitectError>,
     {
-        match self.chat_json(system_prompt, user_prompt.clone()).await {
+        match self.chat_json(system_prompt, user_messages.clone()).await {
             Ok(output) => match parse(&output).and_then(|parsed| {
                 validate(&parsed)?;
                 Ok(parsed)
@@ -527,12 +482,12 @@ AVAILABLE_CHARACTERS:
                         raw_output = %output.message.content,
                         "architect output failed validation, attempting repair"
                     );
-                    self.repair_and_parse(
-                        repair_target,
-                        &output.message.content,
-                        &error,
-                        parse,
-                        validate,
+                self.repair_and_parse(
+                    repair_target,
+                    &output.message.content,
+                    &error,
+                    parse,
+                    validate,
                     )
                     .await
                 }
@@ -580,7 +535,7 @@ AVAILABLE_CHARACTERS:
         let repaired = self
             .chat_json(
                 include_str!("./prompts/architect_repair.txt"),
-                repair_prompt,
+                vec![repair_prompt],
             )
             .await?;
         let parsed = parse(&repaired)?;
@@ -591,13 +546,15 @@ AVAILABLE_CHARACTERS:
     async fn chat_json(
         &self,
         system_prompt: &str,
-        user_prompt: String,
+        user_messages: Vec<String>,
     ) -> Result<llm::ChatResponse, ArchitectError> {
         let mut builder = ChatRequest::builder()
             .model(self.model.clone())
             .system_message(system_prompt)
-            .user_message(user_prompt)
             .response_format(llm::ResponseFormat::JsonObject);
+        for message in user_messages {
+            builder = builder.user_message(message);
+        }
         if let Some(temperature) = self.temperature {
             builder = builder.temperature(temperature);
         }
@@ -626,15 +583,6 @@ AVAILABLE_CHARACTERS:
 enum DraftPromptKind {
     Init,
     Continue,
-}
-
-impl DraftPromptKind {
-    const fn system_prompt(self) -> &'static str {
-        match self {
-            Self::Init => include_str!("./prompts/architect_draft_init.txt"),
-            Self::Continue => include_str!("./prompts/architect_draft_continue.txt"),
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -699,8 +647,24 @@ impl ArchitectRepairTarget {
             Self::FullGraph => {
                 r#"{
   "graph": { "start_node": "node_id", "nodes": [NarrativeNode] },
-  "world_state_schema": { "fields": {} },
-  "player_state_schema": { "fields": {} },
+  "world_state_schema": {
+    "fields": {
+      "gate_open": {
+        "value_type": "bool",
+        "default": false,
+        "description": "whether the gate is open"
+      }
+    }
+  },
+  "player_state_schema": {
+    "fields": {
+      "trust": {
+        "value_type": "int",
+        "default": 0,
+        "description": "how much the player is trusted"
+      }
+    }
+  },
   "introduction": "text"
 }"#
             }
@@ -710,8 +674,24 @@ impl ArchitectRepairTarget {
   "transition_patches": [NodeTransitionPatch],
   "section_summary": "text",
   "start_node": "node_id",
-  "world_state_schema": { "fields": {} },
-  "player_state_schema": { "fields": {} },
+  "world_state_schema": {
+    "fields": {
+      "gate_open": {
+        "value_type": "bool",
+        "default": false,
+        "description": "whether the gate is open"
+      }
+    }
+  },
+  "player_state_schema": {
+    "fields": {
+      "trust": {
+        "value_type": "int",
+        "default": 0,
+        "description": "how much the player is trusted"
+      }
+    }
+  },
   "introduction": "text"
 }"#
             }
@@ -760,6 +740,67 @@ fn compact_schema_map(
             })
             .collect()
     })
+}
+
+fn render_architect_character_summaries(summaries: &[ArchitectCharacterSummary]) -> String {
+    if summaries.is_empty() {
+        return "- none".to_owned();
+    }
+
+    summaries
+        .iter()
+        .map(|summary| {
+            format!(
+                "- {} | {} | role={} | state_schema={}",
+                summary.id,
+                summary.name,
+                summary.role_summary,
+                render_state_schema_fields_from_compact(&summary.state_schema_keys)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_compact_schema_text(
+    fields: Option<&std::collections::HashMap<String, StateFieldSchema>>,
+) -> String {
+    compact_schema_map(fields)
+        .map(|fields| render_state_schema_fields_from_compact(&fields))
+        .unwrap_or_else(|| "null".to_owned())
+}
+
+fn render_state_schema_fields_from_compact(
+    fields: &BTreeMap<String, CompactStateField>,
+) -> String {
+    if fields.is_empty() {
+        return "none".to_owned();
+    }
+
+    fields
+        .iter()
+        .map(|(key, field)| {
+            let mut line = format!("{key}:{}", compact_json(&field.value_type).unwrap_or_default());
+            if let Some(default) = &field.default {
+                line.push_str(&format!(" default={}", compact_json(default).unwrap_or_default()));
+            }
+            line
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn render_section_summaries(section_summaries: &[String]) -> String {
+    if section_summaries.is_empty() {
+        return "- none".to_owned();
+    }
+
+    section_summaries
+        .iter()
+        .enumerate()
+        .map(|(idx, summary)| format!("- [{}] {}", idx, summary))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn compact_recent_section_node(node: &NarrativeNode) -> RecentSectionDetailNode {
@@ -851,11 +892,22 @@ fn validate_draft_init_bundle(bundle: &ArchitectDraftOutputBundle) -> Result<(),
             "architect draft init did not provide section_summary".to_owned(),
         ));
     }
+    let returned_node_ids: HashSet<&str> = bundle.nodes.iter().map(|node| node.id.as_str()).collect();
+    if let Some(start_node) = &bundle.start_node
+        && !returned_node_ids.contains(start_node.as_str())
+    {
+        return Err(ArchitectError::InvalidDraftOutput(format!(
+            "architect draft init start_node '{}' is not included in returned nodes",
+            start_node
+        )));
+    }
+    validate_draft_chunk_transitions(bundle, &HashSet::new())?;
     Ok(())
 }
 
 fn validate_draft_continue_bundle(
     bundle: &ArchitectDraftOutputBundle,
+    existing_node_ids: &HashSet<&str>,
 ) -> Result<(), ArchitectError> {
     if bundle.nodes.is_empty() {
         return Err(ArchitectError::InvalidDraftOutput(
@@ -887,7 +939,73 @@ fn validate_draft_continue_bundle(
             "architect draft continue must not return introduction".to_owned(),
         ));
     }
+    validate_draft_chunk_transitions(bundle, existing_node_ids)?;
     Ok(())
+}
+
+fn validate_draft_chunk_transitions(
+    bundle: &ArchitectDraftOutputBundle,
+    existing_node_ids: &HashSet<&str>,
+) -> Result<(), ArchitectError> {
+    let mut returned_node_ids = HashSet::new();
+    for node in &bundle.nodes {
+        if !returned_node_ids.insert(node.id.as_str()) {
+            return Err(ArchitectError::InvalidDraftOutput(format!(
+                "architect draft returned duplicate node id '{}'",
+                node.id
+            )));
+        }
+    }
+
+    let valid_targets: HashSet<&str> = existing_node_ids
+        .iter()
+        .copied()
+        .chain(returned_node_ids.iter().copied())
+        .collect();
+
+    for node in &bundle.nodes {
+        for transition in &node.transitions {
+            if !valid_targets.contains(transition.to.as_str()) {
+                return Err(ArchitectError::InvalidDraftOutput(format!(
+                    "architect draft transition from '{}' points to missing node '{}'; allowed targets are existing graph nodes [{}] or returned nodes [{}]",
+                    node.id,
+                    transition.to,
+                    sorted_ids(existing_node_ids),
+                    sorted_ids(&returned_node_ids),
+                )));
+            }
+        }
+    }
+
+    for patch in &bundle.transition_patches {
+        if !valid_targets.contains(patch.node_id.as_str()) {
+            return Err(ArchitectError::InvalidDraftOutput(format!(
+                "architect draft attempted to patch missing node '{}'; allowed patch targets are existing graph nodes [{}] or returned nodes [{}]",
+                patch.node_id,
+                sorted_ids(existing_node_ids),
+                sorted_ids(&returned_node_ids),
+            )));
+        }
+        for transition in &patch.add_transitions {
+            if !valid_targets.contains(transition.to.as_str()) {
+                return Err(ArchitectError::InvalidDraftOutput(format!(
+                    "architect draft patch for '{}' points to missing node '{}'; allowed targets are existing graph nodes [{}] or returned nodes [{}]",
+                    patch.node_id,
+                    transition.to,
+                    sorted_ids(existing_node_ids),
+                    sorted_ids(&returned_node_ids),
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn sorted_ids(ids: &HashSet<&str>) -> String {
+    let mut values: Vec<&str> = ids.iter().copied().collect();
+    values.sort_unstable();
+    values.join(", ")
 }
 
 fn truncate_text(text: &str, max_chars: usize) -> String {

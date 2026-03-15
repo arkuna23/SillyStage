@@ -4,6 +4,7 @@ pub mod director;
 pub mod keeper;
 pub mod narrator;
 pub mod planner;
+mod prompt;
 pub mod replyer;
 
 #[derive(Debug, thiserror::Error)]

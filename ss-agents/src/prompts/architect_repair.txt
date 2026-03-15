@@ -9,3 +9,6 @@ Prefer preserving the original meaning and fields.
 If the raw output contains extra prose, remove it.
 If the raw output is almost valid JSON, fix only the formatting and missing delimiters.
 If the raw output is missing optional fields, omit them instead of fabricating long text.
+Every schema field object must include "value_type".
+Allowed value_type values: "bool", "int", "float", "string", "array", "object", "null".
+For draft outputs, never leave transition targets pointing to unknown future nodes.

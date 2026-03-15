@@ -12,6 +12,10 @@ use state::schema::StateFieldSchema;
 use tracing::error;
 
 use crate::director::ActorPurpose;
+use crate::prompt::{
+    compact_json, render_actor_history, render_actor_world_state, render_character_summaries,
+    render_node, render_sections, render_state_schema_fields,
+};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
 
@@ -69,12 +73,12 @@ pub struct CharacterCardSummary {
 
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct CharacterCardSummaryRef<'a> {
-    id: &'a str,
-    name: &'a str,
-    personality: &'a str,
-    style: &'a str,
-    tendencies: &'a [String],
-    state_schema: &'a HashMap<String, StateFieldSchema>,
+    pub(crate) id: &'a str,
+    pub(crate) name: &'a str,
+    pub(crate) personality: &'a str,
+    pub(crate) style: &'a str,
+    pub(crate) tendencies: &'a [String],
+    pub(crate) state_schema: &'a HashMap<String, StateFieldSchema>,
 }
 
 #[derive(Debug, Clone)]
@@ -189,15 +193,17 @@ impl Actor {
         Self::validate_request(&request)?;
 
         let character_prompt = self.build_character_prompt(request.character)?;
-        let user_prompt = self.build_user_prompt(&request, world_state)?;
         let stream = self
             .llm
             .chat_stream({
+                let (stable_user_prompt, dynamic_user_prompt) =
+                    self.build_user_prompts(&request, world_state)?;
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
                     .system_message(character_prompt)
-                    .user_message(user_prompt);
+                    .user_message(stable_user_prompt)
+                    .user_message(dynamic_user_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -307,47 +313,62 @@ impl Actor {
     }
 
     fn build_character_prompt(&self, character: &CharacterCard) -> Result<String, ActorError> {
-        let card_json =
-            serde_json::to_string_pretty(character).map_err(ActorError::SerializePromptData)?;
-
-        Ok(format!("CHARACTER_CARD:\n{card_json}"))
+        Ok(render_sections(&[
+            ("CHARACTER_ID", character.id.clone()),
+            ("CHARACTER_NAME", character.name.clone()),
+            ("CHARACTER_PERSONALITY", character.personality.clone()),
+            ("CHARACTER_STYLE", character.style.clone()),
+            (
+                "CHARACTER_TENDENCIES",
+                if character.tendencies.is_empty() {
+                    "none".to_owned()
+                } else {
+                    character.tendencies.join("; ")
+                },
+            ),
+            (
+                "CHARACTER_STATE_SCHEMA",
+                render_state_schema_fields(&character.state_schema),
+            ),
+            ("CHARACTER_SYSTEM_PROMPT", character.system_prompt.clone()),
+        ]))
     }
 
-    fn build_user_prompt(
+    fn build_user_prompts(
         &self,
         request: &ActorRequest<'_>,
         world_state: &WorldState,
-    ) -> Result<String, ActorError> {
-        let purpose_json =
-            serde_json::to_string(&request.purpose).map_err(ActorError::SerializePromptData)?;
-        let player_name_json = serde_json::to_string_pretty(&request.player_name)
-            .map_err(ActorError::SerializePromptData)?;
-        let node_json =
-            serde_json::to_string_pretty(&request.node).map_err(ActorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(&world_state.actor_prompt_view())
-            .map_err(ActorError::SerializePromptData)?;
+    ) -> Result<(String, String), ActorError> {
+        let purpose = compact_json(&request.purpose).map_err(ActorError::SerializePromptData)?;
         let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
-        let shared_history_json =
-            serde_json::to_string_pretty(&world_state.recent_actor_shared_history(memory_limit))
-                .map_err(ActorError::SerializePromptData)?;
-        let private_memory_json = serde_json::to_string_pretty(
-            &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
-        )
-        .map_err(ActorError::SerializePromptData)?;
-        let cast_json = serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
-            .map_err(ActorError::SerializePromptData)?;
+        let stable_prompt = render_sections(&[
+            ("ACTOR_PURPOSE", purpose),
+            (
+                "PLAYER_NAME",
+                request.player_name.unwrap_or("null").to_owned(),
+            ),
+            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
+            (
+                "CURRENT_CAST",
+                render_character_summaries(&self.current_cast_summaries(request)?),
+            ),
+            ("CURRENT_NODE", render_node(request.node)),
+        ]);
+        let dynamic_prompt = render_sections(&[
+            ("WORLD_STATE", render_actor_world_state(world_state)),
+            (
+                "SHARED_SCENE_HISTORY",
+                render_actor_history(&world_state.recent_actor_shared_history(memory_limit)),
+            ),
+            (
+                "PRIVATE_CHARACTER_MEMORY",
+                render_actor_history(
+                    &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
+                ),
+            ),
+        ]);
 
-        Ok(format!(
-            "ACTOR_PURPOSE:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nWORLD_STATE:\n{}\n\nSHARED_SCENE_HISTORY:\n{}\n\nPRIVATE_CHARACTER_MEMORY:\n{}",
-            purpose_json,
-            player_name_json,
-            request.player_description,
-            cast_json,
-            node_json,
-            world_state_json,
-            shared_history_json,
-            private_memory_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 
     fn current_cast_summaries<'b>(

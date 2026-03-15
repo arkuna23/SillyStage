@@ -15,6 +15,16 @@ use story::{NarrativeNode, StoryGraph};
 
 use common::{MockLlm, assistant_response};
 
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 #[tokio::test]
 async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
@@ -113,11 +123,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
         .iter()
         .find(|message| matches!(message.role, llm::Role::System))
         .expect("system message should exist");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
     assert!(
         system_message
@@ -129,28 +135,24 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
             .content
             .contains("You may interleave Narrator and Actor beats in any order")
     );
-    assert!(user_message.content.contains("CURRENT_CAST"));
-    assert!(user_message.content.contains("\"id\": \"merchant\""));
-    assert!(!user_message.content.contains("ResponsePlan schema"));
-    assert!(!user_message.content.contains("Stay in character."));
-    assert!(!user_message.content.contains("Keep this between us."));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
-    assert!(user_message.content.contains("PLAYER_NAME"));
-    assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("CURRENT_CAST"));
+    assert!(user_message.contains("merchant | Old Merchant"));
+    assert!(!user_message.contains("ResponsePlan schema"));
+    assert!(!user_message.contains("Stay in character."));
+    assert!(!user_message.contains("Keep this between us."));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(user_message.contains("PLAYER_DESCRIPTION"));
     assert!(
-        user_message
-            .content
-            .contains("A stubborn courier trying to protect a sealed medical satchel.")
+        user_message.contains("A stubborn courier trying to protect a sealed medical satchel.")
     );
-    assert!(user_message.content.contains("\"player_state\""));
-    assert!(user_message.content.contains("\"coins\": 12"));
+    assert!(user_message.contains("player_state"));
+    assert!(user_message.contains("coins=12"));
     assert!(
-        !user_message
-            .content
-            .contains("This should stay hidden from the director.")
+        !user_message.contains("This should stay hidden from the director.")
     );
-    assert!(!user_message.content.contains("\"actor_shared_history\""));
-    assert!(!user_message.content.contains("\"actor_private_memory\""));
+    assert!(!user_message.contains("actor_shared_history"));
+    assert!(!user_message.contains("actor_private_memory"));
     assert_eq!(result.response_plan.beats.len(), 4);
     assert!(matches!(
         result.response_plan.beats[0],

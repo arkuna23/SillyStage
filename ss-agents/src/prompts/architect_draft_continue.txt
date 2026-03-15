@@ -24,6 +24,13 @@ RULES
 - Do not return player_state_schema
 - Do not return introduction
 - transition_patches may only patch existing node ids from GRAPH_SUMMARY
+- Every transition target in returned nodes and transition_patches must point to either:
+  - an existing node id from GRAPH_SUMMARY
+  - or a node id returned in this same response
+- Never reference future nodes that are not already in GRAPH_SUMMARY and not returned in this response
+- Identifier-like state keys such as "current_event", "current_route", "route", "current_phase", and "travel_phase" must use canonical snake_case ids as values
+- If GRAPH_SUMMARY or previous sections already imply an identifier-like value, reuse the same canonical id instead of renaming it
+- Never use player-facing text like "接近沼泽" as a state value for those keys; use ids like "approaching_swamp" instead
 - Use only character ids from AVAILABLE_CHARACTERS
 - Use world_state_schema keys for global conditions and global state ops
 - Use player_state_schema keys for player-scoped conditions and player state ops
@@ -100,3 +107,11 @@ StateOp examples
   "character": "character_id",
   "key": "character_state_key"
 }
+
+Identifier-like value examples
+Correct:
+{ "type": "SetState", "key": "current_event", "value": "approaching_swamp" }
+{ "scope": "global", "key": "current_event", "op": "eq", "value": "approaching_swamp" }
+
+Wrong:
+{ "type": "SetState", "key": "current_event", "value": "接近沼泽" }

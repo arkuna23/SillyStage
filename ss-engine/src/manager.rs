@@ -21,7 +21,7 @@ use store::{
     SessionBindingConfig, SessionMessageKind, SessionMessageRecord, SessionRecord, Store,
     StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
-use story::{NarrativeNode, StoryGraph};
+use story::{NarrativeNode, StoryGraph, validate_graph_state_conventions};
 use tracing::{debug, info};
 
 use crate::logging::{
@@ -1296,6 +1296,9 @@ fn validate_story_graph(graph: &StoryGraph) -> Result<(), ManagerError> {
             }
         }
     }
+
+    validate_graph_state_conventions(graph)
+        .map_err(|error| ManagerError::InvalidDraft(error.to_string()))?;
 
     Ok(())
 }

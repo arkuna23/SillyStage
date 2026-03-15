@@ -15,6 +15,7 @@ use store::{
     CharacterCardRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
+use story::validate_graph_state_conventions;
 
 use crate::error::HandlerError;
 
@@ -673,5 +674,7 @@ fn validate_story_graph(graph: &story::StoryGraph) -> Result<(), HandlerError> {
             }
         })
     })?;
+    validate_graph_state_conventions(graph)
+        .map_err(|error| HandlerError::InvalidStoryGraph(error.to_string()))?;
     Ok(())
 }

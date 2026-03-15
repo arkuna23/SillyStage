@@ -3,6 +3,10 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
+use crate::prompt::{
+    compact_json, render_character_summaries, render_director_world_state, render_node,
+    render_sections, render_state_schema_fields,
+};
 use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
@@ -238,7 +242,7 @@ impl Director {
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
-        let user_prompt = self.build_user_prompt(
+        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(
             world_state,
             node,
             transitioned,
@@ -253,7 +257,8 @@ impl Director {
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
-                    .user_message(&user_prompt)
+                    .user_message(stable_prompt)
+                    .user_message(dynamic_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -269,7 +274,7 @@ impl Director {
         serde_json::from_value(value).map_err(DirectorError::InvalidPlanJson)
     }
 
-    fn build_user_prompt(
+    fn build_user_prompts(
         &self,
         world_state: &WorldState,
         node: &NarrativeNode,
@@ -277,31 +282,36 @@ impl Director {
         character_cards: &[CharacterCard],
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
-    ) -> Result<String, DirectorError> {
-        let node_json =
-            serde_json::to_string_pretty(node).map_err(DirectorError::SerializePromptData)?;
-        let world_state_json = serde_json::to_string_pretty(&world_state.director_prompt_view())
-            .map_err(DirectorError::SerializePromptData)?;
-        let player_state_schema_json = serde_json::to_string_pretty(player_state_schema)
-            .map_err(DirectorError::SerializePromptData)?;
-        let player_name_json = serde_json::to_string_pretty(&player_persona.name)
-            .map_err(DirectorError::SerializePromptData)?;
-        let cast_json = serde_json::to_string_pretty(&current_cast_summaries(
-            &node.characters,
-            character_cards,
-        )?)
-        .map_err(DirectorError::SerializePromptData)?;
+    ) -> Result<(String, String), DirectorError> {
+        let stable_prompt = render_sections(&[
+            (
+                "PLAYER_NAME",
+                player_persona.name.unwrap_or("null").to_owned(),
+            ),
+            ("PLAYER_DESCRIPTION", player_persona.description.to_owned()),
+            (
+                "CURRENT_CAST",
+                render_character_summaries(&current_cast_summaries(
+                    &node.characters,
+                    character_cards,
+                )?),
+            ),
+            ("CURRENT_NODE", render_node(node)),
+            (
+                "PLAYER_STATE_SCHEMA",
+                render_state_schema_fields(&player_state_schema.fields),
+            ),
+            (
+                "TRANSITIONED_THIS_TURN",
+                compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?,
+            ),
+        ]);
+        let dynamic_prompt = render_sections(&[(
+            "WORLD_STATE",
+            render_director_world_state(world_state),
+        )]);
 
-        Ok(format!(
-            "PLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nCURRENT_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nTRANSITIONED_THIS_TURN:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}",
-            player_name_json,
-            player_persona.description,
-            cast_json,
-            node_json,
-            transitioned,
-            player_state_schema_json,
-            world_state_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 
     fn build_fallback_response_plan(

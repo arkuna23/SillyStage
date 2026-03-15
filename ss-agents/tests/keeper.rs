@@ -15,6 +15,16 @@ use story::NarrativeNode;
 
 use common::{MockLlm, assistant_response};
 
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -261,23 +271,19 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
         .iter()
         .find(|message| matches!(message.role, llm::Role::System))
         .expect("system message should exist");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
-    assert!(user_message.content.contains("KEEPER_PHASE"));
-    assert!(user_message.content.contains("PLAYER_INPUT"));
-    assert!(user_message.content.contains("PLAYER_NAME"));
-    assert!(user_message.content.contains("PLAYER_DESCRIPTION"));
-    assert!(user_message.content.contains("COMPLETED_BEATS"));
-    assert!(user_message.content.contains("\"actor_shared_history\""));
-    assert!(user_message.content.contains("PLAYER_STATE_SCHEMA"));
-    assert!(user_message.content.contains("\"player_state\""));
-    assert!(user_message.content.contains("\"coins\": 12"));
-    assert!(user_message.content.contains("\"state_schema\""));
-    assert!(!user_message.content.contains("StateUpdate schema"));
+    assert!(user_message.contains("KEEPER_PHASE"));
+    assert!(user_message.contains("PLAYER_INPUT"));
+    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(user_message.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("COMPLETED_BEATS"));
+    assert!(user_message.contains("shared_history"));
+    assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(user_message.contains("player_state"));
+    assert!(user_message.contains("coins=12"));
+    assert!(user_message.contains("coins:"));
+    assert!(!user_message.contains("StateUpdate schema"));
     assert!(
         system_message
             .content
@@ -294,26 +300,16 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             .contains("\"type\": \"RemoveCharacterState\"")
     );
     assert!(
-        user_message
-            .content
-            .contains("We'll reach the canal gate before the tide turns.")
+        user_message.contains("We'll reach the canal gate before the tide turns.")
     );
     assert!(
-        user_message
-            .content
-            .contains("I agree to follow the guide toward the canal gate.")
+        user_message.contains("I agree to follow the guide toward the canal gate.")
     );
     assert!(
-        user_message
-            .content
-            .contains("A cautious courier escorting medicine through the flooded district.")
+        user_message.contains("A cautious courier escorting medicine through the flooded district.")
     );
-    assert!(!user_message.content.contains("\"actor_private_memory\""));
-    assert!(
-        !user_message
-            .content
-            .contains("I should keep the safer route to myself.")
-    );
+    assert!(!user_message.contains("actor_private_memory"));
+    assert!(!user_message.contains("I should keep the safer route to myself."));
 }
 
 #[tokio::test]

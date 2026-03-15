@@ -10,6 +10,16 @@ use state::schema::{StateFieldSchema, StateValueType};
 
 use common::{MockLlm, assistant_response};
 
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn sample_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -47,13 +57,9 @@ async fn planner_returns_editable_story_script_and_character_summary() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    let user_message = request
-        .messages
-        .iter()
-        .find(|message| matches!(message.role, llm::Role::User))
-        .expect("user message should exist");
+    let user_message = joined_user_messages(request);
 
-    assert!(user_message.content.contains("STORY_CONCEPT"));
-    assert!(user_message.content.contains("\"id\": \"merchant\""));
-    assert!(!user_message.content.contains("Stay in character."));
+    assert!(user_message.contains("STORY_CONCEPT"));
+    assert!(user_message.contains("merchant | Haru"));
+    assert!(!user_message.contains("Stay in character."));
 }

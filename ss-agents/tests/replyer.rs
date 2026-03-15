@@ -16,6 +16,16 @@ use story::NarrativeNode;
 
 use common::{MockLlm, assistant_response};
 
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
+}
+
 fn merchant_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
         "trust".to_owned(),
@@ -188,19 +198,11 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
         .expect("reply suggestions should succeed");
 
     let requests = llm.recorded_requests();
-    let user_message = requests[0]
-        .messages
-        .iter()
-        .find(|message| message.role == llm::Role::User)
-        .expect("user message should exist");
+    let user_message = joined_user_messages(&requests[0]);
 
-    assert!(user_message.content.contains("SESSION_HISTORY"));
-    assert!(user_message.content.contains("PLAYER_NAME"));
-    assert!(user_message.content.contains("Can you lower the price?"));
-    assert!(user_message.content.contains("\"coins\""));
-    assert!(
-        !user_message
-            .content
-            .contains("I can squeeze a little more out of this deal.")
-    );
+    assert!(user_message.contains("SESSION_HISTORY"));
+    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(user_message.contains("Can you lower the price?"));
+    assert!(user_message.contains("coins=12"));
+    assert!(!user_message.contains("I can squeeze a little more out of this deal."));
 }

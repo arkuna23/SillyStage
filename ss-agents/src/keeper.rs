@@ -11,6 +11,11 @@ use tracing::error;
 use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCardSummaryRef};
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
+use crate::prompt::{
+    compact_json, normalize_inline_text, render_character_summaries, render_node,
+    render_observable_world_state, render_optional_node, render_sections,
+    render_state_schema_fields,
+};
 use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
 use story::NarrativeNode;
 
@@ -147,14 +152,15 @@ impl Keeper {
     pub async fn keep(&self, request: KeeperRequest<'_>) -> Result<KeeperResponse, KeeperError> {
         Self::validate_request(&request)?;
 
-        let user_prompt = self.build_user_prompt(&request)?;
+        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
         let output = self
             .llm
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
                     .system_message(&self.system_prompt)
-                    .user_message(user_prompt)
+                    .user_message(stable_prompt)
+                    .user_message(dynamic_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -237,44 +243,50 @@ impl Keeper {
         Ok(())
     }
 
-    fn build_user_prompt(&self, request: &KeeperRequest<'_>) -> Result<String, KeeperError> {
-        let phase_json =
-            serde_json::to_string(&request.phase).map_err(KeeperError::SerializePromptData)?;
-        let player_input_json = serde_json::to_string_pretty(&request.player_input)
-            .map_err(KeeperError::SerializePromptData)?;
-        let previous_node_json =
-            serialize_optional(&request.previous_node).map_err(KeeperError::SerializePromptData)?;
-        let previous_cast_json = serialize_optional(&self.previous_cast_summaries(request)?)
-            .map_err(KeeperError::SerializePromptData)?;
-        let current_node_json = serde_json::to_string_pretty(&request.current_node)
-            .map_err(KeeperError::SerializePromptData)?;
-        let current_cast_json =
-            serde_json::to_string_pretty(&self.current_cast_summaries(request)?)
-                .map_err(KeeperError::SerializePromptData)?;
-        let player_name_json = serde_json::to_string_pretty(&request.player_name)
-            .map_err(KeeperError::SerializePromptData)?;
-        let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
-            .map_err(KeeperError::SerializePromptData)?;
-        let world_state_json =
-            serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
-                .map_err(KeeperError::SerializePromptData)?;
-        let completed_beats_json = serde_json::to_string_pretty(&request.completed_beats)
-            .map_err(KeeperError::SerializePromptData)?;
+    fn build_user_prompts(
+        &self,
+        request: &KeeperRequest<'_>,
+    ) -> Result<(String, String), KeeperError> {
+        let stable_prompt = render_sections(&[
+            (
+                "PLAYER_NAME",
+                request.player_name.unwrap_or("null").to_owned(),
+            ),
+            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
+            (
+                "KEEPER_PHASE",
+                compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?,
+            ),
+            ("PREVIOUS_NODE", render_optional_node(request.previous_node)),
+            (
+                "PREVIOUS_CAST",
+                self.previous_cast_summaries(request)?
+                    .map(|summaries| render_character_summaries(&summaries))
+                    .unwrap_or_else(|| "null".to_owned()),
+            ),
+            ("CURRENT_NODE", render_node(request.current_node)),
+            (
+                "CURRENT_CAST",
+                render_character_summaries(&self.current_cast_summaries(request)?),
+            ),
+            (
+                "PLAYER_STATE_SCHEMA",
+                render_state_schema_fields(&request.player_state_schema.fields),
+            ),
+        ]);
+        let dynamic_prompt = render_sections(&[
+            ("PLAYER_INPUT", request.player_input.to_owned()),
+            (
+                "WORLD_STATE",
+                render_observable_world_state(request.world_state),
+            ),
+            (
+                "COMPLETED_BEATS",
+                render_keeper_beats(request.completed_beats),
+            ),
+        ]);
 
-        Ok(format!(
-            "KEEPER_PHASE:\n{}\n\nPLAYER_INPUT:\n{}\n\nPLAYER_NAME:\n{}\n\nPLAYER_DESCRIPTION:\n{}\n\nPREVIOUS_NODE:\n{}\n\nPREVIOUS_CAST:\n{}\n\nCURRENT_NODE:\n{}\n\nCURRENT_CAST:\n{}\n\nPLAYER_STATE_SCHEMA:\n{}\n\nWORLD_STATE:\n{}\n\nCOMPLETED_BEATS:\n{}",
-            phase_json,
-            player_input_json,
-            player_name_json,
-            request.player_description,
-            previous_node_json,
-            previous_cast_json,
-            current_node_json,
-            current_cast_json,
-            player_state_schema_json,
-            world_state_json,
-            completed_beats_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 
     fn current_cast_summaries<'b>(
@@ -353,11 +365,41 @@ fn cast_summaries<'a>(
         .collect()
 }
 
-fn serialize_optional<T>(value: &Option<T>) -> Result<String, serde_json::Error>
-where
-    T: Serialize,
-{
-    serde_json::to_string_pretty(&value.as_ref().map_or(Value::Null, |value| {
-        serde_json::to_value(value).unwrap_or(Value::Null)
-    }))
+fn render_keeper_beats(beats: &[KeeperBeat]) -> String {
+    if beats.is_empty() {
+        return "- none".to_owned();
+    }
+
+    beats
+        .iter()
+        .map(|beat| match beat {
+            KeeperBeat::Narrator { purpose, text } => format!(
+                "- [narrator|{}] {}",
+                compact_json(purpose).unwrap_or_default(),
+                normalize_inline_text(text)
+            ),
+            KeeperBeat::Actor {
+                speaker_id,
+                purpose,
+                visible_segments,
+            } => {
+                let segments = visible_segments
+                    .iter()
+                    .map(|segment| format!(
+                        "{}:{}",
+                        compact_json(&segment.kind).unwrap_or_default(),
+                        normalize_inline_text(&segment.text)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                format!(
+                    "- [actor|{}|{}] {}",
+                    speaker_id,
+                    compact_json(purpose).unwrap_or_default(),
+                    segments
+                )
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }

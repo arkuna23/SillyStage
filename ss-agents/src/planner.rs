@@ -3,6 +3,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
+use crate::prompt::{render_character_summaries, render_sections};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 
@@ -63,14 +64,15 @@ impl Planner {
     }
 
     pub async fn plan(&self, request: PlannerRequest<'_>) -> Result<PlannerResponse, PlannerError> {
-        let user_prompt = self.build_user_prompt(&request)?;
+        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
         let output = self
             .client
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(self.model.clone())
                     .system_message(self.system_prompt.clone())
-                    .user_message(user_prompt);
+                    .user_message(stable_prompt)
+                    .user_message(dynamic_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -87,24 +89,22 @@ impl Planner {
         })
     }
 
-    fn build_user_prompt(&self, request: &PlannerRequest<'_>) -> Result<String, PlannerError> {
+    fn build_user_prompts(
+        &self,
+        request: &PlannerRequest<'_>,
+    ) -> Result<(String, String), PlannerError> {
         let character_summaries: Vec<CharacterCardSummaryRef<'_>> = request
             .available_characters
             .iter()
             .map(CharacterCard::summary_ref)
             .collect();
-        let characters_json = serde_json::to_string_pretty(&character_summaries)
-            .map_err(PlannerError::SerializeCharacters)?;
+        let stable_prompt = render_sections(&[(
+            "AVAILABLE_CHARACTERS",
+            render_character_summaries(&character_summaries),
+        )]);
+        let dynamic_prompt = render_sections(&[("STORY_CONCEPT", request.story_concept.to_owned())]);
 
-        Ok(format!(
-            r#"STORY_CONCEPT:
-{}
-
-AVAILABLE_CHARACTERS:
-{}
-"#,
-            request.story_concept, characters_json
-        ))
+        Ok((stable_prompt, dynamic_prompt))
     }
 }
 
