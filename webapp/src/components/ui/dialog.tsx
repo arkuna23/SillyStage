@@ -1,9 +1,5 @@
 import * as DialogPrimitive from '@radix-ui/react-dialog'
-import {
-  type ComponentPropsWithoutRef,
-  type ElementRef,
-  forwardRef,
-} from 'react'
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef } from 'react'
 
 import { cn } from '../../lib/cn'
 
@@ -30,16 +26,21 @@ export const DialogOverlay = forwardRef<
   )
 })
 
+type DialogContentProps = ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  contentClassName?: string
+}
+
 export const DialogContent = forwardRef<
   ElementRef<typeof DialogPrimitive.Content>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(function DialogContent({ children, className, ...props }, ref) {
+  DialogContentProps
+>(function DialogContent({ children, className, contentClassName, ...props }, ref) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         className={cn(
           'dialog-content fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-1.5rem)] w-[min(92vw,56rem)] -translate-x-1/2 -translate-y-1/2 outline-none',
+          contentClassName,
         )}
         ref={ref}
         {...props}

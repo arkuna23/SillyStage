@@ -13,19 +13,21 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
-import { cn } from '../../lib/cn'
+import { useToastNotice } from '../../components/ui/toast-context'
 import { isRpcConflict } from '../../lib/rpc'
+import { listApiGroups, listPresets } from '../apis/api'
+import type { ApiGroup, Preset } from '../apis/types'
 import { listCharacters } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
 import { listSchemas } from '../schemas/api'
 import type { SchemaResource } from '../schemas/types'
 import {
   deleteStoryResource,
-  generateAndSaveStoryPlan,
   listStoryResources,
 } from './api'
 import { CreateStoryResourceDialog } from './create-story-resource-dialog'
 import { DeleteStoryResourceDialog } from './delete-story-resource-dialog'
+import { GenerateStoryPlanDialog } from './generate-story-plan-dialog'
 import { StoryResourceFormDialog } from './story-resource-form-dialog'
 import type { StoryResource } from './types'
 
@@ -38,24 +40,6 @@ type Notice = {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
-}
-
-function StatusNotice({ notice }: { notice: Notice }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur',
-        notice.tone === 'success'
-          ? 'border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]'
-            : 'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function StoryResourcesListSkeleton() {
@@ -99,6 +83,8 @@ export function StoryResourcesPage() {
   const { setRailContent } = useWorkspaceLayoutContext()
   const [resources, setResources] = useState<StoryResource[]>([])
   const [availableCharacters, setAvailableCharacters] = useState<CharacterSummary[]>([])
+  const [availableApiGroups, setAvailableApiGroups] = useState<ApiGroup[]>([])
+  const [availablePresets, setAvailablePresets] = useState<Preset[]>([])
   const [availableSchemas, setAvailableSchemas] = useState<SchemaResource[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isListLoading, setIsListLoading] = useState(true)
@@ -107,7 +93,9 @@ export function StoryResourcesPage() {
   const [generatingResourceId, setGeneratingResourceId] = useState<string | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editResourceId, setEditResourceId] = useState<string | null>(null)
+  const [generateTarget, setGenerateTarget] = useState<StoryResource | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StoryResource | null>(null)
+  useToastNotice(notice)
 
   const refinedCount = useMemo(() => countRefinedInputs(resources), [resources])
 
@@ -142,12 +130,16 @@ export function StoryResourcesPage() {
       setReferencesLoading(true)
 
       try {
-        const [characters, schemas] = await Promise.all([
+        const [apiGroups, presets, characters, schemas] = await Promise.all([
+          listApiGroups(signal),
+          listPresets(signal),
           listCharacters(signal),
           listSchemas(signal),
         ])
 
         if (!signal?.aborted) {
+          setAvailableApiGroups(apiGroups)
+          setAvailablePresets(presets)
           setAvailableCharacters(characters)
           setAvailableSchemas(schemas)
         }
@@ -224,30 +216,12 @@ export function StoryResourcesPage() {
     }
   }
 
-  async function handleGenerateDraft(resourceId: string) {
-    setGeneratingResourceId(resourceId)
-
-    try {
-      await generateAndSaveStoryPlan(resourceId)
-      setNotice({
-        message: t('storyResources.feedback.generated', { id: resourceId }),
-        tone: 'success',
-      })
-      await refreshResources()
-    } catch (error) {
-      setNotice({
-        message: getErrorMessage(error, t('storyResources.feedback.generateFailed')),
-        tone: 'error',
-      })
-    } finally {
-      setGeneratingResourceId(null)
-    }
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <CreateStoryResourceDialog
         availableCharacters={availableCharacters}
+        availableApiGroups={availableApiGroups}
+        availablePresets={availablePresets}
         availableSchemas={availableSchemas}
         onCompleted={async ({ message, tone }) => {
           setNotice({ message, tone })
@@ -260,6 +234,8 @@ export function StoryResourcesPage() {
 
       <StoryResourceFormDialog
         availableCharacters={availableCharacters}
+        availableApiGroups={availableApiGroups}
+        availablePresets={availablePresets}
         availableSchemas={availableSchemas}
         mode="edit"
         onCompleted={async ({ message, tone }) => {
@@ -274,6 +250,23 @@ export function StoryResourcesPage() {
         open={editResourceId !== null}
         referencesLoading={referencesLoading}
         resourceId={editResourceId}
+      />
+
+      <GenerateStoryPlanDialog
+        apiGroups={availableApiGroups}
+        onCompleted={async ({ message, tone }) => {
+          setNotice({ message, tone })
+          await refreshResources()
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setGenerateTarget(null)
+            setGeneratingResourceId(null)
+          }
+        }}
+        open={generateTarget !== null}
+        presets={availablePresets}
+        resource={generateTarget}
       />
 
       <DeleteStoryResourceDialog
@@ -309,8 +302,6 @@ export function StoryResourcesPage() {
 
         <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
           <div className="space-y-6 pr-1">
-            {notice ? <StatusNotice notice={notice} /> : null}
-
             {isListLoading ? (
               <StoryResourcesListSkeleton />
             ) : resources.length === 0 ? (
@@ -377,7 +368,8 @@ export function StoryResourcesPage() {
                             icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
                             label={t('storyResources.actions.generate')}
                             onClick={() => {
-                              void handleGenerateDraft(resource.resource_id)
+                              setGeneratingResourceId(resource.resource_id)
+                              setGenerateTarget(resource)
                             }}
                             size="sm"
                             variant="secondary"

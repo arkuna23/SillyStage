@@ -4,6 +4,7 @@ import { faFileLines } from '@fortawesome/free-solid-svg-icons/faFileLines'
 import { faGaugeHigh } from '@fortawesome/free-solid-svg-icons/faGaugeHigh'
 import { faIdCard } from '@fortawesome/free-solid-svg-icons/faIdCard'
 import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
+import { faSliders } from '@fortawesome/free-solid-svg-icons/faSliders'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
 import { faUserGroup } from '@fortawesome/free-solid-svg-icons/faUserGroup'
 import type { TFunction } from 'i18next'
@@ -15,6 +16,7 @@ export type WorkspaceNavigationKey =
   | 'characters'
   | 'dashboard'
   | 'playerProfiles'
+  | 'presets'
   | 'schemas'
   | 'stories'
   | 'storyResources'
@@ -39,6 +41,12 @@ export function getWorkspaceNavigationItems(t: TFunction): ReadonlyArray<Workspa
       key: 'apis',
       label: t('workspace.sidebar.items.apis.label'),
       to: appPaths.apis,
+    },
+    {
+      icon: faSliders,
+      key: 'presets',
+      label: t('workspace.sidebar.items.presets.label'),
+      to: appPaths.presets,
     },
     {
       icon: faDiagramProject,

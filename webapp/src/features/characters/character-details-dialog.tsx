@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import type { CharacterSummary } from './types'
 
 type CharacterDetailsDialogProps = {
@@ -24,6 +25,11 @@ type CharacterDetailsDialogProps = {
   onOpenChange: (open: boolean) => void
   open: boolean
   showActions?: boolean
+  stageTabs?: {
+    detailsLabel: string
+    variablesContent: ReactNode
+    variablesLabel: string
+  }
   summary: CharacterSummary | null
 }
 
@@ -48,6 +54,39 @@ function DetailSection({
   )
 }
 
+function CharacterStagePanels({
+  detailsContent,
+  stageTabs,
+}: {
+  detailsContent: ReactNode
+  stageTabs: NonNullable<CharacterDetailsDialogProps['stageTabs']>
+}) {
+  const [activePanel, setActivePanel] = useState<'details' | 'variables'>('details')
+
+  return (
+    <div className="space-y-5">
+      <SegmentedSelector
+        ariaLabel={`${stageTabs.detailsLabel} / ${stageTabs.variablesLabel}`}
+        items={[
+          {
+            label: stageTabs.detailsLabel,
+            value: 'details',
+          },
+          {
+            label: stageTabs.variablesLabel,
+            value: 'variables',
+          },
+        ]}
+        onValueChange={(value) => {
+          setActivePanel(value === 'variables' ? 'variables' : 'details')
+        }}
+        value={activePanel}
+      />
+      {activePanel === 'variables' ? stageTabs.variablesContent : detailsContent}
+    </div>
+  )
+}
+
 export function CharacterDetailsDialog({
   coverUrl,
   deleting = false,
@@ -58,10 +97,62 @@ export function CharacterDetailsDialog({
   onOpenChange,
   open,
   showActions = true,
+  stageTabs,
   summary,
 }: CharacterDetailsDialogProps) {
   const { t } = useTranslation()
   const monogram = summary ? getCharacterMonogram(summary.name) : '?'
+  const stageTabResetKey = summary ? `${summary.character_id}:${open ? 'open' : 'closed'}` : 'empty'
+  const detailsContent = (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+      <div className="overflow-hidden rounded-[1.7rem] border border-[var(--color-border-subtle)] bg-[linear-gradient(135deg,var(--color-accent-gold-soft),var(--color-accent-copper-soft))]">
+        {coverUrl ? (
+          <img
+            alt={t('characters.card.coverAlt', { name: summary?.name ?? '' })}
+            className="aspect-[4/3] h-full w-full object-cover"
+            src={coverUrl}
+            style={{ objectPosition: COVER_OBJECT_POSITION }}
+          />
+        ) : (
+          <div className="flex aspect-[4/3] h-full w-full items-center justify-center">
+            <span className="inline-flex size-24 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(18,10,31,0.34)] font-display text-4xl text-[var(--color-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+              {monogram}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-5">
+        <DetailSection title={t('characters.card.personality')}>
+          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+            {summary?.personality}
+          </p>
+        </DetailSection>
+
+        <DetailSection title={t('characters.card.style')}>
+          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+            {summary?.style}
+          </p>
+        </DetailSection>
+
+        <DetailSection title={t('characters.card.tendencies')}>
+          <div className="flex flex-wrap gap-2">
+            {summary?.tendencies.length ? (
+              summary.tendencies.map((tendency) => (
+                <Badge className="normal-case px-3 py-1" key={tendency} variant="subtle">
+                  {tendency}
+                </Badge>
+              ))
+            ) : (
+              <Badge className="normal-case px-3 py-1" variant="subtle">
+                {t('characters.card.noTendencies')}
+              </Badge>
+            )}
+          </div>
+        </DetailSection>
+      </div>
+    </div>
+  )
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -81,54 +172,15 @@ export function CharacterDetailsDialog({
             </DialogHeader>
 
             <DialogBody className="max-h-[calc(92vh-13rem)] overflow-y-auto pt-6">
-              <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                <div className="overflow-hidden rounded-[1.7rem] border border-[var(--color-border-subtle)] bg-[linear-gradient(135deg,var(--color-accent-gold-soft),var(--color-accent-copper-soft))]">
-                  {coverUrl ? (
-                    <img
-                      alt={t('characters.card.coverAlt', { name: summary.name })}
-                      className="aspect-[4/3] h-full w-full object-cover"
-                      src={coverUrl}
-                      style={{ objectPosition: COVER_OBJECT_POSITION }}
-                    />
-                  ) : (
-                    <div className="flex aspect-[4/3] h-full w-full items-center justify-center">
-                      <span className="inline-flex size-24 items-center justify-center rounded-full border border-[rgba(255,255,255,0.12)] bg-[rgba(18,10,31,0.34)] font-display text-4xl text-[var(--color-text-primary)] shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-                        {monogram}
-                      </span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="space-y-5">
-                  <DetailSection title={t('characters.card.personality')}>
-                    <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                      {summary.personality}
-                    </p>
-                  </DetailSection>
-
-                  <DetailSection title={t('characters.card.style')}>
-                    <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                      {summary.style}
-                    </p>
-                  </DetailSection>
-
-                  <DetailSection title={t('characters.card.tendencies')}>
-                    <div className="flex flex-wrap gap-2">
-                      {summary.tendencies.length > 0 ? (
-                        summary.tendencies.map((tendency) => (
-                          <Badge className="normal-case px-3 py-1" key={tendency} variant="subtle">
-                            {tendency}
-                          </Badge>
-                        ))
-                      ) : (
-                        <Badge className="normal-case px-3 py-1" variant="subtle">
-                          {t('characters.card.noTendencies')}
-                        </Badge>
-                      )}
-                    </div>
-                  </DetailSection>
-                </div>
-              </div>
+              {stageTabs ? (
+                <CharacterStagePanels
+                  detailsContent={detailsContent}
+                  key={stageTabResetKey}
+                  stageTabs={stageTabs}
+                />
+              ) : (
+                detailsContent
+              )}
             </DialogBody>
 
             <DialogFooter className="sm:items-center">

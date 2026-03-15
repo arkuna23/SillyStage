@@ -17,6 +17,7 @@ import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { listSchemas } from '../schemas/api'
 import type { SchemaResource } from '../schemas/types'
@@ -235,6 +236,7 @@ export function CharacterFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   const fieldIds = {
     characterId: `${fieldIdPrefix}-character-id`,
@@ -867,10 +869,6 @@ export function CharacterFormDialog({
         </DialogBody>
 
         <DialogFooter>
-          <div className="flex flex-1 items-center text-sm text-rose-300">
-            {submitError ? <p>{submitError}</p> : null}
-          </div>
-
           <div className="flex flex-wrap items-center justify-end gap-3">
             <DialogClose asChild>
               <Button disabled={isSubmitting} size="md" variant="ghost">

@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
+import type { ApiGroup, Preset } from '../apis/types'
 import { Button } from '../../components/ui/button'
 import {
   Dialog,
@@ -16,6 +17,7 @@ import { GenerationLoadingStage } from '../../components/ui/generation-loading-s
 import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
+import { useToastMessage } from '../../components/ui/toast-context'
 import {
   continueStoryDraft,
   finalizeStoryDraft,
@@ -25,15 +27,19 @@ import type { StoryDetail, StoryDraftDetail } from './types'
 import type { StoryResource } from '../story-resources/types'
 
 type GenerateStoryDialogProps = {
+  apiGroups: ReadonlyArray<ApiGroup>
   onCompleted: (result: { message: string; story: StoryDetail }) => Promise<void> | void
   onDraftsChanged?: () => Promise<void> | void
   onOpenChange: (open: boolean) => void
   open: boolean
+  presets: ReadonlyArray<Preset>
   resources: ReadonlyArray<StoryResource>
 }
 
 type FormState = {
+  apiGroupId: string
   displayName: string
+  presetId: string
   resourceId: string
 }
 
@@ -41,7 +47,9 @@ type DialogStage = 'form' | 'generating'
 
 function createInitialFormState(): FormState {
   return {
+    apiGroupId: '',
     displayName: '',
+    presetId: '',
     resourceId: '',
   }
 }
@@ -81,10 +89,12 @@ function getDraftProgressMessage(
 }
 
 export function GenerateStoryDialog({
+  apiGroups,
   onCompleted,
   onDraftsChanged,
   onOpenChange,
   open,
+  presets,
   resources,
 }: GenerateStoryDialogProps) {
   const { t } = useTranslation()
@@ -101,9 +111,12 @@ export function GenerateStoryDialog({
   const [generationStartedAtMs, setGenerationStartedAtMs] = useState<number | null>(null)
   const [draftIdentifier, setDraftIdentifier] = useState<string | null>(null)
   const [generatingMessage, setGeneratingMessage] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   const fieldIds = {
+    apiGroupId: `${fieldIdPrefix}-api-group-id`,
     displayName: `${fieldIdPrefix}-display-name`,
+    presetId: `${fieldIdPrefix}-preset-id`,
     resourceId: `${fieldIdPrefix}-resource-id`,
   } as const
 
@@ -120,6 +133,25 @@ export function GenerateStoryDialog({
     () => resources.find((resource) => resource.resource_id === formState.resourceId) ?? null,
     [formState.resourceId, resources],
   )
+  const apiGroupOptions = useMemo(
+    () =>
+      apiGroups.map((apiGroup) => ({
+        label: apiGroup.display_name,
+        value: apiGroup.api_group_id,
+      })),
+    [apiGroups],
+  )
+  const presetOptions = useMemo(
+    () =>
+      presets.map((preset) => ({
+        label: preset.display_name,
+        value: preset.preset_id,
+      })),
+    [presets],
+  )
+  const missingApiGroups = apiGroups.length === 0
+  const missingPresets = presets.length === 0
+  const canGenerate = resources.length > 0 && !missingApiGroups && !missingPresets
 
   useEffect(() => {
     if (!open) {
@@ -135,6 +167,8 @@ export function GenerateStoryDialog({
 
     setFormState((currentFormState) => ({
       ...currentFormState,
+      apiGroupId: '',
+      presetId: '',
       resourceId:
         currentFormState.resourceId || resources[0]?.resource_id || '',
     }))
@@ -170,6 +204,16 @@ export function GenerateStoryDialog({
       return
     }
 
+    if (formState.apiGroupId.trim().length === 0) {
+      setSubmitError(t('stories.form.errors.apiGroupRequired'))
+      return
+    }
+
+    if (formState.presetId.trim().length === 0) {
+      setSubmitError(t('stories.form.errors.presetRequired'))
+      return
+    }
+
     let createdDraftId: string | null = null
     setSubmitError(null)
     setIsSubmitting(true)
@@ -180,9 +224,11 @@ export function GenerateStoryDialog({
 
     try {
       const initialDraft = await startStoryDraft({
+        api_group_id: formState.apiGroupId.trim(),
         ...(formState.displayName.trim()
           ? { display_name: formState.displayName.trim() }
           : {}),
+        preset_id: formState.presetId.trim(),
         resource_id: formState.resourceId.trim(),
       })
       createdDraftId = initialDraft.draft_id
@@ -270,6 +316,28 @@ export function GenerateStoryDialog({
                 </DialogRouteButton>
               </div>
             </div>
+          ) : missingApiGroups || missingPresets ? (
+            <div className="space-y-5">
+              <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                {missingApiGroups
+                  ? t('stories.form.emptyApiGroups')
+                  : t('stories.form.emptyPresets')}
+              </div>
+
+              <div className="flex justify-end">
+                <DialogRouteButton
+                  onRequestClose={() => {
+                    onOpenChange(false)
+                  }}
+                  to={missingApiGroups ? appPaths.apis : appPaths.presets}
+                  variant="secondary"
+                >
+                  {missingApiGroups
+                    ? t('stories.form.openApiGroups')
+                    : t('stories.form.openPresets')}
+                </DialogRouteButton>
+              </div>
+            </div>
           ) : (
             <>
               <div className="space-y-2.5">
@@ -291,6 +359,52 @@ export function GenerateStoryDialog({
                     }))
                   }}
                 />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2.5">
+                  <label
+                    className="block text-sm font-medium text-[var(--color-text-primary)]"
+                    htmlFor={fieldIds.apiGroupId}
+                  >
+                    {t('stories.form.fields.apiGroupId')}
+                  </label>
+                  <Select
+                    items={apiGroupOptions}
+                    onValueChange={(apiGroupId) => {
+                      setFormState((currentFormState) => ({
+                        ...currentFormState,
+                        apiGroupId,
+                      }))
+                    }}
+                    placeholder={t('stories.form.placeholders.apiGroupId')}
+                    textAlign="start"
+                    triggerId={fieldIds.apiGroupId}
+                    value={formState.apiGroupId || undefined}
+                  />
+                </div>
+
+                <div className="space-y-2.5">
+                  <label
+                    className="block text-sm font-medium text-[var(--color-text-primary)]"
+                    htmlFor={fieldIds.presetId}
+                  >
+                    {t('stories.form.fields.presetId')}
+                  </label>
+                  <Select
+                    items={presetOptions}
+                    onValueChange={(presetId) => {
+                      setFormState((currentFormState) => ({
+                        ...currentFormState,
+                        presetId,
+                      }))
+                    }}
+                    placeholder={t('stories.form.placeholders.presetId')}
+                    textAlign="start"
+                    triggerId={fieldIds.presetId}
+                    value={formState.presetId || undefined}
+                  />
+                </div>
               </div>
 
               {selectedResource ? (
@@ -326,11 +440,6 @@ export function GenerateStoryDialog({
                 />
               </div>
 
-              {submitError ? (
-                <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-                  {submitError}
-                </div>
-              ) : null}
             </>
           )}
         </DialogBody>
@@ -342,7 +451,7 @@ export function GenerateStoryDialog({
                 {t('stories.actions.cancel')}
               </Button>
             </DialogClose>
-            {resources.length > 0 ? (
+            {canGenerate ? (
               <Button disabled={isSubmitting} onClick={() => void handleSubmit()}>
                 {isSubmitting ? t('stories.actions.creating') : t('stories.actions.create')}
               </Button>

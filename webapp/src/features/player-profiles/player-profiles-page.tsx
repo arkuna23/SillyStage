@@ -12,7 +12,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
-import { cn } from '../../lib/cn'
+import { useToastNotice } from '../../components/ui/toast-context'
 import { isRpcConflict } from '../../lib/rpc'
 import { createPlayerProfile, deletePlayerProfile, listPlayerProfiles } from './api'
 import { DeletePlayerProfileDialog } from './delete-player-profile-dialog'
@@ -28,24 +28,6 @@ type Notice = {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
-}
-
-function StatusNotice({ notice }: { notice: Notice }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur',
-        notice.tone === 'success'
-          ? 'border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]'
-            : 'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function PlayerProfilesListSkeleton() {
@@ -93,6 +75,7 @@ export function PlayerProfilesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editProfileId, setEditProfileId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<PlayerProfile | null>(null)
+  useToastNotice(notice)
 
   const existingProfileIds = useMemo(
     () => profiles.map((profile) => profile.player_profile_id),
@@ -320,8 +303,6 @@ export function PlayerProfilesPage() {
 
         <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
           <div className="space-y-6 pr-1">
-            {notice ? <StatusNotice notice={notice} /> : null}
-
             <section className="space-y-5">
               <div className="space-y-2">
                 <CardTitle className="text-[1.85rem]">{t('playerProfiles.list.title')}</CardTitle>

@@ -22,12 +22,18 @@ export function DialogRouteButton({
   ...props
 }: DialogRouteButtonProps) {
   const navigate = useNavigate()
+  const navigateRef = useRef(navigate)
   const timeoutRef = useRef<number | null>(null)
+  const shouldPreserveNavigationRef = useRef(false)
   const [isNavigating, setIsNavigating] = useState(false)
 
   useEffect(() => {
+    navigateRef.current = navigate
+  }, [navigate])
+
+  useEffect(() => {
     return () => {
-      if (timeoutRef.current !== null) {
+      if (timeoutRef.current !== null && !shouldPreserveNavigationRef.current) {
         window.clearTimeout(timeoutRef.current)
       }
     }
@@ -43,11 +49,14 @@ export function DialogRouteButton({
         }
 
         setIsNavigating(true)
+        shouldPreserveNavigationRef.current = true
         onRequestClose()
 
         timeoutRef.current = window.setTimeout(() => {
-          navigate(to)
-        }, DIALOG_EXIT_DURATION_MS)
+          window.requestAnimationFrame(() => {
+            navigateRef.current(to)
+          })
+        }, DIALOG_EXIT_DURATION_MS + 24)
       }}
     >
       {children}

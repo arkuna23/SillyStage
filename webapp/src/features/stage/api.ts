@@ -25,6 +25,8 @@ import type {
   UpdateSessionMessageParams,
   UpdateSessionParams,
   UpdateSessionConfigParams,
+  SessionVariablesResult,
+  UpdateSessionVariablesParams,
 } from './types'
 
 const rpcEndpoint = backendPaths.rpc
@@ -229,6 +231,32 @@ export async function getRuntimeSnapshot(sessionId: string, signal?: AbortSignal
   )
 }
 
+export async function getSessionVariables(sessionId: string, signal?: AbortSignal) {
+  return rpcRequest<Record<string, never>, SessionVariablesResult>(
+    'session.get_variables',
+    {},
+    {
+      signal,
+      sessionId,
+    },
+  )
+}
+
+export async function updateSessionVariables(
+  sessionId: string,
+  params: UpdateSessionVariablesParams,
+  signal?: AbortSignal,
+) {
+  return rpcRequest<UpdateSessionVariablesParams, SessionVariablesResult>(
+    'session.update_variables',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
+}
+
 export async function suggestSessionReplies(
   sessionId: string,
   params: SuggestRepliesParams,
@@ -287,7 +315,6 @@ export async function updateSessionConfig(
 }
 
 export async function runSessionTurnStream(args: {
-  apiOverrides?: UpdateSessionConfigParams['api_overrides']
   onAck?: (ack: TurnStreamAcceptedResult) => void
   onMessage?: (message: SessionStreamMessage) => void
   playerInput: string
@@ -299,7 +326,6 @@ export async function runSessionTurnStream(args: {
     jsonrpc: '2.0' as const,
     method: 'session.run_turn',
     params: {
-      ...(args.apiOverrides ? { api_overrides: args.apiOverrides } : {}),
       player_input: args.playerInput,
     },
     session_id: args.sessionId,

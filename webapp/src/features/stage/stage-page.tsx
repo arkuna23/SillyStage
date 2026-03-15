@@ -1,4 +1,5 @@
 import { faComments } from '@fortawesome/free-solid-svg-icons/faComments'
+import { faDatabase } from '@fortawesome/free-solid-svg-icons/faDatabase'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faPaperPlane } from '@fortawesome/free-solid-svg-icons/faPaperPlane'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
@@ -27,12 +28,13 @@ import { IconButton } from '../../components/ui/icon-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Switch } from '../../components/ui/switch'
 import { Textarea } from '../../components/ui/textarea'
+import { useToastNotice } from '../../components/ui/toast-context'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
 import { appPaths } from '../../app/paths'
-import { getDefaultLlmConfig, listLlmApis } from '../apis/api'
-import type { LlmApi } from '../apis/types'
+import { listApiGroups, listApis, listPresets } from '../apis/api'
+import type { ApiConfig, ApiGroup, Preset } from '../apis/types'
 import { CharacterDetailsDialog } from '../characters/character-details-dialog'
 import { listCharacters, getCharacterCover, createCoverDataUrl } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
@@ -46,7 +48,6 @@ import {
   deleteSession,
   getRuntimeSnapshot,
   getSession,
-  listSessionMessages,
   listSessions,
   runSessionTurnStream,
   setSessionPlayerProfile,
@@ -57,8 +58,10 @@ import {
 } from './api'
 import { SessionDeleteDialog } from './session-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
+import { StageCharacterVariablesPanel } from './stage-character-variables-panel'
 import { SessionStartDialog } from './session-start-dialog'
 import { StageSessionSettingsPanel } from './stage-session-settings-panel'
+import { StageSessionVariablesPanel } from './stage-session-variables-panel'
 import type {
   EngineTurnResult,
   ReplySuggestion,
@@ -66,6 +69,7 @@ import type {
   SessionDetail,
   SessionHistoryEntry,
   SessionMessageResult,
+  SessionVariables,
   SessionSummary,
   StartedSession,
   StreamEventBody,
@@ -76,7 +80,7 @@ const stageRoot = '/stage'
 const COVER_OBJECT_POSITION = 'center 26%'
 const panelEase = [0.16, 1, 0.3, 1] as const
 
-type PanelMode = 'api' | 'session'
+type PanelMode = 'dialogue' | 'settings' | 'variables'
 type ComposerMode = 'input' | 'suggestions'
 type NoticeTone = 'error' | 'success' | 'warning'
 type StageMessageVariant = 'action' | 'dialogue' | 'narration' | 'player' | 'thought'
@@ -125,6 +129,11 @@ function isTextLong(text: string, maxLength: number) {
   return text.replace(/\s+/g, ' ').trim().length > maxLength
 }
 
+function isScrolledNearBottom(element: HTMLElement, threshold = 56) {
+  const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight
+  return distanceFromBottom < threshold
+}
+
 function buildPersistedMessages(history: SessionHistoryEntry[]): StageMessage[] {
   return history.map((entry, index) => ({
     id: entry.client_id ?? entry.message_id ?? `persisted:${entry.turn_index}:${index}`,
@@ -143,85 +152,6 @@ function buildPersistedMessages(history: SessionHistoryEntry[]): StageMessage[] 
             ? 'action'
             : 'dialogue',
   }))
-}
-
-function isSameTranscriptMessage(a: SessionHistoryEntry | undefined, b: SessionHistoryEntry) {
-  if (!a) {
-    return false
-  }
-
-  if (a.message_id && b.message_id) {
-    return a.message_id === b.message_id
-  }
-
-  return (
-    a.kind === b.kind &&
-    a.speaker_id === b.speaker_id &&
-    a.speaker_name === b.speaker_name &&
-    a.text === b.text &&
-    a.turn_index === b.turn_index
-  )
-}
-
-function createTranscriptFingerprint(entry: Pick<SessionHistoryEntry, 'kind' | 'speaker_id' | 'speaker_name' | 'text' | 'turn_index'>) {
-  return [entry.turn_index, entry.kind, entry.speaker_id, entry.speaker_name, entry.text].join('::')
-}
-
-function hydrateHistoryClientIds(
-  currentHistory: SessionHistoryEntry[],
-  nextHistory: SessionHistoryEntry[],
-) {
-  const currentClientIdsByMessageId = new Map(
-    currentHistory
-      .filter((entry): entry is SessionHistoryEntry & { client_id: string; message_id: string } =>
-        Boolean(entry.client_id && entry.message_id),
-      )
-      .map((entry) => [entry.message_id, entry.client_id]),
-  )
-  const localClientIdsByFingerprint = new Map<string, string[]>()
-
-  currentHistory.forEach((entry) => {
-    if (entry.message_id || !entry.client_id) {
-      return
-    }
-
-    const fingerprint = createTranscriptFingerprint(entry)
-    const bucket = localClientIdsByFingerprint.get(fingerprint) ?? []
-    bucket.push(entry.client_id)
-    localClientIdsByFingerprint.set(fingerprint, bucket)
-  })
-
-  return nextHistory.map((entry, index) => {
-    const currentEntry = currentHistory[index]
-
-    if (entry.message_id && currentClientIdsByMessageId.has(entry.message_id)) {
-      return {
-        ...entry,
-        client_id: currentClientIdsByMessageId.get(entry.message_id),
-      }
-    }
-
-    if (isSameTranscriptMessage(currentEntry, entry) && currentEntry?.client_id) {
-      return {
-        ...entry,
-        client_id: currentEntry.client_id,
-      }
-    }
-
-    const fingerprint = createTranscriptFingerprint(entry)
-    const bucket = localClientIdsByFingerprint.get(fingerprint)
-
-    if (bucket?.length) {
-      const clientId = bucket.shift()
-
-      return {
-        ...entry,
-        client_id: clientId,
-      }
-    }
-
-    return entry
-  })
 }
 
 function normalizeSessionHistory(history: SessionMessageResult[]) {
@@ -270,6 +200,18 @@ function getStoryNode(story: StoryDetail | null, snapshot: RuntimeSnapshot | nul
   }
 
   return story.graph.nodes.find((node) => node.id === snapshot.world_state.current_node) ?? null
+}
+
+function patchSnapshotVariables(snapshot: RuntimeSnapshot, variables: SessionVariables): RuntimeSnapshot {
+  return {
+    ...snapshot,
+    world_state: {
+      ...snapshot.world_state,
+      character_state: variables.character_state,
+      custom: variables.custom,
+      player_state: variables.player_state,
+    },
+  }
 }
 
 function getCharacterMonogram(name: string) {
@@ -341,24 +283,6 @@ function buildHistoryEntriesFromTurnResult(args: {
   })
 
   return entries
-}
-
-function StageNotice({ notice }: { notice: Notice }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.35rem] border px-4 py-3 text-sm leading-7',
-        notice.tone === 'success'
-          ? 'border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]'
-            : 'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function CharacterAvatar({
@@ -455,29 +379,23 @@ function RightPanelSection({
 
 function StagePanelHeader({
   actions,
-  description,
   title,
   titleClassName,
 }: {
   actions?: ReactNode
-  description: string
   title: string
   titleClassName?: string
 }) {
   return (
-    <CardHeader className="h-[7rem] justify-between gap-3 border-b border-[var(--color-border-subtle)] px-6 py-5">
-      <div className="flex min-h-0 items-start justify-between gap-4">
+    <CardHeader className="h-[5.25rem] border-b border-[var(--color-border-subtle)] px-6 py-4">
+      <div className="flex min-h-0 flex-1 items-center justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <CardTitle className={cn('truncate', titleClassName)}>{title}</CardTitle>
+          <CardTitle className={cn('truncate leading-none', titleClassName)}>{title}</CardTitle>
         </div>
         <div className="flex h-10 shrink-0 items-center justify-end">
           {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
         </div>
       </div>
-
-      <CardDescription className="line-clamp-1 min-h-6 text-sm leading-6">
-        {description}
-      </CardDescription>
     </CardHeader>
   )
 }
@@ -672,6 +590,8 @@ function StageConversation({
                   <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] px-4 py-3">
                     <Textarea
                       className="min-h-[7rem] border-[var(--color-accent-gold-line)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,white)] text-[var(--color-text-primary)]"
+                      id={`stage-player-message-edit-${message.messageId ?? message.id}`}
+                      name={`stage-player-message-edit-${message.messageId ?? message.id}`}
                       onChange={(event) => {
                         onChangePlayerMessageDraft(event.target.value)
                       }}
@@ -796,14 +716,15 @@ export function StagePage() {
   const [stories, setStories] = useState<StorySummary[]>([])
   const [characters, setCharacters] = useState<CharacterSummary[]>([])
   const [playerProfiles, setPlayerProfiles] = useState<PlayerProfile[]>([])
-  const [apis, setApis] = useState<LlmApi[]>([])
-  const [defaultLlmConfigAvailable, setDefaultLlmConfigAvailable] = useState(false)
+  const [apis, setApis] = useState<ApiConfig[]>([])
+  const [apiGroups, setApiGroups] = useState<ApiGroup[]>([])
+  const [presets, setPresets] = useState<Preset[]>([])
   const [storyDetails, setStoryDetails] = useState<Record<string, StoryDetail>>({})
   const [coverCache, setCoverCache] = useState<CoverCache>({})
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null)
   const [liveSnapshot, setLiveSnapshot] = useState<RuntimeSnapshot | null>(null)
   const [streamMessages, setStreamMessages] = useState<StageMessage[]>([])
-  const [panelMode, setPanelMode] = useState<PanelMode>('session')
+  const [panelMode, setPanelMode] = useState<PanelMode>('dialogue')
   const [composerMode, setComposerMode] = useState<ComposerMode>('input')
   const [replySuggestionsEnabled, setReplySuggestionsEnabled] = useState(false)
   const [composerInput, setComposerInput] = useState('')
@@ -819,6 +740,7 @@ export function StagePage() {
   const [isStoryNodeExpanded, setIsStoryNodeExpanded] = useState(false)
   const [detailsCharacterId, setDetailsCharacterId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
+  useToastNotice(notice)
   const [isListLoading, setIsListLoading] = useState(true)
   const [isSessionLoading, setIsSessionLoading] = useState(false)
   const [isRunningTurn, setIsRunningTurn] = useState(false)
@@ -830,9 +752,9 @@ export function StagePage() {
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null)
   const [beatSpeakerIds, setBeatSpeakerIds] = useState<string[]>([])
   const [turnWorkerStatus, setTurnWorkerStatus] = useState<TurnWorkerStatus | null>(null)
-  const [stageAccessStatus, setStageAccessStatus] = useState<'blocked' | 'checking' | 'ready'>(
-    'checking',
-  )
+  const [stageAccessStatus, setStageAccessStatus] = useState<
+    'blockedApiResources' | 'blockedPresets' | 'checking' | 'ready'
+  >('checking')
 
   const dateFormatter = useMemo(
     () =>
@@ -868,38 +790,19 @@ export function StagePage() {
       }),
     [activeSpeakerId, beatSpeakerIds, currentSnapshot],
   )
-  const replyerApiOverride = useMemo(() => {
-    const replyerApiId =
-      selectedSession?.config.session_api_ids?.replyer_api_id?.trim() ||
-      selectedSession?.config.effective_api_ids.replyer_api_id?.trim()
-
-    if (!replyerApiId) {
-      return undefined
-    }
-
-    return {
-      replyer_api_id: replyerApiId,
-    }
-  }, [selectedSession?.config.effective_api_ids.replyer_api_id, selectedSession?.config.session_api_ids?.replyer_api_id])
   const refreshCoreLists = useCallback(async () => {
     setIsListLoading(true)
     setStageAccessStatus('checking')
 
-    const [
-      sessionsResult,
-      storiesResult,
-      charactersResult,
-      profilesResult,
-      apisResult,
-      defaultConfigResult,
-    ] =
+    const [sessionsResult, storiesResult, charactersResult, profilesResult, apisResult, apiGroupsResult, presetsResult] =
       await Promise.allSettled([
         listSessions(),
         listStories(),
         listCharacters(),
         listPlayerProfiles(),
-        listLlmApis(),
-        getDefaultLlmConfig(),
+        listApis(),
+        listApiGroups(),
+        listPresets(),
       ])
 
     if (sessionsResult.status === 'fulfilled') {
@@ -935,23 +838,44 @@ export function StagePage() {
 
     if (apisResult.status === 'fulfilled') {
       setApis(apisResult.value)
+    } else {
+      setNotice({
+        message: getErrorMessage(apisResult.reason, copy.notice.apiResourcesFailed),
+        tone: 'error',
+      })
     }
 
-    if (apisResult.status === 'fulfilled' && defaultConfigResult.status === 'fulfilled') {
-      const hasUsableLlm =
-        apisResult.value.length > 0 || Boolean(defaultConfigResult.value.effective)
+    if (apiGroupsResult.status === 'fulfilled') {
+      setApiGroups(apiGroupsResult.value)
+    }
 
-      setDefaultLlmConfigAvailable(Boolean(defaultConfigResult.value.effective))
-      setStageAccessStatus(
-        hasUsableLlm ? 'ready' : 'blocked',
-      )
+    if (presetsResult.status === 'fulfilled') {
+      setPresets(presetsResult.value)
+    }
+
+    if (
+      apisResult.status === 'fulfilled' &&
+      apiGroupsResult.status === 'fulfilled' &&
+      presetsResult.status === 'fulfilled'
+    ) {
+      if (apisResult.value.length === 0 || apiGroupsResult.value.length === 0) {
+        setStageAccessStatus('blockedApiResources')
+      } else if (presetsResult.value.length === 0) {
+        setStageAccessStatus('blockedPresets')
+      } else {
+        setStageAccessStatus('ready')
+      }
     } else {
-      setDefaultLlmConfigAvailable(false)
       setStageAccessStatus('ready')
     }
 
     setIsListLoading(false)
-  }, [copy.notice.listFailed, copy.notice.playerProfilesFailed, copy.notice.storiesFailed])
+  }, [
+    copy.notice.apiResourcesFailed,
+    copy.notice.listFailed,
+    copy.notice.playerProfilesFailed,
+    copy.notice.storiesFailed,
+  ])
 
   const loadSelectedSession = useCallback(
     async (nextSessionId: string) => {
@@ -1002,32 +926,16 @@ export function StagePage() {
     [copy.notice.sessionLoadFailed, storyDetails],
   )
 
-  const syncSessionMessages = useCallback(async (sessionId: string) => {
-    try {
-      const messages = await listSessionMessages(sessionId)
-
-      setSelectedSession((current) => {
-        if (!current || current.session_id !== sessionId) {
-          return current
-        }
-
-        return {
-          ...current,
-          history: hydrateHistoryClientIds(current.history, normalizeSessionHistory(messages)),
-        }
-      })
-    } catch {
-      // Keep the current staged transcript if background sync fails.
-    }
-  }, [])
-
   useEffect(() => {
     void refreshCoreLists()
   }, [refreshCoreLists])
 
   useEffect(() => {
-    if (stageAccessStatus === 'blocked') {
+    if (stageAccessStatus === 'blockedApiResources') {
       navigate(appPaths.apis, { replace: true })
+    }
+    if (stageAccessStatus === 'blockedPresets') {
+      navigate(appPaths.presets, { replace: true })
     }
   }, [navigate, stageAccessStatus])
 
@@ -1163,10 +1071,10 @@ export function StagePage() {
       return
     }
 
-    if (shouldStickToBottomRef.current || isRunningTurn) {
+    if (shouldStickToBottomRef.current) {
       container.scrollTop = container.scrollHeight
     }
-  }, [isRunningTurn, routeSessionId, sessionMessages])
+  }, [routeSessionId, sessionMessages])
 
   function selectSession(sessionId: string) {
     navigate(buildStagePath(sessionId))
@@ -1284,6 +1192,18 @@ export function StagePage() {
         : current,
     )
   }
+
+  const handleVariablesApplied = useCallback((variables: SessionVariables) => {
+    setSelectedSession((current) =>
+      current
+        ? {
+            ...current,
+            snapshot: patchSnapshotVariables(current.snapshot, variables),
+          }
+        : current,
+    )
+    setLiveSnapshot((current) => (current ? patchSnapshotVariables(current, variables) : current))
+  }, [])
 
   async function handleCreateSession(result: { message: string; session: StartedSession }) {
     setNotice({ message: result.message, tone: 'success' })
@@ -1521,10 +1441,7 @@ export function StagePage() {
     try {
       const result = await suggestSessionReplies(
         selectedSession.session_id,
-        {
-          ...(replyerApiOverride ? { api_overrides: replyerApiOverride } : {}),
-          limit: 3,
-        },
+        { limit: 3 },
         controller.signal,
       )
 
@@ -1603,7 +1520,9 @@ export function StagePage() {
     const optimisticPlayerMessageId = `stream:player:${selectedSession.session_id}:${nextTurnIndex}`
     const controller = new AbortController()
     streamAbortRef.current = controller
-    shouldStickToBottomRef.current = true
+    shouldStickToBottomRef.current = conversationScrollRef.current
+      ? isScrolledNearBottom(conversationScrollRef.current)
+      : shouldStickToBottomRef.current
     setIsRunningTurn(true)
     setTurnWorkerStatus({ label: copy.statusBar.recordingInput })
     setStreamMessages([])
@@ -1794,7 +1713,6 @@ export function StagePage() {
       )
       setLiveSnapshot(result.result.snapshot)
       setStreamMessages([])
-      void syncSessionMessages(selectedSession.session_id)
 
       if (replySuggestionsEnabled) {
         void handleSuggestReplies()
@@ -1846,11 +1764,12 @@ export function StagePage() {
     <section className="flex h-full min-h-0 w-full flex-1 overflow-visible py-6 sm:py-8">
       <SessionStartDialog
         apis={apis}
-        defaultLlmConfigAvailable={defaultLlmConfigAvailable}
+        apiGroups={apiGroups}
         onCompleted={(result) => handleCreateSession(result)}
         onOpenChange={setIsStartDialogOpen}
         open={isStartDialogOpen}
         playerProfiles={playerProfiles}
+        presets={presets}
         stories={stories}
       />
 
@@ -1918,6 +1837,23 @@ export function StagePage() {
         }}
         open={detailsCharacterId !== null}
         showActions={false}
+        stageTabs={
+          selectedStageCharacter && selectedSession
+            ? {
+                detailsLabel: copy.characterDialog.details,
+                variablesContent: (
+                  <StageCharacterVariablesPanel
+                    character={selectedStageCharacter}
+                    copy={copy}
+                    onVariablesApplied={handleVariablesApplied}
+                    runtimeSnapshot={currentSnapshot}
+                    sessionId={selectedSession.session_id}
+                  />
+                ),
+                variablesLabel: copy.characterDialog.variables,
+              }
+            : undefined
+        }
         summary={selectedStageCharacter}
       />
 
@@ -1948,15 +1884,12 @@ export function StagePage() {
                   />
                 </>
               }
-              description={copy.list.subtitle}
               title={copy.list.section}
               titleClassName="text-[1.35rem]"
             />
 
             <CardContent className="min-h-0 flex-1 overflow-y-auto pt-5">
               <div className="space-y-4 pr-1">
-                {notice ? <StageNotice notice={notice} /> : null}
-
                 {isListLoading ? (
                   <SessionListSkeleton />
                 ) : sessions.length === 0 ? (
@@ -2048,13 +1981,18 @@ export function StagePage() {
                   items={[
                     {
                       icon: <FontAwesomeIcon icon={faComments} />,
-                      label: copy.tabs.session,
-                      value: 'session',
+                      label: copy.tabs.dialogue,
+                      value: 'dialogue',
                     },
                     {
                       icon: <FontAwesomeIcon icon={faPlug} />,
-                      label: copy.tabs.api,
-                      value: 'api',
+                      label: copy.tabs.settings,
+                      value: 'settings',
+                    },
+                    {
+                      icon: <FontAwesomeIcon icon={faDatabase} />,
+                      label: copy.tabs.variables,
+                      value: 'variables',
                     },
                   ]}
                   onValueChange={(value) => {
@@ -2063,26 +2001,25 @@ export function StagePage() {
                   value={panelMode}
                 />
               }
-              description={copy.stage.subtitle}
               title={selectedSession?.display_name ?? copy.stage.title}
               titleClassName="text-[1.95rem]"
             />
 
             <CardContent className="min-h-0 flex-1 pt-6">
-              {panelMode === 'api' ? (
+              {panelMode === 'settings' ? (
                 selectedSession ? (
                   <div className="scrollbar-none h-full overflow-y-auto pr-1">
                     <StageSessionSettingsPanel
-                      apis={apis}
+                      apiGroups={apiGroups}
                       config={selectedSession.config}
                       copy={copy}
                       currentPlayerProfileId={selectedSession.player_profile_id}
-                      defaultLlmConfigAvailable={defaultLlmConfigAvailable}
                       onRefreshSnapshot={handleRefreshRuntimeSnapshot}
                       onSavePlayerDescription={handleUpdatePlayerDescription}
                       onSavePlayerProfile={handleSetPlayerProfile}
                       onSaveSessionConfig={handleSaveSessionConfig}
                       playerProfiles={playerProfiles}
+                      presets={presets}
                       runtimeSnapshot={currentSnapshot}
                     />
                   </div>
@@ -2091,15 +2028,29 @@ export function StagePage() {
                     {copy.empty.stage}
                   </div>
                 )
+              ) : panelMode === 'variables' ? (
+                selectedSession ? (
+                  <div className="scrollbar-none h-full overflow-y-auto pr-1">
+                    <StageSessionVariablesPanel
+                      characterMap={characterMap}
+                      copy={copy}
+                      onVariablesApplied={handleVariablesApplied}
+                      runtimeSnapshot={currentSnapshot}
+                      sessionId={selectedSession.session_id}
+                      story={selectedStoryDetail}
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-5 py-6 text-sm leading-7 text-[var(--color-text-secondary)]">
+                    {copy.variables.empty}
+                  </div>
+                )
               ) : (
                 <div className="flex h-full min-h-0 flex-col">
                   <div
                     className="scrollbar-none min-h-0 flex-1 overflow-y-auto pr-1"
                     onScroll={(event) => {
-                      const target = event.currentTarget
-                      const distanceFromBottom =
-                        target.scrollHeight - target.scrollTop - target.clientHeight
-                      shouldStickToBottomRef.current = distanceFromBottom < 56
+                      shouldStickToBottomRef.current = isScrolledNearBottom(event.currentTarget)
                     }}
                     ref={conversationScrollRef}
                   >
@@ -2157,6 +2108,8 @@ export function StagePage() {
                             >
                               <Textarea
                                 className="min-h-[7.5rem] flex-1"
+                                id="stage-composer-input"
+                                name="stage-composer-input"
                                 ref={composerRef}
                                 onChange={(event) => {
                                   setComposerInput(event.target.value)
@@ -2273,7 +2226,6 @@ export function StagePage() {
         <WorkspacePanelShell className="h-full min-h-0">
           <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_92%,transparent)] shadow-none">
             <StagePanelHeader
-              description={copy.rail.subtitle}
               title={copy.stage.title}
               titleClassName="text-[1.5rem]"
             />

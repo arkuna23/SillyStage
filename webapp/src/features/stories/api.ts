@@ -30,7 +30,9 @@ export async function getStory(storyId: string, signal?: AbortSignal) {
 
 export async function generateStory(
   params: {
+    api_group_id?: string
     display_name?: string
+    preset_id?: string
     resource_id: string
   },
   signal?: AbortSignal,
@@ -58,7 +60,9 @@ export async function getStoryDraft(draftId: string, signal?: AbortSignal) {
 
 export async function startStoryDraft(
   params: {
+    api_group_id?: string
     display_name?: string
+    preset_id?: string
     resource_id: string
   },
   signal?: AbortSignal,
@@ -102,10 +106,32 @@ export async function updateStory(
   return rpcRequest<typeof params, StoryDetail>('story.update', params, { signal })
 }
 
+export async function updateStoryGraph(
+  params: {
+    graph: StoryDetail['graph']
+    story_id: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, StoryDetail>('story.update_graph', params, { signal })
+}
+
 export async function deleteStory(storyId: string, signal?: AbortSignal) {
   return rpcRequest<{ story_id: string }, StoryDeletedResult>(
     'story.delete',
     { story_id: storyId },
     { signal },
   )
+}
+
+export async function updateStoryDraftGraph(
+  params: {
+    draft_id: string
+    partial_graph: StoryDraftDetail['partial_graph']
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, StoryDraftDetail>('story_draft.update_graph', params, {
+    signal,
+  })
 }

@@ -1,5 +1,3 @@
-import type { AgentApiIds } from '../apis/types'
-
 export type DashboardHealthStatus = 'ok'
 
 export type DashboardHealth = {
@@ -9,9 +7,9 @@ export type DashboardHealth = {
 export type DashboardCounts = {
   characters_total: number
   characters_with_cover: number
-  story_resources_total: number
-  stories_total: number
   sessions_total: number
+  stories_total: number
+  story_resources_total: number
 }
 
 export type DashboardStorySummary = {
@@ -33,7 +31,8 @@ export type DashboardSessionSummary = {
 export type DashboardPayload = {
   counts: DashboardCounts
   global_config: {
-    api_ids: AgentApiIds | null
+    api_group_id?: string | null
+    preset_id?: string | null
   }
   health: DashboardHealth
   recent_sessions: DashboardSessionSummary[]

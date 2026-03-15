@@ -51,8 +51,8 @@ export function AppShell() {
       <div
         className={
           isWideShellRoute
-            ? 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-visible px-4 pb-8 pt-24 sm:px-5 sm:pt-28 lg:px-6 lg:pt-32'
-            : 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-hidden px-4 pb-8 pt-24 sm:px-5 sm:pt-28 lg:px-6 lg:pt-32'
+            ? 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-visible px-4 pb-5 pt-20 sm:px-5 sm:pb-6 sm:pt-24 lg:px-6 lg:pb-6 lg:pt-28'
+            : 'relative mx-auto flex h-full max-w-[88rem] flex-col overflow-hidden px-4 pb-5 pt-20 sm:px-5 sm:pb-6 sm:pt-24 lg:px-6 lg:pb-6 lg:pt-28'
         }
       >
         <AnimatePresence initial={false} mode="wait">

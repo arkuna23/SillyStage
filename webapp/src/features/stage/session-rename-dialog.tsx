@@ -11,6 +11,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { updateSession } from './api'
 import type { StageCopy } from './copy'
 import type { SessionDetail, SessionSummary } from './types'
@@ -38,6 +39,7 @@ export function SessionRenameDialog({
   const [displayName, setDisplayName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   useEffect(() => {
     if (!open || !session) {
@@ -112,6 +114,7 @@ export function SessionRenameDialog({
               autoFocus
               disabled={isSubmitting}
               id={fieldId}
+              name="session-rename-display-name"
               onChange={(event) => {
                 setDisplayName(event.target.value)
               }}
@@ -120,11 +123,6 @@ export function SessionRenameDialog({
             />
           </div>
 
-          {submitError ? (
-            <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-              {submitError}
-            </div>
-          ) : null}
         </DialogBody>
 
         <DialogFooter className="justify-end">

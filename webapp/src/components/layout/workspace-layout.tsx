@@ -21,6 +21,7 @@ function shouldShowWorkspaceRail(pathname: string) {
     pathname.startsWith(appPaths.storyResources) ||
     pathname.startsWith(appPaths.stories) ||
     pathname.startsWith(appPaths.apis) ||
+    pathname.startsWith(appPaths.presets) ||
     pathname.startsWith(appPaths.schemas) ||
     pathname.startsWith(appPaths.playerProfiles)
   )

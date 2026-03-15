@@ -12,8 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { getStory } from './api'
-import { StoryGraphViewerDialog } from './story-graph-viewer-dialog'
+import { StoryGraphEditorDialog } from './story-graph-editor-dialog'
 import type { StoryDetail } from './types'
 
 type StoryDetailsDialogProps = {
@@ -49,11 +50,12 @@ export function StoryDetailsDialog({
   const { t } = useTranslation()
   const [story, setStory] = useState<StoryDetail | null>(null)
   const [errorState, setErrorState] = useState<{ message: string; storyId: string } | null>(null)
-  const [isGraphViewerOpen, setIsGraphViewerOpen] = useState(false)
+  const [isGraphEditorOpen, setIsGraphEditorOpen] = useState(false)
   const visibleStory = open && storyId !== null && story?.story_id === storyId ? story : null
   const errorMessage =
     open && storyId !== null && errorState?.storyId === storyId ? errorState.message : null
   const isLoading = open && storyId !== null && visibleStory === null && errorMessage === null
+  useToastMessage(errorMessage)
 
   useEffect(() => {
     if (!open || !storyId) {
@@ -103,11 +105,7 @@ export function StoryDetailsDialog({
         </DialogHeader>
 
         <DialogBody className="space-y-5 pt-6">
-          {errorMessage ? (
-            <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-              {errorMessage}
-            </div>
-          ) : isLoading ? (
+          {isLoading ? (
             <div className="grid gap-3">
               {Array.from({ length: 5 }).map((_, index) => (
                 <div
@@ -169,12 +167,12 @@ export function StoryDetailsDialog({
                     </div>
                     <Button
                       onClick={() => {
-                        setIsGraphViewerOpen(true)
+                        setIsGraphEditorOpen(true)
                       }}
                       size="sm"
                       variant="secondary"
                     >
-                      {t('stories.actions.viewGraph')}
+                      {t('stories.actions.editGraph')}
                     </Button>
                   </div>
                 </div>
@@ -190,14 +188,19 @@ export function StoryDetailsDialog({
         </DialogFooter>
       </DialogContent>
 
-      <StoryGraphViewerDialog
+      <StoryGraphEditorDialog
         graph={visibleStory?.graph ?? null}
         graphType="story"
-        highlightNodeId={visibleStory?.graph.start_node}
-        onOpenChange={setIsGraphViewerOpen}
-        open={open && isGraphViewerOpen}
-        subtitle={t('stories.graph.storySubtitle')}
-        title={t('stories.graph.title')}
+        onGraphSaved={(nextGraph) => {
+          setStory((currentStory) =>
+            currentStory && currentStory.story_id === storyId
+              ? { ...currentStory, graph: nextGraph }
+              : currentStory,
+          )
+        }}
+        onOpenChange={setIsGraphEditorOpen}
+        open={open && isGraphEditorOpen}
+        resourceId={visibleStory?.story_id ?? ''}
       />
     </Dialog>
   )

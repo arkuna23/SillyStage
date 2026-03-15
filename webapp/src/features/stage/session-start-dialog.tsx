@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { cn } from '../../lib/cn'
+import { appPaths } from '../../app/paths'
 import { Button } from '../../components/ui/button'
 import {
   Dialog,
@@ -11,59 +11,48 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
-import { agentApiRoleKeys, type AgentApiIds, type LlmApi } from '../apis/types'
+import { useToastMessage } from '../../components/ui/toast-context'
+import type { ApiConfig, ApiGroup, Preset } from '../apis/types'
 import type { PlayerProfile } from '../player-profiles/types'
 import type { StorySummary } from '../stories/types'
-import { getStageCopy } from './copy'
 import { startSession } from './api'
-import type { SessionConfigMode, StartedSession, StartSessionInput } from './types'
+import { getStageCopy } from './copy'
+import type { StartedSession, StartSessionInput } from './types'
 
 const NO_PLAYER_PROFILE_OPTION_VALUE = '__none__'
 
 type SessionStartDialogProps = {
-  apis: ReadonlyArray<LlmApi>
-  defaultLlmConfigAvailable: boolean
+  apis: ReadonlyArray<ApiConfig>
+  apiGroups: ReadonlyArray<ApiGroup>
   onCompleted: (result: { message: string; session: StartedSession }) => Promise<void> | void
   onOpenChange: (open: boolean) => void
   open: boolean
   playerProfiles: ReadonlyArray<PlayerProfile>
+  presets: ReadonlyArray<Preset>
   stories: ReadonlyArray<StorySummary>
 }
 
 type FormState = {
-  configMode: SessionConfigMode
+  apiGroupId: string
   displayName: string
   playerProfileId: string
-  sessionApiIds: AgentApiIds | null
+  presetId: string
   storyId: string
 }
 
-function buildDefaultSessionApiIds(apis: ReadonlyArray<LlmApi>) {
-  const fallbackApiId = apis[0]?.api_id
-
-  if (!fallbackApiId) {
-    return null
-  }
-
+function createInitialState(
+  apiGroups: ReadonlyArray<ApiGroup>,
+  presets: ReadonlyArray<Preset>,
+  stories: ReadonlyArray<StorySummary>,
+): FormState {
   return {
-    actor_api_id: fallbackApiId,
-    architect_api_id: fallbackApiId,
-    director_api_id: fallbackApiId,
-    keeper_api_id: fallbackApiId,
-    narrator_api_id: fallbackApiId,
-    planner_api_id: fallbackApiId,
-    replyer_api_id: fallbackApiId,
-  } satisfies AgentApiIds
-}
-
-function createInitialState(apis: ReadonlyArray<LlmApi>, stories: ReadonlyArray<StorySummary>): FormState {
-  return {
-    configMode: 'use_global',
+    apiGroupId: apiGroups[0]?.api_group_id ?? '',
     displayName: '',
     playerProfileId: NO_PLAYER_PROFILE_OPTION_VALUE,
-    sessionApiIds: buildDefaultSessionApiIds(apis),
+    presetId: presets[0]?.preset_id ?? '',
     storyId: stories[0]?.story_id ?? '',
   }
 }
@@ -74,18 +63,22 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 export function SessionStartDialog({
   apis,
-  defaultLlmConfigAvailable,
+  apiGroups,
   onCompleted,
   onOpenChange,
   open,
   playerProfiles,
+  presets,
   stories,
 }: SessionStartDialogProps) {
   const { i18n } = useTranslation()
   const copy = getStageCopy(i18n.language)
-  const [formState, setFormState] = useState<FormState>(() => createInitialState(apis, stories))
+  const [formState, setFormState] = useState<FormState>(() =>
+    createInitialState(apiGroups, presets, stories),
+  )
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   const storyOptions = useMemo(
     () =>
@@ -98,25 +91,32 @@ export function SessionStartDialog({
 
   const playerProfileOptions = useMemo(
     () => [
-      { label: '—', value: NO_PLAYER_PROFILE_OPTION_VALUE },
+      { label: copy.settings.playerProfile.noProfile, value: NO_PLAYER_PROFILE_OPTION_VALUE },
       ...playerProfiles.map((profile) => ({
         label: profile.display_name,
         value: profile.player_profile_id,
       })),
     ],
-    [playerProfiles],
+    [copy.settings.playerProfile.noProfile, playerProfiles],
   )
 
-  const apiOptions = useMemo(
+  const apiGroupOptions = useMemo(
     () =>
-      apis.map((api) => ({
-        label: `${api.api_id} · ${api.model}`,
-        value: api.api_id,
+      apiGroups.map((apiGroup) => ({
+        label: apiGroup.display_name,
+        value: apiGroup.api_group_id,
       })),
-    [apis],
+    [apiGroups],
   )
-  const hasStoredApis = apiOptions.length > 0
-  const hasUsableLlm = hasStoredApis || defaultLlmConfigAvailable
+
+  const presetOptions = useMemo(
+    () =>
+      presets.map((preset) => ({
+        label: preset.display_name,
+        value: preset.preset_id,
+      })),
+    [presets],
+  )
 
   const selectedStory = useMemo(
     () => stories.find((story) => story.story_id === formState.storyId) ?? null,
@@ -125,29 +125,21 @@ export function SessionStartDialog({
 
   useEffect(() => {
     if (!open) {
-      setFormState(createInitialState(apis, stories))
+      setFormState(createInitialState(apiGroups, presets, stories))
       setSubmitError(null)
       setIsSubmitting(false)
       return
     }
 
     setFormState((current) => ({
-      ...createInitialState(apis, stories),
+      apiGroupId: current.apiGroupId || apiGroups[0]?.api_group_id || '',
+      displayName: current.displayName,
+      playerProfileId: current.playerProfileId || NO_PLAYER_PROFILE_OPTION_VALUE,
+      presetId: current.presetId || presets[0]?.preset_id || '',
       storyId: current.storyId || stories[0]?.story_id || '',
     }))
-  }, [apis, open, stories])
-
-  function updateApiRole(roleKey: keyof AgentApiIds, apiId: string) {
-    setFormState((current) => ({
-      ...current,
-      sessionApiIds: current.sessionApiIds
-        ? {
-            ...current.sessionApiIds,
-            [roleKey]: apiId,
-          }
-        : current.sessionApiIds,
-    }))
-  }
+    setSubmitError(null)
+  }, [apiGroups, open, presets, stories])
 
   async function handleSubmit() {
     if (!formState.storyId.trim()) {
@@ -155,15 +147,14 @@ export function SessionStartDialog({
       return
     }
 
-    if (formState.configMode === 'use_session' && hasStoredApis) {
-      const missingRole = agentApiRoleKeys.find(
-        (roleKey) => !formState.sessionApiIds?.[roleKey]?.trim(),
-      )
+    if (!formState.apiGroupId.trim()) {
+      setSubmitError(copy.createSession.emptyApiGroups)
+      return
+    }
 
-      if (missingRole) {
-        setSubmitError(`${copy.apiPanel.roles[missingRole]}: ${copy.createSession.emptyApis}`)
-        return
-      }
+    if (!formState.presetId.trim()) {
+      setSubmitError(copy.createSession.emptyPresets)
+      return
     }
 
     setSubmitError(null)
@@ -171,15 +162,13 @@ export function SessionStartDialog({
 
     try {
       const params: StartSessionInput = {
-        config_mode: formState.configMode,
+        api_group_id: formState.apiGroupId.trim(),
         ...(formState.displayName.trim() ? { display_name: formState.displayName.trim() } : {}),
         ...(formState.playerProfileId !== NO_PLAYER_PROFILE_OPTION_VALUE
           ? { player_profile_id: formState.playerProfileId }
           : {}),
-        ...(formState.configMode === 'use_session' && formState.sessionApiIds
-          ? { session_api_ids: formState.sessionApiIds }
-          : {}),
-        story_id: formState.storyId,
+        preset_id: formState.presetId.trim(),
+        story_id: formState.storyId.trim(),
       }
 
       const session = await startSession(params)
@@ -196,6 +185,11 @@ export function SessionStartDialog({
       setIsSubmitting(false)
     }
   }
+
+  const hasStories = stories.length > 0
+  const hasApis = apis.length > 0
+  const hasApiGroups = apiGroups.length > 0
+  const hasPresets = presets.length > 0
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
@@ -218,11 +212,46 @@ export function SessionStartDialog({
         </DialogHeader>
 
         <DialogBody className="space-y-5 pt-6">
-          {stories.length === 0 ? (
+          {!hasStories ? (
             <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
               {copy.createSession.emptyStories}
             </div>
-          ) : (
+          ) : null}
+
+          {!hasApis ? (
+            <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+              <p>{copy.createSession.emptyApis}</p>
+              <div className="mt-4">
+                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.apis} variant="secondary">
+                  {copy.createSession.configureApis}
+                </DialogRouteButton>
+              </div>
+            </div>
+          ) : null}
+
+          {hasApis && !hasApiGroups ? (
+            <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+              <p>{copy.createSession.emptyApiGroups}</p>
+              <div className="mt-4">
+                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.apis} variant="secondary">
+                  {copy.createSession.configureApiGroups}
+                </DialogRouteButton>
+              </div>
+            </div>
+          ) : null}
+
+          {hasApis && hasApiGroups && !hasPresets ? (
+            <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+              <p>{copy.createSession.emptyPresets}</p>
+              <div className="mt-4">
+                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.presets} variant="secondary">
+                  {copy.createSession.configurePresets}
+                </DialogRouteButton>
+              </div>
+            </div>
+          ) : null}
+
+          {hasStories && hasApis && hasApiGroups && hasPresets ? (
             <>
               <div className="space-y-5">
                 <label className="space-y-2.5">
@@ -255,6 +284,8 @@ export function SessionStartDialog({
                     {copy.createSession.displayName}
                   </span>
                   <Input
+                    id="stage-session-display-name"
+                    name="stage-session-display-name"
                     onChange={(event) => {
                       setFormState((current) => ({
                         ...current,
@@ -281,79 +312,37 @@ export function SessionStartDialog({
                 </label>
               </div>
 
-              <div className="space-y-3">
-                <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                  {copy.createSession.configMode}
-                </p>
-
-                <div className="grid gap-3 md:grid-cols-2">
-                  <button
-                    className={cn(
-                      'rounded-[1.35rem] border px-4 py-4 text-left transition',
-                      formState.configMode === 'use_global'
-                        ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                        : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)]',
-                    )}
-                    onClick={() => {
-                      setFormState((current) => ({ ...current, configMode: 'use_global' }))
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="space-y-2.5">
+                  <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                    {copy.createSession.apiGroup}
+                  </span>
+                  <Select
+                    items={apiGroupOptions}
+                    placeholder={copy.createSession.apiGroupPlaceholder}
+                    textAlign="start"
+                    value={formState.apiGroupId}
+                    onValueChange={(apiGroupId) => {
+                      setFormState((current) => ({ ...current, apiGroupId }))
                     }}
-                    type="button"
-                  >
-                    <p className="font-medium">{copy.apiPanel.modeOptions.useGlobal}</p>
-                  </button>
+                  />
+                </label>
 
-                  <button
-                    className={cn(
-                      'rounded-[1.35rem] border px-4 py-4 text-left transition',
-                      formState.configMode === 'use_session'
-                        ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                        : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)]',
-                    )}
-                    onClick={() => {
-                      setFormState((current) => ({
-                        ...current,
-                        configMode: 'use_session',
-                        sessionApiIds: hasStoredApis
-                          ? current.sessionApiIds ?? buildDefaultSessionApiIds(apis)
-                          : null,
-                      }))
+                <label className="space-y-2.5">
+                  <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                    {copy.createSession.preset}
+                  </span>
+                  <Select
+                    items={presetOptions}
+                    placeholder={copy.createSession.presetPlaceholder}
+                    textAlign="start"
+                    value={formState.presetId}
+                    onValueChange={(presetId) => {
+                      setFormState((current) => ({ ...current, presetId }))
                     }}
-                    type="button"
-                  >
-                    <p className="font-medium">{copy.apiPanel.modeOptions.useSession}</p>
-                  </button>
-                </div>
+                  />
+                </label>
               </div>
-
-              {formState.configMode === 'use_session' ? (
-                !hasUsableLlm ? (
-                  <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                    {copy.createSession.emptyApis}
-                  </div>
-                ) : !hasStoredApis || !formState.sessionApiIds ? (
-                  <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                    {copy.createSession.defaultLlmFallback}
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {agentApiRoleKeys.map((roleKey) => (
-                      <label className="space-y-2.5" key={roleKey}>
-                        <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-                          {copy.apiPanel.roles[roleKey]}
-                        </span>
-                        <Select
-                          items={apiOptions}
-                          textAlign="start"
-                          value={formState.sessionApiIds?.[roleKey] ?? ''}
-                          onValueChange={(apiId) => {
-                            updateApiRole(roleKey, apiId)
-                          }}
-                        />
-                      </label>
-                    ))}
-                  </div>
-                )
-              ) : null}
 
               {playerProfiles.length === 0 ? (
                 <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
@@ -361,13 +350,8 @@ export function SessionStartDialog({
                 </div>
               ) : null}
             </>
-          )}
-
-          {submitError ? (
-            <div className="rounded-[1.35rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm leading-7 text-[var(--color-text-primary)]">
-              {submitError}
-            </div>
           ) : null}
+
         </DialogBody>
 
         <DialogFooter className="justify-end">
@@ -380,7 +364,10 @@ export function SessionStartDialog({
           >
             {copy.createSession.cancel}
           </Button>
-          <Button disabled={isSubmitting || stories.length === 0} onClick={() => void handleSubmit()}>
+          <Button
+            disabled={isSubmitting || !hasStories || !hasApiGroups || !hasPresets}
+            onClick={() => void handleSubmit()}
+          >
             {isSubmitting ? copy.createSession.creating : copy.createSession.create}
           </Button>
         </DialogFooter>

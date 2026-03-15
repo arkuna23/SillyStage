@@ -13,6 +13,7 @@ import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
+import { useToastNotice } from '../../components/ui/toast-context'
 import { isRpcConflict } from '../../lib/rpc'
 import { createSchema, deleteSchema, listSchemas } from './api'
 import { DeleteSchemaDialog } from './delete-schema-dialog'
@@ -26,22 +27,6 @@ type NoticeTone = 'success' | 'warning' | 'error'
 type NoticeState = {
   message: string
   tone: NoticeTone
-}
-
-function StatusNotice({ notice }: { notice: NoticeState }) {
-  return (
-    <div
-      className={
-        notice.tone === 'success'
-          ? 'rounded-[1.25rem] border border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'rounded-[1.25rem] border border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]'
-            : 'rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]'
-      }
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function SchemaListSkeleton() {
@@ -83,6 +68,7 @@ export function SchemaManagementPage() {
   const [presetDialogOpen, setPresetDialogOpen] = useState(false)
   const [editSchemaId, setEditSchemaId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<SchemaResource | null>(null)
+  useToastNotice(notice)
 
   const existingSchemaIds = useMemo(
     () => schemas.map((schema) => schema.schema_id),
@@ -314,8 +300,6 @@ export function SchemaManagementPage() {
 
         <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
           <div className="space-y-6 pr-1">
-            {notice ? <StatusNotice notice={notice} /> : null}
-
             {isLoading ? (
               <SchemaListSkeleton />
             ) : schemas.length === 0 ? (

@@ -1,21 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { agentApiRoleKeys, type AgentApiIds, type AgentApiRoleKey } from '../apis/types'
-import { getDashboard } from './api'
-import type { DashboardPayload } from './types'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { SectionHeader } from '../../components/ui/section-header'
-import { cn } from '../../lib/cn'
-
-type NoticeTone = 'error'
+import { useToastNotice } from '../../components/ui/toast-context'
+import { getDashboard } from './api'
+import type { DashboardPayload } from './types'
 
 type Notice = {
   message: string
-  tone: NoticeTone
 }
 
 const emptyDashboard: DashboardPayload = {
@@ -27,7 +23,8 @@ const emptyDashboard: DashboardPayload = {
     story_resources_total: 0,
   },
   global_config: {
-    api_ids: null,
+    api_group_id: null,
+    preset_id: null,
   },
   health: {
     status: 'ok',
@@ -38,30 +35,6 @@ const emptyDashboard: DashboardPayload = {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
-}
-
-function countAssignedApis(apiIds: AgentApiIds | null | undefined) {
-  if (!apiIds) {
-    return 0
-  }
-
-  return agentApiRoleKeys.reduce((count, roleKey) => {
-    return count + (apiIds[roleKey].trim() ? 1 : 0)
-  }, 0)
-}
-
-function StatusNotice({ notice }: { notice: Notice }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur',
-        'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function DashboardMetric({
@@ -101,7 +74,7 @@ function DashboardSkeleton() {
 
       <div className="border-t border-[var(--color-border-subtle)]" />
 
-      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
         {Array.from({ length: 2 }).map((_, index) => (
           <div
             className="rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 py-5"
@@ -109,7 +82,7 @@ function DashboardSkeleton() {
           >
             <div className="h-6 w-32 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
             <div className="mt-4 space-y-3">
-              {Array.from({ length: index === 0 ? 2 : 6 }).map((__, rowIndex) => (
+              {Array.from({ length: index === 0 ? 2 : 3 }).map((__, rowIndex) => (
                 <div className="h-10 rounded-[1rem] bg-[var(--color-bg-panel)]" key={rowIndex} />
               ))}
             </div>
@@ -145,37 +118,39 @@ function EmptySection({ label }: { label: string }) {
   )
 }
 
+function BindingSummaryCard({
+  label,
+  value,
+}: {
+  label: string
+  value: string
+}) {
+  return (
+    <div className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+      <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
+      <p className="mt-3 text-sm font-medium text-[var(--color-text-primary)]">{value}</p>
+    </div>
+  )
+}
+
 export function DashboardPage() {
   const { t, i18n } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
   const [dashboard, setDashboard] = useState<DashboardPayload | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [notice, setNotice] = useState<Notice | null>(null)
+  useToastNotice(notice)
 
-  const dateFormatter = useMemo(() => {
-    return new Intl.DateTimeFormat(i18n.language.startsWith('zh') ? 'zh-CN' : 'en', {
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    })
-  }, [i18n.language])
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(i18n.language.startsWith('zh') ? 'zh-CN' : 'en', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+      }),
+    [i18n.language],
+  )
 
   const currentDashboard = dashboard ?? emptyDashboard
-  const assignedApiCount = useMemo(
-    () => countAssignedApis(currentDashboard.global_config.api_ids),
-    [currentDashboard.global_config.api_ids],
-  )
-  const roleLabels: Record<AgentApiRoleKey, string> = useMemo(
-    () => ({
-      actor_api_id: t('apis.assignments.roles.actor_api_id'),
-      architect_api_id: t('apis.assignments.roles.architect_api_id'),
-      director_api_id: t('apis.assignments.roles.director_api_id'),
-      keeper_api_id: t('apis.assignments.roles.keeper_api_id'),
-      narrator_api_id: t('apis.assignments.roles.narrator_api_id'),
-      planner_api_id: t('apis.assignments.roles.planner_api_id'),
-      replyer_api_id: t('apis.assignments.roles.replyer_api_id'),
-    }),
-    [t],
-  )
   const healthLabel =
     dashboard?.health.status === 'ok' ? t('dashboard.health.ok') : '—'
   const totalResourceCount =
@@ -185,6 +160,10 @@ export function DashboardPage() {
     currentDashboard.counts.sessions_total
   const recentActivityCount =
     currentDashboard.recent_stories.length + currentDashboard.recent_sessions.length
+  const currentApiGroup =
+    currentDashboard.global_config.api_group_id?.trim() || t('dashboard.config.emptyValue')
+  const currentPreset =
+    currentDashboard.global_config.preset_id?.trim() || t('dashboard.config.emptyValue')
 
   const refreshDashboard = useCallback(
     async (signal?: AbortSignal) => {
@@ -200,7 +179,6 @@ export function DashboardPage() {
         if (!signal?.aborted) {
           setNotice({
             message: getErrorMessage(error, t('dashboard.feedback.loadFailed')),
-            tone: 'error',
           })
         }
       } finally {
@@ -214,7 +192,6 @@ export function DashboardPage() {
 
   useEffect(() => {
     const controller = new AbortController()
-
     void refreshDashboard(controller.signal)
 
     return () => {
@@ -253,46 +230,24 @@ export function DashboardPage() {
     return () => {
       setRailContent(null)
     }
-  }, [
-    healthLabel,
-    isLoading,
-    recentActivityCount,
-    setRailContent,
-    t,
-    totalResourceCount,
-  ])
-
-  function formatUpdatedAt(updatedAtMs?: number | null) {
-    if (!updatedAtMs) {
-      return null
-    }
-
-    return dateFormatter.format(new Date(updatedAtMs))
-  }
+  }, [healthLabel, isLoading, recentActivityCount, setRailContent, t, totalResourceCount])
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
-      <WorkspacePanelShell className="flex min-h-0 flex-1">
-        <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
-          <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
+      <WorkspacePanelShell className="h-full min-h-0">
+        <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+          <CardHeader className="border-b border-[var(--color-border-subtle)] md:min-h-[92px]">
             <SectionHeader title={t('dashboard.title')} />
           </CardHeader>
 
-          <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
-            <div className="space-y-8 pr-1">
-              {notice ? <StatusNotice notice={notice} /> : null}
-
+          <CardContent className="scrollbar-none min-h-0 flex-1 overflow-y-auto pt-6">
+            <div className="space-y-8">
               {isLoading ? (
                 <DashboardSkeleton />
               ) : (
                 <>
                   <section className="space-y-5">
-                    <div className="space-y-2">
-                      <CardTitle className="text-[1.85rem]">
-                        {t('dashboard.sections.overview')}
-                      </CardTitle>
-                    </div>
-
+                    <SectionHeader title={t('dashboard.sections.overview')} />
                     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <DashboardMetric
                         label={t('dashboard.counts.characters')}
@@ -315,67 +270,31 @@ export function DashboardPage() {
 
                   <div className="border-t border-[var(--color-border-subtle)]" />
 
-                  <section className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                  <section className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
                     <div className="rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 py-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <CardTitle className="text-[1.4rem]">
-                          {t('dashboard.sections.health')}
-                        </CardTitle>
-                        <Badge variant="info">{healthLabel}</Badge>
+                      <div className="space-y-2">
+                        <CardTitle className="text-2xl">{t('dashboard.sections.health')}</CardTitle>
+                        <CardDescription>{t('dashboard.health.ok')}</CardDescription>
                       </div>
-
-                      <div className="mt-5 space-y-3">
-                        <div className="rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_76%,transparent)] px-4 py-3.5">
-                          <p className="text-xs text-[var(--color-text-muted)]">
-                            {t('dashboard.metrics.status')}
-                          </p>
-                          <p className="mt-2 text-base font-medium text-[var(--color-text-primary)]">
-                            {healthLabel}
-                          </p>
-                        </div>
-
-                        <div className="rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_76%,transparent)] px-4 py-3.5">
-                          <p className="text-xs text-[var(--color-text-muted)]">
-                            {t('dashboard.config.summaryLabel')}
-                          </p>
-                          <p className="mt-2 text-base font-medium text-[var(--color-text-primary)]">
-                            {t('dashboard.config.summary', {
-                              assigned: assignedApiCount,
-                              total: agentApiRoleKeys.length,
-                            })}
-                          </p>
-                        </div>
+                      <div className="mt-4">
+                        <Badge>{healthLabel}</Badge>
                       </div>
                     </div>
 
                     <div className="rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 py-5">
-                      <div className="space-y-1.5">
-                        <CardTitle className="text-[1.4rem]">
-                          {t('dashboard.sections.defaults')}
-                        </CardTitle>
-                        <CardDescription className="leading-6">
-                          {t('dashboard.config.description')}
-                        </CardDescription>
+                      <div className="space-y-2">
+                        <CardTitle className="text-2xl">{t('dashboard.sections.defaults')}</CardTitle>
+                        <CardDescription>{t('dashboard.config.description')}</CardDescription>
                       </div>
-
-                      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        {agentApiRoleKeys.map((roleKey) => {
-                          const apiId = currentDashboard.global_config.api_ids?.[roleKey]
-
-                          return (
-                            <div
-                              className="rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_76%,transparent)] px-4 py-3.5"
-                              key={roleKey}
-                            >
-                              <p className="text-xs text-[var(--color-text-muted)]">
-                                {roleLabels[roleKey]}
-                              </p>
-                              <p className="mt-2 truncate text-sm font-medium text-[var(--color-text-primary)]">
-                                {apiId || t('dashboard.config.emptyValue')}
-                              </p>
-                            </div>
-                          )
-                        })}
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <BindingSummaryCard
+                          label={t('dashboard.config.apiGroupLabel')}
+                          value={currentApiGroup}
+                        />
+                        <BindingSummaryCard
+                          label={t('dashboard.config.presetLabel')}
+                          value={currentPreset}
+                        />
                       </div>
                     </div>
                   </section>
@@ -383,41 +302,29 @@ export function DashboardPage() {
                   <div className="border-t border-[var(--color-border-subtle)]" />
 
                   <section className="space-y-5">
-                    <div className="space-y-2">
-                      <CardTitle className="text-[1.85rem]">
-                        {t('dashboard.sections.recentStories')}
-                      </CardTitle>
-                    </div>
-
+                    <SectionHeader title={t('dashboard.sections.recentStories')} />
                     {currentDashboard.recent_stories.length === 0 ? (
                       <EmptySection label={t('dashboard.recentStories.empty')} />
                     ) : (
                       <div className="divide-y divide-[var(--color-border-subtle)]">
                         {currentDashboard.recent_stories.map((story) => (
-                          <div className="space-y-3 py-4 first:pt-0 last:pb-0" key={story.story_id}>
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 space-y-2">
-                                <h3 className="truncate font-display text-[1.32rem] leading-tight text-[var(--color-text-primary)]">
-                                  {story.display_name}
-                                </h3>
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge variant="subtle">{story.story_id}</Badge>
-                                  <Badge variant="subtle">
-                                    {t('dashboard.recentStories.resourcePrefix', {
-                                      id: story.resource_id,
-                                    })}
-                                  </Badge>
-                                </div>
-                              </div>
-
-                              {formatUpdatedAt(story.updated_at_ms) ? (
-                                <p className="shrink-0 text-xs text-[var(--color-text-muted)]">
-                                  {formatUpdatedAt(story.updated_at_ms)}
-                                </p>
-                              ) : null}
+                          <div className="space-y-3 py-4" key={story.story_id}>
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium text-[var(--color-text-primary)]">
+                                {story.display_name}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                {story.updated_at_ms
+                                  ? dateFormatter.format(story.updated_at_ms)
+                                  : t('stage.time.unknown')}
+                              </p>
                             </div>
-
-                            <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                            <p className="text-sm text-[var(--color-text-secondary)]">
+                              {t('dashboard.recentStories.resourcePrefix', {
+                                id: story.resource_id,
+                              })}
+                            </p>
+                            <p className="text-sm leading-7 text-[var(--color-text-primary)]">
                               {story.introduction}
                             </p>
                           </div>
@@ -429,46 +336,30 @@ export function DashboardPage() {
                   <div className="border-t border-[var(--color-border-subtle)]" />
 
                   <section className="space-y-5">
-                    <div className="space-y-2">
-                      <CardTitle className="text-[1.85rem]">
-                        {t('dashboard.sections.recentSessions')}
-                      </CardTitle>
-                    </div>
-
+                    <SectionHeader title={t('dashboard.sections.recentSessions')} />
                     {currentDashboard.recent_sessions.length === 0 ? (
                       <EmptySection label={t('dashboard.recentSessions.empty')} />
                     ) : (
                       <div className="divide-y divide-[var(--color-border-subtle)]">
                         {currentDashboard.recent_sessions.map((session) => (
-                          <div
-                            className="space-y-3 py-4 first:pt-0 last:pb-0"
-                            key={session.session_id}
-                          >
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="min-w-0 space-y-2">
-                                <h3 className="truncate font-display text-[1.32rem] leading-tight text-[var(--color-text-primary)]">
-                                  {session.display_name}
-                                </h3>
-                                <div className="flex flex-wrap gap-2">
-                                  <Badge variant="subtle">{session.session_id}</Badge>
-                                  <Badge variant="subtle">
-                                    {t('dashboard.recentSessions.storyPrefix', {
-                                      id: session.story_id,
-                                    })}
-                                  </Badge>
-                                  <Badge variant="subtle">
-                                    {t('dashboard.recentSessions.turnPrefix', {
-                                      turn: session.turn_index,
-                                    })}
-                                  </Badge>
-                                </div>
-                              </div>
-
-                              {formatUpdatedAt(session.updated_at_ms) ? (
-                                <p className="shrink-0 text-xs text-[var(--color-text-muted)]">
-                                  {formatUpdatedAt(session.updated_at_ms)}
-                                </p>
-                              ) : null}
+                          <div className="space-y-3 py-4" key={session.session_id}>
+                            <div className="flex items-center justify-between gap-3">
+                              <p className="font-medium text-[var(--color-text-primary)]">
+                                {session.display_name}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                {session.updated_at_ms
+                                  ? dateFormatter.format(session.updated_at_ms)
+                                  : t('stage.time.unknown')}
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="subtle">
+                                {t('dashboard.recentSessions.storyPrefix', { id: session.story_id })}
+                              </Badge>
+                              <Badge variant="subtle">
+                                {t('dashboard.recentSessions.turnPrefix', { turn: session.turn_index })}
+                              </Badge>
                             </div>
                           </div>
                         ))}

@@ -6,15 +6,10 @@ import { Button } from '../../components/ui/button'
 import { IconButton } from '../../components/ui/icon-button'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
-import { cn } from '../../lib/cn'
-import { agentApiRoleKeys, type AgentApiIds, type LlmApi } from '../apis/types'
+import { useToastNotice } from '../../components/ui/toast-context'
+import type { ApiGroup, Preset } from '../apis/types'
 import type { PlayerProfile } from '../player-profiles/types'
-import type {
-  RuntimeSnapshot,
-  SessionConfig,
-  SessionConfigMode,
-  UpdateSessionConfigParams,
-} from './types'
+import type { RuntimeSnapshot, SessionConfig, UpdateSessionConfigParams } from './types'
 import type { StageCopy } from './copy'
 
 const NO_PLAYER_PROFILE_OPTION_VALUE = '__none__'
@@ -25,59 +20,34 @@ type Notice = {
 }
 
 type StageSessionSettingsPanelProps = {
-  apis: ReadonlyArray<LlmApi>
+  apiGroups: ReadonlyArray<ApiGroup>
   config: SessionConfig
   copy: StageCopy
   currentPlayerProfileId?: string | null
-  defaultLlmConfigAvailable: boolean
   onRefreshSnapshot: () => Promise<void>
   onSavePlayerDescription: (playerDescription: string) => Promise<void>
   onSavePlayerProfile: (playerProfileId: string | null) => Promise<void>
   onSaveSessionConfig: (params: UpdateSessionConfigParams) => Promise<void>
   playerProfiles: ReadonlyArray<PlayerProfile>
+  presets: ReadonlyArray<Preset>
   runtimeSnapshot: RuntimeSnapshot | null
 }
 
-function createSessionApiDefaults(config: SessionConfig, apis: ReadonlyArray<LlmApi>) {
-  const base = config.session_api_ids ?? config.effective_api_ids
-  const fallbackApiId = apis[0]?.api_id
-
-  if (base) {
-    return base
-  }
-
-  if (!fallbackApiId) {
-    return null
-  }
-
-  return {
-    actor_api_id: fallbackApiId,
-    architect_api_id: fallbackApiId,
-    director_api_id: fallbackApiId,
-    keeper_api_id: fallbackApiId,
-    narrator_api_id: fallbackApiId,
-    planner_api_id: fallbackApiId,
-    replyer_api_id: fallbackApiId,
-  } satisfies AgentApiIds
-}
-
 export function StageSessionSettingsPanel({
-  apis,
+  apiGroups,
   config,
   copy,
   currentPlayerProfileId,
-  defaultLlmConfigAvailable,
   onRefreshSnapshot,
   onSavePlayerDescription,
   onSavePlayerProfile,
   onSaveSessionConfig,
   playerProfiles,
+  presets,
   runtimeSnapshot,
 }: StageSessionSettingsPanelProps) {
-  const [mode, setMode] = useState<SessionConfigMode>(config.mode)
-  const [sessionApiIds, setSessionApiIds] = useState<AgentApiIds | null>(
-    createSessionApiDefaults(config, apis),
-  )
+  const [apiGroupId, setApiGroupId] = useState(config.api_group_id)
+  const [presetId, setPresetId] = useState(config.preset_id)
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(
     currentPlayerProfileId ?? NO_PLAYER_PROFILE_OPTION_VALUE,
   )
@@ -87,11 +57,12 @@ export function StageSessionSettingsPanel({
   const [isSavingPlayerProfile, setIsSavingPlayerProfile] = useState(false)
   const [isSavingDescription, setIsSavingDescription] = useState(false)
   const [isRefreshingSnapshot, setIsRefreshingSnapshot] = useState(false)
+  useToastNotice(notice)
 
   useEffect(() => {
-    setMode(config.mode)
-    setSessionApiIds(createSessionApiDefaults(config, apis))
-  }, [apis, config])
+    setApiGroupId(config.api_group_id)
+    setPresetId(config.preset_id)
+  }, [config.api_group_id, config.preset_id])
 
   useEffect(() => {
     setSelectedPlayerProfileId(currentPlayerProfileId ?? NO_PLAYER_PROFILE_OPTION_VALUE)
@@ -101,16 +72,32 @@ export function StageSessionSettingsPanel({
     setManualDescription(runtimeSnapshot?.player_description ?? '')
   }, [runtimeSnapshot?.player_description])
 
-  const apiItems = useMemo(
+  const apiGroupItems = useMemo(
     () =>
-      apis.map((api) => ({
-        label: `${api.api_id} · ${api.model}`,
-        value: api.api_id,
+      apiGroups.map((apiGroup) => ({
+        label: apiGroup.display_name,
+        value: apiGroup.api_group_id,
       })),
-    [apis],
+    [apiGroups],
   )
-  const hasStoredApis = apiItems.length > 0
-  const hasUsableLlm = hasStoredApis || defaultLlmConfigAvailable
+
+  const presetItems = useMemo(
+    () =>
+      presets.map((preset) => ({
+        label: preset.display_name,
+        value: preset.preset_id,
+      })),
+    [presets],
+  )
+
+  const selectedApiGroup = useMemo(
+    () => apiGroups.find((entry) => entry.api_group_id === apiGroupId) ?? null,
+    [apiGroupId, apiGroups],
+  )
+  const selectedPreset = useMemo(
+    () => presets.find((entry) => entry.preset_id === presetId) ?? null,
+    [presetId, presets],
+  )
 
   const playerProfileItems = useMemo(
     () => [
@@ -135,7 +122,19 @@ export function StageSessionSettingsPanel({
   )
 
   async function handleSaveConfig() {
-    if (mode === 'use_session' && hasStoredApis && !sessionApiIds) {
+    if (!apiGroupId.trim()) {
+      setNotice({
+        message: copy.settings.bindings.errors.apiGroupRequired,
+        tone: 'error',
+      })
+      return
+    }
+
+    if (!presetId.trim()) {
+      setNotice({
+        message: copy.settings.bindings.errors.presetRequired,
+        tone: 'error',
+      })
       return
     }
 
@@ -144,8 +143,8 @@ export function StageSessionSettingsPanel({
 
     try {
       await onSaveSessionConfig({
-        mode,
-        ...(mode === 'use_session' && sessionApiIds ? { session_api_ids: sessionApiIds } : {}),
+        api_group_id: apiGroupId.trim(),
+        preset_id: presetId.trim(),
       })
       setNotice({
         message: copy.notice.sessionConfigSaved,
@@ -252,110 +251,59 @@ export function StageSessionSettingsPanel({
           <section className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
             <div className="space-y-2">
               <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                {copy.settings.api.section}
+                {copy.settings.bindings.section}
               </p>
               <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-                {copy.settings.api.description}
+                {copy.settings.bindings.description}
               </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2.5">
+                <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                  {copy.settings.bindings.apiGroup}
+                </span>
+                <Select
+                  items={apiGroupItems}
+                  placeholder={copy.settings.bindings.apiGroupPlaceholder}
+                  textAlign="start"
+                  value={apiGroupId}
+                  onValueChange={setApiGroupId}
+                />
+              </label>
+
+              <label className="space-y-2.5">
+                <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                  {copy.settings.bindings.preset}
+                </span>
+                <Select
+                  items={presetItems}
+                  placeholder={copy.settings.bindings.presetPlaceholder}
+                  textAlign="start"
+                  value={presetId}
+                  onValueChange={setPresetId}
+                />
+              </label>
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
-              <button
-                className={cn(
-                  'rounded-[1.15rem] border px-4 py-3 text-left transition',
-                  mode === 'use_global'
-                    ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
-                )}
-                onClick={() => {
-                  setMode('use_global')
-                }}
-                type="button"
-              >
-                <p className="text-sm font-medium">{copy.settings.api.modeOptions.useGlobal}</p>
-              </button>
-
-              <button
-                className={cn(
-                  'rounded-[1.15rem] border px-4 py-3 text-left transition',
-                  mode === 'use_session'
-                    ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
-                )}
-                onClick={() => {
-                  setMode('use_session')
-                  setSessionApiIds((current) =>
-                    hasStoredApis ? current ?? createSessionApiDefaults(config, apis) : null,
-                  )
-                }}
-                type="button"
-              >
-                <p className="text-sm font-medium">{copy.settings.api.modeOptions.useSession}</p>
-              </button>
-            </div>
-
-            <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-              <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.api.effective}</p>
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
-                {agentApiRoleKeys.map((roleKey) => (
-                  <div key={roleKey}>
-                    <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.api.roles[roleKey]}</p>
-                    <p className="mt-1 text-sm text-[var(--color-text-primary)]">
-                      {config.effective_api_ids[roleKey] || '—'}
-                    </p>
-                  </div>
-                ))}
+              <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
+                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.bindings.currentApiGroup}</p>
+                <p className="mt-2 text-sm text-[var(--color-text-primary)]">
+                  {selectedApiGroup?.display_name ?? copy.settings.bindings.missing}
+                </p>
+              </div>
+              <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
+                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.bindings.currentPreset}</p>
+                <p className="mt-2 text-sm text-[var(--color-text-primary)]">
+                  {selectedPreset?.display_name ?? copy.settings.bindings.missing}
+                </p>
               </div>
             </div>
-
-            {mode === 'use_session' ? (
-              !hasUsableLlm ? (
-                <div className="rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                  {copy.settings.api.empty}
-                </div>
-              ) : !hasStoredApis || !sessionApiIds ? (
-                <div className="rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                  {copy.settings.api.defaultLlmFallback}
-                </div>
-              ) : (
-                <div className="grid gap-4 md:grid-cols-2">
-                  {agentApiRoleKeys.map((roleKey) => (
-                    <label className="space-y-2.5" key={roleKey}>
-                      <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-                        {copy.settings.api.roles[roleKey]}
-                      </span>
-                      <Select
-                        items={apiItems}
-                        placeholder={copy.settings.api.selectPlaceholder}
-                        textAlign="start"
-                        value={sessionApiIds[roleKey]}
-                        onValueChange={(value) => {
-                          setSessionApiIds((current) =>
-                            current
-                              ? {
-                                  ...current,
-                                  [roleKey]: value,
-                                }
-                              : current,
-                          )
-                        }}
-                      />
-                    </label>
-                  ))}
-                </div>
-              )
-            ) : (
-              <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                {copy.settings.api.usingGlobal}
-              </div>
-            )}
 
             <div className="flex justify-end">
-              <Button
-                disabled={isSavingConfig || (mode === 'use_session' && hasStoredApis && !sessionApiIds)}
-                onClick={() => void handleSaveConfig()}
-              >
-                {isSavingConfig ? copy.settings.api.saving : copy.settings.api.save}
+              <Button disabled={isSavingConfig} onClick={() => void handleSaveConfig()}>
+                {isSavingConfig ? copy.settings.bindings.saving : copy.settings.bindings.save}
               </Button>
             </div>
           </section>
@@ -417,6 +365,8 @@ export function StageSessionSettingsPanel({
 
             <Textarea
               className="min-h-[8.5rem]"
+              id="stage-session-player-description"
+              name="stage-session-player-description"
               onChange={(event) => {
                 setManualDescription(event.target.value)
               }}
@@ -442,7 +392,7 @@ export function StageSessionSettingsPanel({
                 </p>
               </div>
               <IconButton
-                icon={<FontAwesomeIcon className={cn(isRefreshingSnapshot ? 'animate-spin' : '')} icon={faRotateRight} />}
+                icon={<FontAwesomeIcon className={isRefreshingSnapshot ? 'animate-spin' : ''} icon={faRotateRight} />}
                 label={copy.settings.snapshot.refresh}
                 onClick={() => void handleRefreshSnapshot()}
                 size="sm"
@@ -459,8 +409,8 @@ export function StageSessionSettingsPanel({
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
                 <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.currentNode}</p>
-                <p className="mt-2 font-mono text-sm text-[var(--color-text-primary)]">
-                  {runtimeSnapshot?.world_state.current_node ?? '—'}
+                <p className="mt-2 text-sm text-[var(--color-text-primary)]">
+                  {runtimeSnapshot?.world_state.current_node || '—'}
                 </p>
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
@@ -472,7 +422,7 @@ export function StageSessionSettingsPanel({
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
                 <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.playerStateKeys}</p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
-                  {runtimeSnapshot ? Object.keys(runtimeSnapshot.world_state.player_state).length : 0}
+                  {runtimeSnapshot ? Object.keys(runtimeSnapshot.world_state.player_state).length : '—'}
                 </p>
               </div>
             </div>
@@ -480,23 +430,10 @@ export function StageSessionSettingsPanel({
             <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
               <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.playerDescription}</p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
-                {runtimeSnapshot?.player_description || '—'}
+                {runtimeSnapshot?.player_description?.trim() || '—'}
               </p>
             </div>
           </section>
-
-          {notice ? (
-            <div
-              className={cn(
-                'rounded-[1.25rem] border px-4 py-3 text-sm text-[var(--color-text-primary)]',
-                notice.tone === 'success'
-                  ? 'border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)]'
-                  : 'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)]',
-              )}
-            >
-              {notice.message}
-            </div>
-          ) : null}
         </div>
       </div>
     </div>

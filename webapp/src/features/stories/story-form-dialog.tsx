@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { getStory, updateStory } from './api'
 import type { StoryDetail } from './types'
 
@@ -43,6 +44,7 @@ export function StoryFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   const fieldIds = {
     displayName: `${fieldIdPrefix}-display-name`,
@@ -181,11 +183,6 @@ export function StoryFormDialog({
                 />
               </div>
 
-              {submitError ? (
-                <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-                  {submitError}
-                </div>
-              ) : null}
             </>
           )}
         </DialogBody>

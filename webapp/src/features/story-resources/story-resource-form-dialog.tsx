@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { appPaths } from '../../app/paths'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import {
@@ -13,10 +14,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
+import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { SchemaResource } from '../schemas/types'
 import {
@@ -33,6 +37,8 @@ type StoryResourceFormMode = 'create' | 'edit'
 
 type StoryResourceFormDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
+  availableApiGroups: ReadonlyArray<ApiGroup>
+  availablePresets: ReadonlyArray<Preset>
   availableSchemas: ReadonlyArray<SchemaResource>
   mode: StoryResourceFormMode
   onCompleted: (result: {
@@ -124,6 +130,8 @@ function LoadingSkeleton() {
 
 export function StoryResourceFormDialog({
   availableCharacters,
+  availableApiGroups,
+  availablePresets,
   availableSchemas,
   mode,
   onCompleted,
@@ -139,11 +147,16 @@ export function StoryResourceFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
   const [submitIntent, setSubmitIntent] = useState<SubmitIntent>('save')
+  const [plannerApiGroupId, setPlannerApiGroupId] = useState('')
+  const [plannerPresetId, setPlannerPresetId] = useState('')
   const isEditMode = mode === 'edit'
 
   const fieldIds = {
+    apiGroupId: `${fieldIdPrefix}-api-group-id`,
     plannedStory: `${fieldIdPrefix}-planned-story`,
+    presetId: `${fieldIdPrefix}-preset-id`,
     playerSchemaIdSeed: `${fieldIdPrefix}-player-schema-seed`,
     resourceId: `${fieldIdPrefix}-resource-id`,
     storyConcept: `${fieldIdPrefix}-story-concept`,
@@ -163,6 +176,23 @@ export function StoryResourceFormDialog({
       })),
     [availableSchemas],
   )
+  const apiGroupOptions = useMemo(
+    () =>
+      availableApiGroups.map((apiGroup) => ({
+        label: apiGroup.display_name,
+        value: apiGroup.api_group_id,
+      })),
+    [availableApiGroups],
+  )
+  const presetOptions = useMemo(
+    () =>
+      availablePresets.map((preset) => ({
+        label: preset.display_name,
+        value: preset.preset_id,
+      })),
+    [availablePresets],
+  )
+  const plannerBindingsUnavailable = availableApiGroups.length === 0 || availablePresets.length === 0
 
   useEffect(() => {
     if (!open) {
@@ -172,6 +202,8 @@ export function StoryResourceFormDialog({
       setIsSubmitting(false)
       setSubmitError(null)
       setSubmitIntent('save')
+      setPlannerApiGroupId('')
+      setPlannerPresetId('')
       return
     }
 
@@ -182,6 +214,8 @@ export function StoryResourceFormDialog({
       setIsSubmitting(false)
       setSubmitError(null)
       setSubmitIntent('save')
+      setPlannerApiGroupId('')
+      setPlannerPresetId('')
       return
     }
 
@@ -194,6 +228,8 @@ export function StoryResourceFormDialog({
     setIsSubmitting(false)
     setSubmitError(null)
     setSubmitIntent('save')
+    setPlannerApiGroupId('')
+    setPlannerPresetId('')
 
     void getStoryResource(resourceId, controller.signal)
       .then((resource) => {
@@ -270,6 +306,16 @@ export function StoryResourceFormDialog({
       return
     }
 
+    if (intent === 'generate' && plannerApiGroupId.trim().length === 0) {
+      setSubmitError(t('storyResources.form.errors.apiGroupRequired'))
+      return
+    }
+
+    if (intent === 'generate' && plannerPresetId.trim().length === 0) {
+      setSubmitError(t('storyResources.form.errors.presetRequired'))
+      return
+    }
+
     setIsSubmitting(true)
     setSubmitIntent(intent)
 
@@ -311,7 +357,11 @@ export function StoryResourceFormDialog({
 
       if (intent === 'generate') {
         try {
-          const generated = await generateAndSaveStoryPlan(savedResource.resource_id)
+          const generated = await generateAndSaveStoryPlan({
+            apiGroupId: plannerApiGroupId,
+            presetId: plannerPresetId,
+            resourceId: savedResource.resource_id,
+          })
           nextResource = generated.resource
           noticeMessage = t('storyResources.feedback.generated', {
             id: savedResource.resource_id,
@@ -366,12 +416,6 @@ export function StoryResourceFormDialog({
         </DialogHeader>
 
         <DialogBody className="max-h-[calc(92vh-12rem)] overflow-y-auto pt-6">
-          {submitError ? (
-            <div className="mb-5 rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-              {submitError}
-            </div>
-          ) : null}
-
           {isLoading ? (
             <LoadingSkeleton />
           ) : (
@@ -519,6 +563,70 @@ export function StoryResourceFormDialog({
                   value={formState.plannedStory}
                 />
               </Field>
+
+              <div className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+                <div className="space-y-1.5">
+                  <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
+                    {t('storyResources.form.generationBindingsTitle')}
+                  </h3>
+                  <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                    {t('storyResources.form.generationBindingsDescription')}
+                  </p>
+                </div>
+
+                {plannerBindingsUnavailable ? (
+                  <div className="space-y-4 rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,transparent)] px-4 py-4">
+                    <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                      {availableApiGroups.length === 0
+                        ? t('storyResources.form.emptyApiGroups')
+                        : t('storyResources.form.emptyPresets')}
+                    </p>
+                    <div className="flex justify-end">
+                      <DialogRouteButton
+                        onRequestClose={() => {
+                          onOpenChange(false)
+                        }}
+                        to={availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets}
+                        variant="secondary"
+                      >
+                        {availableApiGroups.length === 0
+                          ? t('storyResources.form.openApiGroups')
+                          : t('storyResources.form.openPresets')}
+                      </DialogRouteButton>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field
+                      htmlFor={fieldIds.apiGroupId}
+                      label={t('storyResources.form.fields.apiGroupId')}
+                    >
+                      <Select
+                        items={apiGroupOptions}
+                        onValueChange={setPlannerApiGroupId}
+                        placeholder={t('storyResources.form.placeholders.apiGroupId')}
+                        textAlign="start"
+                        triggerId={fieldIds.apiGroupId}
+                        value={plannerApiGroupId || undefined}
+                      />
+                    </Field>
+
+                    <Field
+                      htmlFor={fieldIds.presetId}
+                      label={t('storyResources.form.fields.presetId')}
+                    >
+                      <Select
+                        items={presetOptions}
+                        onValueChange={setPlannerPresetId}
+                        placeholder={t('storyResources.form.placeholders.presetId')}
+                        textAlign="start"
+                        triggerId={fieldIds.presetId}
+                        value={plannerPresetId || undefined}
+                      />
+                    </Field>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </DialogBody>
@@ -547,7 +655,14 @@ export function StoryResourceFormDialog({
             </Button>
 
             <Button
-              disabled={isSubmitting || referencesLoading || availableCharacters.length === 0}
+              disabled={
+                isSubmitting ||
+                referencesLoading ||
+                availableCharacters.length === 0 ||
+                plannerBindingsUnavailable ||
+                plannerApiGroupId.trim().length === 0 ||
+                plannerPresetId.trim().length === 0
+              }
               onClick={() => {
                 void handleSubmit('generate')
               }}

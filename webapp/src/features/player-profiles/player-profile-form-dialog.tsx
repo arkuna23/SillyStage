@@ -13,6 +13,7 @@ import {
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import { Textarea } from '../../components/ui/textarea'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { createPlayerProfile, getPlayerProfile, updatePlayerProfile } from './api'
 import type { PlayerProfile } from './types'
 
@@ -72,6 +73,7 @@ export function PlayerProfileFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
 
   const fieldIds = {
     description: `${fieldIdPrefix}-description`,
@@ -239,12 +241,6 @@ export function PlayerProfileFormDialog({
         </DialogHeader>
 
         <DialogBody className="space-y-5 pt-6">
-          {submitError ? (
-            <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-              {submitError}
-            </div>
-          ) : null}
-
           {isLoading ? (
             <LoadingSkeleton />
           ) : (

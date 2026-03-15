@@ -3,6 +3,7 @@ import { useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { appPaths } from '../../app/paths'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import {
@@ -14,10 +15,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { GenerationLoadingStage } from '../../components/ui/generation-loading-stage'
 import { Select } from '../../components/ui/select'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
+import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { SchemaResource } from '../schemas/types'
 import { createStoryResource, generateAndSaveStoryPlan } from './api'
@@ -29,6 +33,8 @@ type CreateWizardStep = 'concept' | 'seeds' | 'planner' | 'generating'
 
 type CreateStoryResourceDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
+  availableApiGroups: ReadonlyArray<ApiGroup>
+  availablePresets: ReadonlyArray<Preset>
   availableSchemas: ReadonlyArray<SchemaResource>
   onCompleted: (result: {
     message: string
@@ -41,7 +47,9 @@ type CreateStoryResourceDialogProps = {
 }
 
 type FormState = {
+  apiGroupId: string
   characterIds: string[]
+  presetId: string
   playerSchemaIdSeed: string
   shouldGenerate: boolean
   storyConcept: string
@@ -50,7 +58,9 @@ type FormState = {
 
 function createInitialFormState(): FormState {
   return {
+    apiGroupId: '',
     characterIds: [],
+    presetId: '',
     playerSchemaIdSeed: '',
     shouldGenerate: true,
     storyConcept: '',
@@ -127,6 +137,8 @@ function StepChip({
 
 export function CreateStoryResourceDialog({
   availableCharacters,
+  availableApiGroups,
+  availablePresets,
   availableSchemas,
   onCompleted,
   onOpenChange,
@@ -139,11 +151,14 @@ export function CreateStoryResourceDialog({
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
   const [generatingPhase, setGeneratingPhase] = useState<'creating' | 'planning'>('creating')
   const [generatedResourceId, setGeneratedResourceId] = useState<string | null>(null)
   const [generationStartedAtMs, setGenerationStartedAtMs] = useState<number | null>(null)
 
   const fieldIds = {
+    apiGroupId: `${fieldIdPrefix}-api-group-id`,
+    presetId: `${fieldIdPrefix}-preset-id`,
     playerSchemaIdSeed: `${fieldIdPrefix}-player-schema-seed`,
     storyConcept: `${fieldIdPrefix}-story-concept`,
     worldSchemaIdSeed: `${fieldIdPrefix}-world-schema-seed`,
@@ -160,6 +175,22 @@ export function CreateStoryResourceDialog({
         value: schema.schema_id,
       })),
     [availableSchemas],
+  )
+  const apiGroupOptions = useMemo(
+    () =>
+      availableApiGroups.map((apiGroup) => ({
+        label: apiGroup.display_name,
+        value: apiGroup.api_group_id,
+      })),
+    [availableApiGroups],
+  )
+  const presetOptions = useMemo(
+    () =>
+      availablePresets.map((preset) => ({
+        label: preset.display_name,
+        value: preset.preset_id,
+      })),
+    [availablePresets],
   )
   const selectedCharacterLabels = useMemo(
     () =>
@@ -258,6 +289,18 @@ export function CreateStoryResourceDialog({
       return
     }
 
+    if (formState.shouldGenerate && formState.apiGroupId.trim().length === 0) {
+      setActiveStep('planner')
+      setSubmitError(t('storyResources.form.errors.apiGroupRequired'))
+      return
+    }
+
+    if (formState.shouldGenerate && formState.presetId.trim().length === 0) {
+      setActiveStep('planner')
+      setSubmitError(t('storyResources.form.errors.presetRequired'))
+      return
+    }
+
     setIsSubmitting(true)
 
     if (formState.shouldGenerate) {
@@ -294,7 +337,11 @@ export function CreateStoryResourceDialog({
       setGeneratingPhase('planning')
 
       try {
-        const generated = await generateAndSaveStoryPlan(savedResource.resource_id)
+        const generated = await generateAndSaveStoryPlan({
+          apiGroupId: formState.apiGroupId,
+          presetId: formState.presetId,
+          resourceId: savedResource.resource_id,
+        })
         await onCompleted({
           message: t('storyResources.feedback.generated', { id: savedResource.resource_id }),
           resource: generated.resource,
@@ -334,6 +381,7 @@ export function CreateStoryResourceDialog({
     generatingPhase === 'creating'
       ? t('storyResources.createWizard.loading.preparing')
       : t('storyResources.createWizard.loading.generating')
+  const plannerBindingsUnavailable = availableApiGroups.length === 0 || availablePresets.length === 0
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -363,12 +411,6 @@ export function CreateStoryResourceDialog({
         </DialogHeader>
 
         <DialogBody className="max-h-[calc(92vh-12rem)] overflow-y-auto pt-6">
-          {submitError ? (
-            <div className="mb-5 rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-              {submitError}
-            </div>
-          ) : null}
-
           <AnimatePresence initial={false} mode="wait">
             {activeStep === 'concept' ? (
               <motion.div
@@ -628,6 +670,82 @@ export function CreateStoryResourceDialog({
                     </div>
                   </button>
                 </div>
+
+                {formState.shouldGenerate ? (
+                  <div className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+                    <div className="space-y-1.5">
+                      <h4 className="text-sm font-medium text-[var(--color-text-primary)]">
+                        {t('storyResources.createWizard.bindings.title')}
+                      </h4>
+                      <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                        {t('storyResources.createWizard.bindings.description')}
+                      </p>
+                    </div>
+
+                    {plannerBindingsUnavailable ? (
+                      <div className="space-y-4 rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,transparent)] px-4 py-4">
+                        <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                          {availableApiGroups.length === 0
+                            ? t('storyResources.createWizard.bindings.missingApiGroups')
+                            : t('storyResources.createWizard.bindings.missingPresets')}
+                        </p>
+                        <div className="flex justify-end">
+                          <DialogRouteButton
+                            onRequestClose={() => {
+                              handleOpenChange(false)
+                            }}
+                            to={availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets}
+                            variant="secondary"
+                          >
+                            {availableApiGroups.length === 0
+                              ? t('storyResources.createWizard.bindings.openApiGroups')
+                              : t('storyResources.createWizard.bindings.openPresets')}
+                          </DialogRouteButton>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <Field
+                          htmlFor={fieldIds.apiGroupId}
+                          label={t('storyResources.form.fields.apiGroupId')}
+                        >
+                          <Select
+                            items={apiGroupOptions}
+                            onValueChange={(value) => {
+                              setFormState((currentFormState) => ({
+                                ...currentFormState,
+                                apiGroupId: value,
+                              }))
+                            }}
+                            placeholder={t('storyResources.form.placeholders.apiGroupId')}
+                            textAlign="start"
+                            triggerId={fieldIds.apiGroupId}
+                            value={formState.apiGroupId || undefined}
+                          />
+                        </Field>
+
+                        <Field
+                          htmlFor={fieldIds.presetId}
+                          label={t('storyResources.form.fields.presetId')}
+                        >
+                          <Select
+                            items={presetOptions}
+                            onValueChange={(value) => {
+                              setFormState((currentFormState) => ({
+                                ...currentFormState,
+                                presetId: value,
+                              }))
+                            }}
+                            placeholder={t('storyResources.form.placeholders.presetId')}
+                            textAlign="start"
+                            triggerId={fieldIds.presetId}
+                            value={formState.presetId || undefined}
+                          />
+                        </Field>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
               </motion.div>
             ) : null}
 
@@ -683,7 +801,15 @@ export function CreateStoryResourceDialog({
                 </Button>
               ) : (
                 <Button
-                  disabled={isSubmitting || referencesLoading || availableCharacters.length === 0}
+                  disabled={
+                    isSubmitting ||
+                    referencesLoading ||
+                    availableCharacters.length === 0 ||
+                    (formState.shouldGenerate &&
+                      (plannerBindingsUnavailable ||
+                        formState.apiGroupId.trim().length === 0 ||
+                        formState.presetId.trim().length === 0))
+                  }
                   onClick={() => {
                     void handleCreate()
                   }}

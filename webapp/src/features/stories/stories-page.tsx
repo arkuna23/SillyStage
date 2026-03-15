@@ -17,8 +17,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { IconButton } from '../../components/ui/icon-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { SectionHeader } from '../../components/ui/section-header'
+import { useToastNotice } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
+import { listApiGroups, listPresets } from '../apis/api'
+import type { ApiGroup, Preset } from '../apis/types'
 import { listStoryResources } from '../story-resources/api'
 import type { StoryResource } from '../story-resources/types'
 import {
@@ -47,24 +50,6 @@ type Notice = {
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
-}
-
-function StatusNotice({ notice }: { notice: Notice }) {
-  return (
-    <div
-      className={cn(
-        'rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur',
-        notice.tone === 'success'
-          ? 'border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]'
-          : notice.tone === 'warning'
-            ? 'border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]'
-            : 'border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]',
-      )}
-      role="status"
-    >
-      {notice.message}
-    </div>
-  )
 }
 
 function StoriesListSkeleton() {
@@ -154,6 +139,8 @@ export function StoriesPage() {
   const [stories, setStories] = useState<StorySummary[]>([])
   const [drafts, setDrafts] = useState<StoryDraftSummary[]>([])
   const [resources, setResources] = useState<StoryResource[]>([])
+  const [apiGroups, setApiGroups] = useState<ApiGroup[]>([])
+  const [presets, setPresets] = useState<Preset[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDraftsLoading, setIsDraftsLoading] = useState(true)
@@ -167,6 +154,7 @@ export function StoriesPage() {
   const [editStoryId, setEditStoryId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<StorySummary | null>(null)
   const [deleteDraftTarget, setDeleteDraftTarget] = useState<StoryDraftSummary | null>(null)
+  useToastNotice(notice)
 
   const distinctResourceCount = useMemo(
     () => new Set(stories.map((story) => story.resource_id)).size,
@@ -232,10 +220,16 @@ export function StoriesPage() {
   const refreshResources = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const nextResources = await listStoryResources(signal)
+        const [nextResources, nextApiGroups, nextPresets] = await Promise.all([
+          listStoryResources(signal),
+          listApiGroups(signal),
+          listPresets(signal),
+        ])
 
         if (!signal?.aborted) {
           setResources(nextResources)
+          setApiGroups(nextApiGroups)
+          setPresets(nextPresets)
         }
       } catch (error) {
         if (!signal?.aborted) {
@@ -388,6 +382,7 @@ export function StoriesPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <GenerateStoryDialog
+        apiGroups={apiGroups}
         onCompleted={async ({ message }) => {
           setNotice({ message, tone: 'success' })
           await Promise.all([refreshStories(), refreshDrafts()])
@@ -395,6 +390,7 @@ export function StoriesPage() {
         onDraftsChanged={refreshDrafts}
         onOpenChange={setIsCreateDialogOpen}
         open={isCreateDialogOpen}
+        presets={presets}
         resources={resources}
       />
 
@@ -498,8 +494,6 @@ export function StoriesPage() {
 
           <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
             <div className="space-y-6 pr-1">
-              {notice ? <StatusNotice notice={notice} /> : null}
-
               <section className="space-y-5">
                 <div className="space-y-2">
                   <CardTitle className="text-[1.85rem]">

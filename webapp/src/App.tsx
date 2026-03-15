@@ -5,6 +5,7 @@ import { appPaths } from './app/paths'
 import { AppShell } from './components/layout/app-shell'
 import { WorkspaceLayout } from './components/layout/workspace-layout'
 import { ThemeProvider } from './components/theme-provider'
+import { ToastProvider } from './components/ui/toast-provider'
 
 const DashboardPage = lazy(() =>
   import('./features/dashboard/dashboard-page').then((module) => ({
@@ -27,6 +28,12 @@ const ApiManagementPage = lazy(() =>
 const SchemaManagementPage = lazy(() =>
   import('./features/schemas/schema-management-page').then((module) => ({
     default: module.SchemaManagementPage,
+  })),
+)
+
+const PresetManagementPage = lazy(() =>
+  import('./features/presets/preset-management-page').then((module) => ({
+    default: module.PresetManagementPage,
   })),
 )
 
@@ -82,6 +89,7 @@ function AppRoutes() {
             <Route element={<ApiManagementPage />} path="apis" />
             <Route element={<CharacterManagementPage />} path="characters" />
             <Route element={<DashboardPage />} path="dashboard" />
+            <Route element={<PresetManagementPage />} path="presets" />
             <Route element={<StoryResourcesPage />} path="story-resources" />
             <Route element={<StoriesPage />} path="stories" />
             <Route element={<SchemaManagementPage />} path="schemas" />
@@ -97,9 +105,11 @@ function AppRoutes() {
 function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ToastProvider>
     </ThemeProvider>
   )
 }

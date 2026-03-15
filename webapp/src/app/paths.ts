@@ -3,6 +3,7 @@ export const appPaths = {
   characters: '/workspace/characters',
   dashboard: '/workspace/dashboard',
   playerProfiles: '/workspace/player-profiles',
+  presets: '/workspace/presets',
   root: '/',
   schemas: '/workspace/schemas',
   stage: '/stage',

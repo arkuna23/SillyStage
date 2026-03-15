@@ -14,6 +14,7 @@ import {
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
+import { useToastMessage } from '../../components/ui/toast-context'
 import {
   stateValueTypes,
   type JsonValue,
@@ -316,6 +317,7 @@ export function SchemaFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  useToastMessage(submitError)
   const isEditMode = mode === 'edit'
 
   useEffect(() => {
@@ -478,12 +480,6 @@ export function SchemaFormDialog({
 
         <DialogBody className="max-h-[calc(92vh-12rem)] overflow-y-auto pt-6">
           <div className="space-y-5">
-            {submitError ? (
-              <div className="rounded-[1.25rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-                {submitError}
-              </div>
-            ) : null}
-
             {isLoading ? (
               <div className="space-y-4">
                 {Array.from({ length: 4 }).map((_, index) => (

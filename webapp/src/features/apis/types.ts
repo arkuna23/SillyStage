@@ -1,60 +1,98 @@
 export const llmProviders = ['open_ai'] as const
 
-export const agentApiRoleKeys = [
-  'planner_api_id',
-  'architect_api_id',
-  'director_api_id',
-  'actor_api_id',
-  'narrator_api_id',
-  'keeper_api_id',
-  'replyer_api_id',
+export const agentRoleKeys = [
+  'planner',
+  'architect',
+  'director',
+  'actor',
+  'narrator',
+  'keeper',
+  'replyer',
 ] as const
 
 export type LlmProvider = (typeof llmProviders)[number]
-export type AgentApiRoleKey = (typeof agentApiRoleKeys)[number]
+export type AgentRoleKey = (typeof agentRoleKeys)[number]
+export type AgentRoleRecord<T> = Record<AgentRoleKey, T>
+export type AgentBindingKey = `${AgentRoleKey}_api_id`
 
-export type AgentApiIds = Record<AgentApiRoleKey, string>
-export type AgentApiIdOverrides = Partial<AgentApiIds>
+export type ApiConfigInput = {
+  api_key: string
+  base_url: string
+  model: string
+  provider: LlmProvider
+}
 
-export type LlmApi = {
+export type ApiConfig = {
   api_id: string
   api_key_masked?: string | null
   base_url: string
+  display_name: string
   has_api_key: boolean
-  max_tokens?: number | null
   model: string
   provider: LlmProvider
-  temperature?: number | null
-  type: 'llm_api'
+  type: 'api'
 }
 
-export type LlmApisListedResult = {
-  apis: LlmApi[]
-  type: 'llm_apis_listed'
+export type ApisListedResult = {
+  apis: ApiConfig[]
+  type: 'apis_listed'
 }
 
-export type LlmApiDeletedResult = {
+export type ApiDeletedResult = {
   api_id: string
-  type: 'llm_api_deleted'
+  type: 'api_deleted'
 }
 
-export type DefaultLlmConfigPayload = {
-  api_key_masked?: string | null
-  base_url: string
-  has_api_key: boolean
+export type ApiGroupBindings = Record<AgentBindingKey, string>
+
+export type ApiGroup = {
+  api_group_id: string
+  bindings: ApiGroupBindings
+  display_name: string
+  type: 'api_group'
+}
+
+export type ApiGroupsListedResult = {
+  api_groups: ApiGroup[]
+  type: 'api_groups_listed'
+}
+
+export type ApiGroupDeletedResult = {
+  api_group_id: string
+  type: 'api_group_deleted'
+}
+
+export type AgentPresetConfig = {
+  extra?: unknown | null
   max_tokens?: number | null
-  model: string
-  provider: LlmProvider
   temperature?: number | null
 }
 
-export type DefaultLlmConfigState = {
-  effective?: DefaultLlmConfigPayload | null
-  saved?: DefaultLlmConfigPayload | null
-  type: 'default_llm_config'
+export type PresetAgentConfigs = AgentRoleRecord<AgentPresetConfig>
+
+export type Preset = {
+  agents: PresetAgentConfigs
+  display_name: string
+  preset_id: string
+  type: 'preset'
+}
+
+export type PresetsListedResult = {
+  presets: Preset[]
+  type: 'presets_listed'
+}
+
+export type PresetDeletedResult = {
+  preset_id: string
+  type: 'preset_deleted'
 }
 
 export type GlobalConfigResult = {
-  api_ids: AgentApiIds | null
+  api_group_id?: string | null
+  preset_id?: string | null
   type: 'global_config'
+}
+
+export function getAgentBindingKey(roleKey: AgentRoleKey): AgentBindingKey {
+  return `${roleKey}_api_id` as AgentBindingKey
 }

@@ -28,6 +28,7 @@ import {
 	CardTitle,
 } from "../../components/ui/card";
 import { SectionHeader } from "../../components/ui/section-header";
+import { useToastNotice } from "../../components/ui/toast-context";
 import { cn } from "../../lib/cn";
 import { isRpcConflict } from "../../lib/rpc";
 import { demoCharacterDefinitions, loadDemoCoverFile } from "../demo-content/konosuba-sample-data";
@@ -266,24 +267,6 @@ function CharacterQuickActions({
 				size="sm"
 				variant="danger"
 			/>
-		</div>
-	);
-}
-
-function StatusNotice({ notice }: { notice: Notice }) {
-	return (
-		<div
-			className={cn(
-				"rounded-[1.4rem] border px-4 py-3 text-sm leading-7 shadow-[0_14px_38px_rgba(0,0,0,0.12)] backdrop-blur",
-				notice.tone === "success"
-					? "border-[var(--color-state-success-line)] bg-[var(--color-state-success-soft)] text-[var(--color-text-primary)]"
-					: notice.tone === "warning"
-						? "border-[var(--color-state-warning-line)] bg-[var(--color-state-warning-soft)] text-[var(--color-text-primary)]"
-						: "border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] text-[var(--color-text-primary)]",
-			)}
-			role="status"
-		>
-			{notice.message}
 		</div>
 	);
 }
@@ -598,6 +581,7 @@ export function CharacterManagementPage() {
 	const [isImporting, setIsImporting] = useState(false);
 	const [isLoading, setIsLoading] = useState(true);
 	const [notice, setNotice] = useState<Notice | null>(null);
+	useToastNotice(notice);
 	const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(
 		null,
 	);
@@ -1319,8 +1303,6 @@ export function CharacterManagementPage() {
 
 				<CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
 					<div className="space-y-5">
-						{notice ? <StatusNotice notice={notice} /> : null}
-
 						{characters.length === 0 && !isLoading ? (
 							<div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
 								<h3 className="font-display text-3xl text-[var(--color-text-primary)]">

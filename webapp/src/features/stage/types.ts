@@ -1,13 +1,10 @@
-import type { AgentApiIdOverrides, AgentApiIds } from '../apis/types'
+import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { StoryDetail, StorySummary } from '../stories/types'
 
-export type SessionConfigMode = 'use_global' | 'use_session'
-
 export type SessionConfig = {
-  effective_api_ids: AgentApiIds
-  mode: SessionConfigMode
-  session_api_ids?: AgentApiIds | null
+  api_group_id: string
+  preset_id: string
   type?: 'session_config'
 }
 
@@ -45,6 +42,55 @@ export type SessionMessageDeletedResult = {
   type: 'session_message_deleted'
 }
 
+export type SessionVariables = {
+  character_state: Record<string, Record<string, unknown>>
+  custom: Record<string, unknown>
+  player_state: Record<string, unknown>
+}
+
+export type SessionVariablesResult = SessionVariables & {
+  type: 'session_variables'
+}
+
+export type VariableStateOp =
+  | {
+      key: string
+      type: 'RemoveState'
+    }
+  | {
+      key: string
+      type: 'RemovePlayerState'
+    }
+  | {
+      character: string
+      key: string
+      type: 'RemoveCharacterState'
+    }
+  | {
+      key: string
+      type: 'SetState'
+      value: unknown
+    }
+  | {
+      key: string
+      type: 'SetPlayerState'
+      value: unknown
+    }
+  | {
+      character: string
+      key: string
+      type: 'SetCharacterState'
+      value: unknown
+    }
+
+export type StateUpdate = {
+  ops: VariableStateOp[]
+}
+
+export type UpdateSessionVariablesParams = {
+  update: StateUpdate
+}
+
 export type UpdateSessionMessageParams = {
   kind: SessionHistoryEntryKind
   message_id: string
@@ -68,7 +114,6 @@ export type SuggestedRepliesResult = {
 }
 
 export type SuggestRepliesParams = {
-  api_overrides?: Pick<AgentApiIdOverrides, 'replyer_api_id'>
   limit?: number
 }
 
@@ -97,10 +142,12 @@ export type RuntimeSnapshot = {
 }
 
 export type SessionSummary = {
+  api_group_id: string
   created_at_ms?: number | null
   display_name: string
   player_profile_id?: string | null
   player_schema_id: string
+  preset_id: string
   session_id: string
   story_id: string
   turn_index: number
@@ -125,6 +172,7 @@ export type SessionDeletedResult = {
 }
 
 export type SessionStartedResult = {
+  api_group_id: string
   character_summaries: CharacterSummary[]
   config: SessionConfig
   created_at_ms?: number | null
@@ -132,6 +180,7 @@ export type SessionStartedResult = {
   history: SessionHistoryEntry[]
   player_profile_id?: string | null
   player_schema_id: string
+  preset_id: string
   session_id: string
   snapshot: RuntimeSnapshot
   story_id: string
@@ -144,22 +193,20 @@ export type StartedSession = SessionStartedResult & {
 }
 
 export type StartSessionInput = {
-  config_mode: SessionConfigMode
+  api_group_id: string
   display_name?: string
   player_profile_id?: string
-  session_api_ids?: AgentApiIds
+  preset_id: string
   story_id: string
 }
 
 export type RunTurnInput = {
-  api_overrides?: AgentApiIdOverrides
   player_input: string
 }
 
 export type UpdateSessionConfigParams = {
-  api_overrides?: AgentApiIdOverrides
-  mode: SessionConfigMode
-  session_api_ids?: AgentApiIds
+  api_group_id?: string
+  preset_id?: string
 }
 
 export type UpdateSessionParams = {
@@ -374,9 +421,9 @@ export type StageCharacterSummary = CharacterSummary & {
   cover_url?: string
 }
 
-export type SessionApiFormValue = {
-  mode: SessionConfigMode
-  session_api_ids: AgentApiIds
-}
-
 export type StageStoryRecord = StoryDetail | StorySummary
+
+export type StageApiBindingResource = {
+  apiGroups: ApiGroup[]
+  presets: Preset[]
+}

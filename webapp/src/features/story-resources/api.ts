@@ -59,20 +59,41 @@ export async function deleteStoryResource(resourceId: string, signal?: AbortSign
   )
 }
 
-export async function generateStoryPlan(resourceId: string, signal?: AbortSignal) {
-  return rpcRequest<{ resource_id: string }, StoryPlannedResult>(
+export async function generateStoryPlan(
+  params: {
+    api_group_id: string
+    preset_id: string
+    resource_id: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, StoryPlannedResult>(
     'story.generate_plan',
-    { resource_id: resourceId },
+    params,
     { signal },
   )
 }
 
-export async function generateAndSaveStoryPlan(resourceId: string, signal?: AbortSignal) {
-  const planned = await generateStoryPlan(resourceId, signal)
+export async function generateAndSaveStoryPlan(
+  params: {
+    apiGroupId: string
+    presetId: string
+    resourceId: string
+  },
+  signal?: AbortSignal,
+) {
+  const planned = await generateStoryPlan(
+    {
+      api_group_id: params.apiGroupId,
+      preset_id: params.presetId,
+      resource_id: params.resourceId,
+    },
+    signal,
+  )
   const resource = await updateStoryResource(
     {
       planned_story: planned.story_script,
-      resource_id: resourceId,
+      resource_id: params.resourceId,
     },
     signal,
   )

@@ -1,23 +1,43 @@
 import { faMasksTheater } from '@fortawesome/free-solid-svg-icons/faMasksTheater'
 import { faTableCellsLarge } from '@fortawesome/free-solid-svg-icons/faTableCellsLarge'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
+import {
+  hasConfiguredStageApis,
+  STAGE_API_AVAILABILITY_REFRESH_EVENT,
+} from '../../features/stage/stage-access'
 import { HeadbarMenu } from '../headbar-menu'
 import { SegmentedSelector } from '../ui/segmented-selector'
+import { useToast } from '../ui/toast-context'
 import { cn } from '../../lib/cn'
 
 export function Headbar() {
   const { t } = useTranslation()
   const location = useLocation()
   const navigate = useNavigate()
+  const { pushToast } = useToast()
   const [isAtTop, setIsAtTop] = useState(true)
+  const [isStageAvailable, setIsStageAvailable] = useState<boolean | null>(null)
+  const lastStageAvailabilityRef = useRef<boolean | null>(null)
   const currentTopLevelPath = location.pathname.startsWith(appPaths.stageRoot)
     ? appPaths.stage
     : appPaths.workspace
+
+  const getStageAvailability = useCallback(async (signal?: AbortSignal) => {
+    try {
+      return await hasConfiguredStageApis(signal)
+    } catch {
+      if (signal?.aborted) {
+        return null
+      }
+
+      return null
+    }
+  }, [])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -31,6 +51,62 @@ export function Headbar() {
       window.removeEventListener('scroll', handleScroll)
     }
   }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void (async () => {
+      const nextAvailability = await getStageAvailability(controller.signal)
+
+      if (controller.signal.aborted) {
+        return
+      }
+
+      setIsStageAvailable(nextAvailability)
+
+      if (lastStageAvailabilityRef.current !== false && nextAvailability === false) {
+        pushToast({
+          message: t('stage.headbar.apiRequiredWarning'),
+          tone: 'warning',
+        })
+      }
+
+      lastStageAvailabilityRef.current = nextAvailability
+    })()
+
+    return () => {
+      controller.abort()
+    }
+  }, [getStageAvailability, location.pathname, pushToast, t])
+
+  useEffect(() => {
+    const handleRefresh = () => {
+      const controller = new AbortController()
+      void (async () => {
+        const nextAvailability = await getStageAvailability(controller.signal)
+
+        if (controller.signal.aborted) {
+          return
+        }
+
+        setIsStageAvailable(nextAvailability)
+
+        if (lastStageAvailabilityRef.current !== false && nextAvailability === false) {
+          pushToast({
+            message: t('stage.headbar.apiRequiredWarning'),
+            tone: 'warning',
+          })
+        }
+
+        lastStageAvailabilityRef.current = nextAvailability
+      })()
+    }
+
+    window.addEventListener(STAGE_API_AVAILABILITY_REFRESH_EVENT, handleRefresh)
+
+    return () => {
+      window.removeEventListener(STAGE_API_AVAILABILITY_REFRESH_EVENT, handleRefresh)
+    }
+  }, [getStageAvailability, pushToast, t])
 
   return (
     <header
@@ -75,6 +151,7 @@ export function Headbar() {
               },
               {
                 ariaLabel: t('stage.headbar.label'),
+                disabled: isStageAvailable === false,
                 icon: <FontAwesomeIcon fixedWidth icon={faMasksTheater} />,
                 label: <span>{t('stage.headbar.label')}</span>,
                 value: appPaths.stage,
