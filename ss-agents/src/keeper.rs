@@ -6,6 +6,7 @@ use std::sync::Arc;
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::error;
 
 use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCardSummaryRef};
 use crate::director::{ActorPurpose, NarratorPurpose};
@@ -170,7 +171,14 @@ impl Keeper {
             .as_ref()
             .ok_or(KeeperError::MissingOutput)
             .and_then(|value| {
-                serde_json::from_value(value.clone()).map_err(KeeperError::InvalidJson)
+                serde_json::from_value(value.clone()).map_err(|error| {
+                    error!(
+                        error = %error,
+                        structured_output = %structured_output_for_log(value),
+                        "keeper returned invalid structured output"
+                    );
+                    KeeperError::InvalidJson(error)
+                })
             })?;
         Self::validate_update(&update)?;
 
@@ -284,6 +292,22 @@ impl Keeper {
             .previous_node
             .map(|node| cast_summaries(&node.characters, request.character_cards))
             .transpose()
+    }
+}
+
+fn structured_output_for_log(value: &Value) -> String {
+    const MAX_LOG_CHARS: usize = 4_000;
+
+    match serde_json::to_string_pretty(value) {
+        Ok(serialized) if serialized.chars().count() > MAX_LOG_CHARS => {
+            let truncated: String = serialized.chars().take(MAX_LOG_CHARS).collect();
+            format!(
+                "{truncated}... [truncated {MAX_LOG_CHARS}/{} chars]",
+                serialized.chars().count()
+            )
+        }
+        Ok(serialized) => serialized,
+        Err(error) => format!("<failed to serialize structured output for log: {error}>"),
     }
 }
 

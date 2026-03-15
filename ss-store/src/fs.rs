@@ -6,19 +6,18 @@ use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord,
-    PlayerProfileRecord, SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
-    StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord,
+    PresetRecord, SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
+    StoryResourcesRecord,
 };
 use crate::store::Store;
 
 const GLOBAL_DIR: &str = "global";
-const GLOBAL_CONFIG_FILE: &str = "config.json";
-const DEFAULT_LLM_CONFIG_FILE: &str = "default_llm_config.json";
-const LLM_APIS_DIR: &str = "llm_apis";
+const APIS_DIR: &str = "apis";
+const API_GROUPS_DIR: &str = "api_groups";
+const PRESETS_DIR: &str = "presets";
 const SCHEMAS_DIR: &str = "schemas";
 const PLAYER_PROFILES_DIR: &str = "player_profiles";
 const CHARACTERS_DIR: &str = "characters";
@@ -67,7 +66,9 @@ impl FileSystemStore {
 
     async fn ensure_layout(&self) -> Result<(), StoreError> {
         fs::create_dir_all(self.global_dir()).await?;
-        fs::create_dir_all(self.llm_apis_dir()).await?;
+        fs::create_dir_all(self.apis_dir()).await?;
+        fs::create_dir_all(self.api_groups_dir()).await?;
+        fs::create_dir_all(self.presets_dir()).await?;
         fs::create_dir_all(self.schemas_dir()).await?;
         fs::create_dir_all(self.player_profiles_dir()).await?;
         fs::create_dir_all(self.characters_dir()).await?;
@@ -83,22 +84,34 @@ impl FileSystemStore {
         self.root.join(GLOBAL_DIR)
     }
 
-    fn global_config_path(&self) -> PathBuf {
-        self.global_dir().join(GLOBAL_CONFIG_FILE)
+    fn api_groups_dir(&self) -> PathBuf {
+        self.root.join(API_GROUPS_DIR)
     }
 
-    fn default_llm_config_path(&self) -> PathBuf {
-        self.global_dir().join(DEFAULT_LLM_CONFIG_FILE)
+    fn apis_dir(&self) -> PathBuf {
+        self.root.join(APIS_DIR)
     }
 
-    fn llm_apis_dir(&self) -> PathBuf {
-        self.root.join(LLM_APIS_DIR)
-    }
-
-    fn llm_api_path(&self, api_id: &str) -> Result<PathBuf, StoreError> {
+    fn api_path(&self, api_id: &str) -> Result<PathBuf, StoreError> {
         Ok(self
-            .llm_apis_dir()
+            .apis_dir()
             .join(format!("{}.json", validate_path_component(api_id)?)))
+    }
+
+    fn api_group_path(&self, api_group_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .api_groups_dir()
+            .join(format!("{}.json", validate_path_component(api_group_id)?)))
+    }
+
+    fn presets_dir(&self) -> PathBuf {
+        self.root.join(PRESETS_DIR)
+    }
+
+    fn preset_path(&self, preset_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .presets_dir()
+            .join(format!("{}.json", validate_path_component(preset_id)?)))
     }
 
     fn schemas_dir(&self) -> PathBuf {
@@ -195,39 +208,58 @@ impl FileSystemStore {
 
 #[async_trait]
 impl Store for FileSystemStore {
-    async fn get_global_config(&self) -> Result<Option<AgentApiIds>, StoreError> {
-        read_optional_json_file(&self.global_config_path()).await
+    async fn get_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError> {
+        read_optional_json_file(&self.api_path(api_id)?).await
     }
 
-    async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
-        write_json_atomic(&self.global_config_path(), &config).await
+    async fn list_apis(&self) -> Result<Vec<ApiRecord>, StoreError> {
+        list_json_records(&self.apis_dir()).await
     }
 
-    async fn get_default_llm_config(&self) -> Result<Option<DefaultLlmConfigRecord>, StoreError> {
-        read_optional_json_file(&self.default_llm_config_path()).await
+    async fn save_api(&self, record: ApiRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.api_path(&record.api_id)?, &record).await
     }
 
-    async fn set_default_llm_config(
+    async fn delete_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError> {
+        delete_optional_json_file(&self.api_path(api_id)?).await
+    }
+
+    async fn get_api_group(
         &self,
-        config: DefaultLlmConfigRecord,
-    ) -> Result<(), StoreError> {
-        write_json_atomic(&self.default_llm_config_path(), &config).await
+        api_group_id: &str,
+    ) -> Result<Option<ApiGroupRecord>, StoreError> {
+        read_optional_json_file(&self.api_group_path(api_group_id)?).await
     }
 
-    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
-        read_optional_json_file(&self.llm_api_path(api_id)?).await
+    async fn list_api_groups(&self) -> Result<Vec<ApiGroupRecord>, StoreError> {
+        list_json_records(&self.api_groups_dir()).await
     }
 
-    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError> {
-        list_json_records(&self.llm_apis_dir()).await
+    async fn save_api_group(&self, record: ApiGroupRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.api_group_path(&record.api_group_id)?, &record).await
     }
 
-    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError> {
-        write_json_atomic(&self.llm_api_path(&record.api_id)?, &record).await
+    async fn delete_api_group(
+        &self,
+        api_group_id: &str,
+    ) -> Result<Option<ApiGroupRecord>, StoreError> {
+        delete_optional_json_file(&self.api_group_path(api_group_id)?).await
     }
 
-    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
-        delete_optional_json_file(&self.llm_api_path(api_id)?).await
+    async fn get_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError> {
+        read_optional_json_file(&self.preset_path(preset_id)?).await
+    }
+
+    async fn list_presets(&self) -> Result<Vec<PresetRecord>, StoreError> {
+        list_json_records(&self.presets_dir()).await
+    }
+
+    async fn save_preset(&self, record: PresetRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.preset_path(&record.preset_id)?, &record).await
+    }
+
+    async fn delete_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError> {
+        delete_optional_json_file(&self.preset_path(preset_id)?).await
     }
 
     async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {

@@ -17,16 +17,21 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use state::{PlayerStateSchema, StateFieldSchema, WorldStateSchema};
 use store::{
-    AgentApiIdOverrides, AgentApiIds, CharacterCardRecord, LlmApiRecord, RuntimeSnapshot,
-    SchemaRecord, SessionConfigMode, SessionEngineConfig, SessionMessageKind, SessionMessageRecord,
-    SessionRecord, Store, StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord,
-    StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, PresetRecord, RuntimeSnapshot, SchemaRecord,
+    SessionBindingConfig, SessionMessageKind, SessionMessageRecord, SessionRecord, Store,
+    StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use story::{NarrativeNode, StoryGraph};
+use tracing::{debug, info};
 
+use crate::logging::{
+    json_for_log, summarize_architect_draft_chunk, summarize_architect_draft_init,
+    summarize_reply_options,
+};
 use crate::{
     Engine, EngineError, EngineEvent, EngineTurnResult, ExecutedBeat, LlmApiRegistry,
-    RegistryError, RuntimeError, RuntimeState, StoryResources, generate_story_plan,
+    RegistryError, RuntimeApiRecords, RuntimeError, RuntimeState, StoryResources,
+    generate_story_plan,
 };
 
 const DEFAULT_ARCHITECT_CHUNK_NODE_COUNT: usize = 4;
@@ -39,8 +44,7 @@ pub type ManagedTurnStream<'a> =
 
 #[derive(Debug, Clone)]
 pub struct ResolvedSessionConfig {
-    pub config: SessionEngineConfig,
-    pub effective_api_ids: AgentApiIds,
+    pub binding: SessionBindingConfig,
 }
 
 pub struct EngineManager {
@@ -48,20 +52,22 @@ pub struct EngineManager {
     registry: LlmApiRegistry,
 }
 
+#[derive(Debug, Clone)]
+struct ResolvedApiGroup {
+    planner: ApiRecord,
+    architect: ApiRecord,
+    director: ApiRecord,
+    actor: ApiRecord,
+    narrator: ApiRecord,
+    keeper: ApiRecord,
+    replyer: ApiRecord,
+}
+
 impl EngineManager {
     pub async fn new(
         store: Arc<dyn Store>,
         registry: LlmApiRegistry,
-        initial_global_config: Option<AgentApiIds>,
     ) -> Result<Self, ManagerError> {
-        if let Some(initial_global_config) = initial_global_config {
-            validate_api_ids(&registry, &initial_global_config)?;
-
-            if store.get_global_config().await?.is_none() {
-                store.set_global_config(initial_global_config).await?;
-            }
-        }
-
         Ok(Self { store, registry })
     }
 
@@ -69,74 +75,32 @@ impl EngineManager {
         &self.store
     }
 
-    pub fn upsert_llm_api_record(&self, record: &LlmApiRecord) -> Result<(), ManagerError> {
-        self.registry.upsert_record(record)?;
-        Ok(())
-    }
-
-    pub fn remove_llm_api_record(&self, api_id: &str) {
-        self.registry.remove(api_id);
-    }
-
-    pub async fn get_global_config(&self) -> Result<Option<AgentApiIds>, ManagerError> {
-        self.store
-            .get_global_config()
-            .await
-            .map_err(ManagerError::from)
-    }
-
-    pub async fn require_global_config(&self) -> Result<AgentApiIds, ManagerError> {
-        self.get_global_config()
-            .await?
-            .ok_or(ManagerError::LlmConfigNotInitialized)
-    }
-
-    pub async fn update_global_config(
-        &self,
-        overrides: AgentApiIdOverrides,
-    ) -> Result<AgentApiIds, ManagerError> {
-        let current = self.require_global_config().await?;
-        let updated = current.apply_overrides(&overrides);
-        validate_api_ids(&self.registry, &updated)?;
-        self.store.set_global_config(updated.clone()).await?;
-        Ok(updated)
-    }
-
-    pub async fn initialize_global_config_if_missing(
-        &self,
-        api_id: &str,
-    ) -> Result<Option<AgentApiIds>, ManagerError> {
-        if self.get_global_config().await?.is_some() {
-            return Ok(None);
-        }
-
-        let initial = repeat_api_id(api_id);
-        validate_api_ids(&self.registry, &initial)?;
-        self.store.set_global_config(initial.clone()).await?;
-        Ok(Some(initial))
+    pub async fn get_global_config(&self) -> Result<Option<SessionBindingConfig>, ManagerError> {
+        self.resolve_first_available_binding().await
     }
 
     pub async fn generate_story_plan(
         &self,
         resource_id: &str,
-        planner_api_id: Option<String>,
+        api_group_id: Option<String>,
+        preset_id: Option<String>,
     ) -> Result<agents::planner::PlannerResponse, ManagerError> {
         let resource = self
             .store
             .get_story_resources(resource_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(resource_id.to_owned()))?;
-        let api_ids = self
-            .require_global_config()
-            .await?
-            .apply_overrides(&AgentApiIdOverrides {
-                planner_api_id,
-                ..AgentApiIdOverrides::default()
-            });
-        validate_api_ids(&self.registry, &api_ids)?;
-
         let story_resources = self.build_engine_story_resources(&resource).await?;
-        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
+        let (api_group, preset, _) = self
+            .resolve_api_group_and_preset(api_group_id.as_deref(), preset_id.as_deref())
+            .await?;
+        let apis = self.resolve_api_group_bindings(&api_group).await?;
+        let generation_configs = self.registry.build_story_generation_configs(
+            &apis.planner,
+            &apis.architect,
+            &preset.agents.planner,
+            &preset.agents.architect,
+        )?;
         generate_story_plan(&generation_configs, &story_resources)
             .await
             .map_err(ManagerError::from)
@@ -146,16 +110,15 @@ impl EngineManager {
         &self,
         resource_id: &str,
         display_name: Option<String>,
-        architect_api_id: Option<String>,
+        api_group_id: Option<String>,
+        preset_id: Option<String>,
     ) -> Result<StoryRecord, ManagerError> {
         let mut draft = self
-            .start_story_draft(resource_id, display_name, architect_api_id.clone())
+            .start_story_draft(resource_id, display_name, api_group_id, preset_id)
             .await?;
 
         while draft.status == StoryDraftStatus::Building {
-            draft = self
-                .continue_story_draft(&draft.draft_id, architect_api_id.clone())
-                .await?;
+            draft = self.continue_story_draft(&draft.draft_id).await?;
         }
 
         let story = self.finalize_story_draft(&draft.draft_id).await?;
@@ -167,24 +130,16 @@ impl EngineManager {
         &self,
         resource_id: &str,
         display_name: Option<String>,
-        architect_api_id: Option<String>,
+        api_group_id: Option<String>,
+        preset_id: Option<String>,
     ) -> Result<StoryDraftRecord, ManagerError> {
-        let mut resource = self
+        let resource = self
             .store
             .get_story_resources(resource_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(resource_id.to_owned()))?;
 
-        if resource.planned_story.is_none() {
-            let planner = self.generate_story_plan(resource_id, None).await?;
-            resource.planned_story = Some(planner.story_script);
-            self.store.save_story_resources(resource.clone()).await?;
-        }
-
-        let planned_story = resource
-            .planned_story
-            .clone()
-            .ok_or_else(|| ManagerError::InvalidDraft("planned_story is missing".to_owned()))?;
+        let planned_story = effective_planned_story_text(&resource);
         let outline_sections = extract_outline_sections(&planned_story);
         if outline_sections.is_empty() {
             return Err(ManagerError::InvalidDraft(
@@ -192,17 +147,17 @@ impl EngineManager {
             ));
         }
 
-        let api_ids = self
-            .require_global_config()
-            .await?
-            .apply_overrides(&AgentApiIdOverrides {
-                architect_api_id,
-                ..AgentApiIdOverrides::default()
-            });
-        validate_api_ids(&self.registry, &api_ids)?;
-
         let story_resources = self.build_engine_story_resources(&resource).await?;
-        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
+        let (api_group, preset, binding) = self
+            .resolve_api_group_and_preset(api_group_id.as_deref(), preset_id.as_deref())
+            .await?;
+        let apis = self.resolve_api_group_bindings(&api_group).await?;
+        let generation_configs = self.registry.build_story_generation_configs(
+            &apis.planner,
+            &apis.architect,
+            &preset.agents.planner,
+            &preset.agents.architect,
+        )?;
         let architect = self.build_architect_for_init(&generation_configs);
 
         let init = architect
@@ -220,6 +175,21 @@ impl EngineManager {
                 available_characters: story_resources.character_cards(),
             })
             .await?;
+
+        info!(
+            resource_id = %resource.resource_id,
+            summary = %json_for_log(&summarize_architect_draft_init(
+                &init,
+                0,
+                outline_sections.len(),
+            )),
+            "architect generated draft init chunk"
+        );
+        debug!(
+            resource_id = %resource.resource_id,
+            payload = %json_for_log(&init),
+            "architect draft init payload"
+        );
 
         let now = now_timestamp_ms();
         let draft_id = format!("draft-{}", self.store.list_story_drafts().await?.len());
@@ -261,6 +231,8 @@ impl EngineManager {
             draft_id,
             display_name: display_name.unwrap_or_else(|| resource.story_concept.clone()),
             resource_id: resource.resource_id,
+            api_group_id: binding.api_group_id,
+            preset_id: binding.preset_id,
             planned_story,
             outline_sections,
             next_section_index: 1,
@@ -284,7 +256,6 @@ impl EngineManager {
     pub async fn continue_story_draft(
         &self,
         draft_id: &str,
-        architect_api_id: Option<String>,
     ) -> Result<StoryDraftRecord, ManagerError> {
         let mut draft = self
             .store
@@ -303,17 +274,16 @@ impl EngineManager {
             .get_story_resources(&draft.resource_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStoryResources(draft.resource_id.clone()))?;
-        let api_ids = self
-            .require_global_config()
-            .await?
-            .apply_overrides(&AgentApiIdOverrides {
-                architect_api_id,
-                ..AgentApiIdOverrides::default()
-            });
-        validate_api_ids(&self.registry, &api_ids)?;
-
         let story_resources = self.build_engine_story_resources(&resource).await?;
-        let generation_configs = self.registry.build_story_generation_configs(&api_ids)?;
+        let api_group = self.resolve_api_group(&draft.api_group_id).await?;
+        let preset = self.resolve_preset(&draft.preset_id).await?;
+        let apis = self.resolve_api_group_bindings(&api_group).await?;
+        let generation_configs = self.registry.build_story_generation_configs(
+            &apis.planner,
+            &apis.architect,
+            &preset.agents.planner,
+            &preset.agents.architect,
+        )?;
         let architect = self.build_architect_for_continue(&generation_configs);
         let world_schema = self.resolve_world_schema(&draft.world_schema_id).await?;
         let player_schema = self.resolve_player_schema(&draft.player_schema_id).await?;
@@ -343,6 +313,23 @@ impl EngineManager {
             })
             .await?;
 
+        info!(
+            draft_id = %draft.draft_id,
+            resource_id = %draft.resource_id,
+            summary = %json_for_log(&summarize_architect_draft_chunk(
+                &chunk,
+                draft.next_section_index,
+                draft.outline_sections.len(),
+            )),
+            "architect generated draft continuation chunk"
+        );
+        debug!(
+            draft_id = %draft.draft_id,
+            resource_id = %draft.resource_id,
+            payload = %json_for_log(&chunk),
+            "architect draft continuation payload"
+        );
+
         merge_story_chunk(
             &mut draft.partial_graph,
             &chunk.nodes,
@@ -353,6 +340,31 @@ impl EngineManager {
             .section_node_ids
             .push(chunk.nodes.iter().map(|node| node.id.clone()).collect());
         draft.next_section_index += 1;
+        draft.updated_at_ms = Some(now_timestamp_ms());
+        draft = self.refresh_draft_status(draft);
+        self.store.save_story_draft(draft.clone()).await?;
+        Ok(draft)
+    }
+
+    pub async fn update_story_draft_graph(
+        &self,
+        draft_id: &str,
+        partial_graph: StoryGraph,
+    ) -> Result<StoryDraftRecord, ManagerError> {
+        let mut draft = self
+            .store
+            .get_story_draft(draft_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryDraft(draft_id.to_owned()))?;
+
+        if draft.status == StoryDraftStatus::Finalized {
+            return Err(ManagerError::InvalidDraft(format!(
+                "story draft '{draft_id}' is already finalized"
+            )));
+        }
+
+        validate_story_graph(&partial_graph)?;
+        draft.partial_graph = partial_graph;
         draft.updated_at_ms = Some(now_timestamp_ms());
         draft = self.refresh_draft_status(draft);
         self.store.save_story_draft(draft.clone()).await?;
@@ -436,23 +448,17 @@ impl EngineManager {
         story_id: &str,
         display_name: Option<String>,
         player_profile_id: Option<String>,
-        config_mode: SessionConfigMode,
-        session_api_ids: Option<AgentApiIds>,
+        api_group_id: Option<String>,
+        preset_id: Option<String>,
     ) -> Result<SessionRecord, ManagerError> {
         let story = self
             .store
             .get_story(story_id)
             .await?
             .ok_or_else(|| ManagerError::MissingStory(story_id.to_owned()))?;
-        let global_config = self.require_global_config().await?;
-        let session_config = match config_mode {
-            SessionConfigMode::UseGlobal => SessionEngineConfig::use_global(),
-            SessionConfigMode::UseSession => SessionEngineConfig::use_session(
-                session_api_ids.unwrap_or_else(|| global_config.clone()),
-            ),
-        };
-        let effective = effective_session_api_ids(&session_config, &global_config);
-        validate_api_ids(&self.registry, &effective)?;
+        let (_api_group, _preset, binding) = self
+            .resolve_api_group_and_preset(api_group_id.as_deref(), preset_id.as_deref())
+            .await?;
 
         let (player_name, player_description) = self
             .resolve_player_identity(player_profile_id.as_deref())
@@ -468,8 +474,8 @@ impl EngineManager {
             story_id: story.story_id,
             player_profile_id,
             player_schema_id: story.player_schema_id,
+            binding,
             snapshot: runtime_state.snapshot(),
-            config: session_config,
             created_at_ms: Some(now),
             updated_at_ms: Some(now),
         };
@@ -493,7 +499,6 @@ impl EngineManager {
         &self,
         session_id: &str,
         limit: usize,
-        api_overrides: Option<AgentApiIdOverrides>,
     ) -> Result<Vec<ReplyOption>, ManagerError> {
         let session = self
             .store
@@ -508,10 +513,14 @@ impl EngineManager {
         let runtime_state = self
             .build_runtime_state_from_session(&story, &session)
             .await?;
-        let global = self.require_global_config().await?;
-        let effective_api_ids = effective_session_api_ids(&session.config, &global)
-            .apply_overrides(&api_overrides.unwrap_or_default());
-        let replyer_config = self.registry.build_replyer_config(&effective_api_ids)?;
+        let api_group = self
+            .resolve_api_group(&session.binding.api_group_id)
+            .await?;
+        let preset = self.resolve_preset(&session.binding.preset_id).await?;
+        let apis = self.resolve_api_group_bindings(&api_group).await?;
+        let replyer_config = self
+            .registry
+            .build_replyer_config(&apis.replyer, &preset.agents.replyer)?;
         let history = self.load_reply_history(session_id).await?;
         let current_node = runtime_state.current_node()?;
         let replyer = Replyer::new_with_options(
@@ -532,6 +541,17 @@ impl EngineManager {
                 limit,
             })
             .await?;
+
+        info!(
+            session_id = %session_id,
+            summary = %json_for_log(&summarize_reply_options(&response.replies)),
+            "replyer generated suggested replies"
+        );
+        debug!(
+            session_id = %session_id,
+            payload = %json_for_log(&response),
+            "replyer response payload"
+        );
 
         Ok(response.replies)
     }
@@ -584,58 +604,44 @@ impl EngineManager {
             .get_session(session_id)
             .await?
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
-        let global = self.require_global_config().await?;
         Ok(ResolvedSessionConfig {
-            effective_api_ids: effective_session_api_ids(&session.config, &global),
-            config: session.config,
+            binding: session.binding,
         })
     }
 
     pub async fn update_session_config(
         &self,
         session_id: &str,
-        mode: SessionConfigMode,
-        session_api_ids: Option<AgentApiIds>,
-        api_overrides: Option<AgentApiIdOverrides>,
+        api_group_id: Option<String>,
+        preset_id: Option<String>,
     ) -> Result<ResolvedSessionConfig, ManagerError> {
         let mut session = self
             .store
             .get_session(session_id)
             .await?
             .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
-        let global = self.require_global_config().await?;
-        let new_config = match mode {
-            SessionConfigMode::UseGlobal => SessionEngineConfig::use_global(),
-            SessionConfigMode::UseSession => {
-                let base_api_ids = session_api_ids.unwrap_or_else(|| {
-                    session
-                        .config
-                        .session_api_ids
-                        .clone()
-                        .unwrap_or_else(|| effective_session_api_ids(&session.config, &global))
-                });
-                let merged = api_overrides.unwrap_or_default();
-                SessionEngineConfig::use_session(base_api_ids.apply_overrides(&merged))
-            }
-        };
-        let effective = effective_session_api_ids(&new_config, &global);
-        validate_api_ids(&self.registry, &effective)?;
-
-        session.config = new_config.clone();
+        let binding = self
+            .resolve_api_group_and_preset(
+                api_group_id
+                    .as_deref()
+                    .or(Some(session.binding.api_group_id.as_str())),
+                preset_id
+                    .as_deref()
+                    .or(Some(session.binding.preset_id.as_str())),
+            )
+            .await?
+            .2;
+        session.binding = binding.clone();
         session.updated_at_ms = Some(now_timestamp_ms());
         self.store.save_session(session).await?;
 
-        Ok(ResolvedSessionConfig {
-            config: new_config,
-            effective_api_ids: effective,
-        })
+        Ok(ResolvedSessionConfig { binding })
     }
 
     pub async fn run_turn_stream(
         &self,
         session_id: &str,
         player_input: String,
-        api_overrides: Option<AgentApiIdOverrides>,
     ) -> Result<ManagedTurnStream<'static>, ManagerError> {
         let session = self
             .store
@@ -650,11 +656,20 @@ impl EngineManager {
         let runtime_state = self
             .build_runtime_state_from_session(&story, &session)
             .await?;
-        let global = self.require_global_config().await?;
-        let effective_api_ids = effective_session_api_ids(&session.config, &global)
-            .apply_overrides(&api_overrides.unwrap_or_default());
-        validate_api_ids(&self.registry, &effective_api_ids)?;
-        let runtime_configs = self.registry.build_runtime_configs(&effective_api_ids)?;
+        let api_group = self
+            .resolve_api_group(&session.binding.api_group_id)
+            .await?;
+        let preset = self.resolve_preset(&session.binding.preset_id).await?;
+        let apis = self.resolve_api_group_bindings(&api_group).await?;
+        let runtime_configs = self.registry.build_runtime_configs(
+            RuntimeApiRecords {
+                director: &apis.director,
+                actor: &apis.actor,
+                narrator: &apis.narrator,
+                keeper: &apis.keeper,
+            },
+            &preset,
+        )?;
         let mut engine = Engine::new(runtime_configs, runtime_state)?;
         let store = Arc::clone(&self.store);
         let session_record = session.clone();
@@ -748,7 +763,7 @@ impl EngineManager {
             player_state_schema_seed,
         )?;
 
-        if let Some(planned_story) = &resource.planned_story {
+        if let Some(planned_story) = non_empty_planned_story(resource.planned_story.as_deref()) {
             story_resources = story_resources.with_planned_story(planned_story.clone());
         }
         if let Some(world_schema_id_seed) = &resource.world_schema_id_seed {
@@ -920,6 +935,102 @@ impl EngineManager {
             .collect())
     }
 
+    async fn resolve_first_available_binding(
+        &self,
+    ) -> Result<Option<SessionBindingConfig>, ManagerError> {
+        let mut api_groups = self.store.list_api_groups().await?;
+        let mut presets = self.store.list_presets().await?;
+        api_groups.sort_by(|left, right| left.api_group_id.cmp(&right.api_group_id));
+        presets.sort_by(|left, right| left.preset_id.cmp(&right.preset_id));
+
+        match (api_groups.first(), presets.first()) {
+            (Some(api_group), Some(preset)) => Ok(Some(SessionBindingConfig {
+                api_group_id: api_group.api_group_id.clone(),
+                preset_id: preset.preset_id.clone(),
+            })),
+            _ => Ok(None),
+        }
+    }
+
+    async fn resolve_api_group(&self, api_group_id: &str) -> Result<ApiGroupRecord, ManagerError> {
+        self.store
+            .get_api_group(api_group_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingApiGroup(api_group_id.to_owned()))
+    }
+
+    async fn resolve_api(&self, api_id: &str) -> Result<ApiRecord, ManagerError> {
+        self.store
+            .get_api(api_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingApi(api_id.to_owned()))
+    }
+
+    async fn resolve_api_group_bindings(
+        &self,
+        api_group: &ApiGroupRecord,
+    ) -> Result<ResolvedApiGroup, ManagerError> {
+        Ok(ResolvedApiGroup {
+            planner: self.resolve_api(&api_group.agents.planner_api_id).await?,
+            architect: self.resolve_api(&api_group.agents.architect_api_id).await?,
+            director: self.resolve_api(&api_group.agents.director_api_id).await?,
+            actor: self.resolve_api(&api_group.agents.actor_api_id).await?,
+            narrator: self.resolve_api(&api_group.agents.narrator_api_id).await?,
+            keeper: self.resolve_api(&api_group.agents.keeper_api_id).await?,
+            replyer: self.resolve_api(&api_group.agents.replyer_api_id).await?,
+        })
+    }
+
+    async fn resolve_preset(&self, preset_id: &str) -> Result<PresetRecord, ManagerError> {
+        self.store
+            .get_preset(preset_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingPreset(preset_id.to_owned()))
+    }
+
+    async fn resolve_api_group_and_preset(
+        &self,
+        api_group_id: Option<&str>,
+        preset_id: Option<&str>,
+    ) -> Result<(ApiGroupRecord, PresetRecord, SessionBindingConfig), ManagerError> {
+        let binding = match (api_group_id, preset_id) {
+            (Some(api_group_id), Some(preset_id)) => SessionBindingConfig {
+                api_group_id: api_group_id.to_owned(),
+                preset_id: preset_id.to_owned(),
+            },
+            (Some(api_group_id), None) => {
+                let mut presets = self.store.list_presets().await?;
+                presets.sort_by(|left, right| left.preset_id.cmp(&right.preset_id));
+                let preset = presets
+                    .first()
+                    .ok_or(ManagerError::LlmConfigNotInitialized)?;
+                SessionBindingConfig {
+                    api_group_id: api_group_id.to_owned(),
+                    preset_id: preset.preset_id.clone(),
+                }
+            }
+            (None, Some(preset_id)) => {
+                let mut api_groups = self.store.list_api_groups().await?;
+                api_groups.sort_by(|left, right| left.api_group_id.cmp(&right.api_group_id));
+                let api_group = api_groups
+                    .first()
+                    .ok_or(ManagerError::LlmConfigNotInitialized)?;
+                SessionBindingConfig {
+                    api_group_id: api_group.api_group_id.clone(),
+                    preset_id: preset_id.to_owned(),
+                }
+            }
+            (None, None) => self
+                .resolve_first_available_binding()
+                .await?
+                .ok_or(ManagerError::LlmConfigNotInitialized)?,
+        };
+
+        let api_group = self.resolve_api_group(&binding.api_group_id).await?;
+        let preset = self.resolve_preset(&binding.preset_id).await?;
+        Ok((api_group, preset, binding))
+    }
+
     fn build_architect_for_init(
         &self,
         generation_configs: &crate::engine::StoryGenerationAgentConfigs,
@@ -1015,6 +1126,17 @@ fn now_timestamp_ms() -> u64 {
         .expect("system clock should be after unix epoch")
         .as_millis()
         .min(u128::from(u64::MAX)) as u64
+}
+
+fn non_empty_planned_story(planned_story: Option<&str>) -> Option<String> {
+    planned_story
+        .filter(|value| !value.trim().is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn effective_planned_story_text(resource: &StoryResourcesRecord) -> String {
+    non_empty_planned_story(resource.planned_story.as_deref())
+        .unwrap_or_else(|| resource.story_concept.clone())
 }
 
 fn extract_outline_sections(planned_story: &str) -> Vec<String> {
@@ -1270,39 +1392,16 @@ fn build_session_messages(
     messages
 }
 
-fn validate_api_ids(registry: &LlmApiRegistry, api_ids: &AgentApiIds) -> Result<(), ManagerError> {
-    registry.build_story_generation_configs(api_ids)?;
-    registry.build_runtime_configs(api_ids)?;
-    registry.build_replyer_config(api_ids)?;
-    Ok(())
-}
-
-fn repeat_api_id(api_id: &str) -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: api_id.to_owned(),
-        architect_api_id: api_id.to_owned(),
-        director_api_id: api_id.to_owned(),
-        actor_api_id: api_id.to_owned(),
-        narrator_api_id: api_id.to_owned(),
-        keeper_api_id: api_id.to_owned(),
-        replyer_api_id: api_id.to_owned(),
-    }
-}
-
-fn effective_session_api_ids(config: &SessionEngineConfig, global: &AgentApiIds) -> AgentApiIds {
-    match config.mode {
-        SessionConfigMode::UseGlobal => global.clone(),
-        SessionConfigMode::UseSession => config
-            .session_api_ids
-            .clone()
-            .unwrap_or_else(|| global.clone()),
-    }
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ManagerError {
     #[error("llm engine config is not initialized")]
     LlmConfigNotInitialized,
+    #[error("api '{0}' not found")]
+    MissingApi(String),
+    #[error("api group '{0}' not found")]
+    MissingApiGroup(String),
+    #[error("preset '{0}' not found")]
+    MissingPreset(String),
     #[error("schema '{0}' not found")]
     MissingSchema(String),
     #[error("character '{0}' not found")]

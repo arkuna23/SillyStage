@@ -63,7 +63,12 @@ impl Handler {
                 sessions_total: sessions.len(),
             },
             global_config: GlobalConfigPayload {
-                api_ids: global_config,
+                api_group_id: global_config
+                    .as_ref()
+                    .map(|binding| binding.api_group_id.clone()),
+                preset_id: global_config
+                    .as_ref()
+                    .map(|binding| binding.preset_id.clone()),
             },
             recent_stories: stories
                 .into_iter()

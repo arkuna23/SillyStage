@@ -7,10 +7,12 @@ use protocol::{
     RuntimeSnapshotPayload, ServerEventMessage, SessionDeletedPayload, SessionDetailPayload,
     SessionMessageDeletedPayload, SessionMessageKind as SessionMessagePayloadKind,
     SessionMessagePayload, SessionMessagesListedPayload, SessionStartedPayload,
-    SessionSummaryPayload, SessionsListedPayload, SetPlayerProfileParams, StreamEventBody,
-    SuggestRepliesParams, SuggestedRepliesPayload, TurnCompletedPayload, TurnStreamAcceptedPayload,
-    UpdatePlayerDescriptionParams, UpdateSessionMessageParams, UpdateSessionParams,
+    SessionSummaryPayload, SessionVariablesPayload, SessionsListedPayload, SetPlayerProfileParams,
+    StreamEventBody, SuggestRepliesParams, SuggestedRepliesPayload, TurnCompletedPayload,
+    TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams, UpdateSessionMessageParams,
+    UpdateSessionParams, UpdateSessionVariablesParams,
 };
+use state::{StateOp, StateUpdate, WorldState};
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{SessionMessageKind, SessionMessageRecord, SessionRecord, Store};
 
@@ -140,7 +142,7 @@ impl Handler {
 
         let managed_stream = match self
             .manager
-            .run_turn_stream(&session_id, params.player_input, params.api_overrides)
+            .run_turn_stream(&session_id, params.player_input)
             .await
         {
             Ok(stream) => stream,
@@ -377,6 +379,52 @@ impl Handler {
         }
     }
 
+    pub(crate) async fn handle_session_get_variables(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionVariables(Box::new(build_session_variables_payload(
+                &session.snapshot.world_state,
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_update_variables(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: UpdateSessionVariablesParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        validate_session_variable_update(&params.update)?;
+        let mut session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        session.snapshot.world_state.apply_update(params.update);
+        session.updated_at_ms = Some(now_timestamp_ms());
+        let payload = build_session_variables_payload(&session.snapshot.world_state);
+        self.store.save_session(session).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionVariables(Box::new(payload)),
+        ))
+    }
+
     pub(crate) async fn handle_session_suggest_replies(
         &self,
         request_id: &str,
@@ -385,10 +433,7 @@ impl Handler {
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
         let session_id = require_session_id(session_id)?;
         let limit = parse_suggested_reply_limit(params.limit)?;
-        let replies = self
-            .manager
-            .suggest_replies(&session_id, limit, params.api_overrides)
-            .await?;
+        let replies = self.manager.suggest_replies(&session_id, limit).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -633,6 +678,8 @@ pub(crate) fn build_session_started_payload(
         snapshot: session.snapshot.clone(),
         player_profile_id: session.player_profile_id.clone(),
         player_schema_id: session.player_schema_id.clone(),
+        api_group_id: session.binding.api_group_id.clone(),
+        preset_id: session.binding.preset_id.clone(),
         history,
         created_at_ms: session.created_at_ms,
         updated_at_ms: session.updated_at_ms,
@@ -652,6 +699,8 @@ pub(crate) fn build_session_detail_payload(
         display_name: session.display_name.clone(),
         player_profile_id: session.player_profile_id.clone(),
         player_schema_id: session.player_schema_id.clone(),
+        api_group_id: session.binding.api_group_id.clone(),
+        preset_id: session.binding.preset_id.clone(),
         snapshot: session.snapshot.clone(),
         history,
         created_at_ms: session.created_at_ms,
@@ -667,6 +716,8 @@ pub(crate) fn build_session_summary_payload(session: &SessionRecord) -> SessionS
         display_name: session.display_name.clone(),
         player_profile_id: session.player_profile_id.clone(),
         player_schema_id: session.player_schema_id.clone(),
+        api_group_id: session.binding.api_group_id.clone(),
+        preset_id: session.binding.preset_id.clone(),
         turn_index: session.snapshot.turn_index,
         created_at_ms: session.created_at_ms,
         updated_at_ms: session.updated_at_ms,
@@ -740,6 +791,53 @@ fn parse_suggested_reply_limit(limit: Option<u32>) -> Result<usize, HandlerError
     }
 
     Ok(limit as usize)
+}
+
+fn build_session_variables_payload(world_state: &WorldState) -> SessionVariablesPayload {
+    SessionVariablesPayload {
+        custom: world_state.custom.clone(),
+        player_state: world_state.player_state.clone(),
+        character_state: world_state.character_state.clone(),
+    }
+}
+
+fn validate_session_variable_update(update: &StateUpdate) -> Result<(), HandlerError> {
+    for op in &update.ops {
+        match op {
+            StateOp::SetState { .. }
+            | StateOp::RemoveState { .. }
+            | StateOp::SetPlayerState { .. }
+            | StateOp::RemovePlayerState { .. }
+            | StateOp::SetCharacterState { .. }
+            | StateOp::RemoveCharacterState { .. } => {}
+            StateOp::SetCurrentNode { .. }
+            | StateOp::SetActiveCharacters { .. }
+            | StateOp::AddActiveCharacter { .. }
+            | StateOp::RemoveActiveCharacter { .. } => {
+                return Err(HandlerError::InvalidSessionVariableUpdate(format!(
+                    "op '{}' is not allowed",
+                    session_variable_op_name(op)
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn session_variable_op_name(op: &StateOp) -> &'static str {
+    match op {
+        StateOp::SetCurrentNode { .. } => "SetCurrentNode",
+        StateOp::SetActiveCharacters { .. } => "SetActiveCharacters",
+        StateOp::AddActiveCharacter { .. } => "AddActiveCharacter",
+        StateOp::RemoveActiveCharacter { .. } => "RemoveActiveCharacter",
+        StateOp::SetState { .. } => "SetState",
+        StateOp::RemoveState { .. } => "RemoveState",
+        StateOp::SetPlayerState { .. } => "SetPlayerState",
+        StateOp::RemovePlayerState { .. } => "RemovePlayerState",
+        StateOp::SetCharacterState { .. } => "SetCharacterState",
+        StateOp::RemoveCharacterState { .. } => "RemoveCharacterState",
+    }
 }
 
 fn reply_option_payload_from_reply_option(reply: ReplyOption) -> protocol::ReplyOptionPayload {

@@ -109,6 +109,16 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     assert!(
         system_message
             .content
+            .contains("\"scope\": \"global_or_player_or_character\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("Use player_state_schema keys for player-scoped conditions")
+    );
+    assert!(
+        system_message
+            .content
             .contains("\"type\": \"SetCharacterState\"")
     );
 }
@@ -329,6 +339,11 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
     assert!(!system_message.content.contains("PLANNED_STORY"));
     assert!(!system_message.content.contains("also return introduction"));
     assert!(!system_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(
+        system_message
+            .content
+            .contains("\"scope\": \"global_or_player_or_character\"")
+    );
     assert!(
         system_message
             .content

@@ -1,7 +1,5 @@
-use engine::ResolvedSessionConfig;
 use protocol::{
-    ConfigUpdateGlobalParams, JsonRpcResponseMessage, ResponseResult, SessionConfigPayload,
-    SessionUpdateConfigParams,
+    JsonRpcResponseMessage, ResponseResult, SessionConfigPayload, SessionUpdateConfigParams,
 };
 
 use crate::error::HandlerError;
@@ -13,29 +11,13 @@ impl Handler {
         &self,
         request_id: &str,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let api_ids = self.manager.get_global_config().await?;
-        Ok(JsonRpcResponseMessage::ok(
-            request_id,
-            None::<String>,
-            ResponseResult::GlobalConfig(protocol::GlobalConfigPayload { api_ids }),
-        ))
-    }
-
-    pub(crate) async fn handle_config_update_global(
-        &self,
-        request_id: &str,
-        params: ConfigUpdateGlobalParams,
-    ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let updated = self
-            .manager
-            .update_global_config(params.api_overrides)
-            .await?;
-
+        let binding = self.manager.get_global_config().await?;
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
             ResponseResult::GlobalConfig(protocol::GlobalConfigPayload {
-                api_ids: Some(updated),
+                api_group_id: binding.as_ref().map(|binding| binding.api_group_id.clone()),
+                preset_id: binding.as_ref().map(|binding| binding.preset_id.clone()),
             }),
         ))
     }
@@ -68,12 +50,7 @@ impl Handler {
         let session_id = require_session_id(session_id)?;
         let resolved = self
             .manager
-            .update_session_config(
-                &session_id,
-                params.mode,
-                params.session_api_ids,
-                params.api_overrides,
-            )
+            .update_session_config(&session_id, params.api_group_id, params.preset_id)
             .await?;
 
         Ok(JsonRpcResponseMessage::ok(
@@ -85,11 +62,10 @@ impl Handler {
 }
 
 pub(crate) fn build_session_config_payload(
-    resolved: ResolvedSessionConfig,
+    resolved: engine::ResolvedSessionConfig,
 ) -> SessionConfigPayload {
     SessionConfigPayload {
-        mode: resolved.config.mode,
-        session_api_ids: resolved.config.session_api_ids,
-        effective_api_ids: resolved.effective_api_ids,
+        api_group_id: resolved.binding.api_group_id,
+        preset_id: resolved.binding.preset_id,
     }
 }

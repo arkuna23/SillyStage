@@ -5,39 +5,87 @@ use std::sync::Arc;
 
 use futures_util::StreamExt;
 use serde_json::json;
-use ss_engine::{AgentApiIds, EngineEvent, EngineManager, LlmApiRegistry, SessionConfigMode};
+use ss_engine::{EngineEvent, EngineManager, LlmApiRegistry};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use store::{
-    CharacterCardDefinition, CharacterCardRecord, InMemoryStore, PlayerProfileRecord, SchemaRecord,
-    Store, StoryRecord, StoryResourcesRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
+    CharacterCardRecord, InMemoryStore, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
+    SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
 };
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
 use common::{QueuedMockLlm, assistant_response};
 
-fn sample_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner".to_owned(),
-        architect_api_id: "architect".to_owned(),
-        director_api_id: "director".to_owned(),
-        actor_api_id: "actor".to_owned(),
-        narrator_api_id: "narrator".to_owned(),
-        keeper_api_id: "keeper".to_owned(),
-        replyer_api_id: "replyer".to_owned(),
+fn user_message_content(request: &llm::ChatRequest) -> &str {
+    request
+        .messages
+        .iter()
+        .find(|message| message.role == llm::Role::User)
+        .map(|message| message.content.as_str())
+        .expect("user message should be present")
+}
+
+fn sample_api_record(api_id: &str, model: &str) -> ApiRecord {
+    ApiRecord {
+        api_id: api_id.to_owned(),
+        display_name: format!("API {api_id}"),
+        provider: store::LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: "sk-secret".to_owned(),
+        model: model.to_owned(),
+    }
+}
+
+fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
+    AgentPresetConfig {
+        temperature: Some(0.1),
+        max_tokens: Some(max_tokens),
+        extra: None,
+    }
+}
+
+fn sample_api_group() -> ApiGroupRecord {
+    ApiGroupRecord {
+        api_group_id: "group-default".to_owned(),
+        display_name: "Default Group".to_owned(),
+        agents: ApiGroupAgentBindings {
+            planner_api_id: "api-planner".to_owned(),
+            architect_api_id: "api-architect".to_owned(),
+            director_api_id: "api-director".to_owned(),
+            actor_api_id: "api-actor".to_owned(),
+            narrator_api_id: "api-narrator".to_owned(),
+            keeper_api_id: "api-keeper".to_owned(),
+            replyer_api_id: "api-replyer".to_owned(),
+        },
+    }
+}
+
+fn sample_preset() -> PresetRecord {
+    PresetRecord {
+        preset_id: "preset-default".to_owned(),
+        display_name: "Default Preset".to_owned(),
+        agents: PresetAgentConfigs {
+            planner: sample_agent_preset_config(512),
+            architect: sample_agent_preset_config(8192),
+            director: sample_agent_preset_config(512),
+            actor: sample_agent_preset_config(512),
+            narrator: sample_agent_preset_config(512),
+            keeper: sample_agent_preset_config(512),
+            replyer: sample_agent_preset_config(256),
+        },
     }
 }
 
 fn registry(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
-    let ids = sample_api_ids();
     let llm: Arc<dyn llm::LlmApi> = llm;
     LlmApiRegistry::new()
-        .register(ids.planner_api_id, Arc::clone(&llm), "planner-model")
-        .register(ids.architect_api_id, Arc::clone(&llm), "architect-model")
-        .register(ids.director_api_id, Arc::clone(&llm), "director-model")
-        .register(ids.actor_api_id, Arc::clone(&llm), "actor-model")
-        .register(ids.narrator_api_id, Arc::clone(&llm), "narrator-model")
-        .register(ids.keeper_api_id, Arc::clone(&llm), "keeper-model")
-        .register(ids.replyer_api_id, llm, "replyer-model")
+        .register("api-planner", Arc::clone(&llm), "planner-model")
+        .register("api-architect", Arc::clone(&llm), "architect-model")
+        .register("api-director", Arc::clone(&llm), "director-model")
+        .register("api-actor", Arc::clone(&llm), "actor-model")
+        .register("api-narrator", Arc::clone(&llm), "narrator-model")
+        .register("api-keeper", Arc::clone(&llm), "keeper-model")
+        .register("api-replyer", llm, "replyer-model")
 }
 
 fn sample_character_record() -> CharacterCardRecord {
@@ -137,6 +185,28 @@ fn sample_story_graph() -> StoryGraph {
 }
 
 async fn seed_story(store: &InMemoryStore) {
+    for (api_id, model) in [
+        ("api-planner", "planner-model"),
+        ("api-architect", "architect-model"),
+        ("api-director", "director-model"),
+        ("api-actor", "actor-model"),
+        ("api-narrator", "narrator-model"),
+        ("api-keeper", "keeper-model"),
+        ("api-replyer", "replyer-model"),
+    ] {
+        store
+            .save_api(sample_api_record(api_id, model))
+            .await
+            .expect("save api");
+    }
+    store
+        .save_api_group(sample_api_group())
+        .await
+        .expect("save api group");
+    store
+        .save_preset(sample_preset())
+        .await
+        .expect("save preset");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -217,7 +287,7 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()))
         .await
         .expect("manager should build");
 
@@ -226,7 +296,7 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
             "story-1",
             Some("Courier Run".to_owned()),
             Some("profile-courier-a".to_owned()),
-            SessionConfigMode::UseGlobal,
+            None,
             None,
         )
         .await
@@ -262,7 +332,7 @@ async fn manager_suggests_replies_without_mutating_session() {
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()))
         .await
         .expect("manager should build");
     let session = manager
@@ -270,7 +340,7 @@ async fn manager_suggests_replies_without_mutating_session() {
             "story-1",
             Some("Courier Run".to_owned()),
             Some("profile-courier-a".to_owned()),
-            SessionConfigMode::UseGlobal,
+            None,
             None,
         )
         .await
@@ -282,7 +352,7 @@ async fn manager_suggests_replies_without_mutating_session() {
         .expect("session lookup should succeed")
         .expect("session should exist");
     let replies = manager
-        .suggest_replies(&session.session_id, 3, None)
+        .suggest_replies(&session.session_id, 3)
         .await
         .expect("reply suggestions should succeed");
     let after = store
@@ -317,6 +387,61 @@ async fn manager_suggests_replies_without_mutating_session() {
             .expect("message lookup should succeed")
             .is_empty()
     );
+}
+
+#[tokio::test]
+async fn manager_uses_story_concept_when_planned_story_is_blank_for_draft_start() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{}",
+            Some(json!({
+                "nodes": [
+                    {
+                        "id": "dock",
+                        "title": "Flooded Dock",
+                        "scene": "A flooded dock at dusk.",
+                        "goal": "Decide whether to trust the merchant.",
+                        "characters": ["merchant"],
+                        "transitions": [],
+                        "on_enter_updates": []
+                    }
+                ],
+                "transition_patches": [],
+                "section_summary": "The courier reaches the flooded dock.",
+                "start_node": "dock",
+                "world_state_schema": { "fields": {} },
+                "player_state_schema": { "fields": {} },
+                "introduction": "The courier arrives at the flooded dock."
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story(&store).await;
+
+    let mut resources = store
+        .get_story_resources("resource-1")
+        .await
+        .expect("resource lookup should succeed")
+        .expect("resource should exist");
+    resources.planned_story = Some("  \n\t".to_owned());
+    store
+        .save_story_resources(resources)
+        .await
+        .expect("save resources");
+
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()))
+        .await
+        .expect("manager should build");
+    let draft = manager
+        .start_story_draft("resource-1", None, None, None)
+        .await
+        .expect("draft should start");
+
+    assert_eq!(draft.planned_story, "A flooded harbor story.");
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 1);
+    assert!(user_message_content(&requests[0]).contains("PLANNED_STORY:\nA flooded harbor story."));
 }
 
 #[tokio::test]
@@ -372,7 +497,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
     let store = Arc::new(InMemoryStore::new());
     seed_story(&store).await;
 
-    let manager = EngineManager::new(store.clone(), registry(llm.clone()), Some(sample_api_ids()))
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()))
         .await
         .expect("manager should build");
 
@@ -381,7 +506,7 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
             "story-1",
             Some("Run A".to_owned()),
             Some("profile-courier-a".to_owned()),
-            SessionConfigMode::UseGlobal,
+            None,
             None,
         )
         .await
@@ -391,18 +516,14 @@ async fn manager_runs_turn_and_keeps_sessions_isolated() {
             "story-1",
             Some("Run B".to_owned()),
             Some("profile-courier-b".to_owned()),
-            SessionConfigMode::UseGlobal,
+            None,
             None,
         )
         .await
         .expect("session should start");
 
     let mut stream = manager
-        .run_turn_stream(
-            &session_a.session_id,
-            "Open the canal gate.".to_owned(),
-            None,
-        )
+        .run_turn_stream(&session_a.session_id, "Open the canal gate.".to_owned())
         .await
         .expect("turn stream should start");
 

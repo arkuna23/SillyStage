@@ -13,7 +13,9 @@ use protocol::{
 use serde_json::json;
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use store::{
-    CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord, SchemaRecord, StoryRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
+    CharacterCardRecord, LlmProvider, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
+    SchemaRecord, StoryRecord,
 };
 use story::{NarrativeNode, StoryGraph};
 
@@ -225,6 +227,55 @@ pub fn sample_story_record(
         introduction: sample_story_payload("resource-1", story_id).introduction,
         created_at_ms: Some(1_000),
         updated_at_ms: Some(2_000),
+    }
+}
+
+pub fn sample_api_record(api_id: &str, model_suffix: &str) -> ApiRecord {
+    ApiRecord {
+        api_id: api_id.to_owned(),
+        display_name: format!("API {api_id}"),
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: format!("sk-{model_suffix}-{api_id}"),
+        model: format!("{api_id}-{model_suffix}-model"),
+    }
+}
+
+pub fn sample_api_group_record(api_group_id: &str, model_suffix: &str) -> ApiGroupRecord {
+    ApiGroupRecord {
+        api_group_id: api_group_id.to_owned(),
+        display_name: format!("Group {api_group_id}"),
+        agents: ApiGroupAgentBindings {
+            planner_api_id: format!("{model_suffix}-planner"),
+            architect_api_id: format!("{model_suffix}-architect"),
+            director_api_id: format!("{model_suffix}-director"),
+            actor_api_id: format!("{model_suffix}-actor"),
+            narrator_api_id: format!("{model_suffix}-narrator"),
+            keeper_api_id: format!("{model_suffix}-keeper"),
+            replyer_api_id: format!("{model_suffix}-replyer"),
+        },
+    }
+}
+
+pub fn sample_preset_record(preset_id: &str, token_base: u32) -> PresetRecord {
+    let config = |offset: u32| AgentPresetConfig {
+        temperature: Some(0.1 + (offset as f32 * 0.05)),
+        max_tokens: Some(token_base + offset * 64),
+        extra: None,
+    };
+
+    PresetRecord {
+        preset_id: preset_id.to_owned(),
+        display_name: format!("Preset {preset_id}"),
+        agents: PresetAgentConfigs {
+            planner: config(0),
+            architect: config(1),
+            director: config(2),
+            actor: config(3),
+            narrator: config(4),
+            keeper: config(5),
+            replyer: config(6),
+        },
     }
 }
 

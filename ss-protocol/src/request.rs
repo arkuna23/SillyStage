@@ -1,15 +1,16 @@
+use crate::api::{ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiListParams, ApiUpdateParams};
+use crate::api_group::{
+    ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
+    ApiGroupUpdateParams,
+};
 use crate::character::{CharacterCardContent, CharacterCoverMimeType};
-use crate::config::{
-    ConfigGetGlobalParams, ConfigUpdateGlobalParams, SessionGetConfigParams,
-    SessionUpdateConfigParams,
-};
-use crate::default_llm_config::{DefaultLlmConfigGetParams, DefaultLlmConfigUpdateParams};
-use crate::llm_api::{
-    LlmApiCreateParams, LlmApiDeleteParams, LlmApiGetParams, LlmApiListParams, LlmApiUpdateParams,
-};
+use crate::config::{ConfigGetGlobalParams, SessionGetConfigParams, SessionUpdateConfigParams};
 use crate::player_profile::{
     PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
     PlayerProfileListParams, PlayerProfileUpdateParams,
+};
+use crate::preset::{
+    PresetCreateParams, PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams,
 };
 use crate::reply_suggestion::SuggestRepliesParams;
 use crate::schema::{
@@ -19,9 +20,10 @@ use crate::session_message::{
     CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
     ListSessionMessagesParams, UpdateSessionMessageParams,
 };
-use engine::{AgentApiIdOverrides, AgentApiIds, SessionConfigMode};
+use crate::session_variable::{GetSessionVariablesParams, UpdateSessionVariablesParams};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use story::StoryGraph;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
@@ -31,6 +33,36 @@ pub enum RequestMethod {
     UploadChunk,
     #[serde(rename = "upload.complete")]
     UploadComplete,
+    #[serde(rename = "api.create")]
+    ApiCreate,
+    #[serde(rename = "api.get")]
+    ApiGet,
+    #[serde(rename = "api.list")]
+    ApiList,
+    #[serde(rename = "api.update")]
+    ApiUpdate,
+    #[serde(rename = "api.delete")]
+    ApiDelete,
+    #[serde(rename = "api_group.create")]
+    ApiGroupCreate,
+    #[serde(rename = "api_group.get")]
+    ApiGroupGet,
+    #[serde(rename = "api_group.list")]
+    ApiGroupList,
+    #[serde(rename = "api_group.update")]
+    ApiGroupUpdate,
+    #[serde(rename = "api_group.delete")]
+    ApiGroupDelete,
+    #[serde(rename = "preset.create")]
+    PresetCreate,
+    #[serde(rename = "preset.get")]
+    PresetGet,
+    #[serde(rename = "preset.list")]
+    PresetList,
+    #[serde(rename = "preset.update")]
+    PresetUpdate,
+    #[serde(rename = "preset.delete")]
+    PresetDelete,
     #[serde(rename = "schema.create")]
     SchemaCreate,
     #[serde(rename = "schema.get")]
@@ -85,6 +117,8 @@ pub enum RequestMethod {
     StoryGet,
     #[serde(rename = "story.update")]
     StoryUpdate,
+    #[serde(rename = "story.update_graph")]
+    StoryUpdateGraph,
     #[serde(rename = "story.list")]
     StoryList,
     #[serde(rename = "story.delete")]
@@ -95,6 +129,8 @@ pub enum RequestMethod {
     StoryDraftGet,
     #[serde(rename = "story_draft.list")]
     StoryDraftList,
+    #[serde(rename = "story_draft.update_graph")]
+    StoryDraftUpdateGraph,
     #[serde(rename = "story_draft.continue")]
     StoryDraftContinue,
     #[serde(rename = "story_draft.finalize")]
@@ -123,6 +159,10 @@ pub enum RequestMethod {
     SessionMessageDelete,
     #[serde(rename = "session.run_turn")]
     SessionRunTurn,
+    #[serde(rename = "session.get_variables")]
+    SessionGetVariables,
+    #[serde(rename = "session.update_variables")]
+    SessionUpdateVariables,
     #[serde(rename = "session.suggest_replies")]
     SessionSuggestReplies,
     #[serde(rename = "session.set_player_profile")]
@@ -133,26 +173,10 @@ pub enum RequestMethod {
     SessionGetRuntimeSnapshot,
     #[serde(rename = "config.get_global")]
     ConfigGetGlobal,
-    #[serde(rename = "config.update_global")]
-    ConfigUpdateGlobal,
     #[serde(rename = "session.get_config")]
     SessionGetConfig,
     #[serde(rename = "session.update_config")]
     SessionUpdateConfig,
-    #[serde(rename = "llm_api.create")]
-    LlmApiCreate,
-    #[serde(rename = "llm_api.get")]
-    LlmApiGet,
-    #[serde(rename = "llm_api.list")]
-    LlmApiList,
-    #[serde(rename = "llm_api.update")]
-    LlmApiUpdate,
-    #[serde(rename = "llm_api.delete")]
-    LlmApiDelete,
-    #[serde(rename = "default_llm_config.get")]
-    DefaultLlmConfigGet,
-    #[serde(rename = "default_llm_config.update")]
-    DefaultLlmConfigUpdate,
     #[serde(rename = "dashboard.get")]
     DashboardGet,
 }
@@ -162,6 +186,21 @@ pub enum RequestParams {
     UploadInit(UploadInitParams),
     UploadChunk(UploadChunkParams),
     UploadComplete(UploadCompleteParams),
+    ApiCreate(ApiCreateParams),
+    ApiGet(ApiGetParams),
+    ApiList(ApiListParams),
+    ApiUpdate(ApiUpdateParams),
+    ApiDelete(ApiDeleteParams),
+    ApiGroupCreate(ApiGroupCreateParams),
+    ApiGroupGet(ApiGroupGetParams),
+    ApiGroupList(ApiGroupListParams),
+    ApiGroupUpdate(ApiGroupUpdateParams),
+    ApiGroupDelete(ApiGroupDeleteParams),
+    PresetCreate(PresetCreateParams),
+    PresetGet(PresetGetParams),
+    PresetList(PresetListParams),
+    PresetUpdate(PresetUpdateParams),
+    PresetDelete(PresetDeleteParams),
     SchemaCreate(SchemaCreateParams),
     SchemaGet(SchemaGetParams),
     SchemaList(SchemaListParams),
@@ -189,11 +228,13 @@ pub enum RequestParams {
     StoryGenerate(GenerateStoryParams),
     StoryGet(GetStoryParams),
     StoryUpdate(UpdateStoryParams),
+    StoryUpdateGraph(UpdateStoryGraphParams),
     StoryList(ListStoriesParams),
     StoryDelete(DeleteStoryParams),
     StoryDraftStart(StartStoryDraftParams),
     StoryDraftGet(GetStoryDraftParams),
     StoryDraftList(ListStoryDraftsParams),
+    StoryDraftUpdateGraph(UpdateStoryDraftGraphParams),
     StoryDraftContinue(ContinueStoryDraftParams),
     StoryDraftFinalize(FinalizeStoryDraftParams),
     StoryDraftDelete(DeleteStoryDraftParams),
@@ -208,21 +249,15 @@ pub enum RequestParams {
     SessionMessageUpdate(UpdateSessionMessageParams),
     SessionMessageDelete(DeleteSessionMessageParams),
     SessionRunTurn(RunTurnParams),
+    SessionGetVariables(GetSessionVariablesParams),
+    SessionUpdateVariables(UpdateSessionVariablesParams),
     SessionSuggestReplies(SuggestRepliesParams),
     SessionSetPlayerProfile(SetPlayerProfileParams),
     SessionUpdatePlayerDescription(UpdatePlayerDescriptionParams),
     SessionGetRuntimeSnapshot(GetRuntimeSnapshotParams),
     ConfigGetGlobal(ConfigGetGlobalParams),
-    ConfigUpdateGlobal(ConfigUpdateGlobalParams),
     SessionGetConfig(SessionGetConfigParams),
     SessionUpdateConfig(SessionUpdateConfigParams),
-    LlmApiCreate(LlmApiCreateParams),
-    LlmApiGet(LlmApiGetParams),
-    LlmApiList(LlmApiListParams),
-    LlmApiUpdate(LlmApiUpdateParams),
-    LlmApiDelete(LlmApiDeleteParams),
-    DefaultLlmConfigGet(DefaultLlmConfigGetParams),
-    DefaultLlmConfigUpdate(DefaultLlmConfigUpdateParams),
     DashboardGet(DashboardGetParams),
 }
 
@@ -232,6 +267,21 @@ impl RequestParams {
             Self::UploadInit(_) => RequestMethod::UploadInit,
             Self::UploadChunk(_) => RequestMethod::UploadChunk,
             Self::UploadComplete(_) => RequestMethod::UploadComplete,
+            Self::ApiCreate(_) => RequestMethod::ApiCreate,
+            Self::ApiGet(_) => RequestMethod::ApiGet,
+            Self::ApiList(_) => RequestMethod::ApiList,
+            Self::ApiUpdate(_) => RequestMethod::ApiUpdate,
+            Self::ApiDelete(_) => RequestMethod::ApiDelete,
+            Self::ApiGroupCreate(_) => RequestMethod::ApiGroupCreate,
+            Self::ApiGroupGet(_) => RequestMethod::ApiGroupGet,
+            Self::ApiGroupList(_) => RequestMethod::ApiGroupList,
+            Self::ApiGroupUpdate(_) => RequestMethod::ApiGroupUpdate,
+            Self::ApiGroupDelete(_) => RequestMethod::ApiGroupDelete,
+            Self::PresetCreate(_) => RequestMethod::PresetCreate,
+            Self::PresetGet(_) => RequestMethod::PresetGet,
+            Self::PresetList(_) => RequestMethod::PresetList,
+            Self::PresetUpdate(_) => RequestMethod::PresetUpdate,
+            Self::PresetDelete(_) => RequestMethod::PresetDelete,
             Self::SchemaCreate(_) => RequestMethod::SchemaCreate,
             Self::SchemaGet(_) => RequestMethod::SchemaGet,
             Self::SchemaList(_) => RequestMethod::SchemaList,
@@ -259,11 +309,13 @@ impl RequestParams {
             Self::StoryGenerate(_) => RequestMethod::StoryGenerate,
             Self::StoryGet(_) => RequestMethod::StoryGet,
             Self::StoryUpdate(_) => RequestMethod::StoryUpdate,
+            Self::StoryUpdateGraph(_) => RequestMethod::StoryUpdateGraph,
             Self::StoryList(_) => RequestMethod::StoryList,
             Self::StoryDelete(_) => RequestMethod::StoryDelete,
             Self::StoryDraftStart(_) => RequestMethod::StoryDraftStart,
             Self::StoryDraftGet(_) => RequestMethod::StoryDraftGet,
             Self::StoryDraftList(_) => RequestMethod::StoryDraftList,
+            Self::StoryDraftUpdateGraph(_) => RequestMethod::StoryDraftUpdateGraph,
             Self::StoryDraftContinue(_) => RequestMethod::StoryDraftContinue,
             Self::StoryDraftFinalize(_) => RequestMethod::StoryDraftFinalize,
             Self::StoryDraftDelete(_) => RequestMethod::StoryDraftDelete,
@@ -278,6 +330,8 @@ impl RequestParams {
             Self::SessionMessageUpdate(_) => RequestMethod::SessionMessageUpdate,
             Self::SessionMessageDelete(_) => RequestMethod::SessionMessageDelete,
             Self::SessionRunTurn(_) => RequestMethod::SessionRunTurn,
+            Self::SessionGetVariables(_) => RequestMethod::SessionGetVariables,
+            Self::SessionUpdateVariables(_) => RequestMethod::SessionUpdateVariables,
             Self::SessionSuggestReplies(_) => RequestMethod::SessionSuggestReplies,
             Self::SessionSetPlayerProfile(_) => RequestMethod::SessionSetPlayerProfile,
             Self::SessionUpdatePlayerDescription(_) => {
@@ -285,16 +339,8 @@ impl RequestParams {
             }
             Self::SessionGetRuntimeSnapshot(_) => RequestMethod::SessionGetRuntimeSnapshot,
             Self::ConfigGetGlobal(_) => RequestMethod::ConfigGetGlobal,
-            Self::ConfigUpdateGlobal(_) => RequestMethod::ConfigUpdateGlobal,
             Self::SessionGetConfig(_) => RequestMethod::SessionGetConfig,
             Self::SessionUpdateConfig(_) => RequestMethod::SessionUpdateConfig,
-            Self::LlmApiCreate(_) => RequestMethod::LlmApiCreate,
-            Self::LlmApiGet(_) => RequestMethod::LlmApiGet,
-            Self::LlmApiList(_) => RequestMethod::LlmApiList,
-            Self::LlmApiUpdate(_) => RequestMethod::LlmApiUpdate,
-            Self::LlmApiDelete(_) => RequestMethod::LlmApiDelete,
-            Self::DefaultLlmConfigGet(_) => RequestMethod::DefaultLlmConfigGet,
-            Self::DefaultLlmConfigUpdate(_) => RequestMethod::DefaultLlmConfigUpdate,
             Self::DashboardGet(_) => RequestMethod::DashboardGet,
         }
     }
@@ -304,6 +350,21 @@ impl RequestParams {
             Self::UploadInit(params) => serde_json::to_value(params),
             Self::UploadChunk(params) => serde_json::to_value(params),
             Self::UploadComplete(params) => serde_json::to_value(params),
+            Self::ApiCreate(params) => serde_json::to_value(params),
+            Self::ApiGet(params) => serde_json::to_value(params),
+            Self::ApiList(params) => serde_json::to_value(params),
+            Self::ApiUpdate(params) => serde_json::to_value(params),
+            Self::ApiDelete(params) => serde_json::to_value(params),
+            Self::ApiGroupCreate(params) => serde_json::to_value(params),
+            Self::ApiGroupGet(params) => serde_json::to_value(params),
+            Self::ApiGroupList(params) => serde_json::to_value(params),
+            Self::ApiGroupUpdate(params) => serde_json::to_value(params),
+            Self::ApiGroupDelete(params) => serde_json::to_value(params),
+            Self::PresetCreate(params) => serde_json::to_value(params),
+            Self::PresetGet(params) => serde_json::to_value(params),
+            Self::PresetList(params) => serde_json::to_value(params),
+            Self::PresetUpdate(params) => serde_json::to_value(params),
+            Self::PresetDelete(params) => serde_json::to_value(params),
             Self::SchemaCreate(params) => serde_json::to_value(params),
             Self::SchemaGet(params) => serde_json::to_value(params),
             Self::SchemaList(params) => serde_json::to_value(params),
@@ -331,11 +392,13 @@ impl RequestParams {
             Self::StoryGenerate(params) => serde_json::to_value(params),
             Self::StoryGet(params) => serde_json::to_value(params),
             Self::StoryUpdate(params) => serde_json::to_value(params),
+            Self::StoryUpdateGraph(params) => serde_json::to_value(params),
             Self::StoryList(params) => serde_json::to_value(params),
             Self::StoryDelete(params) => serde_json::to_value(params),
             Self::StoryDraftStart(params) => serde_json::to_value(params),
             Self::StoryDraftGet(params) => serde_json::to_value(params),
             Self::StoryDraftList(params) => serde_json::to_value(params),
+            Self::StoryDraftUpdateGraph(params) => serde_json::to_value(params),
             Self::StoryDraftContinue(params) => serde_json::to_value(params),
             Self::StoryDraftFinalize(params) => serde_json::to_value(params),
             Self::StoryDraftDelete(params) => serde_json::to_value(params),
@@ -350,21 +413,15 @@ impl RequestParams {
             Self::SessionMessageUpdate(params) => serde_json::to_value(params),
             Self::SessionMessageDelete(params) => serde_json::to_value(params),
             Self::SessionRunTurn(params) => serde_json::to_value(params),
+            Self::SessionGetVariables(params) => serde_json::to_value(params),
+            Self::SessionUpdateVariables(params) => serde_json::to_value(params),
             Self::SessionSuggestReplies(params) => serde_json::to_value(params),
             Self::SessionSetPlayerProfile(params) => serde_json::to_value(params),
             Self::SessionUpdatePlayerDescription(params) => serde_json::to_value(params),
             Self::SessionGetRuntimeSnapshot(params) => serde_json::to_value(params),
             Self::ConfigGetGlobal(params) => serde_json::to_value(params),
-            Self::ConfigUpdateGlobal(params) => serde_json::to_value(params),
             Self::SessionGetConfig(params) => serde_json::to_value(params),
             Self::SessionUpdateConfig(params) => serde_json::to_value(params),
-            Self::LlmApiCreate(params) => serde_json::to_value(params),
-            Self::LlmApiGet(params) => serde_json::to_value(params),
-            Self::LlmApiList(params) => serde_json::to_value(params),
-            Self::LlmApiUpdate(params) => serde_json::to_value(params),
-            Self::LlmApiDelete(params) => serde_json::to_value(params),
-            Self::DefaultLlmConfigGet(params) => serde_json::to_value(params),
-            Self::DefaultLlmConfigUpdate(params) => serde_json::to_value(params),
             Self::DashboardGet(params) => serde_json::to_value(params),
         }
     }
@@ -379,6 +436,27 @@ impl RequestParams {
             RequestMethod::UploadComplete => {
                 serde_json::from_value(value).map(Self::UploadComplete)
             }
+            RequestMethod::ApiCreate => serde_json::from_value(value).map(Self::ApiCreate),
+            RequestMethod::ApiGet => serde_json::from_value(value).map(Self::ApiGet),
+            RequestMethod::ApiList => serde_json::from_value(value).map(Self::ApiList),
+            RequestMethod::ApiUpdate => serde_json::from_value(value).map(Self::ApiUpdate),
+            RequestMethod::ApiDelete => serde_json::from_value(value).map(Self::ApiDelete),
+            RequestMethod::ApiGroupCreate => {
+                serde_json::from_value(value).map(Self::ApiGroupCreate)
+            }
+            RequestMethod::ApiGroupGet => serde_json::from_value(value).map(Self::ApiGroupGet),
+            RequestMethod::ApiGroupList => serde_json::from_value(value).map(Self::ApiGroupList),
+            RequestMethod::ApiGroupUpdate => {
+                serde_json::from_value(value).map(Self::ApiGroupUpdate)
+            }
+            RequestMethod::ApiGroupDelete => {
+                serde_json::from_value(value).map(Self::ApiGroupDelete)
+            }
+            RequestMethod::PresetCreate => serde_json::from_value(value).map(Self::PresetCreate),
+            RequestMethod::PresetGet => serde_json::from_value(value).map(Self::PresetGet),
+            RequestMethod::PresetList => serde_json::from_value(value).map(Self::PresetList),
+            RequestMethod::PresetUpdate => serde_json::from_value(value).map(Self::PresetUpdate),
+            RequestMethod::PresetDelete => serde_json::from_value(value).map(Self::PresetDelete),
             RequestMethod::SchemaCreate => serde_json::from_value(value).map(Self::SchemaCreate),
             RequestMethod::SchemaGet => serde_json::from_value(value).map(Self::SchemaGet),
             RequestMethod::SchemaList => serde_json::from_value(value).map(Self::SchemaList),
@@ -440,6 +518,9 @@ impl RequestParams {
             RequestMethod::StoryGenerate => serde_json::from_value(value).map(Self::StoryGenerate),
             RequestMethod::StoryGet => serde_json::from_value(value).map(Self::StoryGet),
             RequestMethod::StoryUpdate => serde_json::from_value(value).map(Self::StoryUpdate),
+            RequestMethod::StoryUpdateGraph => {
+                serde_json::from_value(value).map(Self::StoryUpdateGraph)
+            }
             RequestMethod::StoryList => serde_json::from_value(value).map(Self::StoryList),
             RequestMethod::StoryDelete => serde_json::from_value(value).map(Self::StoryDelete),
             RequestMethod::StoryDraftStart => {
@@ -448,6 +529,9 @@ impl RequestParams {
             RequestMethod::StoryDraftGet => serde_json::from_value(value).map(Self::StoryDraftGet),
             RequestMethod::StoryDraftList => {
                 serde_json::from_value(value).map(Self::StoryDraftList)
+            }
+            RequestMethod::StoryDraftUpdateGraph => {
+                serde_json::from_value(value).map(Self::StoryDraftUpdateGraph)
             }
             RequestMethod::StoryDraftContinue => {
                 serde_json::from_value(value).map(Self::StoryDraftContinue)
@@ -483,6 +567,12 @@ impl RequestParams {
             RequestMethod::SessionRunTurn => {
                 serde_json::from_value(value).map(Self::SessionRunTurn)
             }
+            RequestMethod::SessionGetVariables => {
+                serde_json::from_value(value).map(Self::SessionGetVariables)
+            }
+            RequestMethod::SessionUpdateVariables => {
+                serde_json::from_value(value).map(Self::SessionUpdateVariables)
+            }
             RequestMethod::SessionSuggestReplies => {
                 serde_json::from_value(value).map(Self::SessionSuggestReplies)
             }
@@ -498,25 +588,11 @@ impl RequestParams {
             RequestMethod::ConfigGetGlobal => {
                 serde_json::from_value(value).map(Self::ConfigGetGlobal)
             }
-            RequestMethod::ConfigUpdateGlobal => {
-                serde_json::from_value(value).map(Self::ConfigUpdateGlobal)
-            }
             RequestMethod::SessionGetConfig => {
                 serde_json::from_value(value).map(Self::SessionGetConfig)
             }
             RequestMethod::SessionUpdateConfig => {
                 serde_json::from_value(value).map(Self::SessionUpdateConfig)
-            }
-            RequestMethod::LlmApiCreate => serde_json::from_value(value).map(Self::LlmApiCreate),
-            RequestMethod::LlmApiGet => serde_json::from_value(value).map(Self::LlmApiGet),
-            RequestMethod::LlmApiList => serde_json::from_value(value).map(Self::LlmApiList),
-            RequestMethod::LlmApiUpdate => serde_json::from_value(value).map(Self::LlmApiUpdate),
-            RequestMethod::LlmApiDelete => serde_json::from_value(value).map(Self::LlmApiDelete),
-            RequestMethod::DefaultLlmConfigGet => {
-                serde_json::from_value(value).map(Self::DefaultLlmConfigGet)
-            }
-            RequestMethod::DefaultLlmConfigUpdate => {
-                serde_json::from_value(value).map(Self::DefaultLlmConfigUpdate)
             }
             RequestMethod::DashboardGet => serde_json::from_value(value).map(Self::DashboardGet),
         }
@@ -658,7 +734,9 @@ pub struct DeleteStoryResourcesParams {
 pub struct GenerateStoryPlanParams {
     pub resource_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub planner_api_id: Option<String>,
+    pub api_group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -668,7 +746,9 @@ pub struct GenerateStoryParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub architect_api_id: Option<String>,
+    pub api_group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -682,6 +762,13 @@ pub struct GetStoryParams {
 pub struct UpdateStoryParams {
     pub story_id: String,
     pub display_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateStoryGraphParams {
+    pub story_id: String,
+    pub graph: StoryGraph,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -701,7 +788,9 @@ pub struct StartStoryDraftParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub architect_api_id: Option<String>,
+    pub api_group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -714,12 +803,17 @@ pub struct GetStoryDraftParams {
 #[serde(deny_unknown_fields)]
 pub struct ListStoryDraftsParams {}
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UpdateStoryDraftGraphParams {
+    pub draft_id: String,
+    pub partial_graph: StoryGraph,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct ContinueStoryDraftParams {
     pub draft_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub architect_api_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -742,10 +836,10 @@ pub struct StartSessionFromStoryParams {
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub player_profile_id: Option<String>,
-    #[serde(default)]
-    pub config_mode: SessionConfigMode,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_api_ids: Option<AgentApiIds>,
+    pub api_group_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -770,8 +864,6 @@ pub struct DeleteSessionParams {}
 #[serde(deny_unknown_fields)]
 pub struct RunTurnParams {
     pub player_input: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api_overrides: Option<AgentApiIdOverrides>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

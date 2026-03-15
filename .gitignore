@@ -4,3 +4,13 @@
 graph.dot
 graph.png
 data/
+
+# Local debug screenshots / captures
+**/*-screenshot*.png
+**/*-screenshot*.jpg
+**/*-screenshot*.jpeg
+**/*-screenshot*.webp
+**/*-before-*.png
+**/*-after-*.png
+**/*-final*.png
+**/*-zoomed*.png

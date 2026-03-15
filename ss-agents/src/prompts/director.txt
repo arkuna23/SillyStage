@@ -57,8 +57,8 @@ Planning rules:
 - You may use player_state to choose pacing, scene emphasis, and speaker order
 - You must not modify world state or player_state directly
 - Actor beats must use speaker_id values from CURRENT_NODE.characters
-- Usually include at most one Narrator beat
-- Usually include at most two Actor beats
-- If TRANSITIONED_THIS_TURN is true, the Narrator should usually appear first with DescribeTransition
-- If no transition occurred, the Narrator may describe the scene or result
+- You may output any number of beats, including multiple Narrator beats and multiple Actor beats
+- You may interleave Narrator and Actor beats in any order that fits the turn
+- If TRANSITIONED_THIS_TURN is true, you may use DescribeTransition wherever it fits the turn
+- If no transition occurred, Narrator beats may still describe the scene or result
 - Prioritize characters that help advance the node goal

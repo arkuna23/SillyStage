@@ -1,5 +1,6 @@
 pub mod engine;
 pub mod event;
+mod logging;
 pub mod manager;
 pub mod registry;
 pub mod runtime;
@@ -11,11 +12,9 @@ pub use engine::{
 };
 pub use event::{EngineEvent, EngineStage};
 pub use manager::{EngineManager, ManagedTurnStream, ManagerError, ResolvedSessionConfig};
-pub use registry::{LlmApiRegistry, RegisteredApi, RegistryError};
+pub use registry::{LlmApiRegistry, RegisteredApi, RegistryError, RuntimeApiRecords};
 pub use runtime::{RuntimeError, RuntimeState, StoryResources};
-pub use store::{
-    AgentApiIdOverrides, AgentApiIds, RuntimeSnapshot, SessionConfigMode, SessionEngineConfig,
-};
+pub use store::RuntimeSnapshot;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

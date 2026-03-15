@@ -4,11 +4,7 @@ use protocol::{
     ConfigGetGlobalParams, JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams,
 };
 use ss_app::app::build_router;
-use ss_app::config::{
-    AppConfig, FrontendConfig, LlmApiConfig, LlmConfig, LlmProvider, ServerConfig, StoreBackend,
-    StoreConfig,
-};
-use store::AgentApiIds;
+use ss_app::config::{AppConfig, FrontendConfig, ServerConfig, StoreBackend, StoreConfig};
 use tower::util::ServiceExt;
 
 fn app_config() -> AppConfig {
@@ -25,31 +21,6 @@ fn app_config() -> AppConfig {
             enabled: true,
             mount_path: "/".to_owned(),
             static_dir: None,
-        },
-        llm: LlmConfig {
-            apis: [(
-                "default".to_owned(),
-                LlmApiConfig {
-                    provider: LlmProvider::OpenAi,
-                    base_url: "http://localhost:11434/v1".to_owned(),
-                    api_key: "demo-key".to_owned(),
-                    model: "demo-model".to_owned(),
-                    temperature: None,
-                    max_tokens: None,
-                },
-            )]
-            .into_iter()
-            .collect(),
-            defaults: Some(AgentApiIds {
-                planner_api_id: "default".to_owned(),
-                architect_api_id: "default".to_owned(),
-                director_api_id: "default".to_owned(),
-                actor_api_id: "default".to_owned(),
-                narrator_api_id: "default".to_owned(),
-                keeper_api_id: "default".to_owned(),
-                replyer_api_id: "default".to_owned(),
-            }),
-            default_config: None,
         },
     }
 }

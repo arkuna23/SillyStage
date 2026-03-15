@@ -311,15 +311,17 @@ impl Director {
     ) -> ResponsePlan {
         let mut plan = ResponsePlan::new();
 
-        plan.add_beat(ResponseBeat::Narrator {
-            purpose: if transitioned {
-                NarratorPurpose::DescribeTransition
-            } else {
-                NarratorPurpose::DescribeScene
-            },
-        });
+        if transitioned || node.characters.is_empty() {
+            plan.add_beat(ResponseBeat::Narrator {
+                purpose: if transitioned {
+                    NarratorPurpose::DescribeTransition
+                } else {
+                    NarratorPurpose::DescribeScene
+                },
+            });
+        }
 
-        for (idx, character) in node.characters.iter().take(2).enumerate() {
+        for (idx, character) in node.characters.iter().enumerate() {
             plan.add_beat(ResponseBeat::Actor {
                 speaker_id: character.clone(),
                 purpose: if idx == 0 {

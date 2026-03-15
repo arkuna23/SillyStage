@@ -4,103 +4,71 @@ use std::sync::Arc;
 
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
-use engine::{AgentApiIdOverrides, AgentApiIds, LlmApiRegistry, SessionConfigMode};
+use engine::LlmApiRegistry;
 use futures_util::StreamExt;
 use protocol::{
-    CharacterArchive, CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams,
-    CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterSetCoverParams,
-    CharacterUpdateParams, ConfigGetGlobalParams, ConfigUpdateGlobalParams,
+    ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
+    ApiGroupUpdateParams, CharacterArchive, CharacterCardContent, CharacterCoverMimeType,
+    CharacterCreateParams, CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams,
+    CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
     CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams,
-    DefaultLlmConfigGetParams, DefaultLlmConfigUpdateParams, DeleteSessionMessageParams,
-    DeleteSessionParams, ErrorCode, GenerateStoryParams, GetSessionMessageParams, GetSessionParams,
-    GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams,
-    LlmApiCreateParams, LlmApiDeleteParams, LlmApiGetParams, LlmApiUpdateParams, RequestParams,
+    DeleteSessionMessageParams, DeleteSessionParams, ErrorCode, GenerateStoryParams,
+    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryResourcesParams,
+    JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams, PresetCreateParams,
+    PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams,
     ResponseResult, RunTurnParams, SessionMessageKind, SessionUpdateConfigParams,
     StartSessionFromStoryParams, StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams,
-    UpdateSessionMessageParams, UpdateSessionParams, UpdateStoryParams, UploadChunkParams,
-    UploadCompleteParams, UploadInitParams, UploadTargetKind,
+    UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
+    UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
+    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
+    UploadTargetKind,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
+use state::{StateOp, StateUpdate};
 use store::{
-    InMemoryStore, LlmApiRecord, LlmProvider, SessionConfigMode as StoreSessionConfigMode,
-    SessionEngineConfig, SessionRecord, Store, StoryRecord, StoryResourcesRecord,
+    InMemoryStore, SessionBindingConfig, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus,
+    StoryRecord, StoryResourcesRecord,
 };
+use story::NarrativeNode;
 
 use common::{
-    QueuedMockLlm, assistant_response, sample_archive, sample_character_content,
-    sample_character_record, sample_player_profile, sample_player_state_schema,
-    sample_schema_record, sample_story_graph, sample_story_record, sample_world_state_schema,
+    QueuedMockLlm, assistant_response, sample_api_group_record, sample_api_record, sample_archive,
+    sample_character_content, sample_character_record, sample_player_profile,
+    sample_player_state_schema, sample_preset_record, sample_schema_record, sample_story_graph,
+    sample_story_record, sample_world_state_schema,
 };
 
-fn default_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner-default".to_owned(),
-        architect_api_id: "architect-default".to_owned(),
-        director_api_id: "director-default".to_owned(),
-        actor_api_id: "actor-default".to_owned(),
-        narrator_api_id: "narrator-default".to_owned(),
-        keeper_api_id: "keeper-default".to_owned(),
-        replyer_api_id: "replyer-default".to_owned(),
-    }
-}
-
-fn alternate_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner-alt".to_owned(),
-        architect_api_id: "architect-alt".to_owned(),
-        director_api_id: "director-alt".to_owned(),
-        actor_api_id: "actor-alt".to_owned(),
-        narrator_api_id: "narrator-alt".to_owned(),
-        keeper_api_id: "keeper-alt".to_owned(),
-        replyer_api_id: "replyer-alt".to_owned(),
-    }
-}
-
 fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
-    let default = default_api_ids();
-    let alternate = alternate_api_ids();
     let llm: Arc<dyn llm::LlmApi> = llm;
 
     LlmApiRegistry::new()
-        .register(default.planner_api_id, Arc::clone(&llm), "planner-model")
+        .register("default-planner", Arc::clone(&llm), "planner-default-model")
         .register(
-            default.architect_api_id,
+            "default-architect",
             Arc::clone(&llm),
-            "architect-model",
-        )
-        .register(default.director_api_id, Arc::clone(&llm), "director-model")
-        .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
-        .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")
-        .register(default.keeper_api_id, Arc::clone(&llm), "keeper-model")
-        .register(default.replyer_api_id, Arc::clone(&llm), "replyer-model")
-        .register(
-            alternate.planner_api_id,
-            Arc::clone(&llm),
-            "planner-alt-model",
+            "architect-default-model",
         )
         .register(
-            alternate.architect_api_id,
+            "default-director",
             Arc::clone(&llm),
-            "architect-alt-model",
+            "director-default-model",
         )
+        .register("default-actor", Arc::clone(&llm), "actor-default-model")
         .register(
-            alternate.director_api_id,
+            "default-narrator",
             Arc::clone(&llm),
-            "director-alt-model",
+            "narrator-default-model",
         )
-        .register(alternate.actor_api_id, Arc::clone(&llm), "actor-alt-model")
-        .register(
-            alternate.narrator_api_id,
-            Arc::clone(&llm),
-            "narrator-alt-model",
-        )
-        .register(
-            alternate.keeper_api_id,
-            Arc::clone(&llm),
-            "keeper-alt-model",
-        )
-        .register(alternate.replyer_api_id, llm, "replyer-alt-model")
+        .register("default-keeper", Arc::clone(&llm), "keeper-default-model")
+        .register("default-replyer", Arc::clone(&llm), "replyer-default-model")
+        .register("alt-planner", Arc::clone(&llm), "planner-alt-model")
+        .register("alt-architect", Arc::clone(&llm), "architect-alt-model")
+        .register("alt-director", Arc::clone(&llm), "director-alt-model")
+        .register("alt-actor", Arc::clone(&llm), "actor-alt-model")
+        .register("alt-narrator", Arc::clone(&llm), "narrator-alt-model")
+        .register("alt-keeper", Arc::clone(&llm), "keeper-alt-model")
+        .register("alt-replyer", llm, "replyer-alt-model")
 }
 
 fn unary_result(reply: HandlerReply) -> ResponseResult {
@@ -113,29 +81,62 @@ fn unary_result(reply: HandlerReply) -> ResponseResult {
     }
 }
 
-fn sample_llm_api_record(api_id: &str, model: &str) -> LlmApiRecord {
-    LlmApiRecord {
-        api_id: api_id.to_owned(),
-        provider: LlmProvider::OpenAi,
-        base_url: "https://api.openai.example/v1".to_owned(),
-        api_key: "sk-secret-token".to_owned(),
-        model: model.to_owned(),
-        temperature: Some(0.4),
-        max_tokens: Some(768),
-    }
-}
-
 async fn build_handler(llm: Arc<QueuedMockLlm>) -> (Arc<InMemoryStore>, Handler) {
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
     (store, handler)
+}
+
+async fn seed_api_groups_and_presets(store: &InMemoryStore) {
+    for role in [
+        ("default-planner", "planner-default-model"),
+        ("default-architect", "architect-default-model"),
+        ("default-director", "director-default-model"),
+        ("default-actor", "actor-default-model"),
+        ("default-narrator", "narrator-default-model"),
+        ("default-keeper", "keeper-default-model"),
+        ("default-replyer", "replyer-default-model"),
+    ] {
+        store
+            .save_api(sample_api_record(role.0, "default"))
+            .await
+            .expect("save default api");
+    }
+    store
+        .save_api_group(sample_api_group_record("group-default", "default"))
+        .await
+        .expect("save default api group");
+    store
+        .save_preset(sample_preset_record("preset-default", 512))
+        .await
+        .expect("save default preset");
+}
+
+async fn seed_alternate_api_groups_and_presets(store: &InMemoryStore) {
+    for role in [
+        ("alt-planner", "planner-alt-model"),
+        ("alt-architect", "architect-alt-model"),
+        ("alt-director", "director-alt-model"),
+        ("alt-actor", "actor-alt-model"),
+        ("alt-narrator", "narrator-alt-model"),
+        ("alt-keeper", "keeper-alt-model"),
+        ("alt-replyer", "replyer-alt-model"),
+    ] {
+        store
+            .save_api(sample_api_record(role.0, "alt"))
+            .await
+            .expect("save alternate api");
+    }
+    store
+        .save_api_group(sample_api_group_record("group-alt", "alt"))
+        .await
+        .expect("save alternate api group");
+    store
+        .save_preset(sample_preset_record("preset-alt", 1024))
+        .await
+        .expect("save alternate preset");
 }
 
 async fn seed_schema_records(store: &InMemoryStore) {
@@ -190,6 +191,7 @@ async fn seed_player_profiles(store: &InMemoryStore) {
 async fn seed_story_records(store: &InMemoryStore) {
     seed_schema_records(store).await;
     seed_player_profiles(store).await;
+    seed_api_groups_and_presets(store).await;
     store
         .save_character(sample_character_record())
         .await
@@ -539,6 +541,72 @@ async fn character_create_then_set_cover_enables_cover_and_chr_export() {
 }
 
 #[tokio::test]
+async fn story_resources_blank_planned_story_is_normalized_to_none() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (store, handler) = build_handler(llm).await;
+    seed_schema_records(&store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+
+    let created = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-blank-create",
+                None::<String>,
+                RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    story_concept: "A flooded harbor story.".to_owned(),
+                    character_ids: vec!["merchant".to_owned()],
+                    player_schema_id_seed: Some("schema-player-default".to_owned()),
+                    world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    planned_story: Some("   \n\t".to_owned()),
+                }),
+            ))
+            .await,
+    );
+
+    let resource_id = match created {
+        ResponseResult::StoryResourcesCreated(payload) => {
+            assert_eq!(payload.planned_story, None);
+            payload.resource_id
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let stored = store
+        .get_story_resources(&resource_id)
+        .await
+        .expect("store lookup should succeed")
+        .expect("resource should exist");
+    assert_eq!(stored.planned_story, None);
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-blank-update",
+                None::<String>,
+                RequestParams::StoryResourcesUpdate(UpdateStoryResourcesParams {
+                    resource_id,
+                    story_concept: None,
+                    character_ids: None,
+                    player_schema_id_seed: None,
+                    world_schema_id_seed: None,
+                    planned_story: Some(" \n ".to_owned()),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::StoryResourcesUpdated(payload) => {
+            assert_eq!(payload.planned_story, None);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn character_update_replaces_content_and_preserves_cover() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let (store, handler) = build_handler(llm).await;
@@ -692,19 +760,15 @@ async fn story_and_session_crud_follow_store_objects() {
     let store = Arc::new(InMemoryStore::new());
     seed_schema_records(&store).await;
     seed_player_profiles(&store).await;
+    seed_api_groups_and_presets(&store).await;
     store
         .save_character(sample_character_record())
         .await
         .expect("save character");
 
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm.clone()),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()))
+        .await
+        .expect("handler should build");
 
     let created = unary_result(
         handler
@@ -737,7 +801,8 @@ async fn story_and_session_crud_follow_store_objects() {
                 RequestParams::StoryGenerate(GenerateStoryParams {
                     resource_id,
                     display_name: Some("Flooded Harbor".to_owned()),
-                    architect_api_id: None,
+                    api_group_id: None,
+                    preset_id: None,
                 }),
             ))
             .await,
@@ -758,8 +823,8 @@ async fn story_and_session_crud_follow_store_objects() {
                 story_id: story_id.clone(),
                 display_name: Some("Courier Run".to_owned()),
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -823,14 +888,9 @@ async fn story_update_changes_display_name() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
 
     let updated = unary_result(
         handler
@@ -855,18 +915,252 @@ async fn story_update_changes_display_name() {
 }
 
 #[tokio::test]
+async fn story_update_graph_replaces_story_graph() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let mut graph = sample_story_graph();
+    graph.nodes.push(NarrativeNode::new(
+        "gate",
+        "Canal Gate",
+        "A narrow ledge beside the gate.",
+        "Open the route.",
+        vec!["merchant".to_owned()],
+        vec![],
+        vec![StateOp::SetPlayerState {
+            key: "coins".to_owned(),
+            value: json!(5),
+        }],
+    ));
+    graph.start_node = "gate".to_owned();
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-update-graph",
+                None::<String>,
+                RequestParams::StoryUpdateGraph(UpdateStoryGraphParams {
+                    story_id: "story-1".to_owned(),
+                    graph: graph.clone(),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::Story(payload) => {
+            assert_eq!(payload.story_id, "story-1");
+            assert_eq!(payload.graph.start_node, "gate");
+            assert!(matches!(
+                &payload.graph.nodes[1].on_enter_updates[..],
+                [StateOp::SetPlayerState { key, value }]
+                    if key == "coins" && value == &json!(5)
+            ));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let stored = store
+        .get_story("story-1")
+        .await
+        .expect("story lookup should succeed")
+        .expect("story should exist");
+    assert_eq!(stored.graph.start_node, "gate");
+    assert!(matches!(
+        &stored.graph.nodes[1].on_enter_updates[..],
+        [StateOp::SetPlayerState { key, value }]
+            if key == "coins" && value == &json!(5)
+    ));
+}
+
+#[tokio::test]
+async fn story_update_graph_rejects_invalid_graph() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let mut graph = sample_story_graph();
+    graph.start_node = "missing".to_owned();
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-update-graph-invalid",
+            None::<String>,
+            RequestParams::StoryUpdateGraph(UpdateStoryGraphParams {
+                story_id: "story-1".to_owned(),
+                graph,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("start node")
+    ));
+}
+
+#[tokio::test]
+async fn story_draft_update_graph_replaces_partial_graph() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    store
+        .save_story_draft(StoryDraftRecord {
+            draft_id: "draft-1".to_owned(),
+            display_name: "Flooded Harbor Draft".to_owned(),
+            resource_id: "resource-1".to_owned(),
+            api_group_id: "group-default".to_owned(),
+            preset_id: "preset-default".to_owned(),
+            planned_story: "Opening section".to_owned(),
+            outline_sections: vec!["Opening section".to_owned()],
+            next_section_index: 0,
+            partial_graph: sample_story_graph(),
+            world_schema_id: "schema-world-default".to_owned(),
+            player_schema_id: "schema-player-default".to_owned(),
+            introduction: "Draft intro".to_owned(),
+            section_summaries: vec![],
+            section_node_ids: vec![],
+            status: StoryDraftStatus::Building,
+            final_story_id: None,
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(2_000),
+        })
+        .await
+        .expect("save draft");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let mut partial_graph = sample_story_graph();
+    partial_graph.nodes.push(NarrativeNode::new(
+        "gate",
+        "Canal Gate",
+        "A narrow ledge beside the gate.",
+        "Open the route.",
+        vec!["merchant".to_owned()],
+        vec![],
+        vec![StateOp::SetState {
+            key: "gate_open".to_owned(),
+            value: json!(true),
+        }],
+    ));
+    partial_graph.start_node = "gate".to_owned();
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-draft-update-graph",
+                None::<String>,
+                RequestParams::StoryDraftUpdateGraph(UpdateStoryDraftGraphParams {
+                    draft_id: "draft-1".to_owned(),
+                    partial_graph: partial_graph.clone(),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::StoryDraft(payload) => {
+            assert_eq!(payload.draft_id, "draft-1");
+            assert_eq!(payload.partial_graph.start_node, "gate");
+            assert!(matches!(
+                &payload.partial_graph.nodes[1].on_enter_updates[..],
+                [StateOp::SetState { key, value }]
+                    if key == "gate_open" && value == &json!(true)
+            ));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let stored = store
+        .get_story_draft("draft-1")
+        .await
+        .expect("draft lookup should succeed")
+        .expect("draft should exist");
+    assert_eq!(stored.partial_graph.start_node, "gate");
+    assert!(matches!(
+        &stored.partial_graph.nodes[1].on_enter_updates[..],
+        [StateOp::SetState { key, value }]
+            if key == "gate_open" && value == &json!(true)
+    ));
+}
+
+#[tokio::test]
+async fn story_draft_update_graph_rejects_finalized_draft() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    store
+        .save_story_draft(StoryDraftRecord {
+            draft_id: "draft-1".to_owned(),
+            display_name: "Flooded Harbor Draft".to_owned(),
+            resource_id: "resource-1".to_owned(),
+            api_group_id: "group-default".to_owned(),
+            preset_id: "preset-default".to_owned(),
+            planned_story: "Opening section".to_owned(),
+            outline_sections: vec!["Opening section".to_owned()],
+            next_section_index: 1,
+            partial_graph: sample_story_graph(),
+            world_schema_id: "schema-world-default".to_owned(),
+            player_schema_id: "schema-player-default".to_owned(),
+            introduction: "Draft intro".to_owned(),
+            section_summaries: vec!["Opening done".to_owned()],
+            section_node_ids: vec![vec!["dock".to_owned()]],
+            status: StoryDraftStatus::Finalized,
+            final_story_id: Some("story-1".to_owned()),
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(2_000),
+        })
+        .await
+        .expect("save draft");
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-draft-update-graph-finalized",
+            None::<String>,
+            RequestParams::StoryDraftUpdateGraph(UpdateStoryDraftGraphParams {
+                draft_id: "draft-1".to_owned(),
+                partial_graph: sample_story_graph(),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("already finalized")
+    ));
+}
+
+#[tokio::test]
 async fn session_update_changes_display_name() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -876,8 +1170,8 @@ async fn session_update_changes_display_name() {
                 story_id: "story-1".to_owned(),
                 display_name: Some("Courier Run".to_owned()),
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -913,14 +1207,9 @@ async fn session_message_crud_round_trips_and_updates_session_history() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -930,8 +1219,8 @@ async fn session_message_crud_round_trips_and_updates_session_history() {
                 story_id: "story-1".to_owned(),
                 display_name: Some("Courier Run".to_owned()),
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -1097,14 +1386,9 @@ async fn session_suggest_replies_returns_unary_payload() {
     ));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1114,8 +1398,8 @@ async fn session_suggest_replies_returns_unary_payload() {
                 story_id: "story-1".to_owned(),
                 display_name: Some("Courier Run".to_owned()),
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -1130,10 +1414,7 @@ async fn session_suggest_replies_returns_unary_payload() {
             .handle(JsonRpcRequestMessage::new(
                 "suggest-replies",
                 Some(session_id),
-                RequestParams::SessionSuggestReplies(SuggestRepliesParams {
-                    limit: Some(3),
-                    api_overrides: None,
-                }),
+                RequestParams::SessionSuggestReplies(SuggestRepliesParams { limit: Some(3) }),
             ))
             .await,
     );
@@ -1162,14 +1443,10 @@ async fn session_config_can_switch_between_session_and_global_modes() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm.clone()),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    seed_alternate_api_groups_and_presets(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1179,8 +1456,8 @@ async fn session_config_can_switch_between_session_and_global_modes() {
                 story_id: "story-1".to_owned(),
                 display_name: None,
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseSession,
-                session_api_ids: Some(alternate_api_ids()),
+                api_group_id: Some("group-alt".to_owned()),
+                preset_id: Some("preset-alt".to_owned()),
             }),
         ))
         .await
@@ -1200,23 +1477,8 @@ async fn session_config_can_switch_between_session_and_global_modes() {
         },
         JsonRpcOutcome::Err(error) => panic!("unexpected error response: {}", error.message),
     };
-    assert_eq!(config.mode, SessionConfigMode::UseSession);
-    assert_eq!(config.effective_api_ids, alternate_api_ids());
-
-    unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-2",
-                None::<String>,
-                RequestParams::ConfigUpdateGlobal(ConfigUpdateGlobalParams {
-                    api_overrides: AgentApiIdOverrides {
-                        actor_api_id: Some("actor-alt".to_owned()),
-                        ..AgentApiIdOverrides::default()
-                    },
-                }),
-            ))
-            .await,
-    );
+    assert_eq!(config.api_group_id, "group-alt");
+    assert_eq!(config.preset_id, "preset-alt");
 
     let session_after_global_change = unary_result(
         handler
@@ -1229,8 +1491,8 @@ async fn session_config_can_switch_between_session_and_global_modes() {
     );
     match session_after_global_change {
         ResponseResult::SessionConfig(payload) => {
-            assert_eq!(payload.mode, SessionConfigMode::UseSession);
-            assert_eq!(payload.effective_api_ids, alternate_api_ids());
+            assert_eq!(payload.api_group_id, "group-alt");
+            assert_eq!(payload.preset_id, "preset-alt");
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1241,17 +1503,16 @@ async fn session_config_can_switch_between_session_and_global_modes() {
                 "req-4",
                 Some(session_id.clone()),
                 RequestParams::SessionUpdateConfig(SessionUpdateConfigParams {
-                    mode: SessionConfigMode::UseGlobal,
-                    session_api_ids: None,
-                    api_overrides: None,
+                    api_group_id: Some("group-default".to_owned()),
+                    preset_id: Some("preset-default".to_owned()),
                 }),
             ))
             .await,
     );
     match session_use_global {
         ResponseResult::SessionConfig(payload) => {
-            assert_eq!(payload.mode, SessionConfigMode::UseGlobal);
-            assert_eq!(payload.effective_api_ids.actor_api_id, "actor-alt");
+            assert_eq!(payload.api_group_id, "group-default");
+            assert_eq!(payload.preset_id, "preset-default");
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1262,14 +1523,10 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_schema_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    seed_api_groups_and_presets(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
 
     let character_with_cover = sample_character_record();
     let mut character_without_cover = sample_character_record();
@@ -1330,9 +1587,9 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                     world_state: state::WorldState::new("dock"),
                     turn_index: index,
                 },
-                config: SessionEngineConfig {
-                    mode: StoreSessionConfigMode::UseGlobal,
-                    session_api_ids: None,
+                binding: SessionBindingConfig {
+                    api_group_id: "group-default".to_owned(),
+                    preset_id: "preset-default".to_owned(),
                 },
                 created_at_ms: Some(index),
                 updated_at_ms: if index == 1 { None } else { Some(index * 200) },
@@ -1359,7 +1616,14 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
             assert_eq!(payload.counts.story_resources_total, 6);
             assert_eq!(payload.counts.stories_total, 6);
             assert_eq!(payload.counts.sessions_total, 6);
-            assert_eq!(payload.global_config.api_ids, Some(default_api_ids()));
+            assert_eq!(
+                payload.global_config.api_group_id.as_deref(),
+                Some("group-default")
+            );
+            assert_eq!(
+                payload.global_config.preset_id.as_deref(),
+                Some("preset-default")
+            );
             assert_eq!(payload.recent_stories.len(), 5);
             assert_eq!(payload.recent_sessions.len(), 5);
 
@@ -1397,7 +1661,7 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
 async fn dashboard_and_global_config_are_empty_when_llm_is_unconfigured() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store, registry_with_ids(llm), None, None)
+    let handler = Handler::new(store, registry_with_ids(llm))
         .await
         .expect("handler should build");
 
@@ -1413,7 +1677,8 @@ async fn dashboard_and_global_config_are_empty_when_llm_is_unconfigured() {
 
     match dashboard {
         ResponseResult::Dashboard(payload) => {
-            assert_eq!(payload.global_config.api_ids, None);
+            assert!(payload.global_config.api_group_id.is_none());
+            assert!(payload.global_config.preset_id.is_none());
             assert_eq!(payload.counts.characters_total, 0);
             assert_eq!(payload.counts.story_resources_total, 0);
             assert_eq!(payload.counts.stories_total, 0);
@@ -1434,7 +1699,8 @@ async fn dashboard_and_global_config_are_empty_when_llm_is_unconfigured() {
 
     match global_config {
         ResponseResult::GlobalConfig(payload) => {
-            assert_eq!(payload.api_ids, None);
+            assert!(payload.api_group_id.is_none());
+            assert!(payload.preset_id.is_none());
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1499,14 +1765,9 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
     ));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm.clone()),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1516,8 +1777,8 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
                 story_id: "story-1".to_owned(),
                 display_name: None,
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -1533,7 +1794,6 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
             Some(session_id.clone()),
             RequestParams::SessionRunTurn(RunTurnParams {
                 player_input: "Open the gate.".to_owned(),
-                api_overrides: None,
             }),
         ))
         .await;
@@ -1586,14 +1846,10 @@ async fn update_player_description_persists_to_session_snapshot() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm.clone()),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    seed_alternate_api_groups_and_presets(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()))
+        .await
+        .expect("handler should build");
 
     let started = match handler
         .handle(JsonRpcRequestMessage::new(
@@ -1603,8 +1859,8 @@ async fn update_player_description_persists_to_session_snapshot() {
                 story_id: "story-1".to_owned(),
                 display_name: None,
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseGlobal,
-                session_api_ids: None,
+                api_group_id: None,
+                preset_id: None,
             }),
         ))
         .await
@@ -1633,42 +1889,219 @@ async fn update_player_description_persists_to_session_snapshot() {
 }
 
 #[tokio::test]
-async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
+async fn session_variables_get_and_update_round_trip() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        None,
-    )
-    .await
-    .expect("handler should build");
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-1",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: None,
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    let fetched = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-get-variables",
+                Some(session_id.clone()),
+                RequestParams::SessionGetVariables(GetSessionVariablesParams::default()),
+            ))
+            .await,
+    );
+    match fetched {
+        ResponseResult::SessionVariables(payload) => {
+            assert!(payload.custom.is_empty());
+            assert!(payload.player_state.is_empty());
+            assert!(payload.character_state.is_empty());
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-update-variables",
+                Some(session_id.clone()),
+                RequestParams::SessionUpdateVariables(UpdateSessionVariablesParams {
+                    update: StateUpdate::new()
+                        .push(StateOp::SetState {
+                            key: "gate_open".to_owned(),
+                            value: json!(true),
+                        })
+                        .push(StateOp::SetPlayerState {
+                            key: "coins".to_owned(),
+                            value: json!(11),
+                        })
+                        .push(StateOp::SetCharacterState {
+                            character: "merchant".to_owned(),
+                            key: "trust".to_owned(),
+                            value: json!(4),
+                        }),
+                }),
+            ))
+            .await,
+    );
+    match updated {
+        ResponseResult::SessionVariables(payload) => {
+            assert_eq!(payload.custom.get("gate_open"), Some(&json!(true)));
+            assert_eq!(payload.player_state.get("coins"), Some(&json!(11)));
+            assert_eq!(
+                payload
+                    .character_state
+                    .get("merchant")
+                    .and_then(|state| state.get("trust")),
+                Some(&json!(4))
+            );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let session = store
+        .get_session(&session_id)
+        .await
+        .expect("load session")
+        .expect("session exists");
+    assert_eq!(
+        session.snapshot.world_state.state("gate_open"),
+        Some(&json!(true))
+    );
+    assert_eq!(
+        session.snapshot.world_state.player_state("coins"),
+        Some(&json!(11))
+    );
+    assert_eq!(
+        session
+            .snapshot
+            .world_state
+            .character_state("merchant", "trust"),
+        Some(&json!(4))
+    );
+}
+
+#[tokio::test]
+async fn session_variable_update_rejects_non_variable_ops() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-1",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: None,
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-update-variables",
+            Some(session_id),
+            RequestParams::SessionUpdateVariables(UpdateSessionVariablesParams {
+                update: StateUpdate::new().push(StateOp::SetCurrentNode {
+                    node_id: "gate".to_owned(),
+                }),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("SetCurrentNode")
+    ));
+}
+
+#[tokio::test]
+async fn api_group_crud_masks_keys_and_round_trips() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+    for (api_id, suffix) in [
+        ("managed-planner", "managed"),
+        ("managed-architect", "managed"),
+        ("managed-director", "managed"),
+        ("managed-actor", "managed"),
+        ("managed-narrator", "managed"),
+        ("managed-keeper", "managed"),
+        ("managed-replyer", "managed"),
+        ("updated-planner", "updated"),
+        ("updated-architect", "updated"),
+        ("updated-director", "updated"),
+        ("updated-actor", "updated"),
+        ("updated-narrator", "updated"),
+        ("updated-keeper", "updated"),
+        ("updated-replyer", "updated"),
+    ] {
+        store
+            .save_api(sample_api_record(api_id, suffix))
+            .await
+            .expect("save api");
+    }
 
     let created = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-create",
+                "api-group-create",
                 None::<String>,
-                RequestParams::LlmApiCreate(LlmApiCreateParams {
-                    api_id: "managed".to_owned(),
-                    provider: Some(LlmProvider::OpenAi),
-                    base_url: Some("https://api.openai.example/v1".to_owned()),
-                    api_key: Some("sk-secret-token".to_owned()),
-                    model: Some("gpt-4.1-mini".to_owned()),
-                    temperature: Some(0.3),
-                    max_tokens: Some(1_024),
+                RequestParams::ApiGroupCreate(ApiGroupCreateParams {
+                    api_group_id: "managed".to_owned(),
+                    display_name: "Managed Group".to_owned(),
+                    bindings: protocol::ApiGroupBindingsInput {
+                        planner_api_id: "managed-planner".to_owned(),
+                        architect_api_id: "managed-architect".to_owned(),
+                        director_api_id: "managed-director".to_owned(),
+                        actor_api_id: "managed-actor".to_owned(),
+                        narrator_api_id: "managed-narrator".to_owned(),
+                        keeper_api_id: "managed-keeper".to_owned(),
+                        replyer_api_id: "managed-replyer".to_owned(),
+                    },
                 }),
             ))
             .await,
     );
     match created {
-        ResponseResult::LlmApi(payload) => {
-            assert_eq!(payload.api_id, "managed");
-            assert_eq!(payload.temperature, Some(0.3));
-            assert_eq!(payload.max_tokens, Some(1_024));
-            assert!(payload.has_api_key);
-            assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
+        ResponseResult::ApiGroup(payload) => {
+            assert_eq!(payload.api_group_id, "managed");
+            assert_eq!(payload.display_name, "Managed Group");
+            assert_eq!(payload.bindings.actor_api_id, "managed-actor");
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1676,20 +2109,17 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     let fetched = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-get",
+                "api-group-get",
                 None::<String>,
-                RequestParams::LlmApiGet(LlmApiGetParams {
-                    api_id: "managed".to_owned(),
+                RequestParams::ApiGroupGet(ApiGroupGetParams {
+                    api_group_id: "managed".to_owned(),
                 }),
             ))
             .await,
     );
     match fetched {
-        ResponseResult::LlmApi(payload) => {
-            assert_eq!(payload.model, "gpt-4.1-mini");
-            assert_eq!(payload.temperature, Some(0.3));
-            assert_eq!(payload.max_tokens, Some(1_024));
-            assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
+        ResponseResult::ApiGroup(payload) => {
+            assert_eq!(payload.bindings.actor_api_id, "managed-actor");
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1697,15 +2127,20 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     let listed = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-list",
+                "api-group-list",
                 None::<String>,
-                RequestParams::LlmApiList(protocol::LlmApiListParams::default()),
+                RequestParams::ApiGroupList(ApiGroupListParams::default()),
             ))
             .await,
     );
     match listed {
-        ResponseResult::LlmApisListed(payload) => {
-            assert!(payload.apis.iter().any(|api| api.api_id == "managed"));
+        ResponseResult::ApiGroupsListed(payload) => {
+            assert!(
+                payload
+                    .api_groups
+                    .iter()
+                    .any(|group| group.api_group_id == "managed")
+            );
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1713,135 +2148,136 @@ async fn llm_api_crud_masks_keys_and_preserves_secret_on_partial_update() {
     let updated = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-update",
+                "api-group-update",
                 None::<String>,
-                RequestParams::LlmApiUpdate(LlmApiUpdateParams {
-                    api_id: "managed".to_owned(),
-                    provider: None,
-                    base_url: Some("https://api.alt.example/v1".to_owned()),
-                    api_key: None,
-                    model: Some("gpt-4.1".to_owned()),
-                    temperature: Some(0.6),
-                    max_tokens: Some(2_048),
+                RequestParams::ApiGroupUpdate(ApiGroupUpdateParams {
+                    api_group_id: "managed".to_owned(),
+                    display_name: Some("Updated Group".to_owned()),
+                    bindings: Some(protocol::ApiGroupBindingsInput {
+                        planner_api_id: "updated-planner".to_owned(),
+                        architect_api_id: "updated-architect".to_owned(),
+                        director_api_id: "updated-director".to_owned(),
+                        actor_api_id: "updated-actor".to_owned(),
+                        narrator_api_id: "updated-narrator".to_owned(),
+                        keeper_api_id: "updated-keeper".to_owned(),
+                        replyer_api_id: "updated-replyer".to_owned(),
+                    }),
                 }),
             ))
             .await,
     );
     match updated {
-        ResponseResult::LlmApi(payload) => {
-            assert_eq!(payload.base_url, "https://api.alt.example/v1");
-            assert_eq!(payload.model, "gpt-4.1");
-            assert_eq!(payload.temperature, Some(0.6));
-            assert_eq!(payload.max_tokens, Some(2_048));
-            assert_eq!(payload.api_key_masked.as_deref(), Some("sk****en"));
+        ResponseResult::ApiGroup(payload) => {
+            assert_eq!(payload.display_name, "Updated Group");
+            assert_eq!(payload.bindings.actor_api_id, "updated-actor");
         }
         other => panic!("unexpected response: {other:?}"),
     }
 
     let stored = store
-        .get_llm_api("managed")
+        .get_api_group("managed")
         .await
-        .expect("llm api should load")
-        .expect("llm api should exist");
-    assert_eq!(stored.api_key, "sk-secret-token");
-    assert_eq!(stored.temperature, Some(0.6));
-    assert_eq!(stored.max_tokens, Some(2_048));
+        .expect("api group should load")
+        .expect("api group should exist");
+    assert_eq!(stored.agents.actor_api_id, "updated-actor");
 
     let deleted = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-delete",
+                "api-group-delete",
                 None::<String>,
-                RequestParams::LlmApiDelete(LlmApiDeleteParams {
-                    api_id: "managed".to_owned(),
+                RequestParams::ApiGroupDelete(ApiGroupDeleteParams {
+                    api_group_id: "managed".to_owned(),
                 }),
             ))
             .await,
     );
     match deleted {
-        ResponseResult::LlmApiDeleted(payload) => assert_eq!(payload.api_id, "managed"),
+        ResponseResult::ApiGroupDeleted(payload) => assert_eq!(payload.api_group_id, "managed"),
         other => panic!("unexpected response: {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn first_llm_api_create_auto_initializes_global_config() {
+async fn preset_crud_round_trips_and_preserves_values() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store.clone(), registry_with_ids(llm), None, None)
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
         .await
         .expect("handler should build");
 
-    let _ = unary_result(
+    let created = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-create-first",
+                "preset-create",
                 None::<String>,
-                RequestParams::LlmApiCreate(LlmApiCreateParams {
-                    api_id: "managed".to_owned(),
-                    provider: Some(LlmProvider::OpenAi),
-                    base_url: Some("https://api.openai.example/v1".to_owned()),
-                    api_key: Some("sk-secret-token".to_owned()),
-                    model: Some("gpt-4.1-mini".to_owned()),
-                    temperature: Some(0.3),
-                    max_tokens: Some(1_024),
+                RequestParams::PresetCreate(PresetCreateParams {
+                    preset_id: "managed".to_owned(),
+                    display_name: "Managed Preset".to_owned(),
+                    agents: protocol::PresetAgentPayloads {
+                        planner: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.1),
+                            max_tokens: Some(256),
+                            extra: None,
+                        },
+                        architect: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.2),
+                            max_tokens: Some(1024),
+                            extra: None,
+                        },
+                        director: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.3),
+                            max_tokens: Some(384),
+                            extra: None,
+                        },
+                        actor: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.4),
+                            max_tokens: Some(512),
+                            extra: None,
+                        },
+                        narrator: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.5),
+                            max_tokens: Some(640),
+                            extra: None,
+                        },
+                        keeper: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.6),
+                            max_tokens: Some(768),
+                            extra: None,
+                        },
+                        replyer: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.7),
+                            max_tokens: Some(128),
+                            extra: None,
+                        },
+                    },
                 }),
             ))
             .await,
     );
+    match created {
+        ResponseResult::Preset(payload) => {
+            assert_eq!(payload.preset_id, "managed");
+            assert_eq!(payload.agents.actor.max_tokens, Some(512));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
 
-    assert_eq!(
-        store
-            .get_global_config()
-            .await
-            .expect("global config should load"),
-        Some(AgentApiIds {
-            planner_api_id: "managed".to_owned(),
-            architect_api_id: "managed".to_owned(),
-            director_api_id: "managed".to_owned(),
-            actor_api_id: "managed".to_owned(),
-            narrator_api_id: "managed".to_owned(),
-            keeper_api_id: "managed".to_owned(),
-            replyer_api_id: "managed".to_owned(),
-        })
-    );
-}
-
-#[tokio::test]
-async fn default_llm_config_get_and_update_work_with_runtime_override() {
-    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        Some(store::DefaultLlmConfigRecord {
-            provider: LlmProvider::OpenAi,
-            base_url: "https://runtime.example/v1".to_owned(),
-            api_key: "sk-runtime".to_owned(),
-            model: "runtime-model".to_owned(),
-            temperature: Some(0.6),
-            max_tokens: Some(4_096),
-        }),
-    )
-    .await
-    .expect("handler should build");
-
-    let initial = unary_result(
+    let fetched = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "default-get-1",
+                "preset-get",
                 None::<String>,
-                RequestParams::DefaultLlmConfigGet(DefaultLlmConfigGetParams::default()),
+                RequestParams::PresetGet(PresetGetParams {
+                    preset_id: "managed".to_owned(),
+                }),
             ))
             .await,
     );
-    match initial {
-        ResponseResult::DefaultLlmConfig(payload) => {
-            assert!(payload.saved.is_none());
-            let effective = payload.effective.expect("effective config should exist");
-            assert_eq!(effective.base_url, "https://runtime.example/v1");
-            assert_eq!(effective.model, "runtime-model");
+    match fetched {
+        ResponseResult::Preset(payload) => {
+            assert_eq!(payload.display_name, "Managed Preset");
+            assert_eq!(payload.agents.architect.max_tokens, Some(1024));
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -1849,157 +2285,108 @@ async fn default_llm_config_get_and_update_work_with_runtime_override() {
     let updated = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "default-update",
+                "preset-update",
                 None::<String>,
-                RequestParams::DefaultLlmConfigUpdate(DefaultLlmConfigUpdateParams {
-                    provider: LlmProvider::OpenAi,
-                    base_url: "https://saved.example/v1".to_owned(),
-                    api_key: "sk-saved".to_owned(),
-                    model: "saved-model".to_owned(),
-                    temperature: Some(0.2),
-                    max_tokens: Some(1_024),
+                RequestParams::PresetUpdate(PresetUpdateParams {
+                    preset_id: "managed".to_owned(),
+                    display_name: Some("Updated Preset".to_owned()),
+                    agents: Some(protocol::PresetAgentPayloads {
+                        planner: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.2),
+                            max_tokens: Some(300),
+                            extra: None,
+                        },
+                        architect: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.25),
+                            max_tokens: Some(2048),
+                            extra: None,
+                        },
+                        director: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.3),
+                            max_tokens: Some(400),
+                            extra: None,
+                        },
+                        actor: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.35),
+                            max_tokens: Some(500),
+                            extra: None,
+                        },
+                        narrator: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.4),
+                            max_tokens: Some(600),
+                            extra: None,
+                        },
+                        keeper: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.45),
+                            max_tokens: Some(700),
+                            extra: None,
+                        },
+                        replyer: protocol::AgentPresetConfigPayload {
+                            temperature: Some(0.5),
+                            max_tokens: Some(200),
+                            extra: Some(json!({"style":"short"})),
+                        },
+                    }),
                 }),
             ))
             .await,
     );
     match updated {
-        ResponseResult::DefaultLlmConfig(payload) => {
-            let saved = payload.saved.expect("saved config should exist");
-            assert_eq!(saved.base_url, "https://saved.example/v1");
-            let effective = payload.effective.expect("effective config should exist");
-            assert_eq!(effective.base_url, "https://runtime.example/v1");
+        ResponseResult::Preset(payload) => {
+            assert_eq!(payload.display_name, "Updated Preset");
+            assert_eq!(payload.agents.architect.max_tokens, Some(2048));
+            assert_eq!(payload.agents.replyer.extra, Some(json!({"style":"short"})));
         }
         other => panic!("unexpected response: {other:?}"),
     }
-}
-
-#[tokio::test]
-async fn llm_api_create_uses_effective_default_llm_config_when_fields_are_missing() {
-    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(
-        store.clone(),
-        registry_with_ids(llm),
-        Some(default_api_ids()),
-        Some(store::DefaultLlmConfigRecord {
-            provider: LlmProvider::OpenAi,
-            base_url: "https://runtime.example/v1".to_owned(),
-            api_key: "sk-runtime".to_owned(),
-            model: "runtime-model".to_owned(),
-            temperature: Some(0.7),
-            max_tokens: Some(2_048),
-        }),
-    )
-    .await
-    .expect("handler should build");
-
-    let created = unary_result(
+    let listed = unary_result(
         handler
             .handle(JsonRpcRequestMessage::new(
-                "llm-create-defaulted",
+                "preset-list",
                 None::<String>,
-                RequestParams::LlmApiCreate(LlmApiCreateParams {
-                    api_id: "managed-defaulted".to_owned(),
-                    provider: None,
-                    base_url: None,
-                    api_key: None,
-                    model: None,
-                    temperature: None,
-                    max_tokens: None,
+                RequestParams::PresetList(PresetListParams::default()),
+            ))
+            .await,
+    );
+    match listed {
+        ResponseResult::PresetsListed(payload) => {
+            assert!(
+                payload
+                    .presets
+                    .iter()
+                    .any(|preset| preset.preset_id == "managed")
+            );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let deleted = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-delete",
+                None::<String>,
+                RequestParams::PresetDelete(PresetDeleteParams {
+                    preset_id: "managed".to_owned(),
                 }),
             ))
             .await,
     );
-
-    match created {
-        ResponseResult::LlmApi(payload) => {
-            assert_eq!(payload.api_id, "managed-defaulted");
-            assert_eq!(payload.base_url, "https://runtime.example/v1");
-            assert_eq!(payload.model, "runtime-model");
-            assert_eq!(payload.temperature, Some(0.7));
-            assert_eq!(payload.max_tokens, Some(2_048));
-        }
+    match deleted {
+        ResponseResult::PresetDeleted(payload) => assert_eq!(payload.preset_id, "managed"),
         other => panic!("unexpected response: {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn llm_api_create_fails_when_required_fields_are_missing_and_no_default_exists() {
-    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let store = Arc::new(InMemoryStore::new());
-    let handler = Handler::new(store, registry_with_ids(llm), Some(default_api_ids()), None)
-        .await
-        .expect("handler should build");
-
-    match handler
-        .handle(JsonRpcRequestMessage::new(
-            "llm-create-incomplete",
-            None::<String>,
-            RequestParams::LlmApiCreate(LlmApiCreateParams {
-                api_id: "incomplete".to_owned(),
-                provider: None,
-                base_url: None,
-                api_key: None,
-                model: None,
-                temperature: None,
-                max_tokens: None,
-            }),
-        ))
-        .await
-    {
-        HandlerReply::Unary(response) => match response.outcome {
-            JsonRpcOutcome::Err(error) => {
-                assert_eq!(error.code, ErrorCode::InvalidRequest.rpc_code())
-            }
-            JsonRpcOutcome::Ok(result) => panic!("unexpected success response: {result:?}"),
-        },
-        HandlerReply::Stream { .. } => panic!("expected unary error reply"),
-    }
-}
-
-#[tokio::test]
-async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() {
+async fn api_group_and_preset_delete_conflict_when_referenced_by_session() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    store
-        .save_llm_api(sample_llm_api_record("planner-default", "planner-model"))
-        .await
-        .expect("seed global llm api");
-    store
-        .save_llm_api(sample_llm_api_record("session-only", "session-model"))
-        .await
-        .expect("seed session llm api");
-
-    let registry = {
-        let extra_llm: Arc<dyn llm::LlmApi> = llm.clone();
-        registry_with_ids(llm).register("session-only", extra_llm, "session-model")
-    };
-    let handler = Handler::new(store.clone(), registry, Some(default_api_ids()), None)
+    seed_alternate_api_groups_and_presets(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
         .await
         .expect("handler should build");
 
-    let global_conflict = handler
-        .handle(JsonRpcRequestMessage::new(
-            "llm-delete-global",
-            None::<String>,
-            RequestParams::LlmApiDelete(LlmApiDeleteParams {
-                api_id: "planner-default".to_owned(),
-            }),
-        ))
-        .await;
-    match global_conflict {
-        HandlerReply::Unary(response) => match response.outcome {
-            JsonRpcOutcome::Err(error) => {
-                assert_eq!(error.code, ErrorCode::Conflict.rpc_code())
-            }
-            other => panic!("unexpected outcome: {other:?}"),
-        },
-        HandlerReply::Stream { .. } => panic!("unexpected stream reply"),
-    }
-
-    let mut session_api_ids = default_api_ids();
-    session_api_ids.actor_api_id = "session-only".to_owned();
     let session_start = handler
         .handle(JsonRpcRequestMessage::new(
             "session-start",
@@ -2008,8 +2395,8 @@ async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() 
                 story_id: "story-1".to_owned(),
                 display_name: Some("Config Test".to_owned()),
                 player_profile_id: Some("profile-courier-a".to_owned()),
-                config_mode: SessionConfigMode::UseSession,
-                session_api_ids: Some(session_api_ids),
+                api_group_id: Some("group-alt".to_owned()),
+                preset_id: Some("preset-alt".to_owned()),
             }),
         ))
         .await;
@@ -2021,16 +2408,35 @@ async fn llm_api_delete_conflicts_when_referenced_by_global_or_session_config() 
     };
     assert!(!session_id.is_empty());
 
-    let session_conflict = handler
+    let api_group_conflict = handler
         .handle(JsonRpcRequestMessage::new(
-            "llm-delete-session",
+            "api-group-delete-session",
             None::<String>,
-            RequestParams::LlmApiDelete(LlmApiDeleteParams {
-                api_id: "session-only".to_owned(),
+            RequestParams::ApiGroupDelete(ApiGroupDeleteParams {
+                api_group_id: "group-alt".to_owned(),
             }),
         ))
         .await;
-    match session_conflict {
+    match api_group_conflict {
+        HandlerReply::Unary(response) => match response.outcome {
+            JsonRpcOutcome::Err(error) => {
+                assert_eq!(error.code, ErrorCode::Conflict.rpc_code())
+            }
+            other => panic!("unexpected outcome: {other:?}"),
+        },
+        HandlerReply::Stream { .. } => panic!("unexpected stream reply"),
+    }
+
+    let preset_conflict = handler
+        .handle(JsonRpcRequestMessage::new(
+            "preset-delete-session",
+            None::<String>,
+            RequestParams::PresetDelete(PresetDeleteParams {
+                preset_id: "preset-alt".to_owned(),
+            }),
+        ))
+        .await;
+    match preset_conflict {
         HandlerReply::Unary(response) => match response.outcome {
             JsonRpcOutcome::Err(error) => {
                 assert_eq!(error.code, ErrorCode::Conflict.rpc_code())

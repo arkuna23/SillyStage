@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use state::{StateFieldSchema, WorldState};
 use story::StoryGraph;
 
-use crate::config::SessionEngineConfig;
+use crate::config::{ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, SessionBindingConfig};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuntimeSnapshot {
@@ -72,28 +72,27 @@ pub struct CharacterCardRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct LlmApiRecord {
+pub struct ApiRecord {
     pub api_id: String,
-    pub provider: crate::config::LlmProvider,
+    pub display_name: String,
+    pub provider: LlmProvider,
     pub base_url: String,
     pub api_key: String,
     pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct DefaultLlmConfigRecord {
-    pub provider: crate::config::LlmProvider,
-    pub base_url: String,
-    pub api_key: String,
-    pub model: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub temperature: Option<f32>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_tokens: Option<u32>,
+pub struct ApiGroupRecord {
+    pub api_group_id: String,
+    pub display_name: String,
+    pub agents: ApiGroupAgentBindings,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetRecord {
+    pub preset_id: String,
+    pub display_name: String,
+    pub agents: PresetAgentConfigs,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,6 +133,8 @@ pub struct StoryDraftRecord {
     pub draft_id: String,
     pub display_name: String,
     pub resource_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub planned_story: String,
     pub outline_sections: Vec<String>,
     pub next_section_index: usize,
@@ -161,8 +162,8 @@ pub struct SessionRecord {
     pub story_id: String,
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
+    pub binding: SessionBindingConfig,
     pub snapshot: RuntimeSnapshot,
-    pub config: SessionEngineConfig,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

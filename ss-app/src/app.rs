@@ -10,7 +10,7 @@ use crate::browser::spawn_browser_if_desktop;
 use crate::config::{AppConfig, FrontendConfig, StoreBackend};
 use crate::error::AppError;
 use crate::frontend::mount_frontend;
-use crate::llm::seed_store_and_build_registry;
+use engine::LlmApiRegistry;
 
 pub async fn build_store(config: &AppConfig) -> Result<Arc<dyn Store>, AppError> {
     match config.store.backend {
@@ -21,15 +21,7 @@ pub async fn build_store(config: &AppConfig) -> Result<Arc<dyn Store>, AppError>
 
 pub async fn build_handler(config: &AppConfig) -> Result<Arc<Handler>, AppError> {
     let store = build_store(config).await?;
-    let (registry, effective_default_llm_config) =
-        seed_store_and_build_registry(&store, config).await?;
-    let handler = Handler::new(
-        store,
-        registry,
-        config.llm.defaults.clone(),
-        effective_default_llm_config,
-    )
-    .await?;
+    let handler = Handler::new(store, LlmApiRegistry::new()).await?;
     Ok(Arc::new(handler))
 }
 

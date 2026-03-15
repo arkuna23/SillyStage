@@ -92,7 +92,6 @@ Session-bound APIs can also return ordinary unary JSON-RPC results. The current 
   - requires top-level `session_id`
   - `params`:
     - `limit?: number`
-    - `api_overrides?: AgentApiIdOverrides`
   - returns:
     - `type = "suggested_replies"`
     - `replies: [{ reply_id, text }]`
@@ -102,39 +101,35 @@ Session-bound APIs can also return ordinary unary JSON-RPC results. The current 
 
 ## 2. Resource Model
 
-### 2.1 `llm_api`
+### 2.1 `api`
 
-`llm_api` is the persistent LLM API definition object.
+`api` is the persistent reusable connection definition.
 
 Fields:
 
 - `api_id`
+- `display_name`
 - `provider`
 - `base_url`
 - `api_key`
 - `model`
-- `temperature`
-- `max_tokens`
 
 Read APIs never return the raw `api_key`. They return:
 
 - `has_api_key`
 - `api_key_masked`
 
-Global config and session config only reference `api_id`.
+### 2.2 `api_group`
 
-`llm_api.create` may omit `provider`, `base_url`, `api_key`, `model`, `temperature`, or
-`max_tokens`. Missing values are filled from the current effective `default_llm_config`.
+`api_group` is the persistent per-agent API binding bundle.
 
-If no global config exists yet, successfully creating the first `llm_api` automatically binds
-that `api_id` to every agent role.
+Fields:
 
-The currently supported generation defaults on an `llm_api` object are:
+- `api_group_id`
+- `display_name`
+- `bindings`
 
-- `temperature`
-- `max_tokens`
-
-Current `AgentApiIds` / `AgentApiIdOverrides` fields:
+`bindings` contains one `api_id` per runtime agent:
 
 - `planner_api_id`
 - `architect_api_id`
@@ -144,38 +139,28 @@ Current `AgentApiIds` / `AgentApiIdOverrides` fields:
 - `keeper_api_id`
 - `replyer_api_id`
 
-Notes:
+### 2.3 `preset`
 
-- global config is now allowed to be absent
-- when it is absent, read APIs return `api_ids = null`
-- only agent-executing APIs require global config to be initialized
-
-### 2.1.1 `default_llm_config`
-
-`default_llm_config` is a singleton default template for new `llm_api` records.
+`preset` is the persistent per-agent generation-parameter bundle.
 
 Fields:
 
-- `provider`
-- `base_url`
-- `api_key`
-- `model`
+- `preset_id`
+- `display_name`
+- `agents`
+
+Each agent entry currently supports:
+
 - `temperature`
 - `max_tokens`
+- optional `extra`
 
-API shape:
+The runtime binding model now uses `api_group_id + preset_id`.
 
-- `default_llm_config.get` returns:
-  - `saved`: the persisted default config in store, optional
-  - `effective`: the runtime default config after env/file overrides, optional
-- `default_llm_config.update` replaces the `saved` config only
+If a request omits one of those ids and at least one resource exists, the backend sorts ids and
+uses the first available value.
 
-Notes:
-
-- env/file overrides take precedence over the saved config
-- env/file overrides do not write back into store
-
-### 2.2 `schema`
+### 2.4 `schema`
 
 `schema` is now an independent resource and is no longer embedded into characters, resources, or stories.
 
@@ -192,7 +177,7 @@ Notes:
 - `tags` are user-facing labels such as `player`, `world`, or `character`.
 - `fields` follow the `StateFieldSchema` structure.
 
-### 2.3 `player_profile`
+### 2.4 `player_profile`
 
 `player_profile` is an independent switchable player setup resource.
 
@@ -208,7 +193,7 @@ Notes:
 - A session activates at most one `player_profile_id` at a time.
 - Switching player profiles does not switch `player_state`.
 
-### 2.4 `character`
+### 2.5 `character`
 
 Character content is represented by `CharacterCardContent`:
 
@@ -226,7 +211,7 @@ Notes:
 - Character-private schema is referenced through `schema_id`.
 - Cover retrieval and `.chr` export remain separate APIs.
 
-### 2.5 `story_resources`
+### 2.6 `story_resources`
 
 `story_resources` is the editable input bundle used before story generation.
 
@@ -245,7 +230,7 @@ Notes:
 - Both schema seeds are optional ids.
 - `planned_story` is optional planner output text.
 
-### 2.6 `story`
+### 2.7 `story`
 
 A generated `story` record contains:
 
@@ -311,7 +296,9 @@ For details, see:
 Current protocol families:
 
 - `upload.*`
-- `llm_api.*`
+- `api.*`
+- `api_group.*`
+- `preset.*`
 - `schema.*`
 - `player_profile.*`
 - `character.*`
@@ -332,22 +319,38 @@ Current protocol families:
 - `story_id`
 - optional `display_name`
 - optional `player_profile_id`
-- `config_mode`
-- optional `session_api_ids`
+- optional `api_group_id`
+- optional `preset_id`
+
+If either binding id is omitted and the backend has at least one `api_group` and one `preset`,
+it uses the first available id from each list after sorting.
 
 `story.update` only updates story metadata. For now it supports:
 
 - `story_id`
 - `display_name`
 
+`story.update_graph` replaces the full `graph` field of an existing story, including each node's
+`on_enter_updates`.
+The backend validates the graph before saving and returns `invalid_request` if:
+
+- `start_node` does not exist
+- any transition points to a missing node
+- duplicate node ids are present
+
 ### 5.1.1 Draft Story Generation
 
 `story_draft.*` is the preferred generation flow when a story is large enough that a single Architect call would become too expensive.
 
 - `story_draft.start` creates a server-side draft and generates the first section
+- `story_draft.update_graph` replaces the draft's current `partial_graph`, including node
+  `on_enter_updates`
 - `story_draft.continue` appends one more outline section to the partial graph
 - `story_draft.finalize` validates the merged graph and creates the final `story`
 - `story.generate` remains available as a compatibility wrapper around the full draft flow
+- `story_draft.start` persists the chosen `api_group_id` and `preset_id` in the draft
+
+`story_draft.update_graph` uses the same graph validation as `story.update_graph`, and rejects finalized drafts.
 
 ### 5.2 Switching Player Profile
 
@@ -361,7 +364,28 @@ Current protocol families:
 
 `session.update` only updates session metadata. For now it supports changing `display_name`.
 
-### 5.5 Editing Session Transcript Messages
+### 5.5 Reading and Editing Session Variables
+
+`session.get_variables` returns the current mutable conversation variables from the session snapshot:
+
+- `custom`
+- `player_state`
+- `character_state`
+
+`session.update_variables` applies a `StateUpdate` to those same variable maps.
+
+Only variable ops are allowed:
+
+- `SetState`
+- `RemoveState`
+- `SetPlayerState`
+- `RemovePlayerState`
+- `SetCharacterState`
+- `RemoveCharacterState`
+
+Scene-control ops such as `SetCurrentNode` and `SetActiveCharacters` are rejected.
+
+### 5.6 Editing Session Transcript Messages
 
 `session_message.*` manages standalone transcript messages for a session.
 

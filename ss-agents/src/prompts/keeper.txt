@@ -44,6 +44,58 @@ Allowed StateOp types:
 - SetCharacterState
 - RemoveCharacterState
 
+StateOp JSON examples:
+
+{
+  "type": "SetState",
+  "key": "gate_open",
+  "value": true
+}
+
+{
+  "type": "RemoveState",
+  "key": "gate_open"
+}
+
+{
+  "type": "SetPlayerState",
+  "key": "coins",
+  "value": 9
+}
+
+{
+  "type": "RemovePlayerState",
+  "key": "coins"
+}
+
+{
+  "type": "SetActiveCharacters",
+  "characters": ["merchant", "guide"]
+}
+
+{
+  "type": "AddActiveCharacter",
+  "character": "merchant"
+}
+
+{
+  "type": "RemoveActiveCharacter",
+  "character": "merchant"
+}
+
+{
+  "type": "SetCharacterState",
+  "character": "merchant",
+  "key": "trust",
+  "value": 3
+}
+
+{
+  "type": "RemoveCharacterState",
+  "character": "merchant",
+  "key": "trust"
+}
+
 Forbidden StateOp types:
 
 - SetCurrentNode
@@ -60,6 +112,7 @@ Evidence rules:
 - Use WORLD_STATE.player_state when recording visible player-facing changes such as coins, items, access, or reputation
 - Use WORLD_STATE.actor_shared_history only as visible context, including visible player input when present
 - Use character ids for all character-scoped state updates
+- Character-scoped ops must always include the "character" field
 
 Phase rules:
 

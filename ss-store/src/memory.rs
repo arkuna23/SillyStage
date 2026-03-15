@@ -3,19 +3,19 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use tokio::sync::RwLock;
 
-use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord,
-    SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
+    SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
+    StoryResourcesRecord,
 };
 use crate::store::Store;
 
 #[derive(Default)]
 pub struct InMemoryStore {
-    global_config: RwLock<Option<AgentApiIds>>,
-    default_llm_config: RwLock<Option<DefaultLlmConfigRecord>>,
-    llm_apis: RwLock<HashMap<String, LlmApiRecord>>,
+    apis: RwLock<HashMap<String, ApiRecord>>,
+    api_groups: RwLock<HashMap<String, ApiGroupRecord>>,
+    presets: RwLock<HashMap<String, PresetRecord>>,
     schemas: RwLock<HashMap<String, SchemaRecord>>,
     player_profiles: RwLock<HashMap<String, PlayerProfileRecord>>,
     characters: RwLock<HashMap<String, CharacterCardRecord>>,
@@ -34,45 +34,70 @@ impl InMemoryStore {
 
 #[async_trait]
 impl Store for InMemoryStore {
-    async fn get_global_config(&self) -> Result<Option<AgentApiIds>, StoreError> {
-        Ok(self.global_config.read().await.clone())
+    async fn get_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError> {
+        Ok(self.apis.read().await.get(api_id).cloned())
     }
 
-    async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError> {
-        *self.global_config.write().await = Some(config);
-        Ok(())
+    async fn list_apis(&self) -> Result<Vec<ApiRecord>, StoreError> {
+        Ok(self.apis.read().await.values().cloned().collect())
     }
 
-    async fn get_default_llm_config(&self) -> Result<Option<DefaultLlmConfigRecord>, StoreError> {
-        Ok(self.default_llm_config.read().await.clone())
-    }
-
-    async fn set_default_llm_config(
-        &self,
-        config: DefaultLlmConfigRecord,
-    ) -> Result<(), StoreError> {
-        *self.default_llm_config.write().await = Some(config);
-        Ok(())
-    }
-
-    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
-        Ok(self.llm_apis.read().await.get(api_id).cloned())
-    }
-
-    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError> {
-        Ok(self.llm_apis.read().await.values().cloned().collect())
-    }
-
-    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError> {
-        self.llm_apis
+    async fn save_api(&self, record: ApiRecord) -> Result<(), StoreError> {
+        self.apis
             .write()
             .await
             .insert(record.api_id.clone(), record);
         Ok(())
     }
 
-    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError> {
-        Ok(self.llm_apis.write().await.remove(api_id))
+    async fn delete_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError> {
+        Ok(self.apis.write().await.remove(api_id))
+    }
+
+    async fn get_api_group(
+        &self,
+        api_group_id: &str,
+    ) -> Result<Option<ApiGroupRecord>, StoreError> {
+        Ok(self.api_groups.read().await.get(api_group_id).cloned())
+    }
+
+    async fn list_api_groups(&self) -> Result<Vec<ApiGroupRecord>, StoreError> {
+        Ok(self.api_groups.read().await.values().cloned().collect())
+    }
+
+    async fn save_api_group(&self, record: ApiGroupRecord) -> Result<(), StoreError> {
+        self.api_groups
+            .write()
+            .await
+            .insert(record.api_group_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_api_group(
+        &self,
+        api_group_id: &str,
+    ) -> Result<Option<ApiGroupRecord>, StoreError> {
+        Ok(self.api_groups.write().await.remove(api_group_id))
+    }
+
+    async fn get_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError> {
+        Ok(self.presets.read().await.get(preset_id).cloned())
+    }
+
+    async fn list_presets(&self) -> Result<Vec<PresetRecord>, StoreError> {
+        Ok(self.presets.read().await.values().cloned().collect())
+    }
+
+    async fn save_preset(&self, record: PresetRecord) -> Result<(), StoreError> {
+        self.presets
+            .write()
+            .await
+            .insert(record.preset_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError> {
+        Ok(self.presets.write().await.remove(preset_id))
     }
 
     async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {

@@ -240,6 +240,16 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
+    let mut world_state = world_state;
+    world_state.push_actor_shared_history(
+        ActorMemoryEntry {
+            speaker_id: "narrator".to_owned(),
+            speaker_name: "Narrator".to_owned(),
+            kind: ActorMemoryKind::Dialogue,
+            text: "The dock rocked in the dark.".to_owned(),
+        },
+        8,
+    );
     let previous_node = NarrativeNode::new(
         "market",
         "Night Market",
@@ -295,6 +305,11 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
             .contains("Can you open the gate before the tide turns?")
     );
     assert!(user_message.content.contains("The gate is still jammed."));
+    assert!(
+        !user_message
+            .content
+            .contains("The dock rocked in the dark.")
+    );
     assert!(!user_message.content.contains("\"actor_private_memory\""));
     assert!(
         !user_message

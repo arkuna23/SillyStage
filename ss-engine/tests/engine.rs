@@ -74,6 +74,44 @@ fn sample_story_graph() -> StoryGraph {
     )
 }
 
+fn sample_player_transition_story_graph() -> StoryGraph {
+    StoryGraph::new(
+        "checkpoint",
+        vec![
+            NarrativeNode::new(
+                "checkpoint",
+                "Checkpoint",
+                "A guard watches the floodgate and waits for proof of passage.",
+                "Determine whether the courier can pass.",
+                vec!["merchant".to_owned()],
+                vec![Transition::new(
+                    "vip_gate",
+                    Condition::for_player("coins", ConditionOperator::Gte, json!(10)),
+                )],
+                vec![],
+            ),
+            NarrativeNode::new(
+                "vip_gate",
+                "VIP Gate",
+                "The guard opens the fastest route.",
+                "Proceed through the VIP gate.",
+                vec!["merchant".to_owned()],
+                vec![],
+                vec![],
+            ),
+            NarrativeNode::new(
+                "regular_gate",
+                "Regular Gate",
+                "The guard redirects the courier to the slower path.",
+                "Proceed through the regular gate.",
+                vec!["merchant".to_owned()],
+                vec![],
+                vec![],
+            ),
+        ],
+    )
+}
+
 fn sample_player_state_schema() -> PlayerStateSchema {
     let mut schema = PlayerStateSchema::new();
     schema.insert_field(
@@ -100,6 +138,17 @@ fn sample_runtime_state() -> RuntimeState {
     RuntimeState::from_story_graph(
         "flooded_city_demo",
         sample_story_graph(),
+        sample_character_cards(),
+        sample_player_description(),
+        sample_player_state_schema(),
+    )
+    .expect("runtime state should build")
+}
+
+fn sample_runtime_state_with_story_graph(story_graph: StoryGraph) -> RuntimeState {
+    RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        story_graph,
         sample_character_cards(),
         sample_player_description(),
         sample_player_state_schema(),
@@ -353,6 +402,213 @@ async fn run_turn_returns_result_and_records_completed_beats() {
     assert_eq!(result.completed_beats.len(), 1);
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 4);
+}
+
+#[tokio::test]
+async fn run_turn_transitions_using_player_state_conditions() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"beats\":[]}",
+                Some(json!({ "beats": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+        ],
+        Vec::new(),
+    ));
+    let mut runtime_state =
+        sample_runtime_state_with_story_graph(sample_player_transition_story_graph());
+    runtime_state
+        .world_state_mut()
+        .set_player_state("coins", json!(12));
+
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
+        runtime_state,
+    )
+    .expect("engine");
+
+    let rich_result = engine
+        .run_turn("Show the permit.")
+        .await
+        .expect("run_turn should succeed");
+
+    assert_eq!(rich_result.director.current_node_id, "vip_gate");
+
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"beats\":[]}",
+                Some(json!({ "beats": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+        ],
+        Vec::new(),
+    ));
+    let mut runtime_state =
+        sample_runtime_state_with_story_graph(sample_player_transition_story_graph());
+    runtime_state
+        .world_state_mut()
+        .set_player_state("coins", json!(3));
+
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(llm, "test-model"),
+        runtime_state,
+    )
+    .expect("engine");
+
+    let poor_result = engine
+        .run_turn("Show the permit.")
+        .await
+        .expect("run_turn should succeed");
+
+    assert_eq!(poor_result.director.current_node_id, "checkpoint");
+}
+
+#[tokio::test]
+async fn run_turn_executes_mixed_beats_in_director_order() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response("{\"ops\":[]}", Some(json!({ "ops": [] })))),
+            Ok(assistant_response(
+                "{\"beats\":[{\"type\":\"Narrator\",\"purpose\":\"DescribeScene\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"AdvanceGoal\"},{\"type\":\"Narrator\",\"purpose\":\"DescribeResult\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"CommentOnScene\"}]}",
+                Some(json!({
+                    "beats": [
+                        {
+                            "type": "Narrator",
+                            "purpose": "DescribeScene"
+                        },
+                        {
+                            "type": "Actor",
+                            "speaker_id": "merchant",
+                            "purpose": "AdvanceGoal"
+                        },
+                        {
+                            "type": "Narrator",
+                            "purpose": "DescribeResult"
+                        },
+                        {
+                            "type": "Actor",
+                            "speaker_id": "merchant",
+                            "purpose": "CommentOnScene"
+                        }
+                    ]
+                })),
+            )),
+            Ok(assistant_response("{\"ops\":[]}", Some(json!({ "ops": [] })))),
+        ],
+        vec![
+            Ok(vec![
+                Ok(ChatChunk {
+                    delta: "The dock groans under the floodwater.".to_owned(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: None,
+                    done: false,
+                    usage: None,
+                }),
+                Ok(ChatChunk {
+                    delta: String::new(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: Some("stop".to_owned()),
+                    done: true,
+                    usage: None,
+                }),
+            ]),
+            Ok(vec![
+                Ok(ChatChunk {
+                    delta: "<thought>The courier is listening.</thought><action>Haru points toward the gate.</action><dialogue>We should move before the tide rises.</dialogue>".to_owned(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: None,
+                    done: false,
+                    usage: None,
+                }),
+                Ok(ChatChunk {
+                    delta: String::new(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: Some("stop".to_owned()),
+                    done: true,
+                    usage: None,
+                }),
+            ]),
+            Ok(vec![
+                Ok(ChatChunk {
+                    delta: "The waterline creeps higher along the stone posts.".to_owned(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: None,
+                    done: false,
+                    usage: None,
+                }),
+                Ok(ChatChunk {
+                    delta: String::new(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: Some("stop".to_owned()),
+                    done: true,
+                    usage: None,
+                }),
+            ]),
+            Ok(vec![
+                Ok(ChatChunk {
+                    delta: "<action>Haru tightens his grip on the lantern.</action><dialogue>Say the word and I will lead.</dialogue>".to_owned(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: None,
+                    done: false,
+                    usage: None,
+                }),
+                Ok(ChatChunk {
+                    delta: String::new(),
+                    model: Some("test-model".to_owned()),
+                    finish_reason: Some("stop".to_owned()),
+                    done: true,
+                    usage: None,
+                }),
+            ]),
+        ],
+    ));
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
+        sample_runtime_state(),
+    )
+    .expect("engine");
+
+    let result = engine
+        .run_turn("Tell me what happens next.")
+        .await
+        .expect("run_turn should succeed");
+
+    assert_eq!(result.completed_beats.len(), 4);
+    assert!(matches!(
+        result.completed_beats[0],
+        ss_engine::ExecutedBeat::Narrator { .. }
+    ));
+    assert!(matches!(
+        result.completed_beats[1],
+        ss_engine::ExecutedBeat::Actor { .. }
+    ));
+    assert!(matches!(
+        result.completed_beats[2],
+        ss_engine::ExecutedBeat::Narrator { .. }
+    ));
+    assert!(matches!(
+        result.completed_beats[3],
+        ss_engine::ExecutedBeat::Actor { .. }
+    ));
+
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 7);
 }
 
 #[tokio::test]

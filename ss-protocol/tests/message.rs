@@ -1,18 +1,15 @@
-use engine::AgentApiIds;
 use serde_json::json;
 use ss_protocol::{
     CharacterCardSummaryPayload, CharacterChrExportPayload, CharacterCoverMimeType,
     CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload,
     DashboardCountsPayload, DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
-    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, DefaultLlmConfigPayload,
-    DefaultLlmConfigStatePayload, ErrorCode, ErrorPayload, GenerateStoryPlanParams,
-    GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage, JsonRpcResponseMessage,
-    LlmApiPayload, RequestParams, ResponseResult, RuntimeSnapshotPayload, ServerEventMessage,
-    SessionDetailPayload, SessionMessageKind, SessionMessagePayload, StoryPlannedPayload,
-    StreamEventBody, StreamFrame,
+    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, ErrorCode, ErrorPayload,
+    GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage,
+    JsonRpcResponseMessage, RequestParams, ResponseResult, RuntimeSnapshotPayload,
+    ServerEventMessage, SessionDetailPayload, SessionMessageKind, SessionMessagePayload,
+    StoryPlannedPayload, StreamEventBody, StreamFrame,
 };
 use state::WorldState;
-use store::LlmProvider;
 
 fn sample_runtime_snapshot() -> engine::RuntimeSnapshot {
     let mut world_state = WorldState::new("dock");
@@ -26,18 +23,6 @@ fn sample_runtime_snapshot() -> engine::RuntimeSnapshot {
     }
 }
 
-fn sample_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner-default".to_owned(),
-        architect_api_id: "architect-default".to_owned(),
-        director_api_id: "director-default".to_owned(),
-        actor_api_id: "actor-default".to_owned(),
-        narrator_api_id: "narrator-default".to_owned(),
-        keeper_api_id: "keeper-default".to_owned(),
-        replyer_api_id: "replyer-default".to_owned(),
-    }
-}
-
 #[test]
 fn json_rpc_request_and_response_round_trip() {
     let request = JsonRpcRequestMessage::new(
@@ -45,7 +30,8 @@ fn json_rpc_request_and_response_round_trip() {
         None::<String>,
         RequestParams::StoryGeneratePlan(GenerateStoryPlanParams {
             resource_id: "res-1".to_owned(),
-            planner_api_id: Some("planner-fast".to_owned()),
+            api_group_id: Some("group-default".to_owned()),
+            preset_id: Some("preset-default".to_owned()),
         }),
     );
 
@@ -58,8 +44,14 @@ fn json_rpc_request_and_response_round_trip() {
         serde_json::from_str(&request_json).expect("request should deserialize");
     assert!(matches!(
         request_round_trip.params,
-        RequestParams::StoryGeneratePlan(GenerateStoryPlanParams { resource_id, planner_api_id })
-            if resource_id == "res-1" && planner_api_id.as_deref() == Some("planner-fast")
+        RequestParams::StoryGeneratePlan(GenerateStoryPlanParams {
+            resource_id,
+            api_group_id,
+            preset_id,
+        })
+            if resource_id == "res-1"
+                && api_group_id.as_deref() == Some("group-default")
+                && preset_id.as_deref() == Some("preset-default")
     ));
 
     let response = JsonRpcResponseMessage::ok(
@@ -99,7 +91,8 @@ fn json_rpc_request_and_response_round_trip() {
         "req-3",
         None::<String>,
         ResponseResult::GlobalConfig(GlobalConfigPayload {
-            api_ids: Some(sample_api_ids()),
+            api_group_id: Some("group-default".to_owned()),
+            preset_id: Some("preset-default".to_owned()),
         }),
     );
     let config_json =
@@ -208,7 +201,8 @@ fn json_rpc_request_and_response_round_trip() {
                 sessions_total: 4,
             },
             global_config: GlobalConfigPayload {
-                api_ids: Some(sample_api_ids()),
+                api_group_id: Some("group-default".to_owned()),
+                preset_id: Some("preset-default".to_owned()),
             },
             recent_stories: vec![DashboardStorySummaryPayload {
                 story_id: "story-1".to_owned(),
@@ -235,65 +229,8 @@ fn json_rpc_request_and_response_round_trip() {
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::Dashboard(_))
     ));
 
-    let llm_api_response = JsonRpcResponseMessage::ok(
-        "req-9",
-        None::<String>,
-        ResponseResult::LlmApi(LlmApiPayload {
-            api_id: "default".to_owned(),
-            provider: LlmProvider::OpenAi,
-            base_url: "https://api.openai.example/v1".to_owned(),
-            model: "gpt-4.1-mini".to_owned(),
-            temperature: Some(0.4),
-            max_tokens: Some(2048),
-            has_api_key: true,
-            api_key_masked: Some("sk****et".to_owned()),
-        }),
-    );
-    let llm_api_json =
-        serde_json::to_string_pretty(&llm_api_response).expect("llm api response should serialize");
-    let llm_api_round_trip: JsonRpcResponseMessage =
-        serde_json::from_str(&llm_api_json).expect("llm api response should deserialize");
-    assert!(matches!(
-        llm_api_round_trip.outcome,
-        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::LlmApi(_))
-    ));
-
-    let default_llm_config_response = JsonRpcResponseMessage::ok(
-        "req-10",
-        None::<String>,
-        ResponseResult::DefaultLlmConfig(DefaultLlmConfigStatePayload {
-            saved: Some(DefaultLlmConfigPayload {
-                provider: LlmProvider::OpenAi,
-                base_url: "https://api.openai.example/v1".to_owned(),
-                model: "gpt-4.1-mini".to_owned(),
-                temperature: Some(0.4),
-                max_tokens: Some(2048),
-                has_api_key: true,
-                api_key_masked: Some("sk****et".to_owned()),
-            }),
-            effective: Some(DefaultLlmConfigPayload {
-                provider: LlmProvider::OpenAi,
-                base_url: "https://override.example/v1".to_owned(),
-                model: "gpt-4.1".to_owned(),
-                temperature: Some(0.5),
-                max_tokens: Some(4096),
-                has_api_key: true,
-                api_key_masked: Some("sk****de".to_owned()),
-            }),
-        }),
-    );
-    let default_llm_config_json = serde_json::to_string_pretty(&default_llm_config_response)
-        .expect("default llm config response should serialize");
-    let default_llm_config_round_trip: JsonRpcResponseMessage =
-        serde_json::from_str(&default_llm_config_json)
-            .expect("default llm config response should deserialize");
-    assert!(matches!(
-        default_llm_config_round_trip.outcome,
-        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::DefaultLlmConfig(_))
-    ));
-
     let session_response = JsonRpcResponseMessage::ok(
-        "req-10",
+        "req-9",
         Some("session-1"),
         ResponseResult::Session(Box::new(SessionDetailPayload {
             session_id: "session-1".to_owned(),
@@ -301,6 +238,8 @@ fn json_rpc_request_and_response_round_trip() {
             display_name: "Courier Run".to_owned(),
             player_profile_id: Some("profile-courier".to_owned()),
             player_schema_id: "schema-player".to_owned(),
+            api_group_id: "group-default".to_owned(),
+            preset_id: "preset-default".to_owned(),
             snapshot: sample_runtime_snapshot(),
             history: vec![
                 SessionMessagePayload {
@@ -331,9 +270,8 @@ fn json_rpc_request_and_response_round_trip() {
             created_at_ms: Some(500),
             updated_at_ms: Some(1_001),
             config: ss_protocol::SessionConfigPayload {
-                mode: engine::SessionConfigMode::UseGlobal,
-                session_api_ids: None,
-                effective_api_ids: sample_api_ids(),
+                api_group_id: "group-default".to_owned(),
+                preset_id: "preset-default".to_owned(),
             },
         })),
     );

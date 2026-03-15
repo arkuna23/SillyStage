@@ -2,114 +2,148 @@ mod common;
 
 use std::sync::Arc;
 
-use ss_engine::{AgentApiIds, LlmApiRegistry, RegistryError};
-use store::{LlmApiRecord, LlmProvider};
+use ss_engine::{LlmApiRegistry, RegistryError, RuntimeApiRecords};
+use store::{AgentPresetConfig, ApiRecord, LlmProvider, PresetAgentConfigs, PresetRecord};
 
 use common::QueuedMockLlm;
 
-fn sample_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner".to_owned(),
-        architect_api_id: "architect".to_owned(),
-        director_api_id: "director".to_owned(),
-        actor_api_id: "actor".to_owned(),
-        narrator_api_id: "narrator".to_owned(),
-        keeper_api_id: "keeper".to_owned(),
-        replyer_api_id: "replyer".to_owned(),
+fn sample_api_record(api_id: &str, model: &str) -> ApiRecord {
+    ApiRecord {
+        api_id: api_id.to_owned(),
+        display_name: format!("API {api_id}"),
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: "sk-secret".to_owned(),
+        model: model.to_owned(),
+    }
+}
+
+fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
+    AgentPresetConfig {
+        temperature: Some(0.1),
+        max_tokens: Some(max_tokens),
+        extra: None,
+    }
+}
+
+fn sample_preset() -> PresetRecord {
+    PresetRecord {
+        preset_id: "preset-default".to_owned(),
+        display_name: "Default Preset".to_owned(),
+        agents: PresetAgentConfigs {
+            planner: sample_agent_preset_config(512),
+            architect: sample_agent_preset_config(8_192),
+            director: sample_agent_preset_config(512),
+            actor: sample_agent_preset_config(512),
+            narrator: sample_agent_preset_config(512),
+            keeper: sample_agent_preset_config(512),
+            replyer: sample_agent_preset_config(256),
+        },
     }
 }
 
 #[test]
-fn registry_builds_story_generation_and_runtime_configs() {
+fn registry_builds_story_generation_and_runtime_configs_for_group() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let api_ids = sample_api_ids();
     let llm_api: Arc<dyn llm::LlmApi> = llm.clone();
+    let planner_api = sample_api_record("api-planner", "planner-model");
+    let architect_api = sample_api_record("api-architect", "architect-model");
+    let director_api = sample_api_record("api-director", "director-model");
+    let actor_api = sample_api_record("api-actor", "actor-model");
+    let narrator_api = sample_api_record("api-narrator", "narrator-model");
+    let keeper_api = sample_api_record("api-keeper", "keeper-model");
+    let replyer_api = sample_api_record("api-replyer", "replyer-model");
+    let preset = sample_preset();
     let registry = LlmApiRegistry::new()
         .register(
-            &api_ids.planner_api_id,
+            "api-planner",
             Arc::clone(&llm_api),
-            "planner-model",
+            "planner-override-model",
         )
         .register(
-            &api_ids.architect_api_id,
+            "api-architect",
             Arc::clone(&llm_api),
-            "architect-model",
+            "architect-override-model",
         )
         .register(
-            &api_ids.director_api_id,
+            "api-director",
             Arc::clone(&llm_api),
-            "director-model",
+            "director-override-model",
         )
-        .register(&api_ids.actor_api_id, Arc::clone(&llm_api), "actor-model")
+        .register("api-actor", Arc::clone(&llm_api), "actor-override-model")
         .register(
-            &api_ids.narrator_api_id,
+            "api-narrator",
             Arc::clone(&llm_api),
-            "narrator-model",
+            "narrator-override-model",
         )
-        .register(&api_ids.keeper_api_id, Arc::clone(&llm_api), "keeper-model")
-        .register(&api_ids.replyer_api_id, llm_api, "replyer-model");
+        .register("api-keeper", Arc::clone(&llm_api), "keeper-override-model")
+        .register("api-replyer", llm_api, "replyer-override-model");
 
     let generation = registry
-        .build_story_generation_configs(&api_ids)
+        .build_story_generation_configs(
+            &planner_api,
+            &architect_api,
+            &preset.agents.planner,
+            &preset.agents.architect,
+        )
         .expect("generation config should resolve");
     let runtime = registry
-        .build_runtime_configs(&api_ids)
+        .build_runtime_configs(
+            RuntimeApiRecords {
+                director: &director_api,
+                actor: &actor_api,
+                narrator: &narrator_api,
+                keeper: &keeper_api,
+            },
+            &preset,
+        )
         .expect("runtime config should resolve");
     let replyer = registry
-        .build_replyer_config(&api_ids)
+        .build_replyer_config(&replyer_api, &preset.agents.replyer)
         .expect("replyer config should resolve");
 
-    assert_eq!(generation.planner.model, "planner-model");
-    assert_eq!(generation.architect.model, "architect-model");
-    assert_eq!(generation.planner.temperature, None);
-    assert_eq!(generation.planner.max_tokens, None);
-    assert_eq!(generation.architect.max_tokens, None);
-    assert_eq!(runtime.director.model, "director-model");
-    assert_eq!(runtime.actor.model, "actor-model");
-    assert_eq!(runtime.narrator.model, "narrator-model");
-    assert_eq!(runtime.keeper.model, "keeper-model");
-    assert_eq!(replyer.model, "replyer-model");
+    assert_eq!(generation.planner.model, "planner-override-model");
+    assert_eq!(generation.architect.model, "architect-override-model");
+    assert_eq!(generation.planner.temperature, Some(0.1));
+    assert_eq!(generation.planner.max_tokens, Some(512));
+    assert_eq!(generation.architect.max_tokens, Some(8_192));
+    assert_eq!(runtime.director.model, "director-override-model");
+    assert_eq!(runtime.actor.model, "actor-override-model");
+    assert_eq!(runtime.narrator.model, "narrator-override-model");
+    assert_eq!(runtime.keeper.model, "keeper-override-model");
+    assert_eq!(replyer.model, "replyer-override-model");
 }
 
 #[test]
-fn registry_reports_unknown_api_ids() {
+fn registry_reports_unknown_override_api_ids() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
-    let api_ids = sample_api_ids();
-    let registry = LlmApiRegistry::new().register("planner", llm, "planner-model");
+    let registry = LlmApiRegistry::new().register("api-planner", llm, "planner-model");
 
     let error = registry
-        .build_story_generation_configs(&api_ids)
+        .resolve("api-architect")
         .err()
-        .expect("missing architect api should fail");
+        .expect("missing architect override should fail");
 
-    assert!(matches!(error, RegistryError::UnknownApiId(api_id) if api_id == "architect"));
+    assert!(matches!(error, RegistryError::UnknownApiId(api_id) if api_id == "api-architect"));
 }
 
 #[test]
-fn registry_can_upsert_and_remove_records() {
+fn registry_falls_back_to_group_records_when_override_is_missing() {
+    let planner_api = sample_api_record("api-planner", "planner-model");
+    let architect_api = sample_api_record("api-architect", "architect-model");
+    let preset = sample_preset();
     let registry = LlmApiRegistry::new();
-    let record = LlmApiRecord {
-        api_id: "default".to_owned(),
-        provider: LlmProvider::OpenAi,
-        base_url: "https://api.openai.example/v1".to_owned(),
-        api_key: "sk-secret".to_owned(),
-        model: "gpt-4.1-mini".to_owned(),
-        temperature: Some(0.3),
-        max_tokens: Some(512),
-    };
 
-    registry
-        .upsert_record(&record)
-        .expect("record should build into client");
-    let resolved = registry.resolve("default").expect("api should resolve");
-    assert_eq!(resolved.model, "gpt-4.1-mini");
-    assert_eq!(resolved.temperature, Some(0.3));
-    assert_eq!(resolved.max_tokens, Some(512));
+    let generation = registry
+        .build_story_generation_configs(
+            &planner_api,
+            &architect_api,
+            &preset.agents.planner,
+            &preset.agents.architect,
+        )
+        .expect("group config should build without overrides");
 
-    registry.remove("default");
-    let error = registry
-        .resolve("default")
-        .err()
-        .expect("removed api should no longer resolve");
-    assert!(matches!(error, RegistryError::UnknownApiId(api_id) if api_id == "default"));
+    assert_eq!(generation.planner.model, "planner-model");
+    assert_eq!(generation.planner.temperature, Some(0.1));
+    assert_eq!(generation.planner.max_tokens, Some(512));
 }

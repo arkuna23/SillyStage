@@ -19,8 +19,8 @@ protocol.workspace = true
 agents.workspace = true
 store.workspace = true
 story.workspace = true
+state.workspace = true
 
 [dev-dependencies]
 async-trait.workspace = true
 llm.workspace = true
-state.workspace = true

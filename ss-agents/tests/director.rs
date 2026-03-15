@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use ss_agents::actor::CharacterCard;
-use ss_agents::director::Director;
+use ss_agents::director::{ActorPurpose, Director, NarratorPurpose, ResponseBeat};
 use state::{
     ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateValueType,
     WorldState,
@@ -18,7 +18,7 @@ use common::{MockLlm, assistant_response};
 #[tokio::test]
 async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
-        "{\"beats\":[{\"type\":\"Narrator\",\"purpose\":\"DescribeScene\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"AdvanceGoal\"}]}",
+        "{\"beats\":[{\"type\":\"Narrator\",\"purpose\":\"DescribeScene\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"AdvanceGoal\"},{\"type\":\"Narrator\",\"purpose\":\"DescribeResult\"},{\"type\":\"Actor\",\"speaker_id\":\"merchant\",\"purpose\":\"CommentOnScene\"}]}",
         Some(json!({
             "beats": [
                 {
@@ -29,6 +29,15 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                     "type": "Actor",
                     "speaker_id": "merchant",
                     "purpose": "AdvanceGoal"
+                },
+                {
+                    "type": "Narrator",
+                    "purpose": "DescribeResult"
+                },
+                {
+                    "type": "Actor",
+                    "speaker_id": "merchant",
+                    "purpose": "CommentOnScene"
                 }
             ]
         })),
@@ -99,12 +108,27 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
+    let system_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::System))
+        .expect("system message should exist");
     let user_message = request
         .messages
         .iter()
         .find(|message| matches!(message.role, llm::Role::User))
         .expect("user message should exist");
 
+    assert!(
+        system_message
+            .content
+            .contains("You may output any number of beats")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("You may interleave Narrator and Actor beats in any order")
+    );
     assert!(user_message.content.contains("CURRENT_CAST"));
     assert!(user_message.content.contains("\"id\": \"merchant\""));
     assert!(!user_message.content.contains("ResponsePlan schema"));
@@ -127,5 +151,31 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     );
     assert!(!user_message.content.contains("\"actor_shared_history\""));
     assert!(!user_message.content.contains("\"actor_private_memory\""));
-    assert_eq!(result.response_plan.beats.len(), 2);
+    assert_eq!(result.response_plan.beats.len(), 4);
+    assert!(matches!(
+        result.response_plan.beats[0],
+        ResponseBeat::Narrator {
+            purpose: NarratorPurpose::DescribeScene
+        }
+    ));
+    assert!(matches!(
+        &result.response_plan.beats[1],
+        ResponseBeat::Actor {
+            speaker_id,
+            purpose: ActorPurpose::AdvanceGoal
+        } if speaker_id == "merchant"
+    ));
+    assert!(matches!(
+        result.response_plan.beats[2],
+        ResponseBeat::Narrator {
+            purpose: NarratorPurpose::DescribeResult
+        }
+    ));
+    assert!(matches!(
+        &result.response_plan.beats[3],
+        ResponseBeat::Actor {
+            speaker_id,
+            purpose: ActorPurpose::CommentOnScene
+        } if speaker_id == "merchant"
+    ));
 }

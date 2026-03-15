@@ -8,6 +8,12 @@ pub enum HandlerError {
     MissingSessionId,
     #[error("llm engine config is not initialized")]
     LlmConfigNotInitialized,
+    #[error("api '{0}' not found")]
+    MissingApi(String),
+    #[error("api group '{0}' not found")]
+    MissingApiGroup(String),
+    #[error("preset '{0}' not found")]
+    MissingPreset(String),
     #[error("schema '{0}' not found")]
     MissingSchema(String),
     #[error("player profile '{0}' not found")]
@@ -26,16 +32,18 @@ pub enum HandlerError {
     MissingSession(String),
     #[error("session message '{0}' not found")]
     MissingSessionMessage(String),
-    #[error("llm api '{0}' not found")]
-    MissingLlmApi(String),
+    #[error("api '{0}' already exists")]
+    DuplicateApi(String),
+    #[error("api group '{0}' already exists")]
+    DuplicateApiGroup(String),
+    #[error("preset '{0}' already exists")]
+    DuplicatePreset(String),
     #[error("character '{0}' already exists")]
     DuplicateCharacter(String),
     #[error("schema '{0}' already exists")]
     DuplicateSchema(String),
     #[error("player profile '{0}' already exists")]
     DuplicatePlayerProfile(String),
-    #[error("llm api '{0}' already exists")]
-    DuplicateLlmApi(String),
     #[error("schema_id must not be empty")]
     EmptySchemaId,
     #[error("player_profile_id must not be empty")]
@@ -45,7 +53,11 @@ pub enum HandlerError {
     #[error("character_id '{expected}' does not match content.id '{got}'")]
     CharacterIdMismatch { expected: String, got: String },
     #[error("api_id must not be empty")]
-    EmptyLlmApiId,
+    EmptyApiId,
+    #[error("api_group_id must not be empty")]
+    EmptyApiGroupId,
+    #[error("preset_id must not be empty")]
+    EmptyPresetId,
     #[error("character '{0}' does not have a cover yet")]
     MissingCharacterCover(String),
     #[error("schema '{0}' is still referenced")]
@@ -54,10 +66,12 @@ pub enum HandlerError {
     PlayerProfileInUse(String),
     #[error("character '{0}' is still referenced by story resources")]
     CharacterInUse(String),
-    #[error("llm api '{0}' is still referenced by config")]
-    LlmApiInUse(String),
-    #[error("llm api.create is missing required fields: {0}")]
-    IncompleteLlmApiCreate(String),
+    #[error("api '{0}' is still referenced by api group")]
+    ApiInUse(String),
+    #[error("api group '{0}' is still referenced by draft or session")]
+    ApiGroupInUse(String),
+    #[error("preset '{0}' is still referenced by draft or session")]
+    PresetInUse(String),
     #[error("story resources '{0}' already has generated stories")]
     StoryResourcesInUse(String),
     #[error("story resources '{0}' is still referenced by a draft")]
@@ -78,12 +92,12 @@ pub enum HandlerError {
     InvalidCharacterCoverPayload(String),
     #[error("suggested reply limit must be between 2 and 5, got {0}")]
     InvalidSuggestedReplyLimit(u32),
-    #[error("session config for use_session requires api ids")]
-    MissingSessionApiIds,
-    #[error("invalid session config: {0}")]
-    InvalidSessionConfig(String),
     #[error("invalid story draft: {0}")]
     InvalidStoryDraft(String),
+    #[error("invalid story graph: {0}")]
+    InvalidStoryGraph(String),
+    #[error("invalid session variable update: {0}")]
+    InvalidSessionVariableUpdate(String),
     #[error("{0}")]
     Manager(String),
     #[error(transparent)]
@@ -111,12 +125,13 @@ impl HandlerError {
             | Self::EmptyPlayerProfileId
             | Self::EmptyCharacterId
             | Self::CharacterIdMismatch { .. }
-            | Self::EmptyLlmApiId
+            | Self::EmptyApiId
+            | Self::EmptyApiGroupId
+            | Self::EmptyPresetId
             | Self::InvalidCharacterCoverPayload(_)
             | Self::InvalidSuggestedReplyLimit(_)
-            | Self::IncompleteLlmApiCreate(_)
-            | Self::MissingSessionApiIds
-            | Self::InvalidSessionConfig(_)
+            | Self::InvalidStoryGraph(_)
+            | Self::InvalidSessionVariableUpdate(_)
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
             Self::MissingUpload(_)
             | Self::MissingSchema(_)
@@ -127,16 +142,22 @@ impl HandlerError {
             | Self::MissingStory(_)
             | Self::MissingSession(_)
             | Self::MissingSessionMessage(_)
-            | Self::MissingLlmApi(_) => ErrorPayload::new(ErrorCode::NotFound, self.to_string()),
-            Self::DuplicateCharacter(_)
+            | Self::MissingApi(_)
+            | Self::MissingApiGroup(_)
+            | Self::MissingPreset(_) => ErrorPayload::new(ErrorCode::NotFound, self.to_string()),
+            Self::DuplicateApi(_)
+            | Self::DuplicateCharacter(_)
             | Self::DuplicateSchema(_)
             | Self::DuplicatePlayerProfile(_)
-            | Self::DuplicateLlmApi(_)
+            | Self::DuplicateApiGroup(_)
+            | Self::DuplicatePreset(_)
             | Self::MissingCharacterCover(_)
             | Self::SchemaInUse(_)
             | Self::PlayerProfileInUse(_)
             | Self::CharacterInUse(_)
-            | Self::LlmApiInUse(_)
+            | Self::ApiInUse(_)
+            | Self::ApiGroupInUse(_)
+            | Self::PresetInUse(_)
             | Self::StoryResourcesInUse(_)
             | Self::StoryResourcesDraftInUse(_)
             | Self::StoryHasSessions(_) => ErrorPayload::new(ErrorCode::Conflict, self.to_string()),
@@ -165,6 +186,9 @@ impl From<ManagerError> for HandlerError {
     fn from(value: ManagerError) -> Self {
         match value {
             ManagerError::LlmConfigNotInitialized => Self::LlmConfigNotInitialized,
+            ManagerError::MissingApi(id) => Self::MissingApi(id),
+            ManagerError::MissingApiGroup(id) => Self::MissingApiGroup(id),
+            ManagerError::MissingPreset(id) => Self::MissingPreset(id),
             ManagerError::MissingSchema(id) => Self::MissingSchema(id),
             ManagerError::MissingCharacter(id) => Self::MissingCharacter(id),
             ManagerError::MissingPlayerProfile(id) => Self::MissingPlayerProfile(id),

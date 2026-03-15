@@ -1,7 +1,9 @@
+mod api;
+mod api_group;
 mod config;
 mod dashboard;
-mod llm_api;
 mod player_profile;
+mod preset;
 mod schema;
 mod session;
 mod story;
@@ -11,10 +13,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use engine::{AgentApiIds, EngineManager, LlmApiRegistry};
+use engine::{EngineManager, LlmApiRegistry};
 use futures_core::Stream;
 use protocol::{JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, ServerEventMessage};
-use store::{DefaultLlmConfigRecord, InMemoryStore, Store};
+use store::{InMemoryStore, Store};
 
 use crate::error::HandlerError;
 use crate::store::UploadStore;
@@ -32,7 +34,6 @@ pub enum HandlerReply {
 pub struct Handler {
     store: Arc<dyn Store>,
     manager: EngineManager,
-    effective_default_llm_config: Option<DefaultLlmConfigRecord>,
     uploads: UploadStore,
     id_generator: IdGenerator,
 }
@@ -41,33 +42,19 @@ impl Handler {
     pub async fn new(
         store: Arc<dyn Store>,
         registry: LlmApiRegistry,
-        initial_global_config: Option<AgentApiIds>,
-        effective_default_llm_config: Option<DefaultLlmConfigRecord>,
     ) -> Result<Self, HandlerError> {
-        let manager =
-            EngineManager::new(Arc::clone(&store), registry, initial_global_config).await?;
+        let manager = EngineManager::new(Arc::clone(&store), registry).await?;
 
         Ok(Self {
             store,
             manager,
-            effective_default_llm_config,
             uploads: UploadStore::new(),
             id_generator: IdGenerator::default(),
         })
     }
 
-    pub async fn with_in_memory_store(
-        registry: LlmApiRegistry,
-        initial_global_config: Option<AgentApiIds>,
-        effective_default_llm_config: Option<DefaultLlmConfigRecord>,
-    ) -> Result<Self, HandlerError> {
-        Self::new(
-            Arc::new(InMemoryStore::new()),
-            registry,
-            initial_global_config,
-            effective_default_llm_config,
-        )
-        .await
+    pub async fn with_in_memory_store(registry: LlmApiRegistry) -> Result<Self, HandlerError> {
+        Self::new(Arc::new(InMemoryStore::new()), registry).await
     }
 
     pub async fn handle(&self, request: JsonRpcRequestMessage) -> HandlerReply {
@@ -81,6 +68,35 @@ impl Handler {
             }
             RequestParams::UploadComplete(params) => {
                 self.handle_upload_complete(&request_id, params).await
+            }
+            RequestParams::ApiCreate(params) => self.handle_api_create(&request_id, params).await,
+            RequestParams::ApiGet(params) => self.handle_api_get(&request_id, params).await,
+            RequestParams::ApiList(_) => self.handle_api_list(&request_id).await,
+            RequestParams::ApiUpdate(params) => self.handle_api_update(&request_id, params).await,
+            RequestParams::ApiDelete(params) => self.handle_api_delete(&request_id, params).await,
+            RequestParams::ApiGroupCreate(params) => {
+                self.handle_api_group_create(&request_id, params).await
+            }
+            RequestParams::ApiGroupGet(params) => {
+                self.handle_api_group_get(&request_id, params).await
+            }
+            RequestParams::ApiGroupList(_) => self.handle_api_group_list(&request_id).await,
+            RequestParams::ApiGroupUpdate(params) => {
+                self.handle_api_group_update(&request_id, params).await
+            }
+            RequestParams::ApiGroupDelete(params) => {
+                self.handle_api_group_delete(&request_id, params).await
+            }
+            RequestParams::PresetCreate(params) => {
+                self.handle_preset_create(&request_id, params).await
+            }
+            RequestParams::PresetGet(params) => self.handle_preset_get(&request_id, params).await,
+            RequestParams::PresetList(_) => self.handle_preset_list(&request_id).await,
+            RequestParams::PresetUpdate(params) => {
+                self.handle_preset_update(&request_id, params).await
+            }
+            RequestParams::PresetDelete(params) => {
+                self.handle_preset_delete(&request_id, params).await
             }
             RequestParams::SchemaCreate(params) => {
                 self.handle_schema_create(&request_id, params).await
@@ -158,6 +174,9 @@ impl Handler {
             RequestParams::StoryUpdate(params) => {
                 self.handle_story_update(&request_id, params).await
             }
+            RequestParams::StoryUpdateGraph(params) => {
+                self.handle_story_update_graph(&request_id, params).await
+            }
             RequestParams::StoryList(_) => self.handle_story_list(&request_id).await,
             RequestParams::StoryDelete(params) => {
                 self.handle_story_delete(&request_id, params).await
@@ -169,6 +188,10 @@ impl Handler {
                 self.handle_story_draft_get(&request_id, params).await
             }
             RequestParams::StoryDraftList(_) => self.handle_story_draft_list(&request_id).await,
+            RequestParams::StoryDraftUpdateGraph(params) => {
+                self.handle_story_draft_update_graph(&request_id, params)
+                    .await
+            }
             RequestParams::StoryDraftContinue(params) => {
                 self.handle_story_draft_continue(&request_id, params).await
             }
@@ -219,6 +242,14 @@ impl Handler {
                     .handle_session_run_turn(request_id, session_id, params)
                     .await;
             }
+            RequestParams::SessionGetVariables(_) => {
+                self.handle_session_get_variables(&request_id, session_id.clone())
+                    .await
+            }
+            RequestParams::SessionUpdateVariables(params) => {
+                self.handle_session_update_variables(&request_id, session_id.clone(), params)
+                    .await
+            }
             RequestParams::SessionSuggestReplies(params) => {
                 self.handle_session_suggest_replies(&request_id, session_id.clone(), params)
                     .await
@@ -240,33 +271,12 @@ impl Handler {
                     .await
             }
             RequestParams::ConfigGetGlobal(_) => self.handle_config_get_global(&request_id).await,
-            RequestParams::ConfigUpdateGlobal(params) => {
-                self.handle_config_update_global(&request_id, params).await
-            }
             RequestParams::SessionGetConfig(_) => {
                 self.handle_session_get_config(&request_id, session_id.clone())
                     .await
             }
             RequestParams::SessionUpdateConfig(params) => {
                 self.handle_session_update_config(&request_id, session_id.clone(), params)
-                    .await
-            }
-            RequestParams::LlmApiCreate(params) => {
-                self.handle_llm_api_create(&request_id, params).await
-            }
-            RequestParams::LlmApiGet(params) => self.handle_llm_api_get(&request_id, params).await,
-            RequestParams::LlmApiList(_) => self.handle_llm_api_list(&request_id).await,
-            RequestParams::LlmApiUpdate(params) => {
-                self.handle_llm_api_update(&request_id, params).await
-            }
-            RequestParams::LlmApiDelete(params) => {
-                self.handle_llm_api_delete(&request_id, params).await
-            }
-            RequestParams::DefaultLlmConfigGet(_) => {
-                self.handle_default_llm_config_get(&request_id).await
-            }
-            RequestParams::DefaultLlmConfigUpdate(params) => {
-                self.handle_default_llm_config_update(&request_id, params)
                     .await
             }
             RequestParams::DashboardGet(_) => self.handle_dashboard_get(&request_id).await,

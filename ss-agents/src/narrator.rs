@@ -258,7 +258,7 @@ impl Narrator {
         let player_name_json = serde_json::to_string_pretty(&request.player_name)
             .map_err(NarratorError::SerializePromptData)?;
         let world_state_json =
-            serde_json::to_string_pretty(&request.world_state.observable_prompt_view())
+            serde_json::to_string_pretty(&filtered_narrator_world_state(request.world_state)?)
                 .map_err(NarratorError::SerializePromptData)?;
         let player_state_schema_json = serde_json::to_string_pretty(request.player_state_schema)
             .map_err(NarratorError::SerializePromptData)?;
@@ -340,4 +340,23 @@ fn cast_summaries<'a>(
                 })
         })
         .collect()
+}
+
+fn filtered_narrator_world_state(world_state: &WorldState) -> Result<Value, NarratorError> {
+    let mut value = serde_json::to_value(world_state.observable_prompt_view())
+        .map_err(NarratorError::SerializePromptData)?;
+
+    if let Some(history) = value
+        .get_mut("actor_shared_history")
+        .and_then(Value::as_array_mut)
+    {
+        history.retain(|entry| {
+            entry
+                .get("speaker_id")
+                .and_then(Value::as_str)
+                .is_none_or(|speaker_id| speaker_id != "narrator")
+        });
+    }
+
+    Ok(value)
 }

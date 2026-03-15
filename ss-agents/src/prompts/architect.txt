@@ -22,6 +22,7 @@ RULES
 - Reuse schema seeds when they fit
 - Use only character ids from AVAILABLE_CHARACTERS in structural fields
 - Use world_state_schema keys for global conditions and global state ops
+- Use player_state_schema keys for player-scoped conditions and player state ops
 - Use character state_schema_keys for character-scoped conditions and ops
 - Keep schemas concise
 - Keep node text concise
@@ -52,7 +53,7 @@ Transition
 {
   "to": "target_node",
   "condition": {
-    "scope": "global_or_character",
+    "scope": "global_or_player_or_character",
     "character": "character_id_if_scope_is_character",
     "key": "state_variable",
     "op": "eq_or_ne_or_gt_or_gte_or_lt_or_lte_or_contains",

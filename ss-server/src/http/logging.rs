@@ -102,6 +102,10 @@ fn is_frequent_method(method: RequestMethod) -> bool {
         method,
         RequestMethod::UploadInit
             | RequestMethod::UploadChunk
+            | RequestMethod::ApiGroupGet
+            | RequestMethod::ApiGroupList
+            | RequestMethod::PresetGet
+            | RequestMethod::PresetList
             | RequestMethod::SchemaGet
             | RequestMethod::SchemaList
             | RequestMethod::PlayerProfileGet
@@ -119,8 +123,6 @@ fn is_frequent_method(method: RequestMethod) -> bool {
             | RequestMethod::SessionGetRuntimeSnapshot
             | RequestMethod::ConfigGetGlobal
             | RequestMethod::SessionGetConfig
-            | RequestMethod::LlmApiGet
-            | RequestMethod::LlmApiList
             | RequestMethod::DashboardGet
     )
 }

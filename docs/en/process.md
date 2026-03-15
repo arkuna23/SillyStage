@@ -4,31 +4,56 @@ This document describes the current flow from resource import to interactive pla
 
 ## 1. Prepare Base Resources
 
-### 1.1 Configure LLM APIs
+### 1.1 Configure APIs, API Groups, and Presets
 
-Optionally configure the persistent default template first:
+Create one or more reusable `api` resources:
 
-- `default_llm_config.get`
-- `default_llm_config.update`
+- `api.create`
+- `api.list`
+- `api.update`
+- `api.delete`
 
-Then create one or more `llm_api` resources:
+An `api` stores one connection definition:
 
-- `llm_api.create`
-- `llm_api.list`
-- `llm_api.update`
-- `llm_api.delete`
+- `provider`
+- `base_url`
+- `api_key`
+- `model`
 
-These objects describe reusable model endpoints such as OpenAI-compatible APIs.  
-Global config and session config only reference `api_id`.
+Create one or more `api_group` resources:
 
-If env vars or the app config file define a default LLM config, those values override the saved
-default for the current process. Otherwise the saved default is used.
+- `api_group.create`
+- `api_group.list`
+- `api_group.update`
+- `api_group.delete`
 
-The service is allowed to start without any `llm_api` records or global config. In that state,
+An `api_group` stores per-agent `api_id` bindings:
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+Then create one or more `preset` resources:
+
+- `preset.create`
+- `preset.list`
+- `preset.update`
+- `preset.delete`
+
+A `preset` stores per-agent generation parameters. The current fields are:
+
+- `temperature`
+- `max_tokens`
+
+The service is allowed to start with no `api_group` or `preset` resources. In that state,
 browse/configuration APIs still work, but agent-executing APIs return an “LLM config is not initialized” error.
 
-When the first `llm_api` is created and no global config exists yet, the backend automatically
-uses that `api_id` as the default binding for every agent role.
+If a request omits `api_group_id` or `preset_id` and at least one resource exists, the backend
+sorts ids and uses the first available `api_group` and `preset`.
 
 ### 1.2 Create Schema Resources
 
@@ -189,8 +214,8 @@ Input may include:
 - `story_id`
 - optional `display_name`
 - optional `player_profile_id`
-- `config_mode`
-- optional `session_api_ids`
+- optional `api_group_id`
+- optional `preset_id`
 
 This creates a new `session`.
 
@@ -202,18 +227,28 @@ If the frontend wants a few clickable next-line suggestions for the player, it c
 
 These suggestions are not written into the transcript; only real inputs sent to `session.run_turn` become history.
 
+If the frontend wants to inspect or patch mutable conversation variables without fetching the
+entire snapshot, it can call:
+
+- `session.get_variables`
+- `session.update_variables`
+
 ## 8. Session State
 
 A session now stores:
 
 - `player_profile_id`
 - `player_schema_id`
+- `api_group_id`
+- `preset_id`
 - `snapshot`
 
 Where:
 
 - `player_profile_id` selects the active player setup
 - `player_schema_id` selects which player-state schema is in use
+- `api_group_id` selects which per-agent `api_id` binding group is used
+- `preset_id` selects which generation-parameter bundle is used
 - `snapshot` stores dynamic runtime state, including:
   - `world_state`
   - `turn_index`
@@ -279,17 +314,35 @@ This:
 - directly overwrites the current description text
 - clears `player_profile_id`
 
-## 12. Save, Restore, and Switch
+## 12. Inspect and Patch Conversation Variables
+
+Session variable APIs expose the mutable `world_state` maps without exposing scene-control fields:
+
+- `custom`
+- `player_state`
+- `character_state`
+
+`session.update_variables` accepts variable-only `StateUpdate` ops. It does not allow:
+
+- `SetCurrentNode`
+- `SetActiveCharacters`
+- `AddActiveCharacter`
+- `RemoveActiveCharacter`
+
+## 13. Save, Restore, and Switch
 
 The store persists:
 
-- `llm_api`
+- `api_group`
+- `preset`
 - `schema`
 - `player_profile`
 - `character`
 - `story_resources`
+- `story_draft`
 - `story`
 - `session`
+- `session_message`
 
 That enables:
 

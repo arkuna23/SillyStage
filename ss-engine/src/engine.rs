@@ -17,9 +17,15 @@ use futures_util::StreamExt;
 use llm::LlmApi;
 use serde::{Deserialize, Serialize};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
+use tracing::{debug, info};
 
 use crate::RuntimeSnapshot;
 use crate::event::{EngineEvent, EngineStage};
+use crate::logging::{
+    json_for_log, summarize_actor_response, summarize_architect_response,
+    summarize_director_result, summarize_keeper_response, summarize_narrator_response,
+    summarize_planner_response,
+};
 use crate::runtime::{RuntimeError, RuntimeState, StoryResources};
 
 const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
@@ -190,6 +196,19 @@ impl Engine {
                 }
             };
 
+            info!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index().saturating_add(1),
+                summary = %json_for_log(&summarize_keeper_response(KeeperPhase::AfterPlayerInput, &first_keeper)),
+                "keeper produced after-player-input update"
+            );
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index().saturating_add(1),
+                payload = %json_for_log(&first_keeper),
+                "keeper after-player-input payload"
+            );
+
             self.runtime_state
                 .world_state_mut()
                 .apply_update(first_keeper.update.clone());
@@ -221,6 +240,19 @@ impl Engine {
                     return;
                 }
             };
+
+            info!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                summary = %json_for_log(&summarize_director_result(&director_result)),
+                "director produced response plan"
+            );
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                payload = %json_for_log(&director_result),
+                "director response payload"
+            );
 
             yield EngineEvent::DirectorCompleted {
                 result: director_result.clone(),
@@ -286,6 +318,23 @@ impl Engine {
                             return;
                         };
 
+                        info!(
+                            story_id = %self.runtime_state.story_id(),
+                            turn_index = self.runtime_state.turn_index(),
+                            beat_index,
+                            purpose = ?purpose,
+                            summary = %json_for_log(&summarize_narrator_response(&response)),
+                            "narrator completed beat"
+                        );
+                        debug!(
+                            story_id = %self.runtime_state.story_id(),
+                            turn_index = self.runtime_state.turn_index(),
+                            beat_index,
+                            purpose = ?purpose,
+                            payload = %json_for_log(&response),
+                            "narrator response payload"
+                        );
+
                         completed_beats.push(ExecutedBeat::Narrator { purpose, response });
                     }
                     ResponseBeat::Actor { speaker_id, purpose } => {
@@ -299,81 +348,86 @@ impl Engine {
                             purpose: purpose.clone(),
                         };
 
-                        let actor_stream_result = {
-                            let actor = &self.actor;
-                            let parts = self.runtime_state.engine_parts();
-                            let current_node_id = parts.world_state.current_node().to_owned();
-                            let current_node_index = parts
-                                .runtime_graph
-                                .get_node_index(&current_node_id)
-                                .ok_or_else(|| {
-                                    EngineError::Runtime(RuntimeError::MissingCurrentNode(
-                                        current_node_id.clone(),
-                                    ))
-                                });
+                        let mut actor_stream = {
+                            let actor_stream_result = {
+                                let actor = &self.actor;
+                                let parts = self.runtime_state.engine_parts();
+                                let current_node_id = parts.world_state.current_node().to_owned();
+                                let current_node_index = parts
+                                    .runtime_graph
+                                    .get_node_index(&current_node_id)
+                                    .ok_or_else(|| {
+                                        EngineError::Runtime(RuntimeError::MissingCurrentNode(
+                                            current_node_id.clone(),
+                                        ))
+                                    });
 
-                            match current_node_index {
-                                Ok(current_node_index) => {
-                                    let current_node = parts
-                                        .runtime_graph
-                                        .graph
-                                        .node_weight(current_node_index)
-                                        .ok_or_else(|| {
-                                            EngineError::Runtime(RuntimeError::MissingCurrentNode(
-                                                current_node_id.clone(),
-                                            ))
-                                        });
+                                match current_node_index {
+                                    Ok(current_node_index) => {
+                                        let current_node = parts
+                                            .runtime_graph
+                                            .graph
+                                            .node_weight(current_node_index)
+                                            .ok_or_else(|| {
+                                                EngineError::Runtime(
+                                                    RuntimeError::MissingCurrentNode(
+                                                        current_node_id.clone(),
+                                                    ),
+                                                )
+                                            });
 
-                                    match current_node {
-                                        Ok(current_node) => {
-                                            if !current_node.has_character(&speaker_id) {
-                                                Err(EngineError::InvalidBeatSpeaker {
-                                                    speaker_id: speaker_id.clone(),
-                                                    node_id: current_node.id.clone(),
-                                                })
-                                            } else {
-                                                match parts
-                                                    .character_cards
-                                                    .iter()
-                                                    .find(|card| card.id == speaker_id)
-                                                {
-                                                    Some(character) => actor
-                                                        .perform_stream(
-                                                            ActorRequest {
-                                                                character,
-                                                                cast: parts.character_cards,
-                                                                player_name: parts.player_name,
-                                                                player_description: parts.player_description,
-                                                                purpose: purpose.clone(),
-                                                                node: current_node,
-                                                                memory_limit: None,
-                                                            },
-                                                            parts.world_state,
-                                                        )
-                                                        .await
-                                                        .map_err(EngineError::from),
-                                                    None => Err(EngineError::InvalidBeatSpeaker {
+                                        match current_node {
+                                            Ok(current_node) => {
+                                                if !current_node.has_character(&speaker_id) {
+                                                    Err(EngineError::InvalidBeatSpeaker {
                                                         speaker_id: speaker_id.clone(),
                                                         node_id: current_node.id.clone(),
-                                                    }),
+                                                    })
+                                                } else {
+                                                    match parts
+                                                        .character_cards
+                                                        .iter()
+                                                        .find(|card| card.id == speaker_id)
+                                                    {
+                                                        Some(character) => actor
+                                                            .perform_stream(
+                                                                ActorRequest {
+                                                                    character,
+                                                                    cast: parts.character_cards,
+                                                                    player_name: parts.player_name,
+                                                                    player_description: parts.player_description,
+                                                                    purpose: purpose.clone(),
+                                                                    node: current_node,
+                                                                    memory_limit: None,
+                                                                },
+                                                                parts.world_state,
+                                                            )
+                                                            .await
+                                                            .map_err(EngineError::from),
+                                                        None => Err(EngineError::InvalidBeatSpeaker {
+                                                            speaker_id: speaker_id.clone(),
+                                                            node_id: current_node.id.clone(),
+                                                        }),
+                                                    }
                                                 }
                                             }
+                                            Err(error) => Err(error),
                                         }
-                                        Err(error) => Err(error),
                                     }
+                                    Err(error) => Err(error),
                                 }
-                                Err(error) => Err(error),
-                            }
-                        };
-                        let mut actor_stream = match actor_stream_result {
-                            Ok(stream) => stream,
-                            Err(error) => {
-                                yield EngineEvent::TurnFailed {
-                                    stage: EngineStage::Actor,
-                                    error: error.to_string(),
-                                    snapshot: Box::new(actor_stage_snapshot.clone()),
-                                };
-                                return;
+                            };
+
+                            match actor_stream_result {
+                                Ok(stream) => stream,
+                                Err(error) => {
+                                    yield EngineEvent::TurnFailed {
+                                        stage: EngineStage::Actor,
+                                        error: error.to_string(),
+                                        snapshot: Box::new(actor_stage_snapshot.clone()),
+                                    };
+                                    return;
+                                }
                             }
                         };
 
@@ -435,6 +489,26 @@ impl Engine {
                             };
                             return;
                         };
+                        drop(actor_stream);
+
+                        info!(
+                            story_id = %self.runtime_state.story_id(),
+                            turn_index = self.runtime_state.turn_index(),
+                            beat_index,
+                            speaker_id = %speaker_id,
+                            purpose = ?purpose,
+                            summary = %json_for_log(&summarize_actor_response(&response)),
+                            "actor completed beat"
+                        );
+                        debug!(
+                            story_id = %self.runtime_state.story_id(),
+                            turn_index = self.runtime_state.turn_index(),
+                            beat_index,
+                            speaker_id = %speaker_id,
+                            purpose = ?purpose,
+                            payload = %json_for_log(&response),
+                            "actor response payload"
+                        );
 
                         completed_beats.push(ExecutedBeat::Actor {
                             speaker_id,
@@ -455,6 +529,19 @@ impl Engine {
                     return;
                 }
             };
+
+            info!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                summary = %json_for_log(&summarize_keeper_response(KeeperPhase::AfterTurnOutputs, &second_keeper)),
+                "keeper produced after-turn update"
+            );
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                payload = %json_for_log(&second_keeper),
+                "keeper after-turn payload"
+            );
 
             self.runtime_state
                 .world_state_mut()
@@ -679,6 +766,18 @@ pub async fn generate_story_plan(
             available_characters: resources.character_cards(),
         })
         .await
+        .inspect(|response| {
+            info!(
+                story_id = %resources.story_id(),
+                summary = %json_for_log(&summarize_planner_response(response)),
+                "planner generated story outline"
+            );
+            debug!(
+                story_id = %resources.story_id(),
+                payload = %json_for_log(&response),
+                "planner response payload"
+            );
+        })
         .map_err(EngineError::from)
 }
 
@@ -711,6 +810,18 @@ pub async fn generate_story_graph(
             available_characters: resources.character_cards(),
         })
         .await
+        .inspect(|response| {
+            info!(
+                story_id = %resources.story_id(),
+                summary = %json_for_log(&summarize_architect_response(response)),
+                "architect generated story graph"
+            );
+            debug!(
+                story_id = %resources.story_id(),
+                payload = %json_for_log(&response),
+                "architect response payload"
+            );
+        })
         .map_err(EngineError::from)
 }
 

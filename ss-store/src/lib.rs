@@ -6,14 +6,14 @@ mod record;
 mod store;
 
 pub use config::{
-    AgentApiIdOverrides, AgentApiIds, LlmProvider, SessionConfigMode, SessionEngineConfig,
+    AgentPresetConfig, ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, SessionBindingConfig,
 };
 pub use error::StoreError;
 pub use fs::FileSystemStore;
 pub use memory::InMemoryStore;
 pub use record::{
-    CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord,
-    PlayerProfileRecord, RuntimeSnapshot, SchemaRecord, SessionMessageKind, SessionMessageRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord,
+    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionMessageKind, SessionMessageRecord,
     SessionRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 pub use store::Store;

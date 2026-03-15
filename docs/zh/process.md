@@ -4,31 +4,56 @@
 
 ## 1. 准备基础资源
 
-### 1.1 配置 LLM API
+### 1.1 配置 API、API 组和预设
 
-可以先配置持久化的默认模板：
+先创建一个或多个可复用的 `api` 资源：
 
-- `default_llm_config.get`
-- `default_llm_config.update`
+- `api.create`
+- `api.list`
+- `api.update`
+- `api.delete`
 
-然后再创建一个或多个 `llm_api` 资源：
+`api` 保存一份连接定义：
 
-- `llm_api.create`
-- `llm_api.list`
-- `llm_api.update`
-- `llm_api.delete`
+- `provider`
+- `base_url`
+- `api_key`
+- `model`
 
-这些对象描述可用的大模型入口，例如 OpenAI-compatible API。  
-后续 global config 和 session config 只引用 `api_id`。
+先创建一个或多个 `api_group` 资源：
 
-如果环境变量或配置文件定义了默认 LLM 配置，那么当前进程会优先使用这些覆盖值；
-否则就使用持久化保存的默认配置。
+- `api_group.create`
+- `api_group.list`
+- `api_group.update`
+- `api_group.delete`
 
-系统允许在没有任何 `llm_api` 和 global config 的情况下启动。此时浏览和配置接口可用，
+`api_group` 为每个 agent 保存 `api_id` 绑定：
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+再创建一个或多个 `preset` 资源：
+
+- `preset.create`
+- `preset.list`
+- `preset.update`
+- `preset.delete`
+
+`preset` 为每个 agent 保存生成参数。当前字段包括：
+
+- `temperature`
+- `max_tokens`
+
+系统允许在没有任何 `api_group` 和 `preset` 的情况下启动。此时浏览和配置接口可用，
 但真正需要调用 agent 的接口会返回“LLM 配置尚未初始化”错误。
 
-当创建第一条 `llm_api` 时，如果当前还没有 global config，服务端会自动把这个
-`api_id` 设为所有 agent 的默认选择。
+如果请求没有显式传 `api_group_id` 或 `preset_id`，而后端中存在可用资源，那么会按 id
+排序后自动选择第一个 `api_group` 和第一个 `preset`。
 
 ### 1.2 创建 schema 资源
 
@@ -189,8 +214,8 @@
 - `story_id`
 - 可选 `display_name`
 - 可选 `player_profile_id`
-- `config_mode`
-- 可选 `session_api_ids`
+- 可选 `api_group_id`
+- 可选 `preset_id`
 
 启动后得到一个新的 `session`。
 
@@ -202,18 +227,27 @@
 
 这些建议不会写入 transcript；只有真正提交到 `session.run_turn` 的输入才会进入历史。
 
+如果前端想单独读取或 patch 可变的对话变量，而不是整份 snapshot，也可以调用：
+
+- `session.get_variables`
+- `session.update_variables`
+
 ## 8. session 内部状态
 
 session 现在同时保存：
 
 - `player_profile_id`
 - `player_schema_id`
+- `api_group_id`
+- `preset_id`
 - `snapshot`
 
 其中：
 
 - `player_profile_id` 决定当前生效的玩家设定
 - `player_schema_id` 决定玩家状态使用哪一套 schema
+- `api_group_id` 决定当前使用哪组 agent 到 `api_id` 的绑定
+- `preset_id` 决定当前使用哪组生成参数
 - `snapshot` 保存动态状态，包括：
   - `world_state`
   - `turn_index`
@@ -278,17 +312,35 @@ session 现在同时保存：
 - 直接覆盖当前 session 的描述文本
 - 把 `player_profile_id` 置空
 
-## 12. 保存、恢复与切换
+## 12. 查看和修改对话变量
+
+session 变量接口只暴露可变的 `world_state` 变量区，不暴露场景控制字段：
+
+- `custom`
+- `player_state`
+- `character_state`
+
+`session.update_variables` 只接受变量类 `StateUpdate` op，不允许：
+
+- `SetCurrentNode`
+- `SetActiveCharacters`
+- `AddActiveCharacter`
+- `RemoveActiveCharacter`
+
+## 13. 保存、恢复与切换
 
 系统会把这些对象持久化到 store：
 
-- `llm_api`
+- `api_group`
+- `preset`
 - `schema`
 - `player_profile`
 - `character`
 - `story_resources`
+- `story_draft`
 - `story`
 - `session`
+- `session_message`
 
 因此可以：
 

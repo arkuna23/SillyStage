@@ -10,42 +10,75 @@ This document lists the currently implemented JSON-RPC methods.
 | `upload.chunk` | No | `upload_chunk_accepted` | Upload a chunk |
 | `upload.complete` | No | `character_card_uploaded` | Finish `.chr` upload and persist the character |
 
-## 2. llm_api
+## 2. api
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
-| `llm_api.create` | No | `llm_api` | Create an LLM API definition |
-| `llm_api.get` | No | `llm_api` | Get one LLM API definition |
-| `llm_api.list` | No | `llm_apis_listed` | List LLM API definitions |
-| `llm_api.update` | No | `llm_api` | Update an LLM API definition |
-| `llm_api.delete` | No | `llm_api_deleted` | Delete an LLM API definition |
+| `api.create` | No | `api` | Create one reusable API definition |
+| `api.get` | No | `api` | Get one API definition |
+| `api.list` | No | `apis_listed` | List API definitions |
+| `api.update` | No | `api` | Update one API definition |
+| `api.delete` | No | `api_deleted` | Delete one API definition |
 
-The currently supported generation defaults on `llm_api` are:
+An `api` stores one reusable connection definition:
+
+- `provider`
+- `base_url`
+- `api_key`
+- `model`
+
+Notes:
+
+- Read APIs never return the raw `api_key`
+- `api.delete` returns `conflict` if the API is still referenced by an `api_group`
+
+## 3. api_group
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `api_group.create` | No | `api_group` | Create an API group |
+| `api_group.get` | No | `api_group` | Get one API group |
+| `api_group.list` | No | `api_groups_listed` | List API groups |
+| `api_group.update` | No | `api_group` | Update an API group |
+| `api_group.delete` | No | `api_group_deleted` | Delete an API group |
+
+An `api_group` stores per-agent `api_id` bindings:
+
+- `planner_api_id`
+- `architect_api_id`
+- `director_api_id`
+- `actor_api_id`
+- `narrator_api_id`
+- `keeper_api_id`
+- `replyer_api_id`
+
+Notes:
+
+- `api_group.delete` returns `conflict` if the group is still referenced by a story draft or session
+
+## 4. preset
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `preset.create` | No | `preset` | Create a preset |
+| `preset.get` | No | `preset` | Get one preset |
+| `preset.list` | No | `presets_listed` | List presets |
+| `preset.update` | No | `preset` | Update a preset |
+| `preset.delete` | No | `preset_deleted` | Delete a preset |
+
+A `preset` stores per-agent generation parameters.
+
+The currently implemented fields are:
 
 - `temperature`
 - `max_tokens`
 
 Notes:
 
-- Read APIs never return the raw `api_key`
-- Delete returns `conflict` if the API is still referenced by global or session config
-- `llm_api.create` may omit connection or model fields; missing values are filled from the current effective `default_llm_config`
-- If no global config exists yet, creating the first `llm_api` automatically binds that `api_id` to every agent role
+- `preset.delete` returns `conflict` if the preset is still referenced by a story draft or session
+- The preset object is intended to grow over time; more per-agent generation fields can be added later without changing the binding model
 
-## 3. default_llm_config
-
-| Method | session_id | Result | Notes |
-| --- | --- | --- | --- |
-| `default_llm_config.get` | No | `default_llm_config` | Get saved and effective default config |
-| `default_llm_config.update` | No | `default_llm_config` | Replace the saved default config |
-
-Notes:
-
-- `saved` is the persistent default config stored in the backend
-- `effective` is the runtime default config after applying env/file overrides
-- env/file overrides do not overwrite the saved record
-
-## 4. schema
+## 5. schema
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -60,7 +93,7 @@ Notes:
 - A schema has no fixed kind; classification is expressed through `tags`
 - Delete returns `conflict` if the schema is still referenced by characters, resources, stories, or sessions
 
-## 5. player_profile
+## 6. player_profile
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -75,7 +108,7 @@ Notes:
 - A player profile contains `player_profile_id`, `display_name`, and `description`
 - Delete returns `conflict` if any session still references it
 
-## 6. character
+## 7. character
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -130,6 +163,7 @@ Fields:
 | `story.generate` | No | `story_generated` | Compatibility wrapper: `story_draft.start -> continue* -> finalize` |
 | `story.get` | No | `story` | Get story details |
 | `story.update` | No | `story` | Update story metadata |
+| `story.update_graph` | No | `story` | Replace the full story graph, including node `on_enter_updates` |
 | `story.list` | No | `stories_listed` | List stories |
 | `story.delete` | No | `story_deleted` | Delete a story |
 | `story.start_session` | No | `session_started` | Create a new session from a story |
@@ -148,13 +182,21 @@ Important `story_generated` fields:
 - `story_id`
 - optional `display_name`
 - optional `player_profile_id`
-- `config_mode`
-- optional `session_api_ids`
+- optional `api_group_id`
+- optional `preset_id`
+
+If `api_group_id` or `preset_id` is omitted and at least one resource exists, the backend sorts
+the available ids and uses the first one.
 
 `story.update` input:
 
 - `story_id`
 - `display_name`
+
+`story.update_graph` input:
+
+- `story_id`
+- `graph`
 
 ## 9. story_draft
 
@@ -163,6 +205,7 @@ Important `story_generated` fields:
 | `story_draft.start` | No | `story_draft` | Start chunked Architect generation and create the first partial graph |
 | `story_draft.get` | No | `story_draft` | Get draft details including the current partial graph |
 | `story_draft.list` | No | `story_drafts_listed` | List draft summaries |
+| `story_draft.update_graph` | No | `story_draft` | Replace the current partial graph, including node `on_enter_updates` |
 | `story_draft.continue` | No | `story_draft` | Generate the next outline section and merge it into the draft |
 | `story_draft.finalize` | No | `story_generated` | Validate the completed draft and create the final story |
 | `story_draft.delete` | No | `story_draft_deleted` | Delete a draft |
@@ -171,7 +214,10 @@ Notes:
 
 - Draft generation is section-based, not fixed-node-count based.
 - The server keeps the partial graph in a `story_draft` object. Clients do not need to send generated nodes back.
+- `story_draft.update_graph` replaces `partial_graph` for a non-finalized draft, including node `on_enter_updates`.
 - `story.generate` remains available for clients that still want a one-shot call, but new clients should prefer `story_draft.*`.
+- `story.generate_plan`, `story.generate`, and `story_draft.start` all accept optional
+  `api_group_id` and `preset_id`; if omitted, the backend auto-selects the first available pair.
 
 ## 10. session
 
@@ -186,6 +232,8 @@ Notes:
 | `session.set_player_profile` | Yes | `session` | No |
 | `session.update_player_description` | Yes | `player_description_updated` | No |
 | `session.get_runtime_snapshot` | Yes | `runtime_snapshot` | No |
+| `session.get_variables` | Yes | `session_variables` | No |
+| `session.update_variables` | Yes | `session_variables` | No |
 | `session.get_config` | Yes | `session_config` | No |
 | `session.update_config` | Yes | `session_config` | No |
 
@@ -209,6 +257,20 @@ Notes:
 - `history` is now backed by standalone `session_message` records; `session.get` returns the aggregated ordered list
 - `session.set_player_profile` switches the active player profile only; it does not switch `player_state`
 - `session.update_player_description` clears `player_profile_id` and uses the manual description instead
+- `session.get_variables` returns the current mutable conversation variables:
+  - `custom`
+  - `player_state`
+  - `character_state`
+- `session.update_variables` applies a `StateUpdate` to those same variable maps
+- `session.update_variables` rejects non-variable ops such as:
+  - `SetCurrentNode`
+  - `SetActiveCharacters`
+  - `AddActiveCharacter`
+  - `RemoveActiveCharacter`
+- `session.get_config` returns the session binding:
+  - `api_group_id`
+  - `preset_id`
+- `session.update_config` updates that binding. Omitted fields keep the current value.
 
 ## 11. session_message
 
@@ -231,23 +293,13 @@ Notes:
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
-| `config.get_global` | No | `global_config` | Get global agent API selections |
-| `config.update_global` | No | `global_config` | Update global agent API selections |
-
-The current agent selection fields in `global_config`, `session_config`, and request-level `api_overrides` are:
-
-- `planner_api_id`
-- `architect_api_id`
-- `director_api_id`
-- `actor_api_id`
-- `narrator_api_id`
-- `keeper_api_id`
-- `replyer_api_id`
+| `config.get_global` | No | `global_config` | Get the current fallback `api_group_id` / `preset_id` pair |
 
 Notes:
 
-- `config.get_global` succeeds even when nothing has been initialized yet; in that case `api_ids = null`
-- This means the service is up, but no default executable agent bindings have been configured yet
+- `config.get_global` succeeds even when nothing has been initialized yet
+- in that case both `api_group_id` and `preset_id` are `null`
+- otherwise it returns the current fallback pair, which is the first available `api_group` and first available `preset` after sorting by id
 
 ## 13. dashboard
 
@@ -265,5 +317,5 @@ Notes:
 
 Notes:
 
-- `dashboard.global_config.api_ids` may also be `null` when the backend is still unconfigured
+- `dashboard.global_config.api_group_id` and `dashboard.global_config.preset_id` may both be `null` when the backend is still unconfigured
 - In that state, browse/configuration APIs still work, but agent-running APIs return an “LLM config is not initialized” error

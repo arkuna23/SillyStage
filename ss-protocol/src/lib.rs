@@ -1,17 +1,28 @@
+pub mod api;
+pub mod api_group;
 pub mod character;
 pub mod config;
-pub mod default_llm_config;
 pub mod error;
-pub mod llm_api;
 pub mod message;
 pub mod player_profile;
+pub mod preset;
 pub mod reply_suggestion;
 pub mod request;
 pub mod response;
 pub mod schema;
 pub mod session_message;
+pub mod session_variable;
 pub mod stream_event;
 
+pub use api::{
+    ApiCreateParams, ApiDeleteParams, ApiDeletedPayload, ApiGetParams, ApiListParams, ApiPayload,
+    ApiUpdateParams, ApisListedPayload,
+};
+pub use api_group::{
+    ApiGroupBindingsInput, ApiGroupBindingsPayload, ApiGroupCreateParams, ApiGroupDeleteParams,
+    ApiGroupDeletedPayload, ApiGroupGetParams, ApiGroupListParams, ApiGroupPayload,
+    ApiGroupUpdateParams, ApiGroupsListedPayload,
+};
 pub use character::{
     CHARACTER_ARCHIVE_CONTENT_PATH, CHARACTER_ARCHIVE_CONTENT_TYPE, CHARACTER_ARCHIVE_FORMAT,
     CHARACTER_ARCHIVE_MANIFEST_PATH, CHARACTER_ARCHIVE_VERSION, CharacterArchive,
@@ -19,18 +30,10 @@ pub use character::{
     CharacterCardSummaryPayload, CharacterCoverMimeType,
 };
 pub use config::{
-    ConfigGetGlobalParams, ConfigUpdateGlobalParams, GlobalConfigPayload, SessionConfigPayload,
-    SessionGetConfigParams, SessionUpdateConfigParams,
-};
-pub use default_llm_config::{
-    DefaultLlmConfigGetParams, DefaultLlmConfigPayload, DefaultLlmConfigStatePayload,
-    DefaultLlmConfigUpdateParams,
+    ConfigGetGlobalParams, GlobalConfigPayload, SessionConfigPayload, SessionGetConfigParams,
+    SessionUpdateConfigParams,
 };
 pub use error::{ErrorCode, ErrorPayload};
-pub use llm_api::{
-    LlmApiCreateParams, LlmApiDeleteParams, LlmApiDeletedPayload, LlmApiGetParams,
-    LlmApiListParams, LlmApiPayload, LlmApiUpdateParams, LlmApisListedPayload,
-};
 pub use message::{
     JsonRpcOutcome, JsonRpcRequestMessage, JsonRpcResponseMessage, RequestId, ServerEventMessage,
     ServerMessageType, SessionId, StreamFrame,
@@ -39,6 +42,11 @@ pub use player_profile::{
     PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileDeletedPayload,
     PlayerProfileGetParams, PlayerProfileListParams, PlayerProfilePayload,
     PlayerProfileUpdateParams, PlayerProfilesListedPayload,
+};
+pub use preset::{
+    AgentPresetConfigPayload, PresetAgentPayloads, PresetCreateParams, PresetDeleteParams,
+    PresetDeletedPayload, PresetGetParams, PresetListParams, PresetPayload, PresetUpdateParams,
+    PresetsListedPayload,
 };
 pub use reply_suggestion::{ReplyOptionPayload, SuggestRepliesParams, SuggestedRepliesPayload};
 pub use request::{
@@ -51,9 +59,9 @@ pub use request::{
     GetStoryParams, GetStoryResourcesParams, ListSessionsParams, ListStoriesParams,
     ListStoryDraftsParams, ListStoryResourcesParams, RequestMethod, RequestParams, RunTurnParams,
     SetPlayerProfileParams, StartSessionFromStoryParams, StartStoryDraftParams,
-    UpdatePlayerDescriptionParams, UpdateSessionParams, UpdateStoryParams,
-    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    UpdatePlayerDescriptionParams, UpdateSessionParams, UpdateStoryDraftGraphParams,
+    UpdateStoryGraphParams, UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams,
+    UploadCompleteParams, UploadInitParams, UploadTargetKind,
 };
 pub use response::{
     CharacterCardUploadedPayload, CharacterChrExportPayload, CharacterCoverPayload,
@@ -77,5 +85,8 @@ pub use session_message::{
     CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
     ListSessionMessagesParams, SessionMessageDeletedPayload, SessionMessageKind,
     SessionMessagePayload, SessionMessagesListedPayload, UpdateSessionMessageParams,
+};
+pub use session_variable::{
+    GetSessionVariablesParams, SessionVariablesPayload, UpdateSessionVariablesParams,
 };
 pub use stream_event::StreamEventBody;

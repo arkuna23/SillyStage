@@ -382,7 +382,10 @@ fn truncate_response_for_log(content: &str) -> String {
     truncate_for_log(content, MAX_LOGGED_RESPONSE_CHARS)
 }
 
-async fn read_response_body(response: reqwest::Response, kind: &'static str) -> Result<String, LlmError> {
+async fn read_response_body(
+    response: reqwest::Response,
+    kind: &'static str,
+) -> Result<String, LlmError> {
     let response_context = response_context(&response);
     let mut stream = response.bytes_stream();
     let mut body = Vec::new();
@@ -391,7 +394,7 @@ async fn read_response_body(response: reqwest::Response, kind: &'static str) -> 
         match chunk {
             Ok(chunk) => body.extend_from_slice(&chunk),
             Err(error) => {
-                let partial_body = String::from_utf8_lossy(&body).into_owned();
+                let partial_body = response_body_preview(&body);
                 error!(
                     provider = "openai",
                     status = response_context.status,
@@ -399,8 +402,10 @@ async fn read_response_body(response: reqwest::Response, kind: &'static str) -> 
                     content_type = ?response_context.content_type,
                     content_encoding = ?response_context.content_encoding,
                     content_length = ?response_context.content_length,
+                    received_body_bytes = body.len(),
                     error = %error,
-                    partial_body = %truncate_response_for_log(&partial_body),
+                    error_chain = %error_chain_for_log(&error),
+                    partial_body = %partial_body,
                     "failed to decode llm {kind} response body"
                 );
                 return Err(LlmError::from(error));
@@ -409,6 +414,30 @@ async fn read_response_body(response: reqwest::Response, kind: &'static str) -> 
     }
 
     Ok(String::from_utf8_lossy(&body).into_owned())
+}
+
+fn response_body_preview(body: &[u8]) -> String {
+    if body.is_empty() {
+        return "<no body bytes received before decode failure>".to_owned();
+    }
+
+    truncate_response_for_log(&String::from_utf8_lossy(body))
+}
+
+fn error_chain_for_log(error: &(dyn std::error::Error + 'static)) -> String {
+    let mut chain = Vec::new();
+    let mut current = error.source();
+
+    while let Some(source) = current {
+        chain.push(source.to_string());
+        current = source.source();
+    }
+
+    if chain.is_empty() {
+        "<none>".to_owned()
+    } else {
+        chain.join(": ")
+    }
 }
 
 #[derive(Debug)]
@@ -610,7 +639,38 @@ fn role_from_openai(role: &str) -> Role {
 
 #[cfg(test)]
 mod tests {
+    use std::error::Error;
+    use std::fmt::{self, Display, Formatter};
+
     use super::*;
+
+    #[derive(Debug)]
+    struct RootError;
+
+    impl Display for RootError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            f.write_str("socket closed")
+        }
+    }
+
+    impl Error for RootError {}
+
+    #[derive(Debug)]
+    struct WrappedError {
+        source: RootError,
+    }
+
+    impl Display for WrappedError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            f.write_str("body decode failed")
+        }
+    }
+
+    impl Error for WrappedError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            Some(&self.source)
+        }
+    }
 
     #[test]
     fn builder_rejects_missing_api_key() {
@@ -632,6 +692,21 @@ mod tests {
             .expect("config should build");
 
         assert_eq!(config.base_url, "http://localhost:8080");
+    }
+
+    #[test]
+    fn response_body_preview_uses_placeholder_when_no_bytes_were_received() {
+        assert_eq!(
+            response_body_preview(&[]),
+            "<no body bytes received before decode failure>"
+        );
+    }
+
+    #[test]
+    fn error_chain_for_log_collects_nested_sources() {
+        let top = WrappedError { source: RootError };
+        let chain = error_chain_for_log(&top);
+        assert!(chain.contains("socket closed"));
     }
 
     #[test]

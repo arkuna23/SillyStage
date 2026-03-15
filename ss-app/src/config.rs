@@ -1,19 +1,15 @@
-use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use engine::AgentApiIds;
 use serde::Deserialize;
-pub use store::LlmProvider;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AppConfig {
     pub server: ServerConfig,
     pub store: StoreConfig,
     pub frontend: FrontendConfig,
-    pub llm: LlmConfig,
 }
 
 impl AppConfig {
@@ -83,33 +79,6 @@ pub struct FrontendConfig {
     pub static_dir: Option<PathBuf>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlmConfig {
-    pub apis: BTreeMap<String, LlmApiConfig>,
-    pub defaults: Option<AgentApiIds>,
-    pub default_config: Option<DefaultLlmConfig>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LlmApiConfig {
-    pub provider: LlmProvider,
-    pub base_url: String,
-    pub api_key: String,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u32>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct DefaultLlmConfig {
-    pub provider: LlmProvider,
-    pub base_url: String,
-    pub api_key: String,
-    pub model: String,
-    pub temperature: Option<f32>,
-    pub max_tokens: Option<u32>,
-}
-
 #[derive(Parser, Debug, Clone, Default)]
 #[command(name = "ss-app")]
 pub struct Cli {
@@ -152,11 +121,6 @@ pub struct EnvOverrides {
     pub frontend_enabled: Option<bool>,
     pub frontend_mount_path: Option<String>,
     pub frontend_static_dir: Option<PathBuf>,
-    pub default_openai_base_url: Option<String>,
-    pub default_openai_api_key: Option<String>,
-    pub default_openai_model: Option<String>,
-    pub default_openai_temperature: Option<f32>,
-    pub default_openai_max_tokens: Option<u32>,
 }
 
 impl EnvOverrides {
@@ -179,17 +143,6 @@ impl EnvOverrides {
                 .transpose()?,
             frontend_mount_path: env::var("SS_APP_FRONTEND_MOUNT_PATH").ok(),
             frontend_static_dir: env::var_os("SS_APP_FRONTEND_STATIC_DIR").map(PathBuf::from),
-            default_openai_base_url: env::var("LLM_API_BASE").ok(),
-            default_openai_api_key: env::var("LLM_API_KEY").ok(),
-            default_openai_model: env::var("LLM_API_MODEL").ok(),
-            default_openai_temperature: env::var("LLM_API_TEMPERATURE")
-                .ok()
-                .map(|value| parse_f32_env("LLM_API_TEMPERATURE", &value))
-                .transpose()?,
-            default_openai_max_tokens: env::var("LLM_API_MAX_TOKENS")
-                .ok()
-                .map(|value| parse_u32_env("LLM_API_MAX_TOKENS", &value))
-                .transpose()?,
         })
     }
 }
@@ -199,7 +152,6 @@ struct FileConfig {
     server: Option<FileServerConfig>,
     store: Option<FileStoreConfig>,
     frontend: Option<FileFrontendConfig>,
-    llm: Option<FileLlmConfig>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -221,41 +173,11 @@ struct FileFrontendConfig {
     static_dir: Option<PathBuf>,
 }
 
-#[derive(Debug, Default, Deserialize)]
-struct FileLlmConfig {
-    apis: Option<BTreeMap<String, FileLlmApiConfig>>,
-    defaults: Option<AgentApiIds>,
-    default_config: Option<FileDefaultLlmConfig>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FileLlmApiConfig {
-    provider: Option<LlmProvider>,
-    base_url: String,
-    api_key: String,
-    model: String,
-    temperature: Option<f32>,
-    max_tokens: Option<u32>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct FileDefaultLlmConfig {
-    provider: Option<LlmProvider>,
-    base_url: String,
-    api_key: String,
-    model: String,
-    temperature: Option<f32>,
-    max_tokens: Option<u32>,
-}
-
 #[derive(Debug, Clone)]
 struct ResolvedConfig {
     server: ServerConfig,
     store: StoreConfig,
     frontend: FrontendConfig,
-    llm_apis: BTreeMap<String, LlmApiConfig>,
-    llm_defaults: Option<AgentApiIds>,
-    llm_default_config: Option<DefaultLlmConfig>,
 }
 
 impl Default for ResolvedConfig {
@@ -274,9 +196,6 @@ impl Default for ResolvedConfig {
                 mount_path: "/".to_owned(),
                 static_dir: None,
             },
-            llm_apis: BTreeMap::new(),
-            llm_defaults: None,
-            llm_default_config: None,
         }
     }
 }
@@ -312,37 +231,6 @@ impl ResolvedConfig {
                 self.frontend.static_dir = Some(resolve_relative_path(base_dir, static_dir));
             }
         }
-
-        if let Some(llm) = file.llm {
-            if let Some(apis) = llm.apis {
-                for (api_id, config) in apis {
-                    self.llm_apis.insert(
-                        api_id,
-                        LlmApiConfig {
-                            provider: config.provider.unwrap_or(LlmProvider::OpenAi),
-                            base_url: config.base_url,
-                            api_key: config.api_key,
-                            model: config.model,
-                            temperature: config.temperature,
-                            max_tokens: config.max_tokens,
-                        },
-                    );
-                }
-            }
-            if let Some(defaults) = llm.defaults {
-                self.llm_defaults = Some(defaults);
-            }
-            if let Some(default_config) = llm.default_config {
-                self.llm_default_config = Some(DefaultLlmConfig {
-                    provider: default_config.provider.unwrap_or(LlmProvider::OpenAi),
-                    base_url: default_config.base_url,
-                    api_key: default_config.api_key,
-                    model: default_config.model,
-                    temperature: default_config.temperature,
-                    max_tokens: default_config.max_tokens,
-                });
-            }
-        }
     }
 
     fn apply_env(&mut self, env: EnvOverrides) -> Result<(), ConfigError> {
@@ -368,27 +256,6 @@ impl ResolvedConfig {
             self.frontend.static_dir = Some(static_dir);
         }
 
-        match (
-            env.default_openai_base_url,
-            env.default_openai_api_key,
-            env.default_openai_model,
-            env.default_openai_temperature,
-            env.default_openai_max_tokens,
-        ) {
-            (Some(base_url), Some(api_key), Some(model), temperature, max_tokens) => {
-                self.llm_default_config = Some(DefaultLlmConfig {
-                    provider: LlmProvider::OpenAi,
-                    base_url,
-                    api_key,
-                    model,
-                    temperature,
-                    max_tokens,
-                });
-            }
-            (None, None, None, None, None) => {}
-            _ => return Err(ConfigError::IncompleteEnvDefaultLlmConfig),
-        }
-
         Ok(())
     }
 
@@ -406,7 +273,6 @@ impl ResolvedConfig {
 
     fn finish(self) -> Result<AppConfig, ConfigError> {
         let mount_path = normalize_mount_path(&self.frontend.mount_path)?;
-        let defaults = resolve_default_api_ids(&self.llm_apis, self.llm_defaults);
 
         Ok(AppConfig {
             server: self.server,
@@ -415,11 +281,6 @@ impl ResolvedConfig {
                 enabled: self.frontend.enabled,
                 mount_path,
                 static_dir: self.frontend.static_dir,
-            },
-            llm: LlmConfig {
-                apis: self.llm_apis,
-                defaults,
-                default_config: self.llm_default_config,
             },
         })
     }
@@ -459,38 +320,6 @@ fn resolve_relative_path(base_dir: &Path, path: PathBuf) -> PathBuf {
     }
 }
 
-fn resolve_default_api_ids(
-    apis: &BTreeMap<String, LlmApiConfig>,
-    configured: Option<AgentApiIds>,
-) -> Option<AgentApiIds> {
-    if let Some(defaults) = configured {
-        return Some(defaults);
-    }
-
-    if let Some(default_api_id) = apis.get_key_value("default").map(|(key, _)| key.clone()) {
-        return Some(repeat_api_id(&default_api_id));
-    }
-
-    if apis.len() == 1 {
-        let api_id = apis.keys().next().expect("checked len").clone();
-        return Some(repeat_api_id(&api_id));
-    }
-
-    None
-}
-
-fn repeat_api_id(api_id: &str) -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: api_id.to_owned(),
-        architect_api_id: api_id.to_owned(),
-        director_api_id: api_id.to_owned(),
-        actor_api_id: api_id.to_owned(),
-        narrator_api_id: api_id.to_owned(),
-        keeper_api_id: api_id.to_owned(),
-        replyer_api_id: api_id.to_owned(),
-    }
-}
-
 fn normalize_mount_path(value: &str) -> Result<String, ConfigError> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
@@ -517,26 +346,6 @@ fn parse_bool_env(name: &str, value: &str) -> Result<bool, ConfigError> {
     }
 }
 
-fn parse_f32_env(name: &str, value: &str) -> Result<f32, ConfigError> {
-    value
-        .trim()
-        .parse::<f32>()
-        .map_err(|_| ConfigError::InvalidEnvVar {
-            name: name.to_owned(),
-            value: value.to_owned(),
-        })
-}
-
-fn parse_u32_env(name: &str, value: &str) -> Result<u32, ConfigError> {
-    value
-        .trim()
-        .parse::<u32>()
-        .map_err(|_| ConfigError::InvalidEnvVar {
-            name: name.to_owned(),
-            value: value.to_owned(),
-        })
-}
-
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("failed to read config file {path}: {source}")]
@@ -557,8 +366,4 @@ pub enum ConfigError {
     InvalidStoreBackend(String),
     #[error("frontend mount_path must start with '/' and cannot be empty: {0}")]
     InvalidFrontendMountPath(String),
-    #[error(
-        "LLM_API_BASE, LLM_API_KEY, and LLM_API_MODEL must all be set together to override the default llm config"
-    )]
-    IncompleteEnvDefaultLlmConfig,
 }

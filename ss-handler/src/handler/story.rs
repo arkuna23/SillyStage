@@ -7,12 +7,14 @@ use protocol::{
     StoryDetailPayload, StoryDraftDeletedPayload, StoryDraftDetailPayload, StoryDraftStatusPayload,
     StoryDraftSummaryPayload, StoryDraftsListedPayload, StoryGeneratedPayload, StoryPlannedPayload,
     StoryResourcesDeletedPayload, StoryResourcesListedPayload, StoryResourcesPayload,
-    StorySummaryPayload, UpdateStoryParams, UpdateStoryResourcesParams,
+    StorySummaryPayload, UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
+    UpdateStoryResourcesParams,
 };
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{
     CharacterCardRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
+use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
 
 use crate::error::HandlerError;
 
@@ -44,7 +46,7 @@ impl Handler {
             character_ids: params.character_ids,
             player_schema_id_seed: params.player_schema_id_seed,
             world_schema_id_seed: params.world_schema_id_seed,
-            planned_story: params.planned_story,
+            planned_story: normalize_planned_story(params.planned_story),
         };
 
         self.store.save_story_resources(record.clone()).await?;
@@ -125,7 +127,7 @@ impl Handler {
             record.world_schema_id_seed = Some(world_schema_id_seed);
         }
         if let Some(planned_story) = params.planned_story {
-            record.planned_story = Some(planned_story);
+            record.planned_story = normalize_planned_story(Some(planned_story));
         }
 
         self.store.save_story_resources(record.clone()).await?;
@@ -184,7 +186,7 @@ impl Handler {
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
         let response = self
             .manager
-            .generate_story_plan(&params.resource_id, params.planner_api_id)
+            .generate_story_plan(&params.resource_id, params.api_group_id, params.preset_id)
             .await?;
 
         Ok(JsonRpcResponseMessage::ok(
@@ -207,7 +209,8 @@ impl Handler {
             .generate_story(
                 &params.resource_id,
                 params.display_name,
-                params.architect_api_id,
+                params.api_group_id,
+                params.preset_id,
             )
             .await?;
 
@@ -277,6 +280,29 @@ impl Handler {
         ))
     }
 
+    pub(crate) async fn handle_story_update_graph(
+        &self,
+        request_id: &str,
+        params: UpdateStoryGraphParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let mut story = self
+            .store
+            .get_story(&params.story_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
+
+        validate_story_graph(&params.graph)?;
+        story.graph = params.graph;
+        story.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_story(story.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::Story(Box::new(story_detail_payload_from_record(&story))),
+        ))
+    }
+
     pub(crate) async fn handle_story_delete(
         &self,
         request_id: &str,
@@ -317,8 +343,8 @@ impl Handler {
                 &params.story_id,
                 params.display_name,
                 params.player_profile_id,
-                params.config_mode,
-                params.session_api_ids,
+                params.api_group_id,
+                params.preset_id,
             )
             .await?;
         let story = self
@@ -362,7 +388,8 @@ impl Handler {
             .start_story_draft(
                 &params.resource_id,
                 params.display_name,
-                params.architect_api_id,
+                params.api_group_id,
+                params.preset_id,
             )
             .await?;
 
@@ -410,15 +437,29 @@ impl Handler {
         ))
     }
 
+    pub(crate) async fn handle_story_draft_update_graph(
+        &self,
+        request_id: &str,
+        params: UpdateStoryDraftGraphParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let draft = self
+            .manager
+            .update_story_draft_graph(&params.draft_id, params.partial_graph)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryDraft(Box::new(story_draft_detail_payload_from_record(&draft))),
+        ))
+    }
+
     pub(crate) async fn handle_story_draft_continue(
         &self,
         request_id: &str,
         params: ContinueStoryDraftParams,
     ) -> Result<JsonRpcResponseMessage, HandlerError> {
-        let draft = self
-            .manager
-            .continue_story_draft(&params.draft_id, params.architect_api_id)
-            .await?;
+        let draft = self.manager.continue_story_draft(&params.draft_id).await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -573,6 +614,8 @@ fn story_draft_summary_payload_from_record(record: &StoryDraftRecord) -> StoryDr
         draft_id: record.draft_id.clone(),
         display_name: record.display_name.clone(),
         resource_id: record.resource_id.clone(),
+        api_group_id: record.api_group_id.clone(),
+        preset_id: record.preset_id.clone(),
         status: story_draft_status_payload(record.status),
         next_section_index: record.next_section_index,
         total_sections: record.outline_sections.len(),
@@ -588,6 +631,8 @@ fn story_draft_detail_payload_from_record(record: &StoryDraftRecord) -> StoryDra
         draft_id: record.draft_id.clone(),
         display_name: record.display_name.clone(),
         resource_id: record.resource_id.clone(),
+        api_group_id: record.api_group_id.clone(),
+        preset_id: record.preset_id.clone(),
         planned_story: record.planned_story.clone(),
         outline_sections: record.outline_sections.clone(),
         next_section_index: record.next_section_index,
@@ -608,4 +653,25 @@ fn now_timestamp_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .expect("system time should be after unix epoch")
         .as_millis() as u64
+}
+
+fn normalize_planned_story(planned_story: Option<String>) -> Option<String> {
+    planned_story.filter(|value| !value.trim().is_empty())
+}
+
+fn validate_story_graph(graph: &story::StoryGraph) -> Result<(), HandlerError> {
+    RuntimeStoryGraph::from_story_graph(graph.clone()).map_err(|error| {
+        HandlerError::InvalidStoryGraph(match error {
+            GraphBuildError::MissingStartNode(node_id) => {
+                format!("start node '{node_id}' does not exist")
+            }
+            GraphBuildError::MissingTargetNode { from, to } => {
+                format!("transition from '{from}' points to missing node '{to}'")
+            }
+            GraphBuildError::DuplicateNodeId(node_id) => {
+                format!("story graph contains duplicate node id '{node_id}'")
+            }
+        })
+    })?;
+    Ok(())
 }

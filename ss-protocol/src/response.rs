@@ -2,18 +2,20 @@ use engine::{EngineTurnResult, RuntimeSnapshot};
 use serde::{Deserialize, Serialize};
 use story::StoryGraph;
 
+use crate::api::{ApiDeletedPayload, ApiPayload, ApisListedPayload};
+use crate::api_group::{ApiGroupDeletedPayload, ApiGroupPayload, ApiGroupsListedPayload};
 use crate::character::{CharacterCardContent, CharacterCardSummaryPayload, CharacterCoverMimeType};
 use crate::config::{GlobalConfigPayload, SessionConfigPayload};
-use crate::default_llm_config::DefaultLlmConfigStatePayload;
-use crate::llm_api::{LlmApiDeletedPayload, LlmApiPayload, LlmApisListedPayload};
 use crate::player_profile::{
     PlayerProfileDeletedPayload, PlayerProfilePayload, PlayerProfilesListedPayload,
 };
+use crate::preset::{PresetDeletedPayload, PresetPayload, PresetsListedPayload};
 use crate::reply_suggestion::SuggestedRepliesPayload;
 use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
 use crate::session_message::{
     SessionMessageDeletedPayload, SessionMessagePayload, SessionMessagesListedPayload,
 };
+use crate::session_variable::SessionVariablesPayload;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -21,6 +23,15 @@ pub enum ResponseResult {
     UploadInitialized(UploadInitializedPayload),
     UploadChunkAccepted(UploadChunkAcceptedPayload),
     CharacterCardUploaded(CharacterCardUploadedPayload),
+    Api(Box<ApiPayload>),
+    ApisListed(ApisListedPayload),
+    ApiDeleted(ApiDeletedPayload),
+    ApiGroup(Box<ApiGroupPayload>),
+    ApiGroupsListed(ApiGroupsListedPayload),
+    ApiGroupDeleted(ApiGroupDeletedPayload),
+    Preset(Box<PresetPayload>),
+    PresetsListed(PresetsListedPayload),
+    PresetDeleted(PresetDeletedPayload),
     Schema(Box<SchemaPayload>),
     SchemasListed(SchemasListedPayload),
     SchemaDeleted(SchemaDeletedPayload),
@@ -55,12 +66,9 @@ pub enum ResponseResult {
     SessionMessage(Box<SessionMessagePayload>),
     SessionMessagesListed(SessionMessagesListedPayload),
     SessionMessageDeleted(SessionMessageDeletedPayload),
+    SessionVariables(Box<SessionVariablesPayload>),
     GlobalConfig(GlobalConfigPayload),
     SessionConfig(SessionConfigPayload),
-    LlmApi(LlmApiPayload),
-    LlmApisListed(LlmApisListedPayload),
-    LlmApiDeleted(LlmApiDeletedPayload),
-    DefaultLlmConfig(DefaultLlmConfigStatePayload),
     Dashboard(Box<DashboardPayload>),
     TurnStreamAccepted(TurnStreamAcceptedPayload),
     TurnCompleted(Box<TurnCompletedPayload>),
@@ -215,6 +223,8 @@ pub struct StoryDraftSummaryPayload {
     pub draft_id: String,
     pub display_name: String,
     pub resource_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub status: StoryDraftStatusPayload,
     pub next_section_index: usize,
     pub total_sections: usize,
@@ -229,6 +239,8 @@ pub struct StoryDraftDetailPayload {
     pub draft_id: String,
     pub display_name: String,
     pub resource_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub planned_story: String,
     pub outline_sections: Vec<String>,
     pub next_section_index: usize,
@@ -260,6 +272,8 @@ pub struct SessionStartedPayload {
     pub snapshot: RuntimeSnapshot,
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub history: Vec<SessionMessagePayload>,
     pub created_at_ms: Option<u64>,
     pub updated_at_ms: Option<u64>,
@@ -274,6 +288,8 @@ pub struct SessionSummaryPayload {
     pub display_name: String,
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub turn_index: u64,
     pub created_at_ms: Option<u64>,
     pub updated_at_ms: Option<u64>,
@@ -286,6 +302,8 @@ pub struct SessionDetailPayload {
     pub display_name: String,
     pub player_profile_id: Option<String>,
     pub player_schema_id: String,
+    pub api_group_id: String,
+    pub preset_id: String,
     pub snapshot: RuntimeSnapshot,
     pub history: Vec<SessionMessagePayload>,
     pub created_at_ms: Option<u64>,

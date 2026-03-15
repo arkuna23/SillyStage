@@ -1,27 +1,32 @@
 use async_trait::async_trait;
 
-use crate::config::AgentApiIds;
 use crate::error::StoreError;
 use crate::record::{
-    CharacterCardRecord, DefaultLlmConfigRecord, LlmApiRecord, PlayerProfileRecord, SchemaRecord,
-    SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
+    SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
+    StoryResourcesRecord,
 };
 
 #[async_trait]
 pub trait Store: Send + Sync {
-    async fn get_global_config(&self) -> Result<Option<AgentApiIds>, StoreError>;
-    async fn set_global_config(&self, config: AgentApiIds) -> Result<(), StoreError>;
+    async fn get_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError>;
+    async fn list_apis(&self) -> Result<Vec<ApiRecord>, StoreError>;
+    async fn save_api(&self, record: ApiRecord) -> Result<(), StoreError>;
+    async fn delete_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError>;
 
-    async fn get_default_llm_config(&self) -> Result<Option<DefaultLlmConfigRecord>, StoreError>;
-    async fn set_default_llm_config(
+    async fn get_api_group(&self, api_group_id: &str)
+    -> Result<Option<ApiGroupRecord>, StoreError>;
+    async fn list_api_groups(&self) -> Result<Vec<ApiGroupRecord>, StoreError>;
+    async fn save_api_group(&self, record: ApiGroupRecord) -> Result<(), StoreError>;
+    async fn delete_api_group(
         &self,
-        config: DefaultLlmConfigRecord,
-    ) -> Result<(), StoreError>;
+        api_group_id: &str,
+    ) -> Result<Option<ApiGroupRecord>, StoreError>;
 
-    async fn get_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError>;
-    async fn list_llm_apis(&self) -> Result<Vec<LlmApiRecord>, StoreError>;
-    async fn save_llm_api(&self, record: LlmApiRecord) -> Result<(), StoreError>;
-    async fn delete_llm_api(&self, api_id: &str) -> Result<Option<LlmApiRecord>, StoreError>;
+    async fn get_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError>;
+    async fn list_presets(&self) -> Result<Vec<PresetRecord>, StoreError>;
+    async fn save_preset(&self, record: PresetRecord) -> Result<(), StoreError>;
+    async fn delete_preset(&self, preset_id: &str) -> Result<Option<PresetRecord>, StoreError>;
 
     async fn get_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError>;
     async fn list_schemas(&self) -> Result<Vec<SchemaRecord>, StoreError>;

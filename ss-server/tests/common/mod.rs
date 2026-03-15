@@ -4,12 +4,16 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use engine::{AgentApiIds, LlmApiRegistry};
+use engine::LlmApiRegistry;
 use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
 use protocol::{CharacterArchive, CharacterCardContent};
 use serde_json::json;
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
-use store::{CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord, SchemaRecord};
+use store::{
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
+    CharacterCardRecord, LlmProvider, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
+    SchemaRecord,
+};
 use story::{NarrativeNode, StoryGraph};
 
 use agents::actor::CharacterCard;
@@ -83,34 +87,17 @@ pub fn assistant_response(
     }
 }
 
-pub fn default_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner-default".to_owned(),
-        architect_api_id: "architect-default".to_owned(),
-        director_api_id: "director-default".to_owned(),
-        actor_api_id: "actor-default".to_owned(),
-        narrator_api_id: "narrator-default".to_owned(),
-        keeper_api_id: "keeper-default".to_owned(),
-        replyer_api_id: "replyer-default".to_owned(),
-    }
-}
-
 pub fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
-    let default = default_api_ids();
     let llm: Arc<dyn LlmApi> = llm;
 
     LlmApiRegistry::new()
-        .register(default.planner_api_id, Arc::clone(&llm), "planner-model")
-        .register(
-            default.architect_api_id,
-            Arc::clone(&llm),
-            "architect-model",
-        )
-        .register(default.director_api_id, Arc::clone(&llm), "director-model")
-        .register(default.actor_api_id, Arc::clone(&llm), "actor-model")
-        .register(default.narrator_api_id, Arc::clone(&llm), "narrator-model")
-        .register(default.keeper_api_id, Arc::clone(&llm), "keeper-model")
-        .register(default.replyer_api_id, llm, "replyer-model")
+        .register("default-planner", Arc::clone(&llm), "planner-model")
+        .register("default-architect", Arc::clone(&llm), "architect-model")
+        .register("default-director", Arc::clone(&llm), "director-model")
+        .register("default-actor", Arc::clone(&llm), "actor-model")
+        .register("default-narrator", Arc::clone(&llm), "narrator-model")
+        .register("default-keeper", Arc::clone(&llm), "keeper-model")
+        .register("default-replyer", llm, "replyer-model")
 }
 
 pub fn sample_character_card() -> CharacterCard {
@@ -202,6 +189,55 @@ pub fn sample_character_record() -> CharacterCardRecord {
                 .to_owned(),
         ),
         cover_bytes: Some(archive.cover_bytes.clone()),
+    }
+}
+
+pub fn sample_api_record(api_id: &str, model_suffix: &str) -> ApiRecord {
+    ApiRecord {
+        api_id: api_id.to_owned(),
+        display_name: format!("API {api_id}"),
+        provider: LlmProvider::OpenAi,
+        base_url: "https://api.openai.example/v1".to_owned(),
+        api_key: format!("sk-{model_suffix}-{api_id}"),
+        model: format!("{api_id}-{model_suffix}-model"),
+    }
+}
+
+pub fn sample_api_group_record(api_group_id: &str, model_suffix: &str) -> ApiGroupRecord {
+    ApiGroupRecord {
+        api_group_id: api_group_id.to_owned(),
+        display_name: format!("Group {api_group_id}"),
+        agents: ApiGroupAgentBindings {
+            planner_api_id: format!("{model_suffix}-planner"),
+            architect_api_id: format!("{model_suffix}-architect"),
+            director_api_id: format!("{model_suffix}-director"),
+            actor_api_id: format!("{model_suffix}-actor"),
+            narrator_api_id: format!("{model_suffix}-narrator"),
+            keeper_api_id: format!("{model_suffix}-keeper"),
+            replyer_api_id: format!("{model_suffix}-replyer"),
+        },
+    }
+}
+
+pub fn sample_preset_record(preset_id: &str, token_base: u32) -> PresetRecord {
+    let config = |offset: u32| AgentPresetConfig {
+        temperature: Some(0.1 + (offset as f32 * 0.05)),
+        max_tokens: Some(token_base + offset * 64),
+        extra: None,
+    };
+
+    PresetRecord {
+        preset_id: preset_id.to_owned(),
+        display_name: format!("Preset {preset_id}"),
+        agents: PresetAgentConfigs {
+            planner: config(0),
+            architect: config(1),
+            director: config(2),
+            actor: config(3),
+            narrator: config(4),
+            keeper: config(5),
+            replyer: config(6),
+        },
     }
 }
 

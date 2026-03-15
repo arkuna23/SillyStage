@@ -36,6 +36,13 @@ just package-windows
 
 `just package-linux` and `just package-windows` build the frontend, build `ss-app`, and assemble a self-contained release under `dist/`. The packaged binary auto-discovers the sibling `ss-app.toml` and bundled `webapp/` assets.
 
+On Windows without a Unix shell, use PowerShell directly:
+
+```powershell
+./scripts/package-app.ps1
+./scripts/package-app.ps1 -Target x86_64-pc-windows-msvc
+```
+
 Inside `webapp/` directly:
 
 ```bash

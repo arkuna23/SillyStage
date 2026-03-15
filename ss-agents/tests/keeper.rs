@@ -256,6 +256,11 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
+    let system_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::System))
+        .expect("system message should exist");
     let user_message = request
         .messages
         .iter()
@@ -273,6 +278,21 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.content.contains("\"coins\": 12"));
     assert!(user_message.content.contains("\"state_schema\""));
     assert!(!user_message.content.contains("StateUpdate schema"));
+    assert!(
+        system_message
+            .content
+            .contains("\"type\": \"SetCharacterState\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("\"character\": \"merchant\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("\"type\": \"RemoveCharacterState\"")
+    );
     assert!(
         user_message
             .content
@@ -294,6 +314,43 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             .content
             .contains("I should keep the safer route to myself.")
     );
+}
+
+#[tokio::test]
+async fn keeper_rejects_character_state_without_character_field() {
+    let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
+        "{\"ops\":[{\"type\":\"SetCharacterState\",\"key\":\"trust\",\"value\":3}]}",
+        Some(json!({
+            "ops": [
+                {
+                    "type": "SetCharacterState",
+                    "key": "trust",
+                    "value": 3
+                }
+            ]
+        })),
+    )));
+    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
+    let character_cards = sample_character_cards();
+    let player_state_schema = sample_player_state_schema();
+    let world_state = sample_world_state();
+    let previous_node = previous_node();
+    let current_node = current_node();
+    let completed_beats = completed_beats();
+
+    let error = keeper
+        .keep(sample_request(
+            Some(&previous_node),
+            &current_node,
+            &character_cards,
+            &player_state_schema,
+            &world_state,
+            &completed_beats,
+        ))
+        .await
+        .expect_err("keeper should reject malformed character-scoped ops");
+
+    assert!(error.to_string().contains("missing field `character`"));
 }
 
 #[tokio::test]

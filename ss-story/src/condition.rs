@@ -39,6 +39,16 @@ impl Condition {
         }
     }
 
+    pub fn for_player(key: impl Into<String>, op: ConditionOperator, value: Value) -> Self {
+        Self {
+            scope: ConditionScope::Player,
+            character: None,
+            key: key.into(),
+            op,
+            value,
+        }
+    }
+
     pub fn matches(&self, world_state: &WorldState) -> bool {
         let Some(actual) = self.resolve_value(world_state) else {
             return false;
@@ -66,6 +76,7 @@ impl Condition {
     fn resolve_value<'a>(&self, world_state: &'a WorldState) -> Option<&'a Value> {
         match self.scope {
             ConditionScope::Global => world_state.state(&self.key),
+            ConditionScope::Player => world_state.player_state(&self.key),
             ConditionScope::Character => self
                 .character
                 .as_deref()
@@ -79,6 +90,7 @@ impl Condition {
 pub enum ConditionScope {
     #[default]
     Global,
+    Player,
     Character,
 }
 
@@ -158,9 +170,30 @@ mod tests {
     }
 
     #[test]
+    fn player_condition_reads_player_state() {
+        let mut world_state = WorldState::default();
+        world_state.apply_op(StateOp::SetPlayerState {
+            key: "coins".to_owned(),
+            value: json!(4),
+        });
+
+        let condition = Condition::for_player("coins", ConditionOperator::Gte, json!(3));
+
+        assert!(condition.matches(&world_state));
+    }
+
+    #[test]
     fn missing_character_state_does_not_match() {
         let world_state = WorldState::default();
         let condition = Condition::for_character("Yuki", "trust", ConditionOperator::Eq, json!(1));
+
+        assert!(!condition.matches(&world_state));
+    }
+
+    #[test]
+    fn missing_player_state_does_not_match() {
+        let world_state = WorldState::default();
+        let condition = Condition::for_player("coins", ConditionOperator::Eq, json!(1));
 
         assert!(!condition.matches(&world_state));
     }

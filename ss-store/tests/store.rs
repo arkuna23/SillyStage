@@ -2,25 +2,14 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use ss_store::{
-    AgentApiIds, CharacterCardDefinition, CharacterCardRecord, DefaultLlmConfigRecord,
-    InMemoryStore, LlmApiRecord, LlmProvider, PlayerProfileRecord, RuntimeSnapshot, SchemaRecord,
-    SessionConfigMode, SessionEngineConfig, SessionMessageKind, SessionMessageRecord,
-    SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
+    CharacterCardRecord, InMemoryStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
+    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionMessageKind,
+    SessionMessageRecord, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord,
+    StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
-
-fn sample_api_ids() -> AgentApiIds {
-    AgentApiIds {
-        planner_api_id: "planner".to_owned(),
-        architect_api_id: "architect".to_owned(),
-        director_api_id: "director".to_owned(),
-        actor_api_id: "actor".to_owned(),
-        narrator_api_id: "narrator".to_owned(),
-        keeper_api_id: "keeper".to_owned(),
-        replyer_api_id: "replyer".to_owned(),
-    }
-}
 
 fn sample_character_record() -> CharacterCardRecord {
     CharacterCardRecord {
@@ -40,26 +29,54 @@ fn sample_character_record() -> CharacterCardRecord {
     }
 }
 
-fn sample_llm_api_record() -> LlmApiRecord {
-    LlmApiRecord {
-        api_id: "default".to_owned(),
+fn sample_api_record(api_id: &str, model: &str) -> ApiRecord {
+    ApiRecord {
+        api_id: api_id.to_owned(),
+        display_name: format!("API {api_id}"),
         provider: LlmProvider::OpenAi,
         base_url: "https://api.openai.example/v1".to_owned(),
         api_key: "sk-secret".to_owned(),
-        model: "gpt-4.1-mini".to_owned(),
-        temperature: Some(0.2),
-        max_tokens: Some(512),
+        model: model.to_owned(),
     }
 }
 
-fn sample_default_llm_config_record() -> DefaultLlmConfigRecord {
-    DefaultLlmConfigRecord {
-        provider: LlmProvider::OpenAi,
-        base_url: "https://api.openai.example/v1".to_owned(),
-        api_key: "sk-default".to_owned(),
-        model: "gpt-4.1-mini".to_owned(),
+fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
+    AgentPresetConfig {
         temperature: Some(0.1),
-        max_tokens: Some(1024),
+        max_tokens: Some(max_tokens),
+        extra: None,
+    }
+}
+
+fn sample_api_group_record() -> ApiGroupRecord {
+    ApiGroupRecord {
+        api_group_id: "group-default".to_owned(),
+        display_name: "Default Group".to_owned(),
+        agents: ApiGroupAgentBindings {
+            planner_api_id: "api-planner".to_owned(),
+            architect_api_id: "api-architect".to_owned(),
+            director_api_id: "api-director".to_owned(),
+            actor_api_id: "api-actor".to_owned(),
+            narrator_api_id: "api-narrator".to_owned(),
+            keeper_api_id: "api-keeper".to_owned(),
+            replyer_api_id: "api-replyer".to_owned(),
+        },
+    }
+}
+
+fn sample_preset_record() -> PresetRecord {
+    PresetRecord {
+        preset_id: "preset-default".to_owned(),
+        display_name: "Default Preset".to_owned(),
+        agents: PresetAgentConfigs {
+            planner: sample_agent_preset_config(512),
+            architect: sample_agent_preset_config(8192),
+            director: sample_agent_preset_config(512),
+            actor: sample_agent_preset_config(512),
+            narrator: sample_agent_preset_config(512),
+            keeper: sample_agent_preset_config(512),
+            replyer: sample_agent_preset_config(256),
+        },
     }
 }
 
@@ -126,6 +143,8 @@ fn sample_story_draft() -> StoryDraftRecord {
         draft_id: "draft-1".to_owned(),
         display_name: "Flooded Harbor Draft".to_owned(),
         resource_id: "resource-1".to_owned(),
+        api_group_id: "group-default".to_owned(),
+        preset_id: "preset-default".to_owned(),
         planned_story: "Opening Situation:\nA courier arrives at dusk.".to_owned(),
         outline_sections: vec![
             "A courier arrives at dusk.".to_owned(),
@@ -152,16 +171,16 @@ fn sample_session() -> SessionRecord {
         story_id: "story-1".to_owned(),
         player_profile_id: Some("profile-courier".to_owned()),
         player_schema_id: "schema-player-story-1".to_owned(),
+        binding: SessionBindingConfig {
+            api_group_id: "group-default".to_owned(),
+            preset_id: "preset-default".to_owned(),
+        },
         snapshot: RuntimeSnapshot {
             story_id: "story-1".to_owned(),
             player_description: "A determined courier.".to_owned(),
             world_state: WorldState::new("dock")
                 .with_active_characters(vec!["merchant".to_owned()]),
             turn_index: 0,
-        },
-        config: SessionEngineConfig {
-            mode: SessionConfigMode::UseGlobal,
-            session_api_ids: None,
         },
         created_at_ms: Some(3_000),
         updated_at_ms: Some(4_000),
@@ -216,22 +235,28 @@ fn sample_player_profile() -> PlayerProfileRecord {
 async fn in_memory_store_persists_all_records() {
     let store = InMemoryStore::new();
 
+    for (api_id, model) in [
+        ("api-planner", "planner-model"),
+        ("api-architect", "architect-model"),
+        ("api-director", "director-model"),
+        ("api-actor", "actor-model"),
+        ("api-narrator", "narrator-model"),
+        ("api-keeper", "keeper-model"),
+        ("api-replyer", "replyer-model"),
+    ] {
+        store
+            .save_api(sample_api_record(api_id, model))
+            .await
+            .expect("save api");
+    }
     store
-        .set_global_config(sample_api_ids())
+        .save_api_group(sample_api_group_record())
         .await
-        .expect("save global config");
+        .expect("save api group");
     store
-        .save_llm_api(sample_llm_api_record())
+        .save_preset(sample_preset_record())
         .await
-        .expect("save llm api");
-    store
-        .set_default_llm_config(sample_default_llm_config_record())
-        .await
-        .expect("save default llm config");
-    store
-        .set_default_llm_config(sample_default_llm_config_record())
-        .await
-        .expect("save default llm config");
+        .expect("save preset");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -289,23 +314,23 @@ async fn in_memory_store_persists_all_records() {
 
     assert!(
         store
-            .get_global_config()
+            .get_api("api-planner")
             .await
-            .expect("load global")
+            .expect("load api")
             .is_some()
     );
     assert!(
         store
-            .get_llm_api("default")
+            .get_api_group("group-default")
             .await
-            .expect("load llm api")
+            .expect("load api group")
             .is_some()
     );
     assert!(
         store
-            .get_default_llm_config()
+            .get_preset("preset-default")
             .await
-            .expect("load default llm config")
+            .expect("load preset")
             .is_some()
     );
     assert!(
@@ -369,14 +394,28 @@ async fn in_memory_store_persists_all_records() {
 #[tokio::test]
 async fn in_memory_store_lists_and_deletes_records() {
     let store = InMemoryStore::new();
+    for (api_id, model) in [
+        ("api-planner", "planner-model"),
+        ("api-architect", "architect-model"),
+        ("api-director", "director-model"),
+        ("api-actor", "actor-model"),
+        ("api-narrator", "narrator-model"),
+        ("api-keeper", "keeper-model"),
+        ("api-replyer", "replyer-model"),
+    ] {
+        store
+            .save_api(sample_api_record(api_id, model))
+            .await
+            .expect("save api");
+    }
     store
-        .save_llm_api(sample_llm_api_record())
+        .save_api_group(sample_api_group_record())
         .await
-        .expect("save llm api");
+        .expect("save api group");
     store
-        .set_default_llm_config(sample_default_llm_config_record())
+        .save_preset(sample_preset_record())
         .await
-        .expect("save default llm config");
+        .expect("save preset");
     store
         .save_schema(sample_schema_record(
             "schema-character-merchant",
@@ -410,14 +449,9 @@ async fn in_memory_store_lists_and_deletes_records() {
         .await
         .expect("save session message");
 
-    assert_eq!(store.list_llm_apis().await.expect("list").len(), 1);
-    assert!(
-        store
-            .get_default_llm_config()
-            .await
-            .expect("get default llm config")
-            .is_some()
-    );
+    assert_eq!(store.list_apis().await.expect("list").len(), 7);
+    assert_eq!(store.list_api_groups().await.expect("list").len(), 1);
+    assert_eq!(store.list_presets().await.expect("list").len(), 1);
     assert_eq!(store.list_schemas().await.expect("list").len(), 1);
     assert_eq!(store.list_player_profiles().await.expect("list").len(), 1);
     assert_eq!(store.list_characters().await.expect("list").len(), 1);
@@ -438,7 +472,7 @@ async fn in_memory_store_lists_and_deletes_records() {
         store
             .delete_player_profile("profile-courier")
             .await
-            .expect("delete player profile")
+            .expect("delete profile")
             .is_some()
     );
     assert!(
@@ -450,16 +484,9 @@ async fn in_memory_store_lists_and_deletes_records() {
     );
     assert!(
         store
-            .delete_llm_api("default")
-            .await
-            .expect("delete llm api")
-            .is_some()
-    );
-    assert!(
-        store
             .delete_session_message("session-message-1")
             .await
-            .expect("delete session message")
+            .expect("delete message")
             .is_some()
     );
     assert!(
@@ -497,6 +524,37 @@ async fn in_memory_store_lists_and_deletes_records() {
             .expect("delete character")
             .is_some()
     );
+    assert!(
+        store
+            .delete_api_group("group-default")
+            .await
+            .expect("delete api group")
+            .is_some()
+    );
+    for api_id in [
+        "api-planner",
+        "api-architect",
+        "api-director",
+        "api-actor",
+        "api-narrator",
+        "api-keeper",
+        "api-replyer",
+    ] {
+        assert!(
+            store
+                .delete_api(api_id)
+                .await
+                .expect("delete api")
+                .is_some()
+        );
+    }
+    assert!(
+        store
+            .delete_preset("preset-default")
+            .await
+            .expect("delete preset")
+            .is_some()
+    );
 
     assert!(store.list_sessions().await.expect("list").is_empty());
     assert!(
@@ -512,6 +570,9 @@ async fn in_memory_store_lists_and_deletes_records() {
     assert!(store.list_characters().await.expect("list").is_empty());
     assert!(store.list_player_profiles().await.expect("list").is_empty());
     assert!(store.list_schemas().await.expect("list").is_empty());
+    assert!(store.list_apis().await.expect("list").is_empty());
+    assert!(store.list_api_groups().await.expect("list").is_empty());
+    assert!(store.list_presets().await.expect("list").is_empty());
 }
 
 #[tokio::test]
@@ -561,30 +622,18 @@ fn story_and_session_records_deserialize_without_timestamps() {
         "story_id": "story-legacy",
         "player_profile_id": null,
         "player_schema_id": "schema-player-legacy",
+        "binding": {
+            "api_group_id": "group-default",
+            "preset_id": "preset-default"
+        },
         "snapshot": {
             "story_id": "story-legacy",
             "player_description": "A legacy player.",
             "world_state": WorldState::new("dock"),
             "turn_index": 0
-        },
-        "config": {
-            "mode": "use_global",
-            "session_api_ids": null
         }
     }))
     .expect("legacy session should deserialize");
     assert!(session.created_at_ms.is_none());
     assert!(session.updated_at_ms.is_none());
-}
-
-#[tokio::test]
-async fn in_memory_store_returns_none_for_missing_default_llm_config() {
-    let store = InMemoryStore::new();
-    assert!(
-        store
-            .get_default_llm_config()
-            .await
-            .expect("default llm config lookup should succeed")
-            .is_none()
-    );
 }
