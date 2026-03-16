@@ -43,3 +43,4 @@ If a later task asks to initialize the frontend and does not override these choi
 
 - This folder is intentionally empty except for this guide.
 - Do not add `package.json`, Vite config, Tailwind config, or source files until a later task explicitly asks for frontend initialization.
+- Temporary screenshots or visual debug captures must use the filename pattern `screenshot-<topic>-<note>.<ext>` and should not be kept as project assets.
