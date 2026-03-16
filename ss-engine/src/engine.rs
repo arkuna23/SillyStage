@@ -1,10 +1,14 @@
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use agents::actor::{Actor, ActorError, ActorRequest, ActorResponse, ActorStreamEvent};
+use agents::actor::{
+    Actor, ActorError, ActorRequest, ActorResponse, ActorStreamEvent, CharacterCard,
+};
 use agents::architect::{Architect, ArchitectError, ArchitectRequest, ArchitectResponse};
 use agents::director::{
     ActorPurpose, Director, DirectorError, DirectorResult, NarratorPurpose, ResponseBeat,
+    SessionCharacterAction,
 };
 use agents::keeper::{Keeper, KeeperBeat, KeeperError, KeeperPhase, KeeperRequest, KeeperResponse};
 use agents::narrator::{
@@ -17,6 +21,7 @@ use futures_util::StreamExt;
 use llm::LlmApi;
 use serde::{Deserialize, Serialize};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
+use store::SessionCharacterRecord;
 use tracing::{debug, info};
 
 use crate::RuntimeSnapshot;
@@ -259,6 +264,38 @@ impl Engine {
                 snapshot: Box::new(self.runtime_state.snapshot()),
             };
 
+            for action in &director_result.response_plan.role_actions {
+                match self.apply_session_character_action(action) {
+                    Ok(SessionCharacterActionOutcome::CreatedAndEntered { character }) => {
+                        yield EngineEvent::SessionCharacterCreated {
+                            character,
+                            snapshot: Box::new(self.runtime_state.snapshot()),
+                        };
+                        yield EngineEvent::SessionCharacterEnteredScene {
+                            session_character_id: action_session_character_id(action).to_owned(),
+                            snapshot: Box::new(self.runtime_state.snapshot()),
+                        };
+                    }
+                    Ok(SessionCharacterActionOutcome::EnteredScene { session_character_id }) => {
+                        yield EngineEvent::SessionCharacterEnteredScene {
+                            session_character_id,
+                            snapshot: Box::new(self.runtime_state.snapshot()),
+                        };
+                    }
+                    Ok(SessionCharacterActionOutcome::LeftScene { session_character_id }) => {
+                        yield EngineEvent::SessionCharacterLeftScene {
+                            session_character_id,
+                            snapshot: Box::new(self.runtime_state.snapshot()),
+                        };
+                    }
+                    Ok(SessionCharacterActionOutcome::Noop) => {}
+                    Err(error) => {
+                        yield self.turn_failed_event(EngineStage::Director, error);
+                        return;
+                    }
+                }
+            }
+
             let mut completed_beats = Vec::new();
 
             for (beat_index, beat) in director_result.response_plan.beats.iter().enumerate() {
@@ -378,7 +415,14 @@ impl Engine {
 
                                         match current_node {
                                             Ok(current_node) => {
-                                                if !current_node.has_character(&speaker_id) {
+                                                let current_cast_ids =
+                                                    parts.world_state.active_characters().to_vec();
+                                                if !parts
+                                                    .world_state
+                                                    .active_characters()
+                                                    .iter()
+                                                    .any(|id| id == &speaker_id)
+                                                {
                                                     Err(EngineError::InvalidBeatSpeaker {
                                                         speaker_id: speaker_id.clone(),
                                                         node_id: current_node.id.clone(),
@@ -394,6 +438,7 @@ impl Engine {
                                                                 ActorRequest {
                                                                     character,
                                                                     cast: parts.character_cards,
+                                                                    current_cast_ids: &current_cast_ids,
                                                                     player_name: parts.player_name,
                                                                     player_description: parts.player_description,
                                                                     purpose: purpose.clone(),
@@ -581,6 +626,7 @@ impl Engine {
                 previous_node: None,
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                current_cast_ids: self.runtime_state.world_state().active_characters(),
                 player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
@@ -625,6 +671,7 @@ impl Engine {
                 previous_node: Some(previous_node),
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
+                current_cast_ids: self.runtime_state.world_state().active_characters(),
                 player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
@@ -666,6 +713,7 @@ impl Engine {
             previous_node,
             current_node: self.runtime_state.current_node()?,
             character_cards: self.runtime_state.character_cards(),
+            current_cast_ids: self.runtime_state.world_state().active_characters(),
             player_name: self.runtime_state.player_name(),
             player_description: self.runtime_state.player_description(),
             player_state_schema: self.runtime_state.player_state_schema(),
@@ -682,6 +730,75 @@ impl Engine {
             snapshot: Box::new(self.runtime_state.snapshot()),
         }
     }
+
+    fn apply_session_character_action(
+        &mut self,
+        action: &SessionCharacterAction,
+    ) -> Result<SessionCharacterActionOutcome, EngineError> {
+        match action {
+            SessionCharacterAction::CreateAndEnter {
+                session_character_id,
+                display_name,
+                personality,
+                style,
+                system_prompt,
+            } => {
+                let already_exists = self
+                    .runtime_state
+                    .has_session_character(session_character_id);
+                let now = now_timestamp_ms();
+                let record = SessionCharacterRecord {
+                    session_character_id: session_character_id.clone(),
+                    session_id: String::new(),
+                    display_name: display_name.clone(),
+                    personality: personality.clone(),
+                    style: style.clone(),
+                    system_prompt: system_prompt.clone(),
+                    created_at_ms: now,
+                    updated_at_ms: now,
+                };
+                self.runtime_state.upsert_session_character(
+                    session_character_record_to_character_card(
+                        &record,
+                        self.runtime_state.player_name(),
+                    ),
+                )?;
+                self.runtime_state
+                    .world_state_mut()
+                    .add_active_character(session_character_id.clone());
+
+                if already_exists {
+                    Ok(SessionCharacterActionOutcome::EnteredScene {
+                        session_character_id: session_character_id.clone(),
+                    })
+                } else {
+                    Ok(SessionCharacterActionOutcome::CreatedAndEntered { character: record })
+                }
+            }
+            SessionCharacterAction::LeaveScene {
+                session_character_id,
+            } => {
+                if self
+                    .runtime_state
+                    .world_state_mut()
+                    .remove_active_character(session_character_id)
+                {
+                    Ok(SessionCharacterActionOutcome::LeftScene {
+                        session_character_id: session_character_id.clone(),
+                    })
+                } else {
+                    Ok(SessionCharacterActionOutcome::Noop)
+                }
+            }
+        }
+    }
+}
+
+enum SessionCharacterActionOutcome {
+    CreatedAndEntered { character: SessionCharacterRecord },
+    EnteredScene { session_character_id: String },
+    LeftScene { session_character_id: String },
+    Noop,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -748,6 +865,41 @@ pub enum EngineError {
     MissingFinalBeat(String),
     #[error("turn failed during {stage:?}: {message}")]
     TurnFailed { stage: EngineStage, message: String },
+}
+
+fn action_session_character_id(action: &SessionCharacterAction) -> &str {
+    match action {
+        SessionCharacterAction::CreateAndEnter {
+            session_character_id,
+            ..
+        }
+        | SessionCharacterAction::LeaveScene {
+            session_character_id,
+        } => session_character_id,
+    }
+}
+
+fn session_character_record_to_character_card(
+    character: &SessionCharacterRecord,
+    player_name: Option<&str>,
+) -> CharacterCard {
+    CharacterCard {
+        id: character.session_character_id.clone(),
+        name: character.display_name.clone(),
+        personality: character.personality.clone(),
+        style: character.style.clone(),
+        state_schema: Default::default(),
+        system_prompt: character.system_prompt.clone(),
+    }
+    .rendered_with_player_name(player_name)
+}
+
+fn now_timestamp_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_millis()
+        .min(u128::from(u64::MAX)) as u64
 }
 
 pub async fn generate_story_plan(

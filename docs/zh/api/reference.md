@@ -125,7 +125,6 @@
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -240,6 +239,7 @@
 - `session.update` 只更新 session 的 `display_name`
 - `session.suggest_replies` 按需生成玩家候选回复，不写入 `history`
 - `session.suggest_replies` 默认返回 3 条，可通过 `limit` 请求 `2..=5` 条
+- `session.suggest_replies` 当前会使用最近 8 条 transcript 消息作为回复建议上下文
 - `session.start_session` 和 `session.get` 返回的 `session` 详情现在会带：
   - `created_at_ms`
   - `updated_at_ms`
@@ -269,8 +269,29 @@
   - `api_group_id`
   - `preset_id`
 - `session.update_config` 用于更新这两个绑定；未提供的字段保持原值
+- `Director` 现在可以在 turn 规划阶段通过 `role_actions` 创建 session 级临时角色
+- 这些临时角色会在 beat 执行前先被创建并加入当前场景，因此可以在同一回合立即参与表演
+- session 级临时角色不会修改底层 story graph，也不会持久化到当前 session 之外
 
-## 11. session_message
+## 11. session_character
+
+| 方法 | session_id | 返回 | 流式 |
+| --- | --- | --- | --- |
+| `session_character.get` | 是 | `session_character` | 否 |
+| `session_character.list` | 是 | `session_characters_listed` | 否 |
+| `session_character.update` | 是 | `session_character` | 否 |
+| `session_character.delete` | 是 | `session_character_deleted` | 否 |
+| `session_character.enter_scene` | 是 | `session_character` | 否 |
+| `session_character.leave_scene` | 是 | `session_character` | 否 |
+
+说明：
+
+- session character 是只存在于当前 session 的临时运行时角色
+- 默认创建入口是 `session.run_turn` 中 `Director` 的 `role_actions.create_and_enter`
+- `session_character.enter_scene` 和 `session_character.leave_scene` 只修改该角色是否处于当前 active cast
+- session character 不属于 `story`、`story_draft` 或 `character`
+
+## 12. session_message
 
 | 方法 | session_id | 返回 | 流式 |
 | --- | --- | --- | --- |
@@ -287,7 +308,7 @@
 - 手动 `create` 会把消息追加到当前 transcript 末尾
 - `session.get.history` 和 `session_message.list` 使用同一套有序消息结构
 
-## 12. config
+## 13. config
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -299,7 +320,7 @@
 - 此时 `api_group_id` 和 `preset_id` 都为 `null`
 - 若存在资源，则返回按 id 排序后的第一个 `api_group` 和第一个 `preset`
 
-## 13. dashboard
+## 14. dashboard
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |

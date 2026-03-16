@@ -9,7 +9,7 @@ import { Textarea } from '../../components/ui/textarea'
 import { useToastNotice } from '../../components/ui/toast-context'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { PlayerProfile } from '../player-profiles/types'
-import type { RuntimeSnapshot, SessionConfig, UpdateSessionConfigParams } from './types'
+import type { RuntimeSnapshot, SessionCharacter, SessionConfig, UpdateSessionConfigParams } from './types'
 import type { StageCopy } from './copy'
 
 const NO_PLAYER_PROFILE_OPTION_VALUE = '__none__'
@@ -28,9 +28,13 @@ type StageSessionSettingsPanelProps = {
   onSavePlayerDescription: (playerDescription: string) => Promise<void>
   onSavePlayerProfile: (playerProfileId: string | null) => Promise<void>
   onSaveSessionConfig: (params: UpdateSessionConfigParams) => Promise<void>
+  onSessionCharacterDelete: (sessionCharacterId: string) => Promise<void> | void
+  onSessionCharacterOpen: (sessionCharacterId: string) => void
+  onSessionCharacterToggleScene: (sessionCharacterId: string, inScene: boolean) => Promise<void> | void
   playerProfiles: ReadonlyArray<PlayerProfile>
   presets: ReadonlyArray<Preset>
   runtimeSnapshot: RuntimeSnapshot | null
+  sessionCharacters: ReadonlyArray<SessionCharacter>
 }
 
 export function StageSessionSettingsPanel({
@@ -42,9 +46,13 @@ export function StageSessionSettingsPanel({
   onSavePlayerDescription,
   onSavePlayerProfile,
   onSaveSessionConfig,
+  onSessionCharacterDelete,
+  onSessionCharacterOpen,
+  onSessionCharacterToggleScene,
   playerProfiles,
   presets,
   runtimeSnapshot,
+  sessionCharacters,
 }: StageSessionSettingsPanelProps) {
   const [apiGroupId, setApiGroupId] = useState(config.api_group_id)
   const [presetId, setPresetId] = useState(config.preset_id)
@@ -379,6 +387,86 @@ export function StageSessionSettingsPanel({
                 {isSavingDescription ? copy.settings.playerDescription.saving : copy.settings.playerDescription.save}
               </Button>
             </div>
+          </section>
+
+          <section className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                {copy.settings.sessionCharacters.section}
+              </p>
+              <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                {copy.settings.sessionCharacters.description}
+              </p>
+            </div>
+
+            {sessionCharacters.length === 0 ? (
+              <div className="rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                {copy.settings.sessionCharacters.empty}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {sessionCharacters.map((character) => (
+                  <div
+                    className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4"
+                    key={character.session_character_id}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-1">
+                        <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                          {character.display_name}
+                        </p>
+                        <p className="truncate font-mono text-[0.72rem] text-[var(--color-text-muted)]">
+                          {character.session_character_id}
+                        </p>
+                        <p className="line-clamp-2 text-sm leading-6 text-[var(--color-text-secondary)]">
+                          {character.personality}
+                        </p>
+                      </div>
+                      <div className="shrink-0 rounded-full border border-[var(--color-border-subtle)] px-2.5 py-1 text-xs text-[var(--color-text-secondary)]">
+                        {character.in_scene
+                          ? copy.settings.sessionCharacters.inScene
+                          : copy.settings.sessionCharacters.outOfScene}
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap justify-end gap-2">
+                      <Button
+                        onClick={() => {
+                          onSessionCharacterOpen(character.session_character_id)
+                        }}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {copy.settings.sessionCharacters.view}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          void onSessionCharacterToggleScene(
+                            character.session_character_id,
+                            !character.in_scene,
+                          )
+                        }}
+                        size="sm"
+                        variant="secondary"
+                      >
+                        {character.in_scene
+                          ? copy.settings.sessionCharacters.leaveScene
+                          : copy.settings.sessionCharacters.enterScene}
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          void onSessionCharacterDelete(character.session_character_id)
+                        }}
+                        size="sm"
+                        variant="danger"
+                      >
+                        {copy.settings.sessionCharacters.delete}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <section className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">

@@ -13,7 +13,8 @@ pub use fs::FileSystemStore;
 pub use memory::InMemoryStore;
 pub use record::{
     ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord,
-    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionMessageKind, SessionMessageRecord,
-    SessionRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionCharacterRecord, SessionMessageKind,
+    SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord,
+    StoryResourcesRecord,
 };
 pub use store::Store;

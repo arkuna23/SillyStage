@@ -59,6 +59,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: None,
                 current_node: &dock,
                 character_cards: &character_cards,
+                current_cast_ids: &dock.characters,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
@@ -79,6 +80,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: Some(&market),
                 current_node: &dock,
                 character_cards: &character_cards,
+                current_cast_ids: &dock.characters,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
@@ -99,6 +101,7 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 previous_node: None,
                 current_node: &gate,
                 character_cards: &character_cards,
+                current_cast_ids: &gate.characters,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
@@ -155,11 +158,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual, slightly cunning".to_owned(),
-            tendencies: vec![
-                "likes profitable deals".to_owned(),
-                "avoids danger".to_owned(),
-                "tries to maintain good relationships".to_owned(),
-            ],
             state_schema: merchant_state_schema(),
             system_prompt: "You are a traveling merchant. Stay in character.".to_owned(),
         },
@@ -168,11 +166,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Yuki".to_owned(),
             personality: "calm local guide who notices small details".to_owned(),
             style: "measured, clear, reassuring".to_owned(),
-            tendencies: vec![
-                "prefers careful plans".to_owned(),
-                "protects civilians".to_owned(),
-                "shares local knowledge sparingly".to_owned(),
-            ],
             state_schema: guide_state_schema(),
             system_prompt: "You are a local guide. Stay observant.".to_owned(),
         },
@@ -181,11 +174,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Ren".to_owned(),
             personality: "quiet ferryman with a dry sense of humor".to_owned(),
             style: "brief, understated, practical".to_owned(),
-            tendencies: vec![
-                "avoids unnecessary risk".to_owned(),
-                "values loyalty".to_owned(),
-                "keeps useful tools nearby".to_owned(),
-            ],
             state_schema: boatman_state_schema(),
             system_prompt: "You are a seasoned boatman. Stay understated.".to_owned(),
         },

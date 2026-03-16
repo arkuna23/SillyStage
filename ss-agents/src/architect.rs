@@ -297,7 +297,10 @@ impl Architect {
                 |bundle| {
                     validate_draft_continue_bundle(
                         bundle,
-                        &req.graph_summary.iter().map(|node| node.id.as_str()).collect(),
+                        &req.graph_summary
+                            .iter()
+                            .map(|node| node.id.as_str())
+                            .collect(),
                     )
                 },
             )
@@ -326,7 +329,10 @@ impl Architect {
             .collect();
         let stable = render_sections(&[
             ("STORY_CONCEPT", req.story_concept.to_owned()),
-            ("PLANNED_STORY", req.planned_story.unwrap_or("null").to_owned()),
+            (
+                "PLANNED_STORY",
+                req.planned_story.unwrap_or("null").to_owned(),
+            ),
             (
                 "AVAILABLE_CHARACTERS",
                 render_architect_character_summaries(&character_summaries),
@@ -482,12 +488,12 @@ impl Architect {
                         raw_output = %output.message.content,
                         "architect output failed validation, attempting repair"
                     );
-                self.repair_and_parse(
-                    repair_target,
-                    &output.message.content,
-                    &error,
-                    parse,
-                    validate,
+                    self.repair_and_parse(
+                        repair_target,
+                        &output.message.content,
+                        &error,
+                        parse,
+                        validate,
                     )
                     .await
                 }
@@ -707,13 +713,10 @@ impl ArchitectRepairTarget {
 }
 
 fn compact_character_summary(character: &CharacterCard) -> ArchitectCharacterSummary {
-    let mut role_summary_parts = vec![
-        character.personality.trim().to_owned(),
-        character.style.trim().to_owned(),
+    let role_summary_parts = vec![
+        render_character_text(&character.personality, &character.name, None),
+        render_character_text(&character.style, &character.name, None),
     ];
-    if !character.tendencies.is_empty() {
-        role_summary_parts.push(character.tendencies.join(", "));
-    }
 
     ArchitectCharacterSummary {
         id: character.id.clone(),
@@ -770,9 +773,7 @@ fn render_compact_schema_text(
         .unwrap_or_else(|| "null".to_owned())
 }
 
-fn render_state_schema_fields_from_compact(
-    fields: &BTreeMap<String, CompactStateField>,
-) -> String {
+fn render_state_schema_fields_from_compact(fields: &BTreeMap<String, CompactStateField>) -> String {
     if fields.is_empty() {
         return "none".to_owned();
     }
@@ -780,9 +781,15 @@ fn render_state_schema_fields_from_compact(
     fields
         .iter()
         .map(|(key, field)| {
-            let mut line = format!("{key}:{}", compact_json(&field.value_type).unwrap_or_default());
+            let mut line = format!(
+                "{key}:{}",
+                compact_json(&field.value_type).unwrap_or_default()
+            );
             if let Some(default) = &field.default {
-                line.push_str(&format!(" default={}", compact_json(default).unwrap_or_default()));
+                line.push_str(&format!(
+                    " default={}",
+                    compact_json(default).unwrap_or_default()
+                ));
             }
             line
         })
@@ -892,7 +899,8 @@ fn validate_draft_init_bundle(bundle: &ArchitectDraftOutputBundle) -> Result<(),
             "architect draft init did not provide section_summary".to_owned(),
         ));
     }
-    let returned_node_ids: HashSet<&str> = bundle.nodes.iter().map(|node| node.id.as_str()).collect();
+    let returned_node_ids: HashSet<&str> =
+        bundle.nodes.iter().map(|node| node.id.as_str()).collect();
     if let Some(start_node) = &bundle.start_node
         && !returned_node_ids.contains(start_node.as_str())
     {
@@ -1019,3 +1027,4 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
     }
     output
 }
+use crate::prompt::render_character_text;

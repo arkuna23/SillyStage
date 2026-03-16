@@ -10,7 +10,6 @@ You will receive:
 
 - a KEEPER_PHASE
 - a PLAYER_INPUT
-- a PLAYER_NAME
 - a PLAYER_DESCRIPTION
 - a PREVIOUS_NODE
 - a PREVIOUS_CAST
@@ -106,7 +105,6 @@ Evidence rules:
 - Do not invent hidden motives or unseen events
 - Do not read or infer actor private memory
 - CURRENT_CAST contains compact character card summaries, including each character's private state schema
-- PLAYER_NAME identifies the player persona when available
 - PLAYER_DESCRIPTION describes the player persona currently in play and may help disambiguate what the player is claiming or doing
 - PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
 - Use WORLD_STATE.player_state when recording visible player-facing changes such as coins, items, access, or reputation

@@ -6,6 +6,8 @@ use engine::RuntimeSnapshot;
 use serde::{Deserialize, Serialize};
 use state::{ActorMemoryEntry, StateUpdate};
 
+use crate::session_character::SessionCharacterPayload;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEventBody {
@@ -24,6 +26,18 @@ pub enum StreamEventBody {
     },
     DirectorCompleted {
         result: DirectorResult,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterCreated {
+        session_character: Box<SessionCharacterPayload>,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterEnteredScene {
+        session_character_id: String,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterLeftScene {
+        session_character_id: String,
         snapshot: Box<RuntimeSnapshot>,
     },
     NarratorStarted {

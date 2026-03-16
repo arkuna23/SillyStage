@@ -15,7 +15,6 @@ Each item includes at least:
 - name
 - personality
 - style
-- tendencies
 - state_schema
 
 Write a short planning document using exactly these section headers:

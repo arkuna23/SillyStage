@@ -1126,6 +1126,8 @@ const en = {
       descriptionWithResource: 'Architect is shaping story resource {{id}} into a full story structure and state graph. This can take a moment.',
       elapsed: 'Elapsed',
       finalizing: 'Finalizing the current draft into a complete story.',
+      progressLabel: 'Progress',
+      progressValue: '{{current}} / {{total}}',
       starting: 'Starting the story draft generation flow.',
       title: 'Generating this story draft',
     },
@@ -1174,17 +1176,14 @@ const en = {
       saveChanges: 'Save Changes',
       saving: 'Saving...',
       addStateField: 'Add State Field',
-      addTendency: 'Add Tendency',
       selectAll: 'Select All',
       selectMode: 'Selection Mode',
     },
     card: {
       coverAlt: '{{name}} cover',
       idLabel: 'Character ID',
-      noTendencies: 'No tendencies added yet',
       personality: 'Personality',
       style: 'Style',
-      tendencies: 'Tendencies',
     },
     create: {
       errors: {
@@ -1218,7 +1217,6 @@ const en = {
         stateType: 'Value Type',
         style: 'Speaking Style',
         systemPrompt: 'System Prompt',
-        tendencies: 'Tendencies',
       },
       placeholders: {
         characterId: 'hakurei-reimu',
@@ -1234,7 +1232,6 @@ const en = {
           'Direct, dry, and a little impatient, with the steady confidence of someone used to solving problems herself.',
         systemPrompt:
           'Stay grounded as the Hakurei shrine maiden: judge the incident first, keep the tone brisk, and never lose that effortless confidence.',
-        tendency: 'Blunt, skeptical, money-minded, dependable when it matters...',
       },
       stateTypes: {
         array: 'Array',

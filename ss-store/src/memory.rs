@@ -6,8 +6,8 @@ use tokio::sync::RwLock;
 use crate::error::StoreError;
 use crate::record::{
     ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
-    SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
-    StoryResourcesRecord,
+    SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
+    StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
@@ -23,6 +23,7 @@ pub struct InMemoryStore {
     stories: RwLock<HashMap<String, StoryRecord>>,
     story_drafts: RwLock<HashMap<String, StoryDraftRecord>>,
     sessions: RwLock<HashMap<String, SessionRecord>>,
+    session_characters: RwLock<HashMap<String, SessionCharacterRecord>>,
     session_messages: RwLock<HashMap<String, SessionMessageRecord>>,
 }
 
@@ -282,6 +283,54 @@ impl Store for InMemoryStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         Ok(self.sessions.write().await.remove(session_id))
+    }
+
+    async fn get_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError> {
+        Ok(self
+            .session_characters
+            .read()
+            .await
+            .get(session_character_id)
+            .cloned())
+    }
+
+    async fn list_session_characters(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionCharacterRecord>, StoreError> {
+        Ok(self
+            .session_characters
+            .read()
+            .await
+            .values()
+            .filter(|character| character.session_id == session_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn save_session_character(
+        &self,
+        character: SessionCharacterRecord,
+    ) -> Result<(), StoreError> {
+        self.session_characters
+            .write()
+            .await
+            .insert(character.session_character_id.clone(), character);
+        Ok(())
+    }
+
+    async fn delete_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError> {
+        Ok(self
+            .session_characters
+            .write()
+            .await
+            .remove(session_character_id))
     }
 
     async fn get_session_message(

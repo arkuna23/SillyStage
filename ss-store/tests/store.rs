@@ -4,9 +4,9 @@ use serde_json::json;
 use ss_store::{
     AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
     CharacterCardRecord, InMemoryStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
-    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionMessageKind,
-    SessionMessageRecord, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord,
-    StoryResourcesRecord,
+    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionCharacterRecord,
+    SessionMessageKind, SessionMessageRecord, SessionRecord, Store, StoryDraftRecord,
+    StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -19,7 +19,6 @@ fn sample_character_record() -> CharacterCardRecord {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual".to_owned(),
-            tendencies: vec!["likes profitable deals".to_owned()],
             schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
         },
@@ -203,6 +202,19 @@ fn sample_session_message() -> SessionMessageRecord {
     }
 }
 
+fn sample_session_character() -> SessionCharacterRecord {
+    SessionCharacterRecord {
+        session_character_id: "dock_guard".to_owned(),
+        session_id: "session-1".to_owned(),
+        display_name: "Dock Guard".to_owned(),
+        personality: "dutiful and wary".to_owned(),
+        style: "short, formal".to_owned(),
+        system_prompt: "Keep watch over the dock.".to_owned(),
+        created_at_ms: 3_600,
+        updated_at_ms: 3_600,
+    }
+}
+
 fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
     let fields = if schema_id.contains("world") {
         sample_world_state_schema().fields
@@ -311,6 +323,10 @@ async fn in_memory_store_persists_all_records() {
         .save_session_message(sample_session_message())
         .await
         .expect("save session message");
+    store
+        .save_session_character(sample_session_character())
+        .await
+        .expect("save session character");
 
     assert!(
         store
@@ -389,6 +405,13 @@ async fn in_memory_store_persists_all_records() {
             .expect("load session message")
             .is_some()
     );
+    assert!(
+        store
+            .get_session_character("dock_guard")
+            .await
+            .expect("load session character")
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -448,6 +471,10 @@ async fn in_memory_store_lists_and_deletes_records() {
         .save_session_message(sample_session_message())
         .await
         .expect("save session message");
+    store
+        .save_session_character(sample_session_character())
+        .await
+        .expect("save session character");
 
     assert_eq!(store.list_apis().await.expect("list").len(), 7);
     assert_eq!(store.list_api_groups().await.expect("list").len(), 1);
@@ -462,6 +489,14 @@ async fn in_memory_store_lists_and_deletes_records() {
     assert_eq!(
         store
             .list_session_messages("session-1")
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
+    assert_eq!(
+        store
+            .list_session_characters("session-1")
             .await
             .expect("list")
             .len(),
@@ -487,6 +522,13 @@ async fn in_memory_store_lists_and_deletes_records() {
             .delete_session_message("session-message-1")
             .await
             .expect("delete message")
+            .is_some()
+    );
+    assert!(
+        store
+            .delete_session_character("dock_guard")
+            .await
+            .expect("delete session character")
             .is_some()
     );
     assert!(

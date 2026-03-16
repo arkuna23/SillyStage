@@ -11,7 +11,9 @@ pub use engine::{
     RuntimeAgentConfigs, StoryGenerationAgentConfigs, generate_story_graph, generate_story_plan,
 };
 pub use event::{EngineEvent, EngineStage};
-pub use manager::{EngineManager, ManagedTurnStream, ManagerError, ResolvedSessionConfig};
+pub use manager::{
+    EngineManager, ManagedTurnStream, ManagerError, ResolvedSessionConfig, SessionCharacterUpdate,
+};
 pub use registry::{LlmApiRegistry, RegisteredApi, RegistryError, RuntimeApiRecords};
 pub use runtime::{RuntimeError, RuntimeState, StoryResources};
 pub use store::RuntimeSnapshot;

@@ -39,7 +39,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: merchant_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }]
@@ -137,6 +136,7 @@ async fn suggest_returns_sanitized_replies() {
         .suggest(ReplyerRequest {
             current_node: &node,
             character_cards: &character_cards,
+            current_cast_ids: &node.characters,
             player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
@@ -187,6 +187,7 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
         .suggest(ReplyerRequest {
             current_node: &node,
             character_cards: &character_cards,
+            current_cast_ids: &node.characters,
             player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
@@ -201,7 +202,7 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
     let user_message = joined_user_messages(&requests[0]);
 
     assert!(user_message.contains("SESSION_HISTORY"));
-    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("Can you lower the price?"));
     assert!(user_message.contains("coins=12"));
     assert!(!user_message.contains("I can squeeze a little more out of this deal."));

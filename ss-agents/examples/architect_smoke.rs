@@ -160,11 +160,6 @@ fn sample_inputs() -> (WorldStateSchema, PlayerStateSchema, Vec<CharacterCard>) 
                 name: "Haru".to_owned(),
                 personality: "greedy but friendly trader".to_owned(),
                 style: "talkative, casual, slightly cunning".to_owned(),
-                tendencies: vec![
-                    "likes profitable deals".to_owned(),
-                    "avoids danger".to_owned(),
-                    "tries to maintain good relationships".to_owned(),
-                ],
                 state_schema: merchant_state_schema(),
                 system_prompt:
                     "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion.".to_owned(),
@@ -174,11 +169,6 @@ fn sample_inputs() -> (WorldStateSchema, PlayerStateSchema, Vec<CharacterCard>) 
                 name: "Yuki".to_owned(),
                 personality: "calm local guide who notices small details".to_owned(),
                 style: "measured, clear, reassuring".to_owned(),
-                tendencies: vec![
-                    "prefers careful plans".to_owned(),
-                    "protects civilians".to_owned(),
-                    "shares local knowledge sparingly".to_owned(),
-                ],
                 state_schema: guide_state_schema(),
                 system_prompt:
                     "You are a local guide. Stay observant, practical, and in character.".to_owned(),
@@ -188,11 +178,6 @@ fn sample_inputs() -> (WorldStateSchema, PlayerStateSchema, Vec<CharacterCard>) 
                 name: "Ren".to_owned(),
                 personality: "quiet ferryman with a dry sense of humor".to_owned(),
                 style: "brief, understated, practical".to_owned(),
-                tendencies: vec![
-                    "avoids unnecessary risk".to_owned(),
-                    "values loyalty".to_owned(),
-                    "keeps useful tools nearby".to_owned(),
-                ],
                 state_schema: boatman_state_schema(),
                 system_prompt:
                     "You are a seasoned boatman. Stay understated and avoid breaking immersion.".to_owned(),

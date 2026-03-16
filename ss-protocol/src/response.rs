@@ -12,6 +12,9 @@ use crate::player_profile::{
 use crate::preset::{PresetDeletedPayload, PresetPayload, PresetsListedPayload};
 use crate::reply_suggestion::SuggestedRepliesPayload;
 use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
+use crate::session_character::{
+    SessionCharacterDeletedPayload, SessionCharacterPayload, SessionCharactersListedPayload,
+};
 use crate::session_message::{
     SessionMessageDeletedPayload, SessionMessagePayload, SessionMessagesListedPayload,
 };
@@ -63,6 +66,9 @@ pub enum ResponseResult {
     SessionsListed(SessionsListedPayload),
     SessionDeleted(SessionDeletedPayload),
     SuggestedReplies(SuggestedRepliesPayload),
+    SessionCharacter(Box<SessionCharacterPayload>),
+    SessionCharactersListed(SessionCharactersListedPayload),
+    SessionCharacterDeleted(SessionCharacterDeletedPayload),
     SessionMessage(Box<SessionMessagePayload>),
     SessionMessagesListed(SessionMessagesListedPayload),
     SessionMessageDeleted(SessionMessageDeletedPayload),

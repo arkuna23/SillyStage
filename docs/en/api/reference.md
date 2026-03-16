@@ -127,7 +127,6 @@ Character content fields:
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -242,6 +241,7 @@ Notes:
 - `session.update` only updates the session `display_name`
 - `session.suggest_replies` generates player reply suggestions on demand and does not write to `history`
 - `session.suggest_replies` returns 3 suggestions by default and accepts `limit` values in `2..=5`
+- `session.suggest_replies` currently uses the most recent 8 transcript messages as reply context
 - `story.start_session` and `session.get` now return session details with:
   - `created_at_ms`
   - `updated_at_ms`
@@ -271,8 +271,29 @@ Notes:
   - `api_group_id`
   - `preset_id`
 - `session.update_config` updates that binding. Omitted fields keep the current value.
+- `Director` may create session-scoped temporary characters during turn planning through `role_actions`
+- those temporary characters are created and entered before beat execution, so they can act in the same turn
+- session-scoped temporary characters do not modify the underlying story graph and do not persist outside the current session
 
-## 11. session_message
+## 11. session_character
+
+| Method | session_id | Result | Streaming |
+| --- | --- | --- | --- |
+| `session_character.get` | Yes | `session_character` | No |
+| `session_character.list` | Yes | `session_characters_listed` | No |
+| `session_character.update` | Yes | `session_character` | No |
+| `session_character.delete` | Yes | `session_character_deleted` | No |
+| `session_character.enter_scene` | Yes | `session_character` | No |
+| `session_character.leave_scene` | Yes | `session_character` | No |
+
+Notes:
+
+- session characters are temporary runtime-only roles scoped to a single session
+- the primary creation path is `Director` `role_actions.create_and_enter` during `session.run_turn`
+- `session_character.enter_scene` and `session_character.leave_scene` only change whether the character is in the current active cast
+- session characters are not part of `story`, `story_draft`, or `character`
+
+## 12. session_message
 
 | Method | session_id | Result | Streaming |
 | --- | --- | --- | --- |
@@ -289,7 +310,7 @@ Notes:
 - manual `create` appends to the end of the current session transcript
 - `session.get.history` and `session_message.list` use the same ordered message shape
 
-## 12. config
+## 13. config
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -301,7 +322,7 @@ Notes:
 - in that case both `api_group_id` and `preset_id` are `null`
 - otherwise it returns the current fallback pair, which is the first available `api_group` and first available `preset` after sorting by id
 
-## 13. dashboard
+## 14. dashboard
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |

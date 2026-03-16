@@ -18,7 +18,8 @@ INPUTS
 
 RULES
 - Generate only the current section
-- TARGET_NODE_COUNT is a hard upper bound for new nodes
+- TARGET_NODE_COUNT is a soft planning hint, not a hard cap
+- It is acceptable to return fewer or more nodes when needed, but keep the chunk compact and do not generate too many new nodes
 - Do not return start_node
 - Do not return world_state_schema
 - Do not return player_state_schema

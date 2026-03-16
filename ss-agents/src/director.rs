@@ -25,12 +25,22 @@ pub struct DirectorResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ResponsePlan {
+    #[serde(default)]
+    pub role_actions: Vec<SessionCharacterAction>,
+    #[serde(default)]
     pub beats: Vec<ResponseBeat>,
 }
 
 impl ResponsePlan {
     pub fn new() -> Self {
-        Self { beats: Vec::new() }
+        Self {
+            role_actions: Vec::new(),
+            beats: Vec::new(),
+        }
+    }
+
+    pub fn add_role_action(&mut self, action: SessionCharacterAction) {
+        self.role_actions.push(action);
     }
 
     pub fn add_beat(&mut self, beat: ResponseBeat) {
@@ -38,8 +48,23 @@ impl ResponsePlan {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.beats.is_empty()
+        self.role_actions.is_empty() && self.beats.is_empty()
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum SessionCharacterAction {
+    CreateAndEnter {
+        session_character_id: String,
+        display_name: String,
+        personality: String,
+        style: String,
+        system_prompt: String,
+    },
+    LeaveScene {
+        session_character_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,17 +309,13 @@ impl Director {
         player_state_schema: &PlayerStateSchema,
     ) -> Result<(String, String), DirectorError> {
         let stable_prompt = render_sections(&[
-            (
-                "PLAYER_NAME",
-                player_persona.name.unwrap_or("null").to_owned(),
-            ),
             ("PLAYER_DESCRIPTION", player_persona.description.to_owned()),
             (
                 "CURRENT_CAST",
                 render_character_summaries(&current_cast_summaries(
-                    &node.characters,
+                    world_state.active_characters(),
                     character_cards,
-                )?),
+                )?, player_persona.name),
             ),
             ("CURRENT_NODE", render_node(node)),
             (
@@ -306,10 +327,8 @@ impl Director {
                 compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?,
             ),
         ]);
-        let dynamic_prompt = render_sections(&[(
-            "WORLD_STATE",
-            render_director_world_state(world_state),
-        )]);
+        let dynamic_prompt =
+            render_sections(&[("WORLD_STATE", render_director_world_state(world_state))]);
 
         Ok((stable_prompt, dynamic_prompt))
     }

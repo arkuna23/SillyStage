@@ -9,8 +9,8 @@ use tokio::io::AsyncWriteExt;
 use crate::error::StoreError;
 use crate::record::{
     ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord,
-    PresetRecord, SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
-    StoryResourcesRecord,
+    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
+    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
@@ -27,6 +27,7 @@ const STORY_RESOURCES_DIR: &str = "story_resources";
 const STORIES_DIR: &str = "stories";
 const STORY_DRAFTS_DIR: &str = "story_drafts";
 const SESSIONS_DIR: &str = "sessions";
+const SESSION_CHARACTERS_DIR: &str = "session_characters";
 const SESSION_MESSAGES_DIR: &str = "session_messages";
 
 #[derive(Debug, Clone)]
@@ -76,6 +77,7 @@ impl FileSystemStore {
         fs::create_dir_all(self.stories_dir()).await?;
         fs::create_dir_all(self.story_drafts_dir()).await?;
         fs::create_dir_all(self.sessions_dir()).await?;
+        fs::create_dir_all(self.session_characters_dir()).await?;
         fs::create_dir_all(self.session_messages_dir()).await?;
         Ok(())
     }
@@ -197,6 +199,17 @@ impl FileSystemStore {
 
     fn session_messages_dir(&self) -> PathBuf {
         self.root.join(SESSION_MESSAGES_DIR)
+    }
+
+    fn session_characters_dir(&self) -> PathBuf {
+        self.root.join(SESSION_CHARACTERS_DIR)
+    }
+
+    fn session_character_path(&self, session_character_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self.session_characters_dir().join(format!(
+            "{}.json",
+            validate_path_component(session_character_id)?
+        )))
     }
 
     fn session_message_path(&self, message_id: &str) -> Result<PathBuf, StoreError> {
@@ -458,6 +471,40 @@ impl Store for FileSystemStore {
 
     async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError> {
         delete_optional_json_file(&self.session_path(session_id)?).await
+    }
+
+    async fn get_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError> {
+        read_optional_json_file(&self.session_character_path(session_character_id)?).await
+    }
+
+    async fn list_session_characters(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionCharacterRecord>, StoreError> {
+        let mut records = list_json_records(&self.session_characters_dir()).await?;
+        records.retain(|character: &SessionCharacterRecord| character.session_id == session_id);
+        Ok(records)
+    }
+
+    async fn save_session_character(
+        &self,
+        character: SessionCharacterRecord,
+    ) -> Result<(), StoreError> {
+        write_json_atomic(
+            &self.session_character_path(&character.session_character_id)?,
+            &character,
+        )
+        .await
+    }
+
+    async fn delete_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError> {
+        delete_optional_json_file(&self.session_character_path(session_character_id)?).await
     }
 
     async fn get_session_message(

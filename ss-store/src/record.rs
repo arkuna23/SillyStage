@@ -37,6 +37,18 @@ pub struct SessionMessageRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionCharacterRecord {
+    pub session_character_id: String,
+    pub session_id: String,
+    pub display_name: String,
+    pub personality: String,
+    pub style: String,
+    pub system_prompt: String,
+    pub created_at_ms: u64,
+    pub updated_at_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchemaRecord {
     pub schema_id: String,
     pub display_name: String,
@@ -57,7 +69,6 @@ pub struct CharacterCardDefinition {
     pub name: String,
     pub personality: String,
     pub style: String,
-    pub tendencies: Vec<String>,
     pub schema_id: String,
     pub system_prompt: String,
 }

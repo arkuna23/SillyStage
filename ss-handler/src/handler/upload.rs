@@ -434,7 +434,6 @@ fn character_summary_payload_from_record(
         name: record.content.name.clone(),
         personality: record.content.personality.clone(),
         style: record.content.style.clone(),
-        tendencies: record.content.tendencies.clone(),
         cover_file_name: record.cover_file_name.clone(),
         cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
     }
@@ -448,7 +447,6 @@ fn character_definition_from_content(
         name: content.name,
         personality: content.personality,
         style: content.style,
-        tendencies: content.tendencies,
         schema_id: content.schema_id,
         system_prompt: content.system_prompt,
     }
@@ -462,7 +460,6 @@ fn character_content_from_definition(
         name: definition.name.clone(),
         personality: definition.personality.clone(),
         style: definition.style.clone(),
-        tendencies: definition.tendencies.clone(),
         schema_id: definition.schema_id.clone(),
         system_prompt: definition.system_prompt.clone(),
     }

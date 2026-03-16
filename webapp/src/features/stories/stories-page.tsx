@@ -32,13 +32,14 @@ import {
   listStories,
   listStoryDrafts,
 } from './api'
+import { getDraftSectionProgress } from './draft-progress'
 import { DeleteStoryDraftDialog } from './delete-story-draft-dialog'
 import { DeleteStoryDialog } from './delete-story-dialog'
 import { GenerateStoryDialog } from './generate-story-dialog'
 import { StoryDraftDetailsDialog } from './story-draft-details-dialog'
 import { StoryDetailsDialog } from './story-details-dialog'
 import { StoryFormDialog } from './story-form-dialog'
-import type { StoryDraftSummary, StorySummary } from './types'
+import type { StoryDraftDetail, StoryDraftSummary, StorySummary } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 type StoryViewMode = 'drafts' | 'stories'
@@ -111,26 +112,6 @@ function StoryDraftsListSkeleton() {
 
 function summarizeIntroduction(introduction: string) {
   return introduction.replace(/\s+/g, ' ').trim()
-}
-
-function getDraftProgress(draft: Pick<StoryDraftSummary, 'next_section_index' | 'total_sections'>) {
-  const nextSectionIndex =
-    typeof draft.next_section_index === 'number' && Number.isFinite(draft.next_section_index)
-      ? draft.next_section_index
-      : null
-  const totalSections =
-    typeof draft.total_sections === 'number' && Number.isFinite(draft.total_sections) && draft.total_sections > 0
-      ? draft.total_sections
-      : null
-
-  if (nextSectionIndex === null || totalSections === null) {
-    return null
-  }
-
-  return {
-    current: Math.min(nextSectionIndex + 1, totalSections),
-    total: totalSections,
-  }
 }
 
 export function StoriesPage() {
@@ -312,8 +293,25 @@ export function StoriesPage() {
     setActiveDraftActionId(draft.draft_id)
 
     try {
-      const result = await continueStoryDraft({ draft_id: draft.draft_id })
-      const progress = getDraftProgress(result)
+      let currentDraft: StoryDraftSummary | StoryDraftDetail = draft
+
+      while (currentDraft.status === 'building') {
+        currentDraft = await continueStoryDraft({ draft_id: currentDraft.draft_id })
+      }
+
+      if (currentDraft.status === 'ready_to_finalize') {
+        const result = await finalizeStoryDraft({ draft_id: currentDraft.draft_id })
+
+        setNotice({
+          message: t('stories.feedback.created', { name: result.display_name }),
+          tone: 'success',
+        })
+        await Promise.all([refreshStories(), refreshDrafts()])
+        setViewMode('stories')
+        return
+      }
+
+      const progress = getDraftSectionProgress(currentDraft)
       setNotice({
         message: progress
           ? t('stories.drafts.feedback.continued', progress)
@@ -322,6 +320,7 @@ export function StoriesPage() {
       })
       await refreshDrafts()
     } catch (error) {
+      await Promise.all([refreshStories(), refreshDrafts()])
       setNotice({
         message: getErrorMessage(error, t('stories.drafts.feedback.continueFailed')),
         tone: 'error',
@@ -619,7 +618,7 @@ export function StoriesPage() {
                   <div className="divide-y divide-[var(--color-border-subtle)]">
                     {drafts.map((draft) => {
                       const isWorking = activeDraftActionId === draft.draft_id
-                      const progress = getDraftProgress(draft)
+                      const progress = getDraftSectionProgress(draft)
 
                       return (
                         <div

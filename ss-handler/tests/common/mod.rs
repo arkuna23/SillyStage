@@ -15,7 +15,7 @@ use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchem
 use store::{
     AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
     CharacterCardRecord, LlmProvider, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
-    SchemaRecord, StoryRecord,
+    SchemaRecord, SessionCharacterRecord, StoryRecord,
 };
 use story::{NarrativeNode, StoryGraph};
 
@@ -44,6 +44,13 @@ impl QueuedMockLlm {
             chat_queue: Arc::new(Mutex::new(VecDeque::from(chat_results))),
             stream_queue: Arc::new(Mutex::new(VecDeque::from(stream_results))),
         }
+    }
+
+    pub fn recorded_requests(&self) -> Vec<ChatRequest> {
+        self.requests
+            .lock()
+            .expect("requests lock poisoned")
+            .clone()
     }
 }
 
@@ -98,7 +105,6 @@ pub fn sample_character_card() -> CharacterCard {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: HashMap::from([(
             "trust".to_owned(),
             StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
@@ -154,7 +160,6 @@ pub fn sample_character_content() -> CharacterCardContent {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
     }
@@ -170,7 +175,6 @@ pub fn sample_character_record() -> CharacterCardRecord {
             name: archive.content.name.clone(),
             personality: archive.content.personality.clone(),
             style: archive.content.style.clone(),
-            tendencies: archive.content.tendencies.clone(),
             schema_id: archive.content.schema_id.clone(),
             system_prompt: archive.content.system_prompt.clone(),
         },
@@ -304,5 +308,21 @@ pub fn sample_player_profile(id: &str, description: &str) -> PlayerProfileRecord
         player_profile_id: id.to_owned(),
         display_name: id.to_owned(),
         description: description.to_owned(),
+    }
+}
+
+pub fn sample_session_character_record(
+    session_id: &str,
+    session_character_id: &str,
+) -> SessionCharacterRecord {
+    SessionCharacterRecord {
+        session_character_id: session_character_id.to_owned(),
+        session_id: session_id.to_owned(),
+        display_name: "Dock Guard".to_owned(),
+        personality: "dutiful and wary".to_owned(),
+        style: "short, formal".to_owned(),
+        system_prompt: "Keep watch over the dock.".to_owned(),
+        created_at_ms: 3_600,
+        updated_at_ms: 3_600,
     }
 }

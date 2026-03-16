@@ -10,6 +10,7 @@ pub mod reply_suggestion;
 pub mod request;
 pub mod response;
 pub mod schema;
+pub mod session_character;
 pub mod session_message;
 pub mod session_variable;
 pub mod stream_event;
@@ -80,6 +81,11 @@ pub use response::{
 pub use schema::{
     SchemaCreateParams, SchemaDeleteParams, SchemaDeletedPayload, SchemaGetParams,
     SchemaListParams, SchemaPayload, SchemaUpdateParams, SchemasListedPayload,
+};
+pub use session_character::{
+    DeleteSessionCharacterParams, EnterSessionCharacterSceneParams, GetSessionCharacterParams,
+    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, SessionCharacterDeletedPayload,
+    SessionCharacterPayload, SessionCharactersListedPayload, UpdateSessionCharacterParams,
 };
 pub use session_message::{
     CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,

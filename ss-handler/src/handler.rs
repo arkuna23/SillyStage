@@ -237,6 +237,30 @@ impl Handler {
                 self.handle_session_message_delete(&request_id, session_id.clone(), params)
                     .await
             }
+            RequestParams::SessionCharacterGet(params) => {
+                self.handle_session_character_get(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionCharacterList(params) => {
+                self.handle_session_character_list(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionCharacterUpdate(params) => {
+                self.handle_session_character_update(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionCharacterDelete(params) => {
+                self.handle_session_character_delete(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionCharacterEnterScene(params) => {
+                self.handle_session_character_enter_scene(&request_id, session_id.clone(), params)
+                    .await
+            }
+            RequestParams::SessionCharacterLeaveScene(params) => {
+                self.handle_session_character_leave_scene(&request_id, session_id.clone(), params)
+                    .await
+            }
             RequestParams::SessionRunTurn(params) => {
                 return self
                     .handle_session_run_turn(request_id, session_id, params)

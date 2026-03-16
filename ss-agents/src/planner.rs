@@ -100,9 +100,10 @@ impl Planner {
             .collect();
         let stable_prompt = render_sections(&[(
             "AVAILABLE_CHARACTERS",
-            render_character_summaries(&character_summaries),
+            render_character_summaries(&character_summaries, None),
         )]);
-        let dynamic_prompt = render_sections(&[("STORY_CONCEPT", request.story_concept.to_owned())]);
+        let dynamic_prompt =
+            render_sections(&[("STORY_CONCEPT", request.story_concept.to_owned())]);
 
         Ok((stable_prompt, dynamic_prompt))
     }

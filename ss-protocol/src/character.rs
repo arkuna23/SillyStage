@@ -65,7 +65,6 @@ pub struct CharacterCardContent {
     pub name: String,
     pub personality: String,
     pub style: String,
-    pub tendencies: Vec<String>,
     pub schema_id: String,
     pub system_prompt: String,
 }
@@ -77,7 +76,6 @@ impl From<&CharacterCard> for CharacterCardContent {
             name: value.name.clone(),
             personality: value.personality.clone(),
             style: value.style.clone(),
-            tendencies: value.tendencies.clone(),
             schema_id: value.id.clone(),
             system_prompt: value.system_prompt.clone(),
         }
@@ -97,7 +95,6 @@ impl From<CharacterCardContent> for CharacterCard {
             name: value.name,
             personality: value.personality,
             style: value.style,
-            tendencies: value.tendencies,
             state_schema: Default::default(),
             system_prompt: value.system_prompt,
         }
@@ -110,7 +107,6 @@ pub struct CharacterCardSummaryPayload {
     pub name: String,
     pub personality: String,
     pub style: String,
-    pub tendencies: Vec<String>,
     pub cover_file_name: Option<String>,
     pub cover_mime_type: Option<CharacterCoverMimeType>,
 }
@@ -145,7 +141,6 @@ impl CharacterArchive {
             name: self.content.name.clone(),
             personality: self.content.personality.clone(),
             style: self.content.style.clone(),
-            tendencies: self.content.tendencies.clone(),
             cover_file_name: Some(self.manifest.cover_path.clone()),
             cover_mime_type: Some(self.manifest.cover_mime_type),
         }

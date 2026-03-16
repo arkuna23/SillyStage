@@ -23,6 +23,7 @@ import {
   finalizeStoryDraft,
   startStoryDraft,
 } from './api'
+import { getDraftSectionProgress } from './draft-progress'
 import type { StoryDetail, StoryDraftDetail } from './types'
 import type { StoryResource } from '../story-resources/types'
 
@@ -62,32 +63,6 @@ function summarizeStoryInput(resource: StoryResource) {
   return (resource.planned_story?.trim() || resource.story_concept).replace(/\s+/g, ' ').trim()
 }
 
-function getDraftProgressMessage(
-  labels: {
-    draftProgress: (values: { current: number; total: number }) => string
-    draftProgressUnknown: string
-  },
-  draft: Pick<StoryDraftDetail, 'next_section_index' | 'total_sections'>,
-) {
-  const nextSectionIndex =
-    typeof draft.next_section_index === 'number' && Number.isFinite(draft.next_section_index)
-      ? draft.next_section_index
-      : null
-  const totalSections =
-    typeof draft.total_sections === 'number' && Number.isFinite(draft.total_sections) && draft.total_sections > 0
-      ? draft.total_sections
-      : null
-
-  if (nextSectionIndex === null || totalSections === null) {
-    return labels.draftProgressUnknown
-  }
-
-  return labels.draftProgress({
-    current: Math.min(nextSectionIndex + 1, totalSections),
-    total: totalSections,
-  })
-}
-
 export function GenerateStoryDialog({
   apiGroups,
   onCompleted,
@@ -98,11 +73,6 @@ export function GenerateStoryDialog({
   resources,
 }: GenerateStoryDialogProps) {
   const { t } = useTranslation()
-  const draftProgressLabels = {
-    draftProgress: (values: { current: number; total: number }) =>
-      String(t('stories.generating.draftProgress', values)),
-    draftProgressUnknown: String(t('stories.generating.draftProgressUnknown')),
-  }
   const fieldIdPrefix = useId()
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -110,7 +80,8 @@ export function GenerateStoryDialog({
   const [dialogStage, setDialogStage] = useState<DialogStage>('form')
   const [generationStartedAtMs, setGenerationStartedAtMs] = useState<number | null>(null)
   const [draftIdentifier, setDraftIdentifier] = useState<string | null>(null)
-  const [generatingMessage, setGeneratingMessage] = useState<string | null>(null)
+  const [generatingDescription, setGeneratingDescription] = useState<string | null>(null)
+  const [generatingProgressText, setGeneratingProgressText] = useState<string | null>(null)
   useToastMessage(submitError)
 
   const fieldIds = {
@@ -161,7 +132,8 @@ export function GenerateStoryDialog({
       setDialogStage('form')
       setGenerationStartedAtMs(null)
       setDraftIdentifier(null)
-      setGeneratingMessage(null)
+      setGeneratingDescription(null)
+      setGeneratingProgressText(null)
       return
     }
 
@@ -177,23 +149,44 @@ export function GenerateStoryDialog({
     setDialogStage('form')
     setGenerationStartedAtMs(null)
     setDraftIdentifier(null)
-    setGeneratingMessage(null)
+    setGeneratingDescription(null)
+    setGeneratingProgressText(null)
   }, [open, resources])
 
   async function runDraftGeneration(initialDraft: StoryDraftDetail) {
     let draft = initialDraft
+    let progress = getDraftSectionProgress(initialDraft)
 
     setDraftIdentifier(initialDraft.draft_id)
-    setGeneratingMessage(getDraftProgressMessage(draftProgressLabels, initialDraft))
+    setGeneratingDescription(
+      selectedResource
+        ? t('stories.generating.descriptionWithResource', { id: selectedResource.resource_id })
+        : t('stories.generating.description'),
+    )
+    setGeneratingProgressText(
+      progress ? t('stories.generating.progressValue', progress) : null,
+    )
 
     while (draft.status === 'building') {
       draft = await continueStoryDraft({ draft_id: draft.draft_id })
+      progress = getDraftSectionProgress(draft)
 
       setDraftIdentifier(draft.draft_id)
-      setGeneratingMessage(getDraftProgressMessage(draftProgressLabels, draft))
+      setGeneratingDescription(
+        selectedResource
+          ? t('stories.generating.descriptionWithResource', { id: selectedResource.resource_id })
+          : t('stories.generating.description'),
+      )
+      setGeneratingProgressText(
+        progress ? t('stories.generating.progressValue', progress) : null,
+      )
     }
 
-    setGeneratingMessage(t('stories.generating.finalizing'))
+    progress = getDraftSectionProgress(draft)
+    setGeneratingDescription(t('stories.generating.finalizing'))
+    setGeneratingProgressText(
+      progress ? t('stories.generating.progressValue', progress) : null,
+    )
 
     return finalizeStoryDraft({ draft_id: draft.draft_id })
   }
@@ -220,7 +213,8 @@ export function GenerateStoryDialog({
     setDialogStage('generating')
     setGenerationStartedAtMs(Date.now())
     setDraftIdentifier(null)
-    setGeneratingMessage(t('stories.generating.starting'))
+    setGeneratingDescription(t('stories.generating.starting'))
+    setGeneratingProgressText(null)
 
     try {
       const initialDraft = await startStoryDraft({
@@ -250,7 +244,8 @@ export function GenerateStoryDialog({
       setDialogStage('form')
       setGenerationStartedAtMs(null)
       setDraftIdentifier(null)
-      setGeneratingMessage(null)
+      setGeneratingDescription(null)
+      setGeneratingProgressText(null)
       setSubmitError(
         getErrorMessage(
           error,
@@ -264,7 +259,7 @@ export function GenerateStoryDialog({
     }
   }
 
-  const generatingDescription = selectedResource
+  const defaultGeneratingDescription = selectedResource
     ? t('stories.generating.descriptionWithResource', { id: selectedResource.resource_id })
     : t('stories.generating.description')
 
@@ -291,9 +286,11 @@ export function GenerateStoryDialog({
         <DialogBody className="space-y-5 pt-6">
           {dialogStage === 'generating' && generationStartedAtMs !== null ? (
             <GenerationLoadingStage
-              description={generatingMessage ?? generatingDescription}
+              description={generatingDescription ?? defaultGeneratingDescription}
               elapsedLabel={t('stories.generating.elapsed')}
               identifier={(draftIdentifier ?? formState.resourceId) || null}
+              progressLabel={t('stories.generating.progressLabel')}
+              progressText={generatingProgressText}
               startedAtMs={generationStartedAtMs}
               statusLabel={t('stories.generating.badge')}
               title={t('stories.generating.title')}

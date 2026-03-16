@@ -130,11 +130,6 @@ fn sample_cast() -> (CharacterCard, Vec<CharacterCard>) {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual, slightly cunning".to_owned(),
-        tendencies: vec![
-            "likes profitable deals".to_owned(),
-            "avoids danger".to_owned(),
-            "tries to maintain good relationships".to_owned(),
-        ],
         state_schema: merchant_state_schema(),
         system_prompt: "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion. For this diagnostic scene, output exactly one <thought>, then one <action>, then one <dialogue>. Each segment must be short, non-empty, and distinct. On the second turn, clearly continue from the recent shared history and private thoughts memory if present."
             .to_owned(),
@@ -144,11 +139,6 @@ fn sample_cast() -> (CharacterCard, Vec<CharacterCard>) {
         name: "Yuki".to_owned(),
         personality: "calm local guide who notices small details".to_owned(),
         style: "measured, clear, reassuring".to_owned(),
-        tendencies: vec![
-            "prefers careful plans".to_owned(),
-            "protects civilians".to_owned(),
-            "shares local knowledge sparingly".to_owned(),
-        ],
         state_schema: guide_state_schema(),
         system_prompt: "You are a local guide. Stay observant, practical, and in character."
             .to_owned(),
@@ -193,6 +183,7 @@ fn sample_request<'a>(
     ActorRequest {
         character,
         cast,
+        current_cast_ids: &node.characters,
         player_name: Some("Courier"),
         player_description: "A stubborn courier carrying medicine and trying to judge who is worth trusting.",
         purpose: ActorPurpose::AdvanceGoal,

@@ -33,6 +33,7 @@ pub struct KeeperRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub current_cast_ids: &'a [String],
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -198,7 +199,7 @@ impl Keeper {
             .map(|card| (card.id.as_str(), card))
             .collect();
 
-        for character_id in &request.current_node.characters {
+        for character_id in request.current_cast_ids {
             if !cards_by_id.contains_key(character_id.as_str()) {
                 return Err(KeeperError::InvalidRequest(format!(
                     "missing character card for current node id '{character_id}'"
@@ -248,10 +249,6 @@ impl Keeper {
         request: &KeeperRequest<'_>,
     ) -> Result<(String, String), KeeperError> {
         let stable_prompt = render_sections(&[
-            (
-                "PLAYER_NAME",
-                request.player_name.unwrap_or("null").to_owned(),
-            ),
             ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
             (
                 "KEEPER_PHASE",
@@ -261,13 +258,16 @@ impl Keeper {
             (
                 "PREVIOUS_CAST",
                 self.previous_cast_summaries(request)?
-                    .map(|summaries| render_character_summaries(&summaries))
+                    .map(|summaries| render_character_summaries(&summaries, request.player_name))
                     .unwrap_or_else(|| "null".to_owned()),
             ),
             ("CURRENT_NODE", render_node(request.current_node)),
             (
                 "CURRENT_CAST",
-                render_character_summaries(&self.current_cast_summaries(request)?),
+                render_character_summaries(
+                    &self.current_cast_summaries(request)?,
+                    request.player_name,
+                ),
             ),
             (
                 "PLAYER_STATE_SCHEMA",
@@ -293,7 +293,7 @@ impl Keeper {
         &self,
         request: &KeeperRequest<'b>,
     ) -> Result<Vec<CharacterCardSummaryRef<'b>>, KeeperError> {
-        cast_summaries(&request.current_node.characters, request.character_cards)
+        cast_summaries(request.current_cast_ids, request.character_cards)
     }
 
     fn previous_cast_summaries<'b>(
@@ -385,11 +385,13 @@ fn render_keeper_beats(beats: &[KeeperBeat]) -> String {
             } => {
                 let segments = visible_segments
                     .iter()
-                    .map(|segment| format!(
-                        "{}:{}",
-                        compact_json(&segment.kind).unwrap_or_default(),
-                        normalize_inline_text(&segment.text)
-                    ))
+                    .map(|segment| {
+                        format!(
+                            "{}:{}",
+                            compact_json(&segment.kind).unwrap_or_default(),
+                            normalize_inline_text(&segment.text)
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join(" | ");
                 format!(

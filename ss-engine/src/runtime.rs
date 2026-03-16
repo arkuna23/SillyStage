@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
@@ -32,6 +32,7 @@ pub struct RuntimeState {
     runtime_graph: RuntimeStoryGraph,
     character_cards: Vec<CharacterCard>,
     character_card_index: HashMap<String, usize>,
+    session_character_ids: HashSet<String>,
     player_name: Option<String>,
     player_description: String,
     player_state_schema: PlayerStateSchema,
@@ -246,6 +247,22 @@ impl RuntimeState {
             .and_then(|index| self.character_cards.get(*index))
     }
 
+    pub fn has_session_character(&self, character_id: &str) -> bool {
+        self.session_character_ids.contains(character_id)
+    }
+
+    pub fn register_existing_session_character(
+        &mut self,
+        character_id: &str,
+    ) -> Result<(), RuntimeError> {
+        if !self.character_card_index.contains_key(character_id) {
+            return Err(RuntimeError::MissingCharacterCard(character_id.to_owned()));
+        }
+
+        self.session_character_ids.insert(character_id.to_owned());
+        Ok(())
+    }
+
     pub fn current_node(&self) -> Result<&NarrativeNode, RuntimeError> {
         let node_id = self.world_state.current_node();
         let node_index = self
@@ -259,6 +276,12 @@ impl RuntimeState {
             .ok_or_else(|| RuntimeError::MissingCurrentNode(node_id.to_owned()))
     }
 
+    pub fn current_scene_node(&self) -> Result<NarrativeNode, RuntimeError> {
+        let mut node = self.current_node()?.clone();
+        node.characters = self.world_state.active_characters().to_vec();
+        Ok(node)
+    }
+
     pub fn active_character_cards(&self) -> Result<Vec<&CharacterCard>, RuntimeError> {
         self.world_state
             .active_characters()
@@ -268,6 +291,28 @@ impl RuntimeState {
                     .ok_or_else(|| RuntimeError::MissingCharacterCard(character_id.clone()))
             })
             .collect()
+    }
+
+    pub fn upsert_session_character(
+        &mut self,
+        character: CharacterCard,
+    ) -> Result<(), RuntimeError> {
+        match self.character_card_index.get(&character.id).copied() {
+            Some(index) if self.session_character_ids.contains(&character.id) => {
+                self.character_cards[index] = character.clone();
+            }
+            Some(_) => {
+                return Err(RuntimeError::ConflictingSessionCharacter(character.id));
+            }
+            None => {
+                self.character_card_index
+                    .insert(character.id.clone(), self.character_cards.len());
+                self.character_cards.push(character.clone());
+            }
+        }
+
+        self.session_character_ids.insert(character.id);
+        Ok(())
     }
 
     pub(crate) fn engine_parts(&mut self) -> RuntimeStatePartsMut<'_> {
@@ -299,6 +344,7 @@ impl RuntimeState {
             runtime_graph,
             character_cards,
             character_card_index,
+            session_character_ids: HashSet::new(),
             player_name: None,
             player_description,
             player_state_schema,
@@ -331,6 +377,8 @@ pub enum RuntimeError {
     MissingCharacterCard(String),
     #[error("duplicate character card id '{0}'")]
     DuplicateCharacterCard(String),
+    #[error("session character id '{0}' conflicts with a story character")]
+    ConflictingSessionCharacter(String),
 }
 
 fn validate_story_id(story_id: &str) -> Result<(), RuntimeError> {

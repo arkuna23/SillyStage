@@ -23,7 +23,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual".to_owned(),
-            tendencies: vec!["likes profitable deals".to_owned()],
             state_schema: HashMap::from([(
                 "trust".to_owned(),
                 StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
@@ -35,7 +34,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Yuki".to_owned(),
             personality: "calm local guide".to_owned(),
             style: "measured".to_owned(),
-            tendencies: vec!["protects civilians".to_owned()],
             state_schema: HashMap::new(),
             system_prompt: "Stay observant.".to_owned(),
         },

@@ -201,7 +201,6 @@ Character content is represented by `CharacterCardContent`:
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -276,6 +275,7 @@ Notes:
   - actor dialogue
 - `history` is assembled from standalone `session_message` records
 - `created_at_ms` / `updated_at_ms` are Unix timestamps in milliseconds.
+- session-scoped temporary characters are stored separately from the story graph and exist only within the session runtime.
 
 ## 3. Character Card Archive `.chr`
 
@@ -306,6 +306,7 @@ Current protocol families:
 - `story.*`
 - `story_draft.*`
 - `session.*`
+- `session_character.*`
 - `session_message.*`
 - `config.*`
 - `dashboard.get`
@@ -385,7 +386,16 @@ Only variable ops are allowed:
 
 Scene-control ops such as `SetCurrentNode` and `SetActiveCharacters` are rejected.
 
-### 5.6 Editing Session Transcript Messages
+### 5.6 Managing Session Characters
+
+`session_character.*` manages temporary runtime-only roles inside a session.
+
+- the default creation path is `Director` `role_actions.create_and_enter` during `session.run_turn`
+- created session characters can enter the current scene immediately and participate in the same turn
+- `session_character.enter_scene` and `session_character.leave_scene` only change current-scene presence
+- session characters do not modify `story`, `story_draft`, or `character`
+
+### 5.7 Editing Session Transcript Messages
 
 `session_message.*` manages standalone transcript messages for a session.
 
@@ -393,6 +403,7 @@ Scene-control ops such as `SetCurrentNode` and `SetActiveCharacters` are rejecte
 - `session_message.get` and `session_message.list` return transcript message resources
 - `session_message.update` edits transcript data in place
 - `session_message.delete` removes a message from the transcript
+- `session.suggest_replies` uses the most recent 8 transcript messages as its history window
 
 Important:
 

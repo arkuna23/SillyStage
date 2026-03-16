@@ -14,7 +14,7 @@ use tracing::error;
 use crate::director::ActorPurpose;
 use crate::prompt::{
     compact_json, render_actor_history, render_actor_world_state, render_character_summaries,
-    render_node, render_sections, render_state_schema_fields,
+    render_character_text, render_node, render_sections, render_state_schema_fields,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
@@ -30,20 +30,29 @@ pub struct CharacterCard {
     pub name: String,
     pub personality: String,
     pub style: String,
-    pub tendencies: Vec<String>,
     #[serde(default)]
     pub state_schema: HashMap<String, StateFieldSchema>,
     pub system_prompt: String,
 }
 
 impl CharacterCard {
+    pub fn rendered_with_player_name(&self, player_name: Option<&str>) -> Self {
+        Self {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            personality: render_character_text(&self.personality, &self.name, player_name),
+            style: render_character_text(&self.style, &self.name, player_name),
+            state_schema: self.state_schema.clone(),
+            system_prompt: render_character_text(&self.system_prompt, &self.name, player_name),
+        }
+    }
+
     pub fn summary(&self) -> CharacterCardSummary {
         CharacterCardSummary {
             id: self.id.clone(),
             name: self.name.clone(),
             personality: self.personality.clone(),
             style: self.style.clone(),
-            tendencies: self.tendencies.clone(),
             state_schema: self.state_schema.clone(),
         }
     }
@@ -54,7 +63,6 @@ impl CharacterCard {
             name: &self.name,
             personality: &self.personality,
             style: &self.style,
-            tendencies: &self.tendencies,
             state_schema: &self.state_schema,
         }
     }
@@ -66,7 +74,6 @@ pub struct CharacterCardSummary {
     pub name: String,
     pub personality: String,
     pub style: String,
-    pub tendencies: Vec<String>,
     #[serde(default)]
     pub state_schema: HashMap<String, StateFieldSchema>,
 }
@@ -77,7 +84,6 @@ pub(crate) struct CharacterCardSummaryRef<'a> {
     pub(crate) name: &'a str,
     pub(crate) personality: &'a str,
     pub(crate) style: &'a str,
-    pub(crate) tendencies: &'a [String],
     pub(crate) state_schema: &'a HashMap<String, StateFieldSchema>,
 }
 
@@ -85,6 +91,7 @@ pub(crate) struct CharacterCardSummaryRef<'a> {
 pub struct ActorRequest<'a> {
     pub character: &'a CharacterCard,
     pub cast: &'a [CharacterCard],
+    pub current_cast_ids: &'a [String],
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub purpose: ActorPurpose,
@@ -192,7 +199,7 @@ impl Actor {
     ) -> Result<ActorEventStream<'b>, ActorError> {
         Self::validate_request(&request)?;
 
-        let character_prompt = self.build_character_prompt(request.character)?;
+        let character_prompt = self.build_character_prompt(request.character, request.player_name)?;
         let stream = self
             .llm
             .chat_stream({
@@ -284,13 +291,12 @@ impl Actor {
 
     fn validate_request(request: &ActorRequest<'_>) -> Result<(), ActorError> {
         if !request
-            .node
-            .characters
+            .current_cast_ids
             .iter()
             .any(|id| id == &request.character.id)
         {
             return Err(ActorError::InvalidRequest(format!(
-                "current node does not contain character id '{}'",
+                "current cast does not contain character id '{}'",
                 request.character.id
             )));
         }
@@ -301,7 +307,7 @@ impl Actor {
             .map(|card| (card.id.as_str(), card))
             .collect();
 
-        for character_id in &request.node.characters {
+        for character_id in request.current_cast_ids {
             if !cast_by_id.contains_key(character_id.as_str()) {
                 return Err(ActorError::InvalidRequest(format!(
                     "missing character card for current cast id '{character_id}'"
@@ -312,25 +318,30 @@ impl Actor {
         Ok(())
     }
 
-    fn build_character_prompt(&self, character: &CharacterCard) -> Result<String, ActorError> {
+    fn build_character_prompt(
+        &self,
+        character: &CharacterCard,
+        player_name: Option<&str>,
+    ) -> Result<String, ActorError> {
         Ok(render_sections(&[
             ("CHARACTER_ID", character.id.clone()),
             ("CHARACTER_NAME", character.name.clone()),
-            ("CHARACTER_PERSONALITY", character.personality.clone()),
-            ("CHARACTER_STYLE", character.style.clone()),
             (
-                "CHARACTER_TENDENCIES",
-                if character.tendencies.is_empty() {
-                    "none".to_owned()
-                } else {
-                    character.tendencies.join("; ")
-                },
+                "CHARACTER_PERSONALITY",
+                render_character_text(&character.personality, &character.name, player_name),
+            ),
+            (
+                "CHARACTER_STYLE",
+                render_character_text(&character.style, &character.name, player_name),
             ),
             (
                 "CHARACTER_STATE_SCHEMA",
                 render_state_schema_fields(&character.state_schema),
             ),
-            ("CHARACTER_SYSTEM_PROMPT", character.system_prompt.clone()),
+            (
+                "CHARACTER_SYSTEM_PROMPT",
+                render_character_text(&character.system_prompt, &character.name, player_name),
+            ),
         ]))
     }
 
@@ -343,14 +354,13 @@ impl Actor {
         let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
         let stable_prompt = render_sections(&[
             ("ACTOR_PURPOSE", purpose),
-            (
-                "PLAYER_NAME",
-                request.player_name.unwrap_or("null").to_owned(),
-            ),
             ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
             (
                 "CURRENT_CAST",
-                render_character_summaries(&self.current_cast_summaries(request)?),
+                render_character_summaries(
+                    &self.current_cast_summaries(request)?,
+                    request.player_name,
+                ),
             ),
             ("CURRENT_NODE", render_node(request.node)),
         ]);
@@ -382,8 +392,7 @@ impl Actor {
             .collect();
 
         request
-            .node
-            .characters
+            .current_cast_ids
             .iter()
             .map(|character_id| {
                 cast_by_id

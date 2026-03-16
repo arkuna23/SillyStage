@@ -27,6 +27,7 @@ pub struct NarratorRequest<'a> {
     pub previous_node: Option<&'a NarrativeNode>,
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub current_cast_ids: &'a [String],
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -216,7 +217,7 @@ impl Narrator {
             .map(|card| (card.id.as_str(), card))
             .collect();
 
-        for character_id in &request.current_node.characters {
+        for character_id in request.current_cast_ids {
             if !cards_by_id.contains_key(character_id.as_str()) {
                 return Err(NarratorError::InvalidRequest(format!(
                     "missing character card for current node id '{character_id}'"
@@ -246,16 +247,12 @@ impl Narrator {
                 "NARRATOR_PURPOSE",
                 compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?,
             ),
-            (
-                "PLAYER_NAME",
-                request.player_name.unwrap_or("null").to_owned(),
-            ),
             ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
             ("PREVIOUS_NODE", render_optional_node(request.previous_node)),
             (
                 "PREVIOUS_CAST",
                 self.previous_cast_summaries(request)?
-                    .map(|summaries| render_character_summaries(&summaries))
+                    .map(|summaries| render_character_summaries(&summaries, request.player_name))
                     .unwrap_or_else(|| "null".to_owned()),
             ),
             (
@@ -264,7 +261,10 @@ impl Narrator {
             ),
             (
                 "CURRENT_CAST",
-                render_character_summaries(&self.current_cast_summaries(request)?),
+                render_character_summaries(
+                    &self.current_cast_summaries(request)?,
+                    request.player_name,
+                ),
             ),
             (
                 "PLAYER_STATE_SCHEMA",
@@ -283,7 +283,7 @@ impl Narrator {
         &self,
         request: &NarratorRequest<'b>,
     ) -> Result<Vec<CharacterCardSummaryRef<'b>>, NarratorError> {
-        cast_summaries(&request.current_node.characters, request.character_cards)
+        cast_summaries(request.current_cast_ids, request.character_cards)
     }
 
     fn previous_cast_summaries<'b>(
@@ -346,6 +346,8 @@ fn cast_summaries<'a>(
 
 fn filtered_narrator_world_state(world_state: &WorldState) -> Result<WorldState, NarratorError> {
     let mut clone = world_state.clone();
-    clone.actor_shared_history.retain(|entry| entry.speaker_id != "narrator");
+    clone
+        .actor_shared_history
+        .retain(|entry| entry.speaker_id != "narrator");
     Ok(clone)
 }

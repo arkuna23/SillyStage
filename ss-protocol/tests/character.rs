@@ -13,7 +13,6 @@ fn sample_content() -> CharacterCardContent {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
     }

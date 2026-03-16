@@ -123,7 +123,6 @@
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -263,14 +262,16 @@ session 现在同时保存：
 玩家每一轮输入通过：
 
 - `session.run_turn`
+- `session.suggest_replies`
 
 执行顺序固定为：
 
 1. 用户输入
 2. `Keeper`（after player input）
 3. `Director`
-4. `Narrator` / `Actor`
-5. `Keeper`（after turn outputs）
+4. 应用 `Director` 的 `role_actions`
+5. `Narrator` / `Actor`
+6. `Keeper`（after turn outputs）
 
 返回方式是流式：
 
@@ -289,7 +290,26 @@ session 现在同时保存：
 
 这些操作只改 transcript 数据，不会重放历史，也不会修改 session snapshot。
 
-## 10. 切换玩家设定
+`session.suggest_replies` 读取的历史窗口是最近 8 条 transcript 消息。
+
+`Director` 也可以在第 4 步创建 session 级临时角色。它们会在 beat 执行前被加入当前
+active cast，因此可以在同一回合立刻参与表演。这些角色只存在于当前 session 的运行时，
+不会修改 story graph。
+
+## 10. 管理 session 临时角色
+
+可以通过下面的接口查看和管理 session 级临时角色：
+
+- `session_character.get`
+- `session_character.list`
+- `session_character.update`
+- `session_character.delete`
+- `session_character.enter_scene`
+- `session_character.leave_scene`
+
+默认创建入口仍然是 `session.run_turn` 中 `Director` 的 `role_actions.create_and_enter`。
+
+## 11. 切换玩家设定
 
 如果当前 session 想切换到另一个玩家设定：
 
@@ -301,7 +321,7 @@ session 现在同时保存：
 - 更新当前生效的描述文本
 - 保留已有 `player_state`
 
-## 11. 手动覆盖玩家描述
+## 12. 手动覆盖玩家描述
 
 如果不想使用某个现成的玩家设定，而是临时写一段描述：
 
@@ -312,7 +332,7 @@ session 现在同时保存：
 - 直接覆盖当前 session 的描述文本
 - 把 `player_profile_id` 置空
 
-## 12. 查看和修改对话变量
+## 13. 查看和修改对话变量
 
 session 变量接口只暴露可变的 `world_state` 变量区，不暴露场景控制字段：
 
@@ -327,7 +347,7 @@ session 变量接口只暴露可变的 `world_state` 变量区，不暴露场景
 - `AddActiveCharacter`
 - `RemoveActiveCharacter`
 
-## 13. 保存、恢复与切换
+## 14. 保存、恢复与切换
 
 系统会把这些对象持久化到 store：
 
@@ -340,6 +360,7 @@ session 变量接口只暴露可变的 `world_state` 变量区，不暴露场景
 - `story_draft`
 - `story`
 - `session`
+- `session_character`
 - `session_message`
 
 因此可以：

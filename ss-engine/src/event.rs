@@ -4,6 +4,7 @@ use agents::keeper::KeeperPhase;
 use agents::narrator::NarratorResponse;
 use serde::{Deserialize, Serialize};
 use state::ActorMemoryEntry;
+use store::SessionCharacterRecord;
 
 use crate::{EngineTurnResult, RuntimeSnapshot};
 
@@ -25,6 +26,18 @@ pub enum EngineEvent {
     },
     DirectorCompleted {
         result: DirectorResult,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterCreated {
+        character: SessionCharacterRecord,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterEnteredScene {
+        session_character_id: String,
+        snapshot: Box<RuntimeSnapshot>,
+    },
+    SessionCharacterLeftScene {
+        session_character_id: String,
         snapshot: Box<RuntimeSnapshot>,
     },
     NarratorStarted {

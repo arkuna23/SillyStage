@@ -1,20 +1,25 @@
 use async_stream::stream;
-use engine::ReplyOption;
+use engine::{ReplyOption, SessionCharacterUpdate};
 use futures_util::StreamExt;
 use protocol::{
-    CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
-    JsonRpcResponseMessage, ListSessionMessagesParams, ResponseResult, RunTurnParams,
-    RuntimeSnapshotPayload, ServerEventMessage, SessionDeletedPayload, SessionDetailPayload,
+    CreateSessionMessageParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
+    EnterSessionCharacterSceneParams, GetSessionCharacterParams, GetSessionMessageParams,
+    JsonRpcResponseMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
+    ListSessionMessagesParams, ResponseResult, RunTurnParams, RuntimeSnapshotPayload,
+    ServerEventMessage, SessionCharacterDeletedPayload, SessionCharacterPayload,
+    SessionCharactersListedPayload, SessionDeletedPayload, SessionDetailPayload,
     SessionMessageDeletedPayload, SessionMessageKind as SessionMessagePayloadKind,
     SessionMessagePayload, SessionMessagesListedPayload, SessionStartedPayload,
     SessionSummaryPayload, SessionVariablesPayload, SessionsListedPayload, SetPlayerProfileParams,
     StreamEventBody, SuggestRepliesParams, SuggestedRepliesPayload, TurnCompletedPayload,
-    TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams, UpdateSessionMessageParams,
-    UpdateSessionParams, UpdateSessionVariablesParams,
+    TurnStreamAcceptedPayload, UpdatePlayerDescriptionParams, UpdateSessionCharacterParams,
+    UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
 };
 use state::{StateOp, StateUpdate, WorldState};
 use std::time::{SystemTime, UNIX_EPOCH};
-use store::{SessionMessageKind, SessionMessageRecord, SessionRecord, Store};
+use store::{
+    SessionCharacterRecord, SessionMessageKind, SessionMessageRecord, SessionRecord, Store,
+};
 
 use crate::error::HandlerError;
 
@@ -109,6 +114,11 @@ impl Handler {
         for message in self.store.list_session_messages(&session_id).await? {
             self.store
                 .delete_session_message(&message.message_id)
+                .await?;
+        }
+        for character in self.store.list_session_characters(&session_id).await? {
+            self.store
+                .delete_session_character(&character.session_character_id)
                 .await?;
         }
         self.store
@@ -210,6 +220,48 @@ impl Handler {
                             Some(session_id.clone()),
                             sequence,
                             StreamEventBody::DirectorCompleted { result, snapshot },
+                        );
+                    }
+                    Ok(engine::EngineEvent::SessionCharacterCreated { character, snapshot }) => {
+                        yield ServerEventMessage::event(
+                            request_id.clone(),
+                            Some(session_id.clone()),
+                            sequence,
+                            StreamEventBody::SessionCharacterCreated {
+                                session_character: Box::new(build_session_character_payload(
+                                    &character,
+                                    snapshot.world_state.active_characters(),
+                                )),
+                                snapshot,
+                            },
+                        );
+                    }
+                    Ok(engine::EngineEvent::SessionCharacterEnteredScene {
+                        session_character_id,
+                        snapshot,
+                    }) => {
+                        yield ServerEventMessage::event(
+                            request_id.clone(),
+                            Some(session_id.clone()),
+                            sequence,
+                            StreamEventBody::SessionCharacterEnteredScene {
+                                session_character_id,
+                                snapshot,
+                            },
+                        );
+                    }
+                    Ok(engine::EngineEvent::SessionCharacterLeftScene {
+                        session_character_id,
+                        snapshot,
+                    }) => {
+                        yield ServerEventMessage::event(
+                            request_id.clone(),
+                            Some(session_id.clone()),
+                            sequence,
+                            StreamEventBody::SessionCharacterLeftScene {
+                                session_character_id,
+                                snapshot,
+                            },
                         );
                     }
                     Ok(engine::EngineEvent::NarratorStarted { beat_index, purpose }) => {
@@ -657,6 +709,165 @@ impl Handler {
             }),
         ))
     }
+
+    pub(crate) async fn handle_session_character_get(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: GetSessionCharacterParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let character = self
+            .manager
+            .get_session_character(&session_id, &params.session_character_id)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharacter(Box::new(build_session_character_payload(
+                &character,
+                session.snapshot.world_state.active_characters(),
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_character_list(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        _params: ListSessionCharactersParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+        let session_characters = self.manager.list_session_characters(&session_id).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharactersListed(SessionCharactersListedPayload {
+                session_characters: session_characters
+                    .iter()
+                    .map(|character| {
+                        build_session_character_payload(
+                            character,
+                            session.snapshot.world_state.active_characters(),
+                        )
+                    })
+                    .collect(),
+            }),
+        ))
+    }
+
+    pub(crate) async fn handle_session_character_update(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: UpdateSessionCharacterParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let character = self
+            .manager
+            .update_session_character(
+                &session_id,
+                &params.session_character_id,
+                SessionCharacterUpdate {
+                    display_name: params.display_name,
+                    personality: params.personality,
+                    style: params.style,
+                    system_prompt: params.system_prompt,
+                },
+            )
+            .await?;
+        let session = self
+            .store
+            .get_session(&session_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSession(session_id.clone()))?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharacter(Box::new(build_session_character_payload(
+                &character,
+                session.snapshot.world_state.active_characters(),
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_character_delete(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: DeleteSessionCharacterParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let deleted = self
+            .manager
+            .delete_session_character(&session_id, &params.session_character_id)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharacterDeleted(SessionCharacterDeletedPayload {
+                session_character_id: deleted.session_character_id,
+            }),
+        ))
+    }
+
+    pub(crate) async fn handle_session_character_enter_scene(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: EnterSessionCharacterSceneParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let (session, character) = self
+            .manager
+            .enter_session_character_scene(&session_id, &params.session_character_id)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharacter(Box::new(build_session_character_payload(
+                &character,
+                session.snapshot.world_state.active_characters(),
+            ))),
+        ))
+    }
+
+    pub(crate) async fn handle_session_character_leave_scene(
+        &self,
+        request_id: &str,
+        session_id: Option<String>,
+        params: LeaveSessionCharacterSceneParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let session_id = require_session_id(session_id)?;
+        let (session, character) = self
+            .manager
+            .leave_session_character_scene(&session_id, &params.session_character_id)
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            Some(session_id),
+            ResponseResult::SessionCharacter(Box::new(build_session_character_payload(
+                &character,
+                session.snapshot.world_state.active_characters(),
+            ))),
+        ))
+    }
 }
 
 fn now_timestamp_ms() -> u64 {
@@ -750,6 +961,24 @@ fn build_session_message_payload(message: &SessionMessageRecord) -> SessionMessa
         speaker_id: message.speaker_id.clone(),
         speaker_name: message.speaker_name.clone(),
         text: message.text.clone(),
+    }
+}
+
+fn build_session_character_payload(
+    character: &SessionCharacterRecord,
+    active_characters: &[String],
+) -> SessionCharacterPayload {
+    SessionCharacterPayload {
+        session_character_id: character.session_character_id.clone(),
+        display_name: character.display_name.clone(),
+        personality: character.personality.clone(),
+        style: character.style.clone(),
+        system_prompt: character.system_prompt.clone(),
+        in_scene: active_characters
+            .iter()
+            .any(|id| id == &character.session_character_id),
+        created_at_ms: character.created_at_ms,
+        updated_at_ms: character.updated_at_ms,
     }
 }
 

@@ -106,7 +106,6 @@ pub fn sample_character_card() -> CharacterCard {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: HashMap::from([(
             "trust".to_owned(),
             StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
@@ -121,7 +120,6 @@ pub fn sample_character_content() -> CharacterCardContent {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
     }
@@ -177,7 +175,6 @@ pub fn sample_character_record() -> CharacterCardRecord {
             name: archive.content.name.clone(),
             personality: archive.content.personality.clone(),
             style: archive.content.style.clone(),
-            tendencies: archive.content.tendencies.clone(),
             schema_id: archive.content.schema_id.clone(),
             system_prompt: archive.content.system_prompt.clone(),
         },

@@ -16,6 +16,10 @@ use crate::reply_suggestion::SuggestRepliesParams;
 use crate::schema::{
     SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
 };
+use crate::session_character::{
+    DeleteSessionCharacterParams, EnterSessionCharacterSceneParams, GetSessionCharacterParams,
+    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, UpdateSessionCharacterParams,
+};
 use crate::session_message::{
     CreateSessionMessageParams, DeleteSessionMessageParams, GetSessionMessageParams,
     ListSessionMessagesParams, UpdateSessionMessageParams,
@@ -157,6 +161,18 @@ pub enum RequestMethod {
     SessionMessageUpdate,
     #[serde(rename = "session_message.delete")]
     SessionMessageDelete,
+    #[serde(rename = "session_character.get")]
+    SessionCharacterGet,
+    #[serde(rename = "session_character.list")]
+    SessionCharacterList,
+    #[serde(rename = "session_character.update")]
+    SessionCharacterUpdate,
+    #[serde(rename = "session_character.delete")]
+    SessionCharacterDelete,
+    #[serde(rename = "session_character.enter_scene")]
+    SessionCharacterEnterScene,
+    #[serde(rename = "session_character.leave_scene")]
+    SessionCharacterLeaveScene,
     #[serde(rename = "session.run_turn")]
     SessionRunTurn,
     #[serde(rename = "session.get_variables")]
@@ -248,6 +264,12 @@ pub enum RequestParams {
     SessionMessageList(ListSessionMessagesParams),
     SessionMessageUpdate(UpdateSessionMessageParams),
     SessionMessageDelete(DeleteSessionMessageParams),
+    SessionCharacterGet(GetSessionCharacterParams),
+    SessionCharacterList(ListSessionCharactersParams),
+    SessionCharacterUpdate(UpdateSessionCharacterParams),
+    SessionCharacterDelete(DeleteSessionCharacterParams),
+    SessionCharacterEnterScene(EnterSessionCharacterSceneParams),
+    SessionCharacterLeaveScene(LeaveSessionCharacterSceneParams),
     SessionRunTurn(RunTurnParams),
     SessionGetVariables(GetSessionVariablesParams),
     SessionUpdateVariables(UpdateSessionVariablesParams),
@@ -329,6 +351,12 @@ impl RequestParams {
             Self::SessionMessageList(_) => RequestMethod::SessionMessageList,
             Self::SessionMessageUpdate(_) => RequestMethod::SessionMessageUpdate,
             Self::SessionMessageDelete(_) => RequestMethod::SessionMessageDelete,
+            Self::SessionCharacterGet(_) => RequestMethod::SessionCharacterGet,
+            Self::SessionCharacterList(_) => RequestMethod::SessionCharacterList,
+            Self::SessionCharacterUpdate(_) => RequestMethod::SessionCharacterUpdate,
+            Self::SessionCharacterDelete(_) => RequestMethod::SessionCharacterDelete,
+            Self::SessionCharacterEnterScene(_) => RequestMethod::SessionCharacterEnterScene,
+            Self::SessionCharacterLeaveScene(_) => RequestMethod::SessionCharacterLeaveScene,
             Self::SessionRunTurn(_) => RequestMethod::SessionRunTurn,
             Self::SessionGetVariables(_) => RequestMethod::SessionGetVariables,
             Self::SessionUpdateVariables(_) => RequestMethod::SessionUpdateVariables,
@@ -412,6 +440,12 @@ impl RequestParams {
             Self::SessionMessageList(params) => serde_json::to_value(params),
             Self::SessionMessageUpdate(params) => serde_json::to_value(params),
             Self::SessionMessageDelete(params) => serde_json::to_value(params),
+            Self::SessionCharacterGet(params) => serde_json::to_value(params),
+            Self::SessionCharacterList(params) => serde_json::to_value(params),
+            Self::SessionCharacterUpdate(params) => serde_json::to_value(params),
+            Self::SessionCharacterDelete(params) => serde_json::to_value(params),
+            Self::SessionCharacterEnterScene(params) => serde_json::to_value(params),
+            Self::SessionCharacterLeaveScene(params) => serde_json::to_value(params),
             Self::SessionRunTurn(params) => serde_json::to_value(params),
             Self::SessionGetVariables(params) => serde_json::to_value(params),
             Self::SessionUpdateVariables(params) => serde_json::to_value(params),
@@ -563,6 +597,24 @@ impl RequestParams {
             }
             RequestMethod::SessionMessageDelete => {
                 serde_json::from_value(value).map(Self::SessionMessageDelete)
+            }
+            RequestMethod::SessionCharacterGet => {
+                serde_json::from_value(value).map(Self::SessionCharacterGet)
+            }
+            RequestMethod::SessionCharacterList => {
+                serde_json::from_value(value).map(Self::SessionCharacterList)
+            }
+            RequestMethod::SessionCharacterUpdate => {
+                serde_json::from_value(value).map(Self::SessionCharacterUpdate)
+            }
+            RequestMethod::SessionCharacterDelete => {
+                serde_json::from_value(value).map(Self::SessionCharacterDelete)
+            }
+            RequestMethod::SessionCharacterEnterScene => {
+                serde_json::from_value(value).map(Self::SessionCharacterEnterScene)
+            }
+            RequestMethod::SessionCharacterLeaveScene => {
+                serde_json::from_value(value).map(Self::SessionCharacterLeaveScene)
             }
             RequestMethod::SessionRunTurn => {
                 serde_json::from_value(value).map(Self::SessionRunTurn)

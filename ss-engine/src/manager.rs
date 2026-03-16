@@ -18,8 +18,9 @@ use futures_util::StreamExt;
 use state::{PlayerStateSchema, StateFieldSchema, WorldStateSchema};
 use store::{
     ApiGroupRecord, ApiRecord, CharacterCardRecord, PresetRecord, RuntimeSnapshot, SchemaRecord,
-    SessionBindingConfig, SessionMessageKind, SessionMessageRecord, SessionRecord, Store,
-    StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    SessionBindingConfig, SessionCharacterRecord, SessionMessageKind, SessionMessageRecord,
+    SessionRecord, Store, StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord,
+    StoryResourcesRecord,
 };
 use story::{NarrativeNode, StoryGraph, validate_graph_state_conventions};
 use tracing::{debug, info};
@@ -38,6 +39,7 @@ const DEFAULT_ARCHITECT_CHUNK_NODE_COUNT: usize = 4;
 const DEFAULT_ARCHITECT_INIT_MAX_TOKENS: u32 = 8_192;
 const DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS: u32 = 4_096;
 const DEFAULT_ARCHITECT_TEMPERATURE: f32 = 0.0;
+const DEFAULT_REPLY_HISTORY_LIMIT: usize = 8;
 
 pub type ManagedTurnStream<'a> =
     Pin<Box<dyn Stream<Item = Result<EngineEvent, ManagerError>> + Send + 'a>>;
@@ -45,6 +47,14 @@ pub type ManagedTurnStream<'a> =
 #[derive(Debug, Clone)]
 pub struct ResolvedSessionConfig {
     pub binding: SessionBindingConfig,
+}
+
+#[derive(Debug, Clone)]
+pub struct SessionCharacterUpdate {
+    pub display_name: String,
+    pub personality: String,
+    pub style: String,
+    pub system_prompt: String,
 }
 
 pub struct EngineManager {
@@ -533,6 +543,7 @@ impl EngineManager {
             .suggest(ReplyerRequest {
                 current_node,
                 character_cards: runtime_state.character_cards(),
+                current_cast_ids: runtime_state.world_state().active_characters(),
                 player_name: runtime_state.player_name(),
                 player_description: runtime_state.player_description(),
                 player_state_schema: runtime_state.player_state_schema(),
@@ -638,6 +649,143 @@ impl EngineManager {
         Ok(ResolvedSessionConfig { binding })
     }
 
+    pub async fn get_session_character(
+        &self,
+        session_id: &str,
+        session_character_id: &str,
+    ) -> Result<SessionCharacterRecord, ManagerError> {
+        self.store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        let character = self
+            .store
+            .get_session_character(session_character_id)
+            .await?
+            .ok_or_else(|| {
+                ManagerError::MissingSessionCharacter(session_character_id.to_owned())
+            })?;
+        ensure_session_character_belongs(session_id, &character)?;
+        Ok(character)
+    }
+
+    pub async fn list_session_characters(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionCharacterRecord>, ManagerError> {
+        self.store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        let mut characters = self.store.list_session_characters(session_id).await?;
+        characters.sort_by(|left, right| {
+            left.created_at_ms
+                .cmp(&right.created_at_ms)
+                .then_with(|| left.session_character_id.cmp(&right.session_character_id))
+        });
+        Ok(characters)
+    }
+
+    pub async fn update_session_character(
+        &self,
+        session_id: &str,
+        session_character_id: &str,
+        update: SessionCharacterUpdate,
+    ) -> Result<SessionCharacterRecord, ManagerError> {
+        let mut character = self
+            .get_session_character(session_id, session_character_id)
+            .await?;
+        character.display_name = update.display_name;
+        character.personality = update.personality;
+        character.style = update.style;
+        character.system_prompt = update.system_prompt;
+        character.updated_at_ms = now_timestamp_ms();
+        self.store.save_session_character(character.clone()).await?;
+        Ok(character)
+    }
+
+    pub async fn delete_session_character(
+        &self,
+        session_id: &str,
+        session_character_id: &str,
+    ) -> Result<SessionCharacterRecord, ManagerError> {
+        let character = self
+            .get_session_character(session_id, session_character_id)
+            .await?;
+        let mut session = self
+            .store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        session
+            .snapshot
+            .world_state
+            .remove_active_character(session_character_id);
+        session
+            .snapshot
+            .world_state
+            .character_state
+            .remove(session_character_id);
+        session
+            .snapshot
+            .world_state
+            .actor_private_memory
+            .remove(session_character_id);
+        session.updated_at_ms = Some(now_timestamp_ms());
+        self.store
+            .delete_session_character(session_character_id)
+            .await?
+            .ok_or_else(|| {
+                ManagerError::MissingSessionCharacter(session_character_id.to_owned())
+            })?;
+        self.store.save_session(session).await?;
+        Ok(character)
+    }
+
+    pub async fn enter_session_character_scene(
+        &self,
+        session_id: &str,
+        session_character_id: &str,
+    ) -> Result<(SessionRecord, SessionCharacterRecord), ManagerError> {
+        let character = self
+            .get_session_character(session_id, session_character_id)
+            .await?;
+        let mut session = self
+            .store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        session
+            .snapshot
+            .world_state
+            .add_active_character(session_character_id.to_owned());
+        session.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_session(session.clone()).await?;
+        Ok((session, character))
+    }
+
+    pub async fn leave_session_character_scene(
+        &self,
+        session_id: &str,
+        session_character_id: &str,
+    ) -> Result<(SessionRecord, SessionCharacterRecord), ManagerError> {
+        let character = self
+            .get_session_character(session_id, session_character_id)
+            .await?;
+        let mut session = self
+            .store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingSession(session_id.to_owned()))?;
+        session
+            .snapshot
+            .world_state
+            .remove_active_character(session_character_id);
+        session.updated_at_ms = Some(now_timestamp_ms());
+        self.store.save_session(session.clone()).await?;
+        Ok((session, character))
+    }
+
     pub async fn run_turn_stream(
         &self,
         session_id: &str,
@@ -675,6 +823,7 @@ impl EngineManager {
         let session_record = session.clone();
 
         let stream = stream! {
+            let mut updated_session = session_record.clone();
             let mut engine_stream = match engine.run_turn_stream(&player_input).await {
                 Ok(stream) => stream,
                 Err(error) => {
@@ -685,12 +834,26 @@ impl EngineManager {
 
             while let Some(event) = engine_stream.next().await {
                 match &event {
+                    EngineEvent::SessionCharacterCreated { character, snapshot } => {
+                        let mut record = character.clone();
+                        record.session_id = session_record.session_id.clone();
+                        if let Err(error) = store.save_session_character(record).await {
+                            yield Err(ManagerError::Store(error));
+                            return;
+                        }
+                        updated_session.snapshot = (*snapshot.clone()).clone();
+                        updated_session.updated_at_ms = Some(now_timestamp_ms());
+                    }
+                    EngineEvent::SessionCharacterEnteredScene { snapshot, .. }
+                    | EngineEvent::SessionCharacterLeftScene { snapshot, .. } => {
+                        updated_session.snapshot = (*snapshot.clone()).clone();
+                        updated_session.updated_at_ms = Some(now_timestamp_ms());
+                    }
                     EngineEvent::TurnCompleted { result } => {
-                        let mut updated_session = session_record.clone();
                         updated_session.snapshot = result.snapshot.clone();
                         let recorded_at_ms = now_timestamp_ms();
                         updated_session.updated_at_ms = Some(recorded_at_ms);
-                        if let Err(error) = store.save_session(updated_session).await {
+                        if let Err(error) = store.save_session(updated_session.clone()).await {
                             yield Err(ManagerError::Store(error));
                             return;
                         }
@@ -715,10 +878,9 @@ impl EngineManager {
                         }
                     }
                     EngineEvent::TurnFailed { snapshot, .. } => {
-                        let mut updated_session = session_record.clone();
                         updated_session.snapshot = (*snapshot.clone()).clone();
                         updated_session.updated_at_ms = Some(now_timestamp_ms());
-                        if let Err(error) = store.save_session(updated_session).await {
+                        if let Err(error) = store.save_session(updated_session.clone()).await {
                             yield Err(ManagerError::Store(error));
                             return;
                         }
@@ -748,7 +910,7 @@ impl EngineManager {
                 .get_character(character_id)
                 .await?
                 .ok_or_else(|| ManagerError::MissingCharacter(character_id.clone()))?;
-            cards.push(self.resolve_character_card(&character).await?);
+            cards.push(self.resolve_character_card(&character, None).await?);
         }
 
         let player_state_schema_seed = match &resource.player_schema_id_seed {
@@ -784,7 +946,10 @@ impl EngineManager {
         let characters = self.load_story_characters(&story.resource_id).await?;
         let mut resolved_characters = Vec::with_capacity(characters.len());
         for character in &characters {
-            resolved_characters.push(self.resolve_character_card(character).await?);
+            resolved_characters.push(
+                self.resolve_character_card(character, player_name.as_deref())
+                    .await?,
+            );
         }
 
         let mut runtime_state = RuntimeState::from_story_graph(
@@ -804,10 +969,26 @@ impl EngineManager {
         story: &StoryRecord,
         session: &SessionRecord,
     ) -> Result<RuntimeState, ManagerError> {
+        let (player_name, _player_description) = self
+            .resolve_player_identity(session.player_profile_id.as_deref())
+            .await?;
         let characters = self.load_story_characters(&story.resource_id).await?;
-        let mut resolved_characters = Vec::with_capacity(characters.len());
+        let session_characters = self
+            .store
+            .list_session_characters(&session.session_id)
+            .await?;
+        let mut resolved_characters =
+            Vec::with_capacity(characters.len().saturating_add(session_characters.len()));
         for character in &characters {
-            resolved_characters.push(self.resolve_character_card(character).await?);
+            resolved_characters.push(
+                self.resolve_character_card(character, player_name.as_deref())
+                    .await?,
+            );
+        }
+        for character in &session_characters {
+            resolved_characters.push(
+                self.resolve_session_character_card(character, player_name.as_deref()),
+            );
         }
 
         let mut runtime_state = RuntimeState::from_snapshot(
@@ -820,9 +1001,9 @@ impl EngineManager {
             session.snapshot.clone(),
         )
         .map_err(ManagerError::from)?;
-        let (player_name, _player_description) = self
-            .resolve_player_identity(session.player_profile_id.as_deref())
-            .await?;
+        for character in &session_characters {
+            runtime_state.register_existing_session_character(&character.session_character_id)?;
+        }
         runtime_state.set_player_name(player_name);
         Ok(runtime_state)
     }
@@ -897,6 +1078,7 @@ impl EngineManager {
     async fn resolve_character_card(
         &self,
         record: &CharacterCardRecord,
+        player_name: Option<&str>,
     ) -> Result<CharacterCard, ManagerError> {
         let schema = self
             .resolve_schema_record(&record.content.schema_id)
@@ -906,10 +1088,26 @@ impl EngineManager {
             name: record.content.name.clone(),
             personality: record.content.personality.clone(),
             style: record.content.style.clone(),
-            tendencies: record.content.tendencies.clone(),
             state_schema: schema.fields,
             system_prompt: record.content.system_prompt.clone(),
-        })
+        }
+        .rendered_with_player_name(player_name))
+    }
+
+    fn resolve_session_character_card(
+        &self,
+        record: &SessionCharacterRecord,
+        player_name: Option<&str>,
+    ) -> CharacterCard {
+        CharacterCard {
+            id: record.session_character_id.clone(),
+            name: record.display_name.clone(),
+            personality: record.personality.clone(),
+            style: record.style.clone(),
+            state_schema: Default::default(),
+            system_prompt: record.system_prompt.clone(),
+        }
+        .rendered_with_player_name(player_name)
     }
 
     async fn load_reply_history(
@@ -918,8 +1116,10 @@ impl EngineManager {
     ) -> Result<Vec<ReplyHistoryMessage>, ManagerError> {
         let mut messages = self.store.list_session_messages(session_id).await?;
         messages.sort_by_key(|message| message.sequence);
+        let start = messages.len().saturating_sub(DEFAULT_REPLY_HISTORY_LIMIT);
         Ok(messages
             .into_iter()
+            .skip(start)
             .map(|message| ReplyHistoryMessage {
                 kind: match message.kind {
                     SessionMessageKind::PlayerInput => ReplyHistoryKind::PlayerInput,
@@ -1303,6 +1503,19 @@ fn validate_story_graph(graph: &StoryGraph) -> Result<(), ManagerError> {
     Ok(())
 }
 
+fn ensure_session_character_belongs(
+    session_id: &str,
+    character: &SessionCharacterRecord,
+) -> Result<(), ManagerError> {
+    if character.session_id == session_id {
+        return Ok(());
+    }
+
+    Err(ManagerError::MissingSessionCharacter(
+        character.session_character_id.clone(),
+    ))
+}
+
 fn next_session_message_sequence(existing: &[SessionMessageRecord]) -> u64 {
     existing
         .iter()
@@ -1419,6 +1632,8 @@ pub enum ManagerError {
     MissingStory(String),
     #[error("session '{0}' not found")]
     MissingSession(String),
+    #[error("session character '{0}' not found")]
+    MissingSessionCharacter(String),
     #[error("character_ids cannot be empty")]
     EmptyCharacterIds,
     #[error("invalid story draft: {0}")]

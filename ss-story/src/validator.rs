@@ -80,11 +80,7 @@ fn validate_identifier_value(
 fn is_identifier_like_key(key: &str) -> bool {
     matches!(
         key,
-        "current_event"
-            | "current_route"
-            | "route"
-            | "current_phase"
-            | "travel_phase"
+        "current_event" | "current_route" | "route" | "current_phase" | "travel_phase"
     )
 }
 
@@ -112,29 +108,36 @@ mod tests {
     fn accepts_canonical_identifier_like_values() {
         let graph = StoryGraph::new(
             "start",
-            vec![NarrativeNode::new(
-                "start",
-                "Gate",
-                "The courier reaches the gate.",
-                "Open the story.",
-                vec![],
-                vec![Transition::new(
+            vec![
+                NarrativeNode::new(
+                    "start",
+                    "Gate",
+                    "The courier reaches the gate.",
+                    "Open the story.",
+                    vec![],
+                    vec![Transition::new(
+                        "next",
+                        Condition::new(
+                            "current_event",
+                            ConditionOperator::Eq,
+                            json!("approaching_swamp"),
+                        ),
+                    )],
+                    vec![StateOp::SetState {
+                        key: "current_event".to_owned(),
+                        value: json!("approaching_swamp"),
+                    }],
+                ),
+                NarrativeNode::new(
                     "next",
-                    Condition::new("current_event", ConditionOperator::Eq, json!("approaching_swamp")),
-                )],
-                vec![StateOp::SetState {
-                    key: "current_event".to_owned(),
-                    value: json!("approaching_swamp"),
-                }],
-            ), NarrativeNode::new(
-                "next",
-                "Swamp Edge",
-                "The courier approaches the swamp.",
-                "Continue the route.",
-                vec![],
-                vec![],
-                vec![],
-            )],
+                    "Swamp Edge",
+                    "The courier approaches the swamp.",
+                    "Continue the route.",
+                    vec![],
+                    vec![],
+                    vec![],
+                ),
+            ],
         );
 
         assert!(validate_graph_state_conventions(&graph).is_ok());
@@ -158,9 +161,13 @@ mod tests {
             )],
         );
 
-        let error =
-            validate_graph_state_conventions(&graph).expect_err("natural language value should fail");
+        let error = validate_graph_state_conventions(&graph)
+            .expect_err("natural language value should fail");
         assert!(error.to_string().contains("current_event"));
-        assert!(error.to_string().contains("canonical snake_case identifier"));
+        assert!(
+            error
+                .to_string()
+                .contains("canonical snake_case identifier")
+        );
     }
 }

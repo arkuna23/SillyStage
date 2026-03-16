@@ -200,7 +200,6 @@
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -275,6 +274,7 @@ session 绑定一个 story 和一份运行时快照。
   - 角色台词
 - `history` 由独立的 `session_message` 记录聚合生成
 - `created_at_ms` / `updated_at_ms` 使用 Unix 毫秒时间戳。
+- session 级临时角色会独立于 story graph 存储，并且只在当前 session 运行时内存在。
 
 ## 3. 角色卡文件 `.chr`
 
@@ -305,6 +305,7 @@ session 绑定一个 story 和一份运行时快照。
 - `story.*`
 - `story_draft.*`
 - `session.*`
+- `session_character.*`
 - `session_message.*`
 - `config.*`
 - `dashboard.get`
@@ -384,7 +385,16 @@ session 绑定一个 story 和一份运行时快照。
 
 像 `SetCurrentNode`、`SetActiveCharacters` 这类场景控制 op 会被拒绝。
 
-### 5.6 编辑 session transcript 消息
+### 5.6 管理 session 临时角色
+
+`session_character.*` 用来管理某个 session 内的临时运行时角色。
+
+- 默认创建入口是 `session.run_turn` 中 `Director` 的 `role_actions.create_and_enter`
+- 创建出来的 session 临时角色会立刻进入当前场景，并能在同一回合参与表演
+- `session_character.enter_scene` 和 `session_character.leave_scene` 只修改角色是否处于当前场景
+- session 临时角色不会修改 `story`、`story_draft` 或 `character`
+
+### 5.7 编辑 session transcript 消息
 
 `session_message.*` 用来管理某个 session 的独立 transcript 消息资源。
 
@@ -392,6 +402,7 @@ session 绑定一个 story 和一份运行时快照。
 - `session_message.get` 和 `session_message.list` 返回 transcript 消息资源
 - `session_message.update` 原地修改 transcript 数据
 - `session_message.delete` 从 transcript 中移除一条消息
+- `session.suggest_replies` 读取的历史窗口是最近 8 条 transcript 消息
 
 注意：
 

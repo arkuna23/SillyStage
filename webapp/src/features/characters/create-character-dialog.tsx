@@ -64,8 +64,6 @@ type FormState = {
   schemaId: string
   style: string
   systemPrompt: string
-  tendencyDraft: string
-  tendencies: string[]
 }
 
 function createInitialFormState(): FormState {
@@ -77,30 +75,11 @@ function createInitialFormState(): FormState {
     schemaId: '',
     style: '',
     systemPrompt: '',
-    tendencyDraft: '',
-    tendencies: [],
   }
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
-}
-
-function normalizeTendencies(formState: FormState) {
-  const draft = formState.tendencyDraft.trim()
-
-  if (draft.length === 0 || formState.tendencies.includes(draft)) {
-    return {
-      ...formState,
-      tendencyDraft: '',
-    }
-  }
-
-  return {
-    ...formState,
-    tendencyDraft: '',
-    tendencies: [...formState.tendencies, draft],
-  }
 }
 
 function createSummaryFromCharacter(character: CharacterSchemaResult): CharacterSummary {
@@ -111,7 +90,6 @@ function createSummaryFromCharacter(character: CharacterSchemaResult): Character
     name: character.content.name,
     personality: character.content.personality,
     style: character.content.style,
-    tendencies: character.content.tendencies,
   }
 }
 
@@ -124,8 +102,6 @@ function createFormStateFromCharacter(character: CharacterSchemaResult): FormSta
     schemaId: character.content.schema_id,
     style: character.content.style,
     systemPrompt: character.content.system_prompt,
-    tendencyDraft: '',
-    tendencies: [...character.content.tendencies],
   }
 }
 
@@ -245,7 +221,6 @@ export function CharacterFormDialog({
     schemaId: `${fieldIdPrefix}-schema-id`,
     style: `${fieldIdPrefix}-style`,
     systemPrompt: `${fieldIdPrefix}-system-prompt`,
-    tendencyDraft: `${fieldIdPrefix}-tendency-draft`,
   } as const
 
   const steps = useMemo(
@@ -402,14 +377,8 @@ export function CharacterFormDialog({
     setSubmitError(null)
   }
 
-  function handleAddTendency() {
-    setFormState((currentFormState) => normalizeTendencies(currentFormState))
-  }
-
   function handleNextStep() {
-    const normalizedFormState = normalizeTendencies(formState)
-
-    setFormState(normalizedFormState)
+    const normalizedFormState = formState
     setSubmitError(null)
 
     const nextError =
@@ -428,12 +397,11 @@ export function CharacterFormDialog({
   }
 
   async function handleSubmit() {
-    const normalizedFormState = normalizeTendencies(formState)
+    const normalizedFormState = formState
     const identityError = validateIdentityStep(normalizedFormState)
     const voiceError = validateVoiceStep(normalizedFormState)
     const systemError = validateSystemStep(normalizedFormState)
 
-    setFormState(normalizedFormState)
     setSubmitError(null)
 
     if (identityError) {
@@ -466,7 +434,6 @@ export function CharacterFormDialog({
       schema_id: normalizedFormState.schemaId.trim(),
       style: normalizedFormState.style.trim(),
       system_prompt: normalizedFormState.systemPrompt.trim(),
-      tendencies: normalizedFormState.tendencies,
     }
 
     setIsSubmitting(true)
@@ -752,63 +719,6 @@ export function CharacterFormDialog({
                         />
                       </Field>
                     </div>
-
-                    <Field label={t('characters.create.fields.tendencies')}>
-                      <div className="space-y-3 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
-                        <div className="flex flex-wrap gap-2">
-                          {formState.tendencies.map((tendency) => (
-                            <span
-                              className="inline-flex items-center gap-2 rounded-full border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] px-3 py-1.5 text-xs text-[var(--color-text-primary)]"
-                              key={tendency}
-                            >
-                              {tendency}
-                              <button
-                                className="text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
-                                onClick={() => {
-                                  setFormState((currentFormState) => ({
-                                    ...currentFormState,
-                                    tendencies: currentFormState.tendencies.filter(
-                                      (item) => item !== tendency,
-                                    ),
-                                  }))
-                                }}
-                                type="button"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="flex flex-col gap-3 sm:flex-row">
-                          <Input
-                            id={fieldIds.tendencyDraft}
-                            onChange={(event) => {
-                              setFormState((currentFormState) => ({
-                                ...currentFormState,
-                                tendencyDraft: event.target.value,
-                              }))
-                            }}
-                            onKeyDown={(event) => {
-                              if (event.key === 'Enter') {
-                                event.preventDefault()
-                                handleAddTendency()
-                              }
-                            }}
-                            placeholder={t('characters.create.placeholders.tendency')}
-                            value={formState.tendencyDraft}
-                          />
-                          <Button
-                            className="sm:shrink-0"
-                            onClick={handleAddTendency}
-                            size="md"
-                            variant="secondary"
-                          >
-                            {t('characters.actions.addTendency')}
-                          </Button>
-                        </div>
-                      </div>
-                    </Field>
                   </div>
                 ) : null}
 

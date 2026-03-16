@@ -37,6 +37,27 @@ export type SessionMessagesListedResult = {
   type: 'session_messages_listed'
 }
 
+export type SessionCharacter = {
+  created_at_ms: number
+  display_name: string
+  in_scene: boolean
+  personality: string
+  session_character_id: string
+  style: string
+  system_prompt: string
+  updated_at_ms: number
+}
+
+export type SessionCharactersListedResult = {
+  session_characters: SessionCharacter[]
+  type: 'session_characters_listed'
+}
+
+export type SessionCharacterDeletedResult = {
+  session_character_id: string
+  type: 'session_character_deleted'
+}
+
 export type SessionMessageDeletedResult = {
   message_id: string
   type: 'session_message_deleted'
@@ -89,6 +110,18 @@ export type StateUpdate = {
 
 export type UpdateSessionVariablesParams = {
   update: StateUpdate
+}
+
+export type UpdateSessionCharacterParams = {
+  display_name: string
+  personality: string
+  session_character_id: string
+  style: string
+  system_prompt: string
+}
+
+export type SessionCharacterActionParams = {
+  session_character_id: string
 }
 
 export type UpdateSessionMessageParams = {
@@ -321,6 +354,21 @@ export type StreamEventBody =
       result: DirectorResult
       snapshot: RuntimeSnapshot
       type: 'director_completed'
+    }
+  | {
+      session_character: SessionCharacter
+      snapshot: RuntimeSnapshot
+      type: 'session_character_created'
+    }
+  | {
+      session_character_id: string
+      snapshot: RuntimeSnapshot
+      type: 'session_character_entered_scene'
+    }
+  | {
+      session_character_id: string
+      snapshot: RuntimeSnapshot
+      type: 'session_character_left_scene'
     }
   | {
       beat_index: number

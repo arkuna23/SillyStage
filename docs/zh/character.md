@@ -12,13 +12,8 @@
   "name": "Old Merchant",
   "personality": "greedy but friendly trader",
   "style": "talkative, casual, slightly cunning",
-  "tendencies": [
-    "likes profitable deals",
-    "avoids danger",
-    "tries to maintain good relationships"
-  ],
   "schema_id": "schema-character-merchant",
-  "system_prompt": "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion."
+  "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。"
 }
 ```
 
@@ -28,9 +23,19 @@
 - `name`: 展示名称
 - `personality`: 性格摘要
 - `style`: 语言或表现风格
-- `tendencies`: 行为倾向列表
 - `schema_id`: 引用角色私有状态 schema 的 id
 - `system_prompt`: actor 使用的角色级 system prompt
+
+模板变量：
+
+- `{{char}}`：运行时替换为角色展示名
+- `{{user}}`：运行时替换为当前玩家名；如果当前没有玩家名，则回退为 `User`
+
+替换范围：
+
+- `personality`
+- `style`
+- `system_prompt`
 
 注意：
 
@@ -160,4 +165,3 @@ merchant.chr
 - `chr_base64`
 
 服务端会基于当前存储中的角色卡内容和封面重新打包 `.chr`，不要求与最初上传的原始字节完全一致。
-

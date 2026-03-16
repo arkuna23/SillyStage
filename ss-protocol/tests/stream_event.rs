@@ -1,6 +1,7 @@
 use serde_json::json;
 use ss_protocol::{
-    ResponseResult, RuntimeSnapshotPayload, ServerEventMessage, StreamEventBody, StreamFrame,
+    ResponseResult, RuntimeSnapshotPayload, ServerEventMessage, SessionCharacterPayload,
+    StreamEventBody, StreamFrame,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 
@@ -109,4 +110,70 @@ fn stream_event_supports_actor_and_narrator_deltas_and_terminal_payload() {
         StreamFrame::Completed { response }
             if matches!(&**response, ResponseResult::RuntimeSnapshot(_))
     ));
+}
+
+#[test]
+fn stream_event_supports_session_character_lifecycle_events() {
+    let created = ServerEventMessage::event(
+        "req-session-character",
+        Some("session-55"),
+        6,
+        StreamEventBody::SessionCharacterCreated {
+            session_character: Box::new(SessionCharacterPayload {
+                session_character_id: "dock_guard".to_owned(),
+                display_name: "Dock Guard".to_owned(),
+                personality: "dutiful and wary".to_owned(),
+                style: "short, formal".to_owned(),
+                system_prompt: "Keep watch over the dock.".to_owned(),
+                in_scene: true,
+                created_at_ms: 100,
+                updated_at_ms: 100,
+            }),
+            snapshot: Box::new(sample_snapshot()),
+        },
+    );
+    let created_json =
+        serde_json::to_string_pretty(&created).expect("created event should serialize");
+    let created_round_trip: ServerEventMessage =
+        serde_json::from_str(&created_json).expect("created event should deserialize");
+
+    let StreamFrame::Event {
+        body:
+            StreamEventBody::SessionCharacterCreated {
+                session_character,
+                snapshot,
+            },
+    } = created_round_trip.frame
+    else {
+        panic!("expected session character created event");
+    };
+
+    assert_eq!(session_character.session_character_id, "dock_guard");
+    assert!(session_character.in_scene);
+    assert_eq!(snapshot.story_id, "demo_story");
+
+    let entered = ServerEventMessage::event(
+        "req-session-character",
+        Some("session-55"),
+        7,
+        StreamEventBody::SessionCharacterEnteredScene {
+            session_character_id: "dock_guard".to_owned(),
+            snapshot: Box::new(sample_snapshot()),
+        },
+    );
+    let left = ServerEventMessage::event(
+        "req-session-character",
+        Some("session-55"),
+        8,
+        StreamEventBody::SessionCharacterLeftScene {
+            session_character_id: "dock_guard".to_owned(),
+            snapshot: Box::new(sample_snapshot()),
+        },
+    );
+
+    let entered_json =
+        serde_json::to_string_pretty(&entered).expect("entered event should serialize");
+    let left_json = serde_json::to_string_pretty(&left).expect("left event should serialize");
+    assert!(entered_json.contains("\"session_character_entered_scene\""));
+    assert!(left_json.contains("\"session_character_left_scene\""));
 }

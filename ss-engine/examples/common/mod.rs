@@ -446,6 +446,37 @@ pub async fn run_interactive_loop(
                         result.response_plan.beats.len()
                     );
                 }
+                EngineEvent::SessionCharacterCreated { character, .. } => {
+                    printer.finish_line()?;
+                    println!(
+                        "{} {} ({})",
+                        language.text("临时角色创建:", "Session character created:"),
+                        character.display_name,
+                        character.session_character_id
+                    );
+                }
+                EngineEvent::SessionCharacterEnteredScene {
+                    session_character_id,
+                    ..
+                } => {
+                    printer.finish_line()?;
+                    println!(
+                        "{} {}",
+                        language.text("临时角色进场:", "Session character entered scene:"),
+                        session_character_id
+                    );
+                }
+                EngineEvent::SessionCharacterLeftScene {
+                    session_character_id,
+                    ..
+                } => {
+                    printer.finish_line()?;
+                    println!(
+                        "{} {}",
+                        language.text("临时角色离场:", "Session character left scene:"),
+                        session_character_id
+                    );
+                }
                 EngineEvent::NarratorStarted {
                     beat_index,
                     purpose,
@@ -650,16 +681,14 @@ fn print_character_roster(language: Language, character_cards: &[CharacterCard])
 }
 
 fn format_character_summary(language: Language, card: &CharacterCard) -> String {
-    let tendencies = card.tendencies.join(language.text("、", ", "));
-
     match language {
         Language::Zh => format!(
-            "{}（{}）：{}；风格：{}；倾向：{}",
-            card.name, card.id, card.personality, card.style, tendencies
+            "{}（{}）：{}；风格：{}",
+            card.name, card.id, card.personality, card.style
         ),
         Language::En => format!(
-            "{} ({}) - {}; style: {}; tendencies: {}",
-            card.name, card.id, card.personality, card.style, tendencies
+            "{} ({}) - {}; style: {}",
+            card.name, card.id, card.personality, card.style
         ),
     }
 }
@@ -673,13 +702,6 @@ fn localized_character_cards(language: Language) -> Vec<CharacterCard> {
             style: language
                 .text("健谈、随意、略带狡黠", "Talkative, casual, slightly cunning")
                 .to_owned(),
-            tendencies: vec![
-                language.text("喜欢有利润的交易", "Likes profitable deals").to_owned(),
-                language.text("会尽量避开危险", "Avoids danger").to_owned(),
-                language
-                    .text("努力维持合作关系", "Tries to maintain good relationships")
-                    .to_owned(),
-            ],
             state_schema: HashMap::from([(
                 "trust".to_owned(),
                 StateFieldSchema::new(StateValueType::Int)
@@ -705,13 +727,6 @@ fn localized_character_cards(language: Language) -> Vec<CharacterCard> {
             style: language
                 .text("克制、清晰、可靠", "Measured, clear, reassuring")
                 .to_owned(),
-            tendencies: vec![
-                language.text("偏好谨慎的计划", "Prefers careful plans").to_owned(),
-                language.text("保护平民", "Protects civilians").to_owned(),
-                language
-                    .text("谨慎分享本地情报", "Shares local knowledge sparingly")
-                    .to_owned(),
-            ],
             state_schema: HashMap::from([(
                 "knows_safe_route".to_owned(),
                 StateFieldSchema::new(StateValueType::Bool)
@@ -737,11 +752,6 @@ fn localized_character_cards(language: Language) -> Vec<CharacterCard> {
             style: language
                 .text("简短、务实、克制", "Brief, practical, understated")
                 .to_owned(),
-            tendencies: vec![
-                language.text("回避不必要的风险", "Avoids unnecessary risk").to_owned(),
-                language.text("重视忠诚", "Values loyalty").to_owned(),
-                language.text("随身带着有用工具", "Keeps useful tools nearby").to_owned(),
-            ],
             state_schema: HashMap::from([(
                 "knows_safe_route".to_owned(),
                 StateFieldSchema::new(StateValueType::Bool)

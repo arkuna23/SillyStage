@@ -30,6 +30,8 @@ pub enum HandlerError {
     MissingStory(String),
     #[error("session '{0}' not found")]
     MissingSession(String),
+    #[error("session character '{0}' not found")]
+    MissingSessionCharacter(String),
     #[error("session message '{0}' not found")]
     MissingSessionMessage(String),
     #[error("api '{0}' already exists")]
@@ -141,6 +143,7 @@ impl HandlerError {
             | Self::MissingStoryDraft(_)
             | Self::MissingStory(_)
             | Self::MissingSession(_)
+            | Self::MissingSessionCharacter(_)
             | Self::MissingSessionMessage(_)
             | Self::MissingApi(_)
             | Self::MissingApiGroup(_)
@@ -196,6 +199,7 @@ impl From<ManagerError> for HandlerError {
             ManagerError::MissingStoryDraft(id) => Self::MissingStoryDraft(id),
             ManagerError::MissingStory(id) => Self::MissingStory(id),
             ManagerError::MissingSession(id) => Self::MissingSession(id),
+            ManagerError::MissingSessionCharacter(id) => Self::MissingSessionCharacter(id),
             ManagerError::EmptyCharacterIds => Self::EmptyCharacterIds,
             ManagerError::InvalidDraft(message) => Self::InvalidStoryDraft(message),
             ManagerError::Architect(error) => Self::Manager(error.to_string()),

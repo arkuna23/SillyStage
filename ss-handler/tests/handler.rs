@@ -12,16 +12,18 @@ use protocol::{
     CharacterCreateParams, CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams,
     CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
     CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams,
-    DeleteSessionMessageParams, DeleteSessionParams, ErrorCode, GenerateStoryParams,
+    DeleteSessionCharacterParams, DeleteSessionMessageParams, DeleteSessionParams,
+    EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams, GetSessionCharacterParams,
     GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryResourcesParams,
-    JsonRpcOutcome, JsonRpcRequestMessage, ListSessionMessagesParams, PresetCreateParams,
-    PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams,
-    ResponseResult, RunTurnParams, SessionMessageKind, SessionUpdateConfigParams,
-    StartSessionFromStoryParams, StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams,
-    UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
-    UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
-    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    JsonRpcOutcome, JsonRpcRequestMessage, LeaveSessionCharacterSceneParams,
+    ListSessionCharactersParams, ListSessionMessagesParams, PresetCreateParams, PresetDeleteParams,
+    PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams, ResponseResult,
+    RunTurnParams, SessionMessageKind, SessionUpdateConfigParams, StartSessionFromStoryParams,
+    StreamEventBody, StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams,
+    UpdateSessionCharacterParams, UpdateSessionMessageParams, UpdateSessionParams,
+    UpdateSessionVariablesParams, UpdateStoryDraftGraphParams, UpdateStoryGraphParams,
+    UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams,
+    UploadInitParams, UploadTargetKind,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
@@ -35,8 +37,9 @@ use story::NarrativeNode;
 use common::{
     QueuedMockLlm, assistant_response, sample_api_group_record, sample_api_record, sample_archive,
     sample_character_content, sample_character_record, sample_player_profile,
-    sample_player_state_schema, sample_preset_record, sample_schema_record, sample_story_graph,
-    sample_story_record, sample_world_state_schema,
+    sample_player_state_schema, sample_preset_record, sample_schema_record,
+    sample_session_character_record, sample_story_graph, sample_story_record,
+    sample_world_state_schema,
 };
 
 fn registry_with_ids(llm: Arc<QueuedMockLlm>) -> LlmApiRegistry {
@@ -79,6 +82,16 @@ fn unary_result(reply: HandlerReply) -> ResponseResult {
         },
         HandlerReply::Stream { .. } => panic!("expected unary reply"),
     }
+}
+
+fn joined_user_messages(request: &llm::ChatRequest) -> String {
+    request
+        .messages
+        .iter()
+        .filter(|message| matches!(message.role, llm::Role::User))
+        .map(|message| message.content.as_str())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 async fn build_handler(llm: Arc<QueuedMockLlm>) -> (Arc<InMemoryStore>, Handler) {
@@ -649,10 +662,6 @@ async fn character_update_replaces_content_and_preserves_cover() {
                         name: "Haru of the Flooded Dock".to_owned(),
                         personality: "more cautious after the storm".to_owned(),
                         style: "measured, observant".to_owned(),
-                        tendencies: vec![
-                            "likes profitable deals".to_owned(),
-                            "keeps an eye on the tide".to_owned(),
-                        ],
                         schema_id: "schema-character-merchant".to_owned(),
                         system_prompt: "Stay in character and watch the waterline.".to_owned(),
                     },
@@ -723,7 +732,6 @@ async fn character_update_rejects_mismatched_content_id() {
                     name: "Haru".to_owned(),
                     personality: "greedy but friendly trader".to_owned(),
                     style: "talkative, casual".to_owned(),
-                    tendencies: vec!["likes profitable deals".to_owned()],
                     schema_id: "schema-character-merchant".to_owned(),
                     system_prompt: "Stay in character.".to_owned(),
                 },
@@ -1409,6 +1417,182 @@ async fn session_message_crud_round_trips_and_updates_session_history() {
 }
 
 #[tokio::test]
+async fn session_character_crud_round_trips_and_tracks_scene_presence() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "session-start",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: Some("Courier Run".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    store
+        .save_session_character(sample_session_character_record(&session_id, "dock_guard"))
+        .await
+        .expect("save session character");
+
+    let fetched = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-get",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterGet(GetSessionCharacterParams {
+                    session_character_id: "dock_guard".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match fetched {
+        ResponseResult::SessionCharacter(payload) => {
+            assert_eq!(payload.session_character_id, "dock_guard");
+            assert_eq!(payload.display_name, "Dock Guard");
+            assert!(!payload.in_scene);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let listed = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-list",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterList(ListSessionCharactersParams::default()),
+            ))
+            .await,
+    );
+    match listed {
+        ResponseResult::SessionCharactersListed(payload) => {
+            assert_eq!(payload.session_characters.len(), 1);
+            assert_eq!(
+                payload.session_characters[0].session_character_id,
+                "dock_guard"
+            );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-update",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterUpdate(UpdateSessionCharacterParams {
+                    session_character_id: "dock_guard".to_owned(),
+                    display_name: "Harbormaster".to_owned(),
+                    personality: "stern but fair".to_owned(),
+                    style: "measured, formal".to_owned(),
+                    system_prompt: "Manage the harbor with strict discipline.".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match updated {
+        ResponseResult::SessionCharacter(payload) => {
+            assert_eq!(payload.display_name, "Harbormaster");
+            assert_eq!(payload.personality, "stern but fair");
+            assert!(!payload.in_scene);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let entered = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-enter",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterEnterScene(EnterSessionCharacterSceneParams {
+                    session_character_id: "dock_guard".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match entered {
+        ResponseResult::SessionCharacter(payload) => {
+            assert_eq!(payload.session_character_id, "dock_guard");
+            assert!(payload.in_scene);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let session = store
+        .get_session(&session_id)
+        .await
+        .expect("load session")
+        .expect("session should exist");
+    assert!(
+        session
+            .snapshot
+            .world_state
+            .active_characters()
+            .iter()
+            .any(|id| id == "dock_guard")
+    );
+
+    let left = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-leave",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterLeaveScene(LeaveSessionCharacterSceneParams {
+                    session_character_id: "dock_guard".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match left {
+        ResponseResult::SessionCharacter(payload) => {
+            assert_eq!(payload.session_character_id, "dock_guard");
+            assert!(!payload.in_scene);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let deleted = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "session-character-delete",
+                Some(session_id.clone()),
+                RequestParams::SessionCharacterDelete(DeleteSessionCharacterParams {
+                    session_character_id: "dock_guard".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match deleted {
+        ResponseResult::SessionCharacterDeleted(payload) => {
+            assert_eq!(payload.session_character_id, "dock_guard");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    assert!(
+        store
+            .get_session_character("dock_guard")
+            .await
+            .expect("load session character")
+            .is_none()
+    );
+}
+
+#[tokio::test]
 async fn session_suggest_replies_returns_unary_payload() {
     let llm = Arc::new(QueuedMockLlm::new(
         vec![Ok(assistant_response(
@@ -1475,6 +1659,89 @@ async fn session_suggest_replies_returns_unary_payload() {
             .len()
             == 1
     );
+}
+
+#[tokio::test]
+async fn session_suggest_replies_uses_only_recent_eight_messages() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{}",
+            Some(json!({
+                "replies": [
+                    { "id": "r1", "text": "Tell me what changed." }
+                ]
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm.clone()))
+        .await
+        .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "session-start",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: Some("Courier Run".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    for sequence in 0..10_u64 {
+        store
+            .save_session_message(store::SessionMessageRecord {
+                message_id: format!("message-{sequence}"),
+                session_id: session_id.clone(),
+                kind: store::SessionMessageKind::Dialogue,
+                sequence,
+                turn_index: sequence,
+                recorded_at_ms: 5_000 + sequence,
+                created_at_ms: 5_000 + sequence,
+                updated_at_ms: 5_000 + sequence,
+                speaker_id: "merchant".to_owned(),
+                speaker_name: "Haru".to_owned(),
+                text: format!("history line {sequence}"),
+            })
+            .await
+            .expect("save session message");
+    }
+
+    let suggested = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "suggest-replies-recent-window",
+                Some(session_id),
+                RequestParams::SessionSuggestReplies(SuggestRepliesParams { limit: Some(3) }),
+            ))
+            .await,
+    );
+
+    match suggested {
+        ResponseResult::SuggestedReplies(payload) => {
+            assert_eq!(payload.replies.len(), 1);
+            assert_eq!(payload.replies[0].text, "Tell me what changed.");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let requests = llm.recorded_requests();
+    let user_message = joined_user_messages(requests.first().expect("request should exist"));
+    assert!(!user_message.contains("history line 0"));
+    assert!(!user_message.contains("history line 1"));
+    assert!(user_message.contains("history line 2"));
+    assert!(user_message.contains("history line 9"));
 }
 
 #[tokio::test]
@@ -1878,6 +2145,204 @@ async fn run_turn_stream_emits_started_and_persists_session_snapshot() {
     assert_eq!(messages[1].kind, store::SessionMessageKind::Narration);
     assert_eq!(messages[1].speaker_id, "narrator");
     assert_eq!(messages[1].text, "Water churned beneath the dock.");
+}
+
+#[tokio::test]
+async fn run_turn_stream_creates_and_activates_session_character_before_actor_beats() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({
+                    "ops": []
+                })),
+            )),
+            Ok(assistant_response(
+                "{\"role_actions\":[{\"type\":\"create_and_enter\",\"session_character_id\":\"dock_guard\",\"display_name\":\"Dock Guard\",\"personality\":\"dutiful and wary\",\"style\":\"short, formal\",\"system_prompt\":\"Keep watch over the dock.\"}],\"beats\":[{\"type\":\"Actor\",\"speaker_id\":\"dock_guard\",\"purpose\":\"AdvanceGoal\"}]}",
+                Some(json!({
+                    "role_actions": [
+                        {
+                            "type": "create_and_enter",
+                            "session_character_id": "dock_guard",
+                            "display_name": "Dock Guard",
+                            "personality": "dutiful and wary",
+                            "style": "short, formal",
+                            "system_prompt": "Keep watch over the dock."
+                        }
+                    ],
+                    "beats": [
+                        {
+                            "type": "Actor",
+                            "speaker_id": "dock_guard",
+                            "purpose": "AdvanceGoal"
+                        }
+                    ]
+                })),
+            )),
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({
+                    "ops": []
+                })),
+            )),
+        ],
+        vec![Ok(vec![
+            Ok(llm::ChatChunk {
+                delta: "<dialogue>State your business.</dialogue>".to_owned(),
+                model: Some("test-model".to_owned()),
+                finish_reason: None,
+                done: false,
+                usage: None,
+            }),
+            Ok(llm::ChatChunk {
+                delta: String::new(),
+                model: Some("test-model".to_owned()),
+                finish_reason: Some("stop".to_owned()),
+                done: true,
+                usage: None,
+            }),
+        ])],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-1",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: None,
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    let session_id = started.session_id.expect("session id should exist");
+
+    let reply = handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-2",
+            Some(session_id.clone()),
+            RequestParams::SessionRunTurn(RunTurnParams {
+                player_input: "Who's on watch tonight?".to_owned(),
+            }),
+        ))
+        .await;
+
+    let (_, events) = match reply {
+        HandlerReply::Stream { ack, events } => {
+            assert!(matches!(
+                &ack.outcome,
+                JsonRpcOutcome::Ok(result) if matches!(&**result, ResponseResult::TurnStreamAccepted(_))
+            ));
+            (ack, events)
+        }
+        HandlerReply::Unary(_) => panic!("expected stream reply"),
+    };
+    let frames = events.collect::<Vec<_>>().await;
+
+    let mut saw_created = false;
+    let mut saw_entered = false;
+    let mut saw_actor_completed = false;
+    for frame in &frames {
+        match &frame.frame {
+            StreamFrame::Event {
+                body:
+                    StreamEventBody::SessionCharacterCreated {
+                        session_character,
+                        snapshot,
+                    },
+            } => {
+                saw_created = true;
+                assert_eq!(session_character.session_character_id, "dock_guard");
+                assert_eq!(session_character.display_name, "Dock Guard");
+                assert!(session_character.in_scene);
+                assert!(
+                    snapshot
+                        .world_state
+                        .active_characters()
+                        .iter()
+                        .any(|id| id == "dock_guard")
+                );
+            }
+            StreamFrame::Event {
+                body:
+                    StreamEventBody::SessionCharacterEnteredScene {
+                        session_character_id,
+                        snapshot,
+                    },
+            } => {
+                saw_entered = true;
+                assert_eq!(session_character_id, "dock_guard");
+                assert!(
+                    snapshot
+                        .world_state
+                        .active_characters()
+                        .iter()
+                        .any(|id| id == "dock_guard")
+                );
+            }
+            StreamFrame::Event {
+                body:
+                    StreamEventBody::ActorCompleted {
+                        speaker_id,
+                        response,
+                        ..
+                    },
+            } => {
+                if speaker_id == "dock_guard" {
+                    saw_actor_completed = true;
+                    assert_eq!(response.speaker_name, "Dock Guard");
+                }
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_created);
+    assert!(saw_entered);
+    assert!(saw_actor_completed);
+
+    let saved_character = store
+        .get_session_character("dock_guard")
+        .await
+        .expect("load session character")
+        .expect("session character should be saved");
+    assert_eq!(saved_character.session_id, session_id);
+    assert_eq!(saved_character.display_name, "Dock Guard");
+
+    let saved_session = store
+        .get_session(&session_id)
+        .await
+        .expect("load session")
+        .expect("session should exist");
+    assert!(
+        saved_session
+            .snapshot
+            .world_state
+            .active_characters()
+            .iter()
+            .any(|id| id == "dock_guard")
+    );
+
+    let mut messages = store
+        .list_session_messages(&session_id)
+        .await
+        .expect("load session messages");
+    messages.sort_by_key(|message| message.sequence);
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].speaker_id, "player");
+    assert_eq!(messages[1].speaker_id, "dock_guard");
+    assert_eq!(messages[1].speaker_name, "Dock Guard");
+    assert_eq!(messages[1].text, "State your business.");
 }
 
 #[tokio::test]

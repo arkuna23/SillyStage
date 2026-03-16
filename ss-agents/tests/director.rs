@@ -76,6 +76,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     let mut world_state = WorldState::new("merchant_intro");
     world_state.set_state("flood_gate_open", json!(false));
     world_state.set_player_state("coins", json!(12));
+    world_state.add_active_character("merchant");
     world_state.push_actor_shared_history(
         ActorMemoryEntry {
             speaker_id: "merchant".to_owned(),
@@ -105,7 +106,6 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
                 name: "Old Merchant".to_owned(),
                 personality: "greedy but friendly trader".to_owned(),
                 style: "talkative".to_owned(),
-                tendencies: vec!["likes profitable deals".to_owned()],
                 state_schema: HashMap::new(),
                 system_prompt: "Stay in character.".to_owned(),
             }],
@@ -141,16 +141,14 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     assert!(!user_message.contains("Stay in character."));
     assert!(!user_message.contains("Keep this between us."));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
-    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("PLAYER_DESCRIPTION"));
     assert!(
         user_message.contains("A stubborn courier trying to protect a sealed medical satchel.")
     );
     assert!(user_message.contains("player_state"));
     assert!(user_message.contains("coins=12"));
-    assert!(
-        !user_message.contains("This should stay hidden from the director.")
-    );
+    assert!(!user_message.contains("This should stay hidden from the director."));
     assert!(!user_message.contains("actor_shared_history"));
     assert!(!user_message.contains("actor_private_memory"));
     assert_eq!(result.response_plan.beats.len(), 4);

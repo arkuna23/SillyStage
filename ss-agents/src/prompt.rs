@@ -8,6 +8,8 @@ use story::{Condition, ConditionScope, NarrativeNode, Transition};
 
 use crate::actor::CharacterCardSummaryRef;
 
+const DEFAULT_USER_NAME: &str = "User";
+
 pub(crate) fn compact_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     serde_json::to_string(value)
 }
@@ -32,24 +34,37 @@ pub(crate) fn render_list_lines(lines: &[String]) -> String {
         .join("\n")
 }
 
-pub(crate) fn render_character_summaries(summaries: &[CharacterCardSummaryRef<'_>]) -> String {
+pub(crate) fn render_character_text(
+    text: &str,
+    character_name: &str,
+    player_name: Option<&str>,
+) -> String {
+    text.replace("{{char}}", character_name)
+        .replace("{{user}}", player_name.unwrap_or(DEFAULT_USER_NAME))
+}
+
+pub(crate) fn render_character_summaries(
+    summaries: &[CharacterCardSummaryRef<'_>],
+    player_name: Option<&str>,
+) -> String {
     render_list_lines(
         &summaries
             .iter()
             .map(|summary| {
-                let tendencies = if summary.tendencies.is_empty() {
-                    "none".to_owned()
-                } else {
-                    summary.tendencies.join("; ")
-                };
-
                 format!(
-                    "{} | {} | personality={} | style={} | tendencies={} | state_schema={}",
+                    "{} | {} | personality={} | style={} | state_schema={}",
                     summary.id,
                     summary.name,
-                    normalize_inline_text(summary.personality),
-                    normalize_inline_text(summary.style),
-                    normalize_inline_text(&tendencies),
+                    normalize_inline_text(&render_character_text(
+                        summary.personality,
+                        summary.name,
+                        player_name,
+                    )),
+                    normalize_inline_text(&render_character_text(
+                        summary.style,
+                        summary.name,
+                        player_name,
+                    )),
                     render_state_schema_fields(summary.state_schema),
                 )
             })
@@ -72,7 +87,10 @@ pub(crate) fn render_state_schema_fields(
     ordered
         .into_iter()
         .map(|(key, field)| {
-            let mut line = format!("{key}:{}", compact_json(&field.value_type).unwrap_or_default());
+            let mut line = format!(
+                "{key}:{}",
+                compact_json(&field.value_type).unwrap_or_default()
+            );
             if let Some(default) = &field.default {
                 line.push_str(&format!(" default={}", compact_value(default)));
             }
@@ -172,8 +190,14 @@ pub(crate) fn render_observable_world_state(world_state: &WorldState) -> String 
             },
         ),
         ("world_state", render_sorted_map(&world_state.custom)),
-        ("player_state", render_sorted_map(world_state.player_states())),
-        ("character_state", render_character_state(&world_state.character_state)),
+        (
+            "player_state",
+            render_sorted_map(world_state.player_states()),
+        ),
+        (
+            "character_state",
+            render_character_state(&world_state.character_state),
+        ),
         (
             "shared_history",
             render_actor_history(world_state.actor_shared_history()),
@@ -230,7 +254,9 @@ fn render_world_state_sections(
     active_characters: &[String],
     custom: &std::collections::HashMap<String, Value>,
     player_state: Option<&std::collections::HashMap<String, Value>>,
-    character_state: Option<&std::collections::HashMap<String, std::collections::HashMap<String, Value>>>,
+    character_state: Option<
+        &std::collections::HashMap<String, std::collections::HashMap<String, Value>>,
+    >,
 ) -> String {
     let mut sections = vec![
         ("current_node", current_node.to_owned()),

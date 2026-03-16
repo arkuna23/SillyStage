@@ -46,7 +46,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual".to_owned(),
-            tendencies: vec!["likes profitable deals".to_owned()],
             state_schema: merchant_state_schema(),
             system_prompt: "Stay in character.".to_owned(),
         },
@@ -55,7 +54,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Yuki".to_owned(),
             personality: "calm local guide".to_owned(),
             style: "measured".to_owned(),
-            tendencies: vec!["protects civilians".to_owned()],
             state_schema: guide_state_schema(),
             system_prompt: "Stay observant.".to_owned(),
         },
@@ -165,6 +163,7 @@ fn sample_request<'a>(
         previous_node,
         current_node,
         character_cards,
+        current_cast_ids: &current_node.characters,
         player_state_schema,
         world_state,
         completed_beats,
@@ -275,7 +274,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
 
     assert!(user_message.contains("KEEPER_PHASE"));
     assert!(user_message.contains("PLAYER_INPUT"));
-    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("PLAYER_DESCRIPTION"));
     assert!(user_message.contains("COMPLETED_BEATS"));
     assert!(user_message.contains("shared_history"));
@@ -299,14 +298,11 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             .content
             .contains("\"type\": \"RemoveCharacterState\"")
     );
+    assert!(user_message.contains("We'll reach the canal gate before the tide turns."));
+    assert!(user_message.contains("I agree to follow the guide toward the canal gate."));
     assert!(
-        user_message.contains("We'll reach the canal gate before the tide turns.")
-    );
-    assert!(
-        user_message.contains("I agree to follow the guide toward the canal gate.")
-    );
-    assert!(
-        user_message.contains("A cautious courier escorting medicine through the flooded district.")
+        user_message
+            .contains("A cautious courier escorting medicine through the flooded district.")
     );
     assert!(!user_message.contains("actor_private_memory"));
     assert!(!user_message.contains("I should keep the safer route to myself."));

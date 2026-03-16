@@ -12,13 +12,8 @@ The current character content structure is:
   "name": "Old Merchant",
   "personality": "greedy but friendly trader",
   "style": "talkative, casual, slightly cunning",
-  "tendencies": [
-    "likes profitable deals",
-    "avoids danger",
-    "tries to maintain good relationships"
-  ],
   "schema_id": "schema-character-merchant",
-  "system_prompt": "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion."
+  "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion."
 }
 ```
 
@@ -28,9 +23,19 @@ Field meanings:
 - `name`: display name
 - `personality`: personality summary
 - `style`: speaking / behavior style
-- `tendencies`: behavioral tendencies
 - `schema_id`: id of the character-private state schema
 - `system_prompt`: actor-facing character system prompt
+
+Template variables:
+
+- `{{char}}`: replaced at runtime with the character display name
+- `{{user}}`: replaced at runtime with the current player name; falls back to `User` if no player name is set
+
+Replacement applies to:
+
+- `personality`
+- `style`
+- `system_prompt`
 
 Important:
 
@@ -160,4 +165,3 @@ Returns:
 - `chr_base64`
 
 The backend repacks the `.chr` archive from the currently stored character content and cover. It does not need to preserve byte-for-byte identity with the originally uploaded archive.
-

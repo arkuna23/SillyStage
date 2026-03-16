@@ -135,21 +135,6 @@ export function CharacterDetailsDialog({
           </p>
         </DetailSection>
 
-        <DetailSection title={t('characters.card.tendencies')}>
-          <div className="flex flex-wrap gap-2">
-            {summary?.tendencies.length ? (
-              summary.tendencies.map((tendency) => (
-                <Badge className="normal-case px-3 py-1" key={tendency} variant="subtle">
-                  {tendency}
-                </Badge>
-              ))
-            ) : (
-              <Badge className="normal-case px-3 py-1" variant="subtle">
-                {t('characters.card.noTendencies')}
-              </Badge>
-            )}
-          </div>
-        </DetailSection>
       </div>
     </div>
   )

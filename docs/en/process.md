@@ -123,7 +123,6 @@ Character content now stores only:
 - `name`
 - `personality`
 - `style`
-- `tendencies`
 - `schema_id`
 - `system_prompt`
 
@@ -264,14 +263,16 @@ Important:
 Each player turn uses:
 
 - `session.run_turn`
+- `session.suggest_replies`
 
 Execution order is fixed:
 
 1. user input
 2. `Keeper` (after player input)
 3. `Director`
-4. `Narrator` / `Actor`
-5. `Keeper` (after turn outputs)
+4. apply Director `role_actions`
+5. `Narrator` / `Actor`
+6. `Keeper` (after turn outputs)
 
 The result is streamed as:
 
@@ -290,7 +291,27 @@ After turns have been recorded, transcript editing is done through:
 
 These operations only change transcript data. They do not replay or mutate the session snapshot.
 
-## 10. Switch Player Profile
+`session.suggest_replies` uses the most recent 8 transcript messages as its history window.
+
+Director may also create temporary session-scoped characters during step 4. Those characters are
+added to the current active cast before beat execution, so they can participate in the same turn.
+They remain session-local runtime objects and do not modify the story graph.
+
+## 10. Manage Session Characters
+
+Session-scoped temporary characters can be inspected and managed through:
+
+- `session_character.get`
+- `session_character.list`
+- `session_character.update`
+- `session_character.delete`
+- `session_character.enter_scene`
+- `session_character.leave_scene`
+
+The primary creation path is still `Director` `role_actions.create_and_enter` during
+`session.run_turn`.
+
+## 11. Switch Player Profile
 
 To switch the current session to another player profile:
 
@@ -303,7 +324,7 @@ This updates:
 
 and keeps the existing `player_state`.
 
-## 11. Manually Override Player Description
+## 12. Manually Override Player Description
 
 If the session should stop using a stored player profile and use ad hoc text instead:
 
@@ -314,7 +335,7 @@ This:
 - directly overwrites the current description text
 - clears `player_profile_id`
 
-## 12. Inspect and Patch Conversation Variables
+## 13. Inspect and Patch Conversation Variables
 
 Session variable APIs expose the mutable `world_state` maps without exposing scene-control fields:
 
@@ -329,7 +350,7 @@ Session variable APIs expose the mutable `world_state` maps without exposing sce
 - `AddActiveCharacter`
 - `RemoveActiveCharacter`
 
-## 13. Save, Restore, and Switch
+## 14. Save, Restore, and Switch
 
 The store persists:
 
@@ -342,6 +363,7 @@ The store persists:
 - `story_draft`
 - `story`
 - `session`
+- `session_character`
 - `session_message`
 
 That enables:

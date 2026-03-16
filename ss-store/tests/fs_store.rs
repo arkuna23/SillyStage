@@ -6,8 +6,9 @@ use serde_json::json;
 use ss_store::{
     AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
     CharacterCardRecord, FileSystemStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
-    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionMessageKind,
-    SessionMessageRecord, SessionRecord, Store, StoryRecord, StoryResourcesRecord,
+    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionCharacterRecord,
+    SessionMessageKind, SessionMessageRecord, SessionRecord, Store, StoryRecord,
+    StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -42,7 +43,6 @@ fn sample_character_record() -> CharacterCardRecord {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual".to_owned(),
-            tendencies: vec!["likes profitable deals".to_owned()],
             schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
         },
@@ -200,6 +200,19 @@ fn sample_session_message() -> SessionMessageRecord {
     }
 }
 
+fn sample_session_character() -> SessionCharacterRecord {
+    SessionCharacterRecord {
+        session_character_id: "dock_guard".to_owned(),
+        session_id: "session-1".to_owned(),
+        display_name: "Dock Guard".to_owned(),
+        personality: "dutiful and wary".to_owned(),
+        style: "short, formal".to_owned(),
+        system_prompt: "Keep watch over the dock.".to_owned(),
+        created_at_ms: 3_600,
+        updated_at_ms: 3_600,
+    }
+}
+
 fn sample_schema_record(schema_id: &str, display_name: &str) -> SchemaRecord {
     let fields = if schema_id.contains("world") {
         sample_world_state_schema().fields
@@ -307,6 +320,10 @@ async fn filesystem_store_round_trips_all_records() {
         .save_session_message(sample_session_message())
         .await
         .expect("save session message");
+    store
+        .save_session_character(sample_session_character())
+        .await
+        .expect("save session character");
 
     assert!(store.root().join("apis/api-planner.json").exists());
     assert!(store.root().join("api_groups/group-default.json").exists());
@@ -399,6 +416,13 @@ async fn filesystem_store_round_trips_all_records() {
             .get_session_message("session-message-1")
             .await
             .expect("load session message")
+            .is_some()
+    );
+    assert!(
+        store
+            .get_session_character("dock_guard")
+            .await
+            .expect("load session character")
             .is_some()
     );
 }

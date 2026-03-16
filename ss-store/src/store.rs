@@ -3,8 +3,8 @@ use async_trait::async_trait;
 use crate::error::StoreError;
 use crate::record::{
     ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
-    SchemaRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord, StoryRecord,
-    StoryResourcesRecord,
+    SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
+    StoryRecord, StoryResourcesRecord,
 };
 
 #[async_trait]
@@ -85,6 +85,23 @@ pub trait Store: Send + Sync {
     async fn list_sessions(&self) -> Result<Vec<SessionRecord>, StoreError>;
     async fn save_session(&self, session: SessionRecord) -> Result<(), StoreError>;
     async fn delete_session(&self, session_id: &str) -> Result<Option<SessionRecord>, StoreError>;
+
+    async fn get_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError>;
+    async fn list_session_characters(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SessionCharacterRecord>, StoreError>;
+    async fn save_session_character(
+        &self,
+        character: SessionCharacterRecord,
+    ) -> Result<(), StoreError>;
+    async fn delete_session_character(
+        &self,
+        session_character_id: &str,
+    ) -> Result<Option<SessionCharacterRecord>, StoreError>;
 
     async fn get_session_message(
         &self,

@@ -48,11 +48,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Haru".to_owned(),
             personality: "greedy but friendly trader".to_owned(),
             style: "talkative, casual, slightly cunning".to_owned(),
-            tendencies: vec![
-                "likes profitable deals".to_owned(),
-                "avoids danger".to_owned(),
-                "tries to maintain good relationships".to_owned(),
-            ],
             state_schema: merchant_state_schema(),
             system_prompt: "Stay in character.".to_owned(),
         },
@@ -61,7 +56,6 @@ fn sample_character_cards() -> Vec<CharacterCard> {
             name: "Yuki".to_owned(),
             personality: "calm local guide".to_owned(),
             style: "measured, clear".to_owned(),
-            tendencies: vec!["protects civilians".to_owned()],
             state_schema: guide_state_schema(),
             system_prompt: "Stay observant.".to_owned(),
         },
@@ -130,6 +124,7 @@ fn scene_request<'a>(
         previous_node: None,
         current_node,
         character_cards,
+        current_cast_ids: &current_node.characters,
         player_name: Some("Courier"),
         player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema,
@@ -276,6 +271,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         previous_node: Some(&previous_node),
         current_node: &current_node,
         character_cards: &character_cards,
+        current_cast_ids: &current_node.characters,
         player_name: Some("Courier"),
         player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema: &player_state_schema,
@@ -295,9 +291,12 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("PREVIOUS_NODE"));
     assert!(user_message.contains("shared_history"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
-    assert!(user_message.contains("PLAYER_NAME"));
+    assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("PLAYER_DESCRIPTION"));
-    assert!(user_message.contains("A cautious courier trying to get medicine through the flooded district."));
+    assert!(
+        user_message
+            .contains("A cautious courier trying to get medicine through the flooded district.")
+    );
     assert!(user_message.contains("player_state"));
     assert!(user_message.contains("coins=12"));
     assert!(user_message.contains("coins:"));

@@ -36,6 +36,7 @@ pub struct ReplyHistoryMessage {
 pub struct ReplyerRequest<'a> {
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
+    pub current_cast_ids: &'a [String],
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -154,7 +155,7 @@ impl Replyer {
             .map(|card| (card.id.as_str(), card))
             .collect();
 
-        for character_id in &request.current_node.characters {
+        for character_id in request.current_cast_ids {
             if !cards_by_id.contains_key(character_id.as_str()) {
                 return Err(ReplyerError::InvalidRequest(format!(
                     "missing character card for current node id '{character_id}'"
@@ -171,14 +172,13 @@ impl Replyer {
     ) -> Result<(String, String), ReplyerError> {
         let stable_prompt = render_sections(&[
             ("REPLY_LIMIT", request.limit.to_string()),
-            (
-                "PLAYER_NAME",
-                request.player_name.unwrap_or("null").to_owned(),
-            ),
             ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
             (
                 "CURRENT_CAST",
-                render_character_summaries(&self.current_cast_summaries(request)?),
+                render_character_summaries(
+                    &self.current_cast_summaries(request)?,
+                    request.player_name,
+                ),
             ),
             ("CURRENT_NODE", render_node(request.current_node)),
             (
@@ -208,8 +208,7 @@ impl Replyer {
             .collect();
 
         request
-            .current_node
-            .characters
+            .current_cast_ids
             .iter()
             .map(|character_id| {
                 cast_by_id

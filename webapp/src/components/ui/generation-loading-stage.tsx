@@ -6,6 +6,8 @@ type GenerationLoadingStageProps = {
   description: string
   elapsedLabel: string
   identifier?: string | null
+  progressLabel?: string
+  progressText?: string | null
   startedAtMs: number
   statusLabel: string
   title: string
@@ -23,6 +25,8 @@ export function GenerationLoadingStage({
   description,
   elapsedLabel,
   identifier,
+  progressLabel,
+  progressText,
   startedAtMs,
   statusLabel,
   title,
@@ -74,6 +78,13 @@ export function GenerationLoadingStage({
       </div>
 
       <div className="flex flex-col items-center gap-3">
+        {progressText ? (
+          <div className="rounded-full border border-[var(--color-accent-copper-soft)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_82%,var(--color-accent-copper-soft)_18%)] px-4 py-2 text-sm text-[var(--color-text-secondary)]">
+            <span className="text-[var(--color-text-muted)]">{progressLabel}</span>
+            <span className="ml-2 font-mono text-[var(--color-text-primary)]">{progressText}</span>
+          </div>
+        ) : null}
+
         <div className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-2 text-sm text-[var(--color-text-secondary)]">
           <span className="text-[var(--color-text-muted)]">{elapsedLabel}</span>
           <span className="ml-2 font-mono text-[var(--color-text-primary)]">{elapsedText}</span>

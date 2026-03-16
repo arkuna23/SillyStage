@@ -6,10 +6,12 @@ use ss_protocol::{
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
     CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
     ContinueStoryDraftParams, CreateSessionMessageParams, CreateStoryResourcesParams,
-    DashboardGetParams, DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams,
-    DeleteStoryParams, DeleteStoryResourcesParams, FinalizeStoryDraftParams, GenerateStoryParams,
-    GetRuntimeSnapshotParams, GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams,
-    GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
+    DashboardGetParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
+    DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
+    EnterSessionCharacterSceneParams, FinalizeStoryDraftParams, GenerateStoryParams,
+    GetRuntimeSnapshotParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
+    GetSessionVariablesParams, GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams,
+    JsonRpcRequestMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
     ListSessionMessagesParams, ListSessionsParams, ListStoriesParams, ListStoryDraftsParams,
     ListStoryResourcesParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
     PlayerProfileGetParams, PlayerProfileListParams, PlayerProfileUpdateParams, PresetCreateParams,
@@ -17,10 +19,10 @@ use ss_protocol::{
     SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
     SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams, SetPlayerProfileParams,
     StartSessionFromStoryParams, StartStoryDraftParams, SuggestRepliesParams,
-    UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
-    UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
-    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    UpdateSessionCharacterParams, UpdateSessionMessageParams, UpdateSessionParams,
+    UpdateSessionVariablesParams, UpdateStoryDraftGraphParams, UpdateStoryGraphParams,
+    UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams,
+    UploadInitParams, UploadTargetKind,
 };
 use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::LlmProvider;
@@ -32,7 +34,6 @@ fn sample_character_content() -> CharacterCardContent {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
     }
@@ -667,6 +668,50 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             Some("session-1"),
             RequestParams::SessionMessageDelete(DeleteSessionMessageParams {
                 message_id: "message-1".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-get",
+            Some("session-1"),
+            RequestParams::SessionCharacterGet(GetSessionCharacterParams {
+                session_character_id: "dock_guard".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-list",
+            Some("session-1"),
+            RequestParams::SessionCharacterList(ListSessionCharactersParams::default()),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-update",
+            Some("session-1"),
+            RequestParams::SessionCharacterUpdate(UpdateSessionCharacterParams {
+                session_character_id: "dock_guard".to_owned(),
+                display_name: "Dock Guard".to_owned(),
+                personality: "stern".to_owned(),
+                style: "brief".to_owned(),
+                system_prompt: "Stay on duty.".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-enter",
+            Some("session-1"),
+            RequestParams::SessionCharacterEnterScene(EnterSessionCharacterSceneParams {
+                session_character_id: "dock_guard".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-leave",
+            Some("session-1"),
+            RequestParams::SessionCharacterLeaveScene(LeaveSessionCharacterSceneParams {
+                session_character_id: "dock_guard".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "session-character-delete",
+            Some("session-1"),
+            RequestParams::SessionCharacterDelete(DeleteSessionCharacterParams {
+                session_character_id: "dock_guard".to_owned(),
             }),
         ),
         JsonRpcRequestMessage::new(

@@ -29,11 +29,6 @@ fn sample_card() -> CharacterCard {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative, casual, slightly cunning".to_owned(),
-        tendencies: vec![
-            "likes profitable deals".to_owned(),
-            "avoids danger".to_owned(),
-            "tries to maintain good relationships".to_owned(),
-        ],
         state_schema: sample_state_schema(),
         system_prompt:
             "You are a traveling merchant. Speak naturally as the character and avoid breaking immersion.".to_owned(),
@@ -60,6 +55,7 @@ fn sample_request<'a>(
     ActorRequest {
         character,
         cast,
+        current_cast_ids: &node.characters,
         player_name: Some("Courier"),
         player_description: "A cautious courier carrying a sealed satchel and speaking plainly.",
         purpose: ActorPurpose::AdvanceGoal,
@@ -260,7 +256,7 @@ fn character_summary_excludes_system_prompt() {
 
     assert_eq!(summary.id, "merchant");
     assert_eq!(summary.name, "Old Merchant");
-    assert_eq!(summary.tendencies.len(), 3);
+    assert_eq!(summary.personality, "greedy but friendly trader");
     assert!(summary.state_schema.contains_key("trust"));
 }
 
@@ -284,7 +280,10 @@ async fn perform_stream_sends_character_specific_system_prompt() {
     ]));
     let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
     let mut world_state = sample_world_state();
-    let character = sample_card();
+    let mut character = sample_card();
+    character.personality = "{{char}} keeps a careful eye on {{user}}.".to_owned();
+    character.style = "Measured when speaking to {{user}}.".to_owned();
+    character.system_prompt = "Address {{user}} directly as {{char}}.".to_owned();
     let cast = vec![character.clone()];
     let node = sample_node();
     world_state.push_actor_shared_history(
@@ -316,8 +315,10 @@ async fn perform_stream_sends_character_specific_system_prompt() {
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
     assert_eq!(request.messages.len(), 4);
-    assert!(request.messages[1].content.contains("traveling merchant"));
-    assert!(request.messages[2].content.contains("PLAYER_NAME"));
+    assert!(request.messages[1].content.contains("Old Merchant keeps a careful eye on Courier."));
+    assert!(request.messages[1].content.contains("Measured when speaking to Courier."));
+    assert!(request.messages[1].content.contains("Address Courier directly as Old Merchant."));
+    assert!(!request.messages[2].content.contains("PLAYER_NAME"));
     assert!(request.messages[2].content.contains("CURRENT_NODE"));
     assert!(
         request.messages[2]
@@ -357,6 +358,44 @@ async fn perform_stream_sends_character_specific_system_prompt() {
             .content
             .contains("\"actor_private_memory\"")
     );
+}
+
+#[tokio::test]
+async fn perform_stream_uses_user_fallback_for_character_templates() {
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
+        Ok(ChatChunk {
+            delta: "<dialogue>Understood.</dialogue>".to_owned(),
+            model: Some("test-model".to_owned()),
+            finish_reason: None,
+            done: false,
+            usage: None,
+        }),
+        Ok(ChatChunk {
+            delta: String::new(),
+            model: Some("test-model".to_owned()),
+            finish_reason: Some("stop".to_owned()),
+            done: true,
+            usage: None,
+        }),
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let mut world_state = sample_world_state();
+    let mut character = sample_card();
+    character.system_prompt = "Speak to {{user}} as {{char}}.".to_owned();
+    let cast = vec![character.clone()];
+    let node = sample_node();
+    let mut request = sample_request(&character, &cast, &node);
+    request.player_name = None;
+
+    let _ = actor
+        .perform(request, &mut world_state)
+        .await
+        .expect("perform should work");
+
+    let requests = llm.recorded_requests();
+    let request = requests.first().expect("request should be recorded");
+
+    assert!(request.messages[1].content.contains("Speak to User as Old Merchant."));
 }
 
 #[tokio::test]

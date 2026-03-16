@@ -39,7 +39,6 @@ async fn planner_returns_editable_story_script_and_character_summary() {
         name: "Haru".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];

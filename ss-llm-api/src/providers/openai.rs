@@ -149,7 +149,12 @@ impl OpenAiClient {
         request.validate()?;
         let request_body = self.build_request_body(request, stream);
 
-        log_llm_payload(stream, self.completions_url(), &request_body, "sending llm request");
+        log_llm_payload(
+            stream,
+            self.completions_url(),
+            &request_body,
+            "sending llm request",
+        );
 
         let response = self
             .http
@@ -319,9 +324,8 @@ fn log_llm_payload(stream: bool, url: String, payload: &OpenAiChatRequest, messa
         .last()
         .map(|message| message.content.chars().count())
         .unwrap_or_default();
-    let stable_prefix_hash = hash_messages(
-        &payload.messages[..payload.messages.len().saturating_sub(1)],
-    );
+    let stable_prefix_hash =
+        hash_messages(&payload.messages[..payload.messages.len().saturating_sub(1)]);
     let last_message_hash = payload
         .messages
         .last()

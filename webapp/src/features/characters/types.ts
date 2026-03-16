@@ -13,7 +13,6 @@ export type CharacterCardContent = {
   schema_id: string
   style: string
   system_prompt: string
-  tendencies: string[]
 }
 
 export type CharacterSummary = {
@@ -23,7 +22,6 @@ export type CharacterSummary = {
   name: string
   personality: string
   style: string
-  tendencies: string[]
 }
 
 export type CharacterCreateResult = {

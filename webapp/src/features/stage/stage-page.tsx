@@ -1,42 +1,30 @@
 import { faComments } from '@fortawesome/free-solid-svg-icons/faComments'
 import { faDatabase } from '@fortawesome/free-solid-svg-icons/faDatabase'
-import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faPaperPlane } from '@fortawesome/free-solid-svg-icons/faPaperPlane'
-import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
-import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons/faRotateRight'
 import { faSpinner } from '@fortawesome/free-solid-svg-icons/faSpinner'
-import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from 'framer-motion'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../../components/ui/card'
+import { Card, CardContent } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Switch } from '../../components/ui/switch'
 import { Textarea } from '../../components/ui/textarea'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
+import { appPaths } from '../../app/paths'
 import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
-import { appPaths } from '../../app/paths'
 import { listApiGroups, listApis, listPresets } from '../apis/api'
 import type { ApiConfig, ApiGroup, Preset } from '../apis/types'
 import { CharacterDetailsDialog } from '../characters/character-details-dialog'
-import { listCharacters, getCharacterCover, createCoverDataUrl } from '../characters/api'
+import { createCoverDataUrl, getCharacterCover, listCharacters } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
 import { listPlayerProfiles } from '../player-profiles/api'
 import type { PlayerProfile } from '../player-profiles/types'
@@ -44,28 +32,40 @@ import { getStory, listStories } from '../stories/api'
 import type { StoryDetail, StorySummary } from '../stories/types'
 import { getStageCopy } from './copy'
 import {
+  deleteSessionCharacter,
   deleteSessionMessage,
   deleteSession,
+  enterSessionCharacterScene,
   getRuntimeSnapshot,
+  listSessionCharacters,
   getSession,
+  leaveSessionCharacterScene,
   listSessions,
   runSessionTurnStream,
   setSessionPlayerProfile,
   suggestSessionReplies,
+  updateSessionCharacter,
   updateSessionPlayerDescription,
   updateSessionConfig,
   updateSessionMessage,
 } from './api'
+import { SessionCharacterDialog } from './session-character-dialog'
 import { SessionDeleteDialog } from './session-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
 import { StageCharacterVariablesPanel } from './stage-character-variables-panel'
+import { StageConversation, TurnStatusBar } from './stage-conversation'
+import { StagePanelHeader } from './stage-panel-shared'
+import { StageRightPanel } from './stage-right-panel'
+import { StageSessionListPanel } from './stage-session-list-panel'
 import { SessionStartDialog } from './session-start-dialog'
 import { StageSessionSettingsPanel } from './stage-session-settings-panel'
 import { StageSessionVariablesPanel } from './stage-session-variables-panel'
+import type { CoverCache, StageCastMember, StageMessage, TurnWorkerStatus } from './stage-ui-types'
 import type {
   EngineTurnResult,
   ReplySuggestion,
   RuntimeSnapshot,
+  SessionCharacter,
   SessionDetail,
   SessionHistoryEntry,
   SessionMessageResult,
@@ -77,35 +77,16 @@ import type {
 } from './types'
 
 const stageRoot = '/stage'
-const COVER_OBJECT_POSITION = 'center 26%'
 const panelEase = [0.16, 1, 0.3, 1] as const
 
 type PanelMode = 'dialogue' | 'settings' | 'variables'
 type ComposerMode = 'input' | 'suggestions'
 type NoticeTone = 'error' | 'success' | 'warning'
-type StageMessageVariant = 'action' | 'dialogue' | 'narration' | 'player' | 'thought'
 
 type Notice = {
   message: string
   tone: NoticeTone
 }
-
-type TurnWorkerStatus = {
-  label: string
-}
-
-type StageMessage = {
-  id: string
-  messageId?: string
-  speakerId: string
-  speakerName: string
-  text: string
-  turnIndex: number
-  updatedAtMs?: number
-  variant: StageMessageVariant
-}
-
-type CoverCache = Record<string, string | null | undefined>
 
 function buildStagePath(sessionId?: string) {
   return sessionId ? `${stageRoot}/${encodeURIComponent(sessionId)}` : stageRoot
@@ -165,14 +146,6 @@ function buildCharacterMap(characters: CharacterSummary[]) {
   return new Map(characters.map((character) => [character.character_id, character]))
 }
 
-function formatTime(dateFormatter: Intl.DateTimeFormat, value?: number | null) {
-  if (!value) {
-    return null
-  }
-
-  return dateFormatter.format(value)
-}
-
 function determineActiveCastOrder(args: {
   activeCharacterIds: string[]
   beatSpeakerIds: string[]
@@ -214,8 +187,25 @@ function patchSnapshotVariables(snapshot: RuntimeSnapshot, variables: SessionVar
   }
 }
 
-function getCharacterMonogram(name: string) {
-  return Array.from(name.trim())[0] ?? '?'
+function patchSnapshotActiveCharacter(
+  snapshot: RuntimeSnapshot,
+  sessionCharacterId: string,
+  inScene: boolean,
+): RuntimeSnapshot {
+  const currentIds = snapshot.world_state.active_characters
+  const nextIds = inScene
+    ? currentIds.includes(sessionCharacterId)
+      ? currentIds
+      : [...currentIds, sessionCharacterId]
+    : currentIds.filter((characterId) => characterId !== sessionCharacterId)
+
+  return {
+    ...snapshot,
+    world_state: {
+      ...snapshot.world_state,
+      active_characters: nextIds,
+    },
+  }
 }
 
 function createInitialThoughtState() {
@@ -285,422 +275,6 @@ function buildHistoryEntriesFromTurnResult(args: {
   return entries
 }
 
-function CharacterAvatar({
-  coverUrl,
-  name,
-}: {
-  coverUrl?: string | null
-  name: string
-}) {
-  const monogram = getCharacterMonogram(name)
-
-  return (
-    <div className="size-10 overflow-hidden rounded-full border border-[var(--color-border-subtle)] bg-[linear-gradient(135deg,var(--color-accent-gold-soft),var(--color-accent-copper-soft))] shadow-[0_12px_24px_rgba(0,0,0,0.12)]">
-      {coverUrl ? (
-        <img
-          alt={name}
-          className="h-full w-full object-cover"
-          src={coverUrl}
-          style={{ objectPosition: COVER_OBJECT_POSITION }}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <span className="font-display text-sm text-[var(--color-text-primary)]">{monogram}</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SessionListSkeleton() {
-  return (
-    <div className="space-y-3">
-      {Array.from({ length: 5 }).map((_, index) => (
-        <div
-          className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4"
-          key={index}
-        >
-          <div className="h-5 w-28 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-          <div className="mt-3 h-3 w-20 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-          <div className="mt-3 h-3 w-full animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-          <div className="mt-2 h-3 w-4/5 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function ConversationSkeleton() {
-  return (
-    <div className="space-y-5">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div className={cn('flex gap-3', index % 3 === 1 ? 'justify-center' : 'justify-start')} key={index}>
-          {index % 3 === 1 ? null : (
-            <div className="size-10 rounded-full bg-[var(--color-bg-elevated)]" />
-          )}
-          <div
-            className={cn(
-              'animate-pulse rounded-[1.4rem] bg-[var(--color-bg-elevated)]',
-              index % 3 === 1 ? 'h-16 w-[min(72%,28rem)]' : 'h-20 w-[min(78%,32rem)]',
-            )}
-          />
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function RightPanelSection({
-  action,
-  children,
-  description,
-  title,
-}: {
-  action?: ReactNode
-  children: ReactNode
-  description?: string
-  title: string
-}) {
-  return (
-    <section className="space-y-3">
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-[1.15rem] leading-snug">{title}</CardTitle>
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-        {description ? (
-          <CardDescription className="text-sm leading-6">{description}</CardDescription>
-        ) : null}
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function StagePanelHeader({
-  actions,
-  title,
-  titleClassName,
-}: {
-  actions?: ReactNode
-  title: string
-  titleClassName?: string
-}) {
-  return (
-    <CardHeader className="h-[5.25rem] border-b border-[var(--color-border-subtle)] px-6 py-4">
-      <div className="flex min-h-0 flex-1 items-center justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <CardTitle className={cn('truncate leading-none', titleClassName)}>{title}</CardTitle>
-        </div>
-        <div className="flex h-10 shrink-0 items-center justify-end">
-          {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
-        </div>
-      </div>
-    </CardHeader>
-  )
-}
-
-function ThoughtBubble({
-  copy,
-  expanded,
-  message,
-  onToggle,
-}: {
-  copy: ReturnType<typeof getStageCopy>
-  expanded: boolean
-  message: StageMessage
-  onToggle: () => void
-}) {
-  if (!expanded) {
-    return (
-      <div className="inline-flex max-w-fit items-center gap-3 rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_88%,transparent)] px-4 py-2.5 text-left transition hover:border-[var(--color-accent-copper-soft)]">
-        <p className="whitespace-nowrap text-xs uppercase text-[var(--color-text-muted)]">
-          {copy.messages.thinking}
-        </p>
-        <IconButton
-          className="h-5 w-5 min-h-0 shrink-0 rounded-full px-0"
-          icon={<FontAwesomeIcon className="text-[0.58rem]" icon={faChevronDown} />}
-          label={copy.messages.expandThought}
-          onClick={onToggle}
-          size="sm"
-          variant="ghost"
-        />
-      </div>
-    )
-  }
-
-  return (
-    <div className="max-w-[min(72%,30rem)] rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_88%,transparent)] px-5 py-3.5 text-left transition hover:border-[var(--color-accent-copper-soft)]">
-      <div className="flex items-center justify-between gap-3">
-        <p className="whitespace-nowrap text-xs uppercase text-[var(--color-text-muted)]">
-          {copy.messages.thinking}
-        </p>
-        <IconButton
-          className="h-5 w-5 min-h-0 shrink-0 rounded-full px-0"
-          icon={
-            <FontAwesomeIcon
-              className={cn('text-[0.58rem] transition-transform', expanded ? 'rotate-180' : '')}
-              icon={faChevronDown}
-            />
-          }
-          label={copy.messages.expandThought}
-          onClick={onToggle}
-          size="sm"
-          variant="ghost"
-        />
-      </div>
-      {expanded ? (
-        <p className="mt-2 text-sm leading-7 text-[var(--color-text-secondary)]">{message.text}</p>
-      ) : null}
-    </div>
-  )
-}
-
-function TurnStatusBar({
-  status,
-}: {
-  status: TurnWorkerStatus | null
-}) {
-  if (!status) {
-    return null
-  }
-
-  return (
-    <motion.div
-      animate={{ opacity: 1, y: 0 }}
-      className="pointer-events-none absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2"
-      exit={{ opacity: 0, y: -6 }}
-      initial={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.22, ease: panelEase }}
-    >
-      <div className="inline-flex h-8 items-center gap-2 rounded-full border border-[var(--color-accent-gold-line)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] px-3.5 text-[0.82rem] text-[var(--color-text-secondary)] shadow-[0_10px_22px_rgba(0,0,0,0.12)] backdrop-blur-sm">
-        <FontAwesomeIcon className="animate-spin text-[0.68rem] text-[var(--color-accent-copper)]" icon={faSpinner} />
-        <span className="whitespace-nowrap">{status.label}</span>
-      </div>
-    </motion.div>
-  )
-}
-
-function StageConversation({
-  composerLocked,
-  characterCovers,
-  characterMap,
-  copy,
-  deletingPlayerMessageId,
-  expandedThoughtIds,
-  editingPlayerDraft,
-  editingPlayerMessageId,
-  isLoading,
-  messages,
-  onCancelEditPlayerMessage,
-  onChangePlayerMessageDraft,
-  onDeletePlayerMessage,
-  onEditPlayerMessage,
-  onSavePlayerMessage,
-  onToggleThought,
-  prefersReducedMotion,
-  savingPlayerMessageId,
-}: {
-  composerLocked: boolean
-  characterCovers: CoverCache
-  characterMap: Map<string, CharacterSummary>
-  copy: ReturnType<typeof getStageCopy>
-  deletingPlayerMessageId: string | null
-  expandedThoughtIds: Set<string>
-  editingPlayerDraft: string
-  editingPlayerMessageId: string | null
-  isLoading: boolean
-  messages: StageMessage[]
-  onCancelEditPlayerMessage: () => void
-  onChangePlayerMessageDraft: (value: string) => void
-  onDeletePlayerMessage: (message: StageMessage) => void
-  onEditPlayerMessage: (message: StageMessage) => void
-  onSavePlayerMessage: () => void
-  onToggleThought: (messageId: string) => void
-  prefersReducedMotion: boolean | null
-  savingPlayerMessageId: string | null
-}) {
-  if (isLoading) {
-    return <ConversationSkeleton />
-  }
-
-  if (messages.length === 0) {
-    return (
-      <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-5 py-6 text-sm leading-7 text-[var(--color-text-secondary)]">
-        {copy.messages.noMessages}
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      <AnimatePresence initial={false}>
-      {messages.map((message, index) => {
-        const previous = messages[index - 1]
-        const next = messages[index + 1]
-        const isActorMessage =
-          message.variant === 'dialogue' || message.variant === 'action' || message.variant === 'thought'
-        const sameAsPrevious =
-          isActorMessage &&
-          previous &&
-          (previous.variant === 'dialogue' || previous.variant === 'action' || previous.variant === 'thought') &&
-          previous.speakerId === message.speakerId
-        const sameAsNext =
-          isActorMessage &&
-          next &&
-          (next.variant === 'dialogue' || next.variant === 'action' || next.variant === 'thought') &&
-          next.speakerId === message.speakerId
-        const coverUrl = characterCovers[message.speakerId]
-        const character = characterMap.get(message.speakerId)
-
-        if (message.variant === 'narration') {
-          return (
-            <motion.div
-              animate={{ opacity: 1, y: 0 }}
-              className="flex justify-center"
-              exit={{ opacity: 0, y: -8 }}
-              initial={{ opacity: 0, y: 10 }}
-              key={message.id}
-              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }}
-            >
-              <div className="max-w-[min(72%,30rem)] rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_56%,transparent)] px-4 py-3 text-center text-sm leading-7 text-[var(--color-text-secondary)]">
-                {message.text}
-              </div>
-            </motion.div>
-          )
-        }
-
-        if (message.variant === 'player') {
-          const isEditing = Boolean(message.messageId) && editingPlayerMessageId === message.messageId
-          const isDeleting = Boolean(message.messageId) && deletingPlayerMessageId === message.messageId
-          const isSaving = Boolean(message.messageId) && savingPlayerMessageId === message.messageId
-          const canMutate = Boolean(message.messageId)
-
-          return (
-            <motion.div
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              className="flex justify-end"
-              exit={{ opacity: 0, x: 10, y: -6 }}
-              initial={{ opacity: 0, x: 16, y: 10 }}
-              key={message.id}
-              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }}
-            >
-              <div className="max-w-[min(76%,30rem)] space-y-2">
-                {isEditing ? (
-                  <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] px-4 py-3">
-                    <Textarea
-                      className="min-h-[7rem] border-[var(--color-accent-gold-line)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,white)] text-[var(--color-text-primary)]"
-                      id={`stage-player-message-edit-${message.messageId ?? message.id}`}
-                      name={`stage-player-message-edit-${message.messageId ?? message.id}`}
-                      onChange={(event) => {
-                        onChangePlayerMessageDraft(event.target.value)
-                      }}
-                      value={editingPlayerDraft}
-                    />
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        disabled={composerLocked || isSaving}
-                        onClick={onCancelEditPlayerMessage}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {copy.messages.cancelEditPlayer}
-                      </Button>
-                      <Button
-                        disabled={composerLocked || isSaving || !editingPlayerDraft.trim()}
-                        onClick={onSavePlayerMessage}
-                        size="sm"
-                        variant="secondary"
-                      >
-                        {copy.messages.savePlayer}
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="rounded-[1.35rem] border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] px-4 py-3 text-sm leading-7 text-[var(--color-text-primary)]">
-                      {message.text}
-                    </div>
-                    <div className="flex justify-end gap-2">
-                      <IconButton
-                        className="h-8 w-8 rounded-full px-0"
-                        disabled={composerLocked || !canMutate || isDeleting || isSaving}
-                        icon={<FontAwesomeIcon className="text-xs" icon={faPen} />}
-                        label={copy.messages.editPlayer}
-                        onClick={() => {
-                          onEditPlayerMessage(message)
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      />
-                      <IconButton
-                        className="h-8 w-8 rounded-full px-0"
-                        disabled={composerLocked || !canMutate || isDeleting || isSaving}
-                        icon={<FontAwesomeIcon className="text-xs" icon={faTrashCan} />}
-                        label={copy.messages.deletePlayer}
-                        onClick={() => {
-                          onDeletePlayerMessage(message)
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </motion.div>
-          )
-        }
-
-        return (
-          <motion.div
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            className="flex items-end gap-3"
-            exit={{ opacity: 0, x: -10, y: -6 }}
-            initial={{ opacity: 0, x: -14, y: 10 }}
-            key={message.id}
-            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }}
-          >
-            <div className="w-10 shrink-0">
-              {!sameAsPrevious ? (
-                <CharacterAvatar coverUrl={coverUrl} name={character?.name ?? message.speakerName} />
-              ) : null}
-            </div>
-            <div className={cn('flex min-w-0 flex-col gap-2', sameAsNext ? 'pb-1' : '')}>
-              {!sameAsPrevious ? (
-                <p className="text-xs text-[var(--color-text-muted)]">{message.speakerName}</p>
-              ) : null}
-
-              {message.variant === 'thought' ? (
-                <ThoughtBubble
-                  copy={copy}
-                  expanded={expandedThoughtIds.has(message.id)}
-                  message={message}
-                  onToggle={() => {
-                    onToggleThought(message.id)
-                  }}
-                />
-              ) : (
-                <div
-                  className={cn(
-                    'max-w-[min(76%,32rem)] rounded-[1.35rem] border px-4 py-3 text-sm leading-7 shadow-[0_12px_26px_rgba(0,0,0,0.1)]',
-                    message.variant === 'action'
-                      ? 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_90%,transparent)] text-[var(--color-text-secondary)] italic'
-                      : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]',
-                  )}
-                >
-                  {message.text}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )
-      })}
-      </AnimatePresence>
-    </div>
-  )
-}
-
 export function StagePage() {
   const navigate = useNavigate()
   const { i18n } = useTranslation()
@@ -721,6 +295,7 @@ export function StagePage() {
   const [presets, setPresets] = useState<Preset[]>([])
   const [storyDetails, setStoryDetails] = useState<Record<string, StoryDetail>>({})
   const [coverCache, setCoverCache] = useState<CoverCache>({})
+  const [sessionCharacters, setSessionCharacters] = useState<SessionCharacter[]>([])
   const [selectedSession, setSelectedSession] = useState<SessionDetail | null>(null)
   const [liveSnapshot, setLiveSnapshot] = useState<RuntimeSnapshot | null>(null)
   const [streamMessages, setStreamMessages] = useState<StageMessage[]>([])
@@ -739,6 +314,7 @@ export function StagePage() {
   const [isStoryIntroExpanded, setIsStoryIntroExpanded] = useState(false)
   const [isStoryNodeExpanded, setIsStoryNodeExpanded] = useState(false)
   const [detailsCharacterId, setDetailsCharacterId] = useState<string | null>(null)
+  const [detailsSessionCharacterId, setDetailsSessionCharacterId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
   useToastNotice(notice)
   const [isListLoading, setIsListLoading] = useState(true)
@@ -766,6 +342,10 @@ export function StagePage() {
   )
 
   const characterMap = useMemo(() => buildCharacterMap(characters), [characters])
+  const sessionCharacterMap = useMemo(
+    () => new Map(sessionCharacters.map((character) => [character.session_character_id, character])),
+    [sessionCharacters],
+  )
   const storiesById = useMemo(() => new Map(stories.map((story) => [story.story_id, story])), [stories])
   const selectedStoryDetail = useMemo(
     () => (selectedSession ? storyDetails[selectedSession.story_id] ?? null : null),
@@ -775,8 +355,22 @@ export function StagePage() {
     () => (detailsCharacterId ? characterMap.get(detailsCharacterId) ?? null : null),
     [characterMap, detailsCharacterId],
   )
+  const selectedSessionCharacter = useMemo(
+    () =>
+      detailsSessionCharacterId
+        ? sessionCharacterMap.get(detailsSessionCharacterId) ?? null
+        : null,
+    [detailsSessionCharacterId, sessionCharacterMap],
+  )
   const currentSnapshot = liveSnapshot ?? selectedSession?.snapshot ?? null
   const currentNode = useMemo(() => getStoryNode(selectedStoryDetail, currentSnapshot), [currentSnapshot, selectedStoryDetail])
+  const getSpeakerDisplayName = useCallback(
+    (speakerId: string) =>
+      characterMap.get(speakerId)?.name ??
+      sessionCharacterMap.get(speakerId)?.display_name ??
+      speakerId,
+    [characterMap, sessionCharacterMap],
+  )
   const sessionMessages = useMemo(
     () => [...(selectedSession ? buildPersistedMessages(selectedSession.history) : []), ...streamMessages],
     [selectedSession, streamMessages],
@@ -882,12 +476,16 @@ export function StagePage() {
       setIsSessionLoading(true)
 
       try {
-        const session = await getSession(nextSessionId)
+        const [session, listedSessionCharacters] = await Promise.all([
+          getSession(nextSessionId),
+          listSessionCharacters(nextSessionId),
+        ])
         shouldStickToBottomRef.current = true
         setSelectedSession({
           ...session,
           history: normalizeSessionHistory(session.history),
         })
+        setSessionCharacters(listedSessionCharacters)
         setLiveSnapshot(null)
         setStreamMessages([])
         setEditingPlayerMessageId(null)
@@ -915,6 +513,7 @@ export function StagePage() {
         }
       } catch (error) {
         setSelectedSession(null)
+        setSessionCharacters([])
         setNotice({
           message: getErrorMessage(error, copy.notice.sessionLoadFailed),
           tone: 'error',
@@ -947,6 +546,7 @@ export function StagePage() {
     if (!routeSessionId) {
       shouldStickToBottomRef.current = true
       setSelectedSession(null)
+      setSessionCharacters([])
       setLiveSnapshot(null)
       setStreamMessages([])
       setComposerInput('')
@@ -960,6 +560,7 @@ export function StagePage() {
       setIsStoryIntroExpanded(false)
       setIsStoryNodeExpanded(false)
       setDetailsCharacterId(null)
+      setDetailsSessionCharacterId(null)
       setBeatSpeakerIds([])
       setActiveSpeakerId(null)
       setTurnWorkerStatus(null)
@@ -997,6 +598,7 @@ export function StagePage() {
     setIsStoryIntroExpanded(false)
     setIsStoryNodeExpanded(false)
     setDetailsCharacterId(null)
+    setDetailsSessionCharacterId(null)
   }, [routeSessionId])
 
   useEffect(() => {
@@ -1204,6 +806,113 @@ export function StagePage() {
     )
     setLiveSnapshot((current) => (current ? patchSnapshotVariables(current, variables) : current))
   }, [])
+
+  async function handleSaveSessionCharacter(character: SessionCharacter) {
+    if (!selectedSession) {
+      return
+    }
+
+    try {
+      const updatedCharacter = await updateSessionCharacter(selectedSession.session_id, {
+        display_name: character.display_name,
+        personality: character.personality,
+        session_character_id: character.session_character_id,
+        style: character.style,
+        system_prompt: character.system_prompt,
+      })
+
+      setSessionCharacters((current) =>
+        current.map((entry) =>
+          entry.session_character_id === updatedCharacter.session_character_id ? updatedCharacter : entry,
+        ),
+      )
+      setNotice({
+        message: copy.notice.sessionCharacterSaved,
+        tone: 'success',
+      })
+    } catch (error) {
+      setNotice({
+        message: getErrorMessage(error, copy.notice.sessionCharacterUpdateFailed),
+        tone: 'error',
+      })
+    }
+  }
+
+  async function handleSetSessionCharacterScene(sessionCharacterId: string, inScene: boolean) {
+    if (!selectedSession) {
+      return
+    }
+
+    try {
+      const updatedCharacter = inScene
+        ? await enterSessionCharacterScene(selectedSession.session_id, {
+            session_character_id: sessionCharacterId,
+          })
+        : await leaveSessionCharacterScene(selectedSession.session_id, {
+            session_character_id: sessionCharacterId,
+          })
+
+      setSessionCharacters((current) =>
+        current.map((entry) =>
+          entry.session_character_id === updatedCharacter.session_character_id ? updatedCharacter : entry,
+        ),
+      )
+      setSelectedSession((current) =>
+        current
+          ? {
+              ...current,
+              snapshot: patchSnapshotActiveCharacter(current.snapshot, sessionCharacterId, inScene),
+            }
+          : current,
+      )
+      setLiveSnapshot((current) =>
+        current ? patchSnapshotActiveCharacter(current, sessionCharacterId, inScene) : current,
+      )
+    } catch (error) {
+      setNotice({
+        message: getErrorMessage(
+          error,
+          inScene ? copy.notice.sessionCharacterEnterFailed : copy.notice.sessionCharacterLeaveFailed,
+        ),
+        tone: 'error',
+      })
+    }
+  }
+
+  async function handleDeleteSessionCharacter(sessionCharacterId: string) {
+    if (!selectedSession) {
+      return
+    }
+
+    try {
+      await deleteSessionCharacter(selectedSession.session_id, {
+        session_character_id: sessionCharacterId,
+      })
+
+      setSessionCharacters((current) =>
+        current.filter((entry) => entry.session_character_id !== sessionCharacterId),
+      )
+      setSelectedSession((current) =>
+        current
+          ? {
+              ...current,
+              snapshot: patchSnapshotActiveCharacter(current.snapshot, sessionCharacterId, false),
+            }
+          : current,
+      )
+      setLiveSnapshot((current) =>
+        current ? patchSnapshotActiveCharacter(current, sessionCharacterId, false) : current,
+      )
+      if (detailsSessionCharacterId === sessionCharacterId) {
+        setDetailsSessionCharacterId(null)
+      }
+    } catch (error) {
+      setNotice({
+        message: getErrorMessage(error, copy.notice.sessionCharacterDeleteFailed),
+        tone: 'error',
+      })
+    }
+  }
 
   async function handleCreateSession(result: { message: string; session: StartedSession }) {
     setNotice({ message: result.message, tone: 'success' })
@@ -1583,6 +1292,54 @@ export function StagePage() {
             return
           }
 
+          if (body.type === 'session_character_created') {
+            setLiveSnapshot(body.snapshot)
+            setSessionCharacters((current) => {
+              const existingIndex = current.findIndex(
+                (entry) => entry.session_character_id === body.session_character.session_character_id,
+              )
+
+              if (existingIndex === -1) {
+                return [...current, body.session_character]
+              }
+
+              return current.map((entry, index) =>
+                index === existingIndex ? body.session_character : entry,
+              )
+            })
+            return
+          }
+
+          if (body.type === 'session_character_entered_scene') {
+            setLiveSnapshot(body.snapshot)
+            setSessionCharacters((current) =>
+              current.map((entry) =>
+                entry.session_character_id === body.session_character_id
+                  ? {
+                      ...entry,
+                      in_scene: true,
+                    }
+                  : entry,
+              ),
+            )
+            return
+          }
+
+          if (body.type === 'session_character_left_scene') {
+            setLiveSnapshot(body.snapshot)
+            setSessionCharacters((current) =>
+              current.map((entry) =>
+                entry.session_character_id === body.session_character_id
+                  ? {
+                      ...entry,
+                      in_scene: false,
+                    }
+                  : entry,
+              ),
+            )
+            return
+          }
+
           if (body.type === 'narrator_started') {
             setActiveSpeakerId(null)
             setTurnWorkerStatus({ label: copy.statusBar.narrator })
@@ -1620,10 +1377,7 @@ export function StagePage() {
           if (body.type === 'actor_started') {
             setActiveSpeakerId(body.speaker_id)
             setTurnWorkerStatus({
-              label: copy.statusBar.actor.replace(
-                '{name}',
-                characterMap.get(body.speaker_id)?.name ?? body.speaker_id,
-              ),
+              label: copy.statusBar.actor.replace('{name}', getSpeakerDisplayName(body.speaker_id)),
             })
             return
           }
@@ -1634,7 +1388,7 @@ export function StagePage() {
               () => ({
                 id: `stream:actor:${body.beat_index}:dialogue:0`,
                 speakerId: body.speaker_id,
-                speakerName: characterMap.get(body.speaker_id)?.name ?? body.speaker_id,
+                speakerName: getSpeakerDisplayName(body.speaker_id),
                 text: '',
                 turnIndex: selectedSession.snapshot.turn_index + 1,
                 variant: 'dialogue',
@@ -1648,7 +1402,7 @@ export function StagePage() {
             pushStreamMessage({
               id: `stream:actor:${body.beat_index}:action:0`,
               speakerId: body.speaker_id,
-              speakerName: characterMap.get(body.speaker_id)?.name ?? body.speaker_id,
+              speakerName: getSpeakerDisplayName(body.speaker_id),
               text: body.text,
               turnIndex: selectedSession.snapshot.turn_index + 1,
               variant: 'action',
@@ -1662,7 +1416,7 @@ export function StagePage() {
               () => ({
                 id: `stream:actor:${body.beat_index}:thought:0`,
                 speakerId: body.speaker_id,
-                speakerName: characterMap.get(body.speaker_id)?.name ?? body.speaker_id,
+                speakerName: getSpeakerDisplayName(body.speaker_id),
                 text: '',
                 turnIndex: selectedSession.snapshot.turn_index + 1,
                 variant: 'thought',
@@ -1735,13 +1489,24 @@ export function StagePage() {
     }
   }
 
-  const activeCast = orderedActiveCastIds.map((characterId) => {
+  const activeCast: StageCastMember[] = orderedActiveCastIds.map((characterId) => {
     const character = characterMap.get(characterId)
+    const sessionCharacter = sessionCharacterMap.get(characterId)
+
+    if (sessionCharacter) {
+      return {
+        description: summarizeText(sessionCharacter.personality, 72),
+        id: characterId,
+        isSessionCharacter: true,
+        name: sessionCharacter.display_name,
+      }
+    }
 
     return {
       coverUrl: coverCache[characterId],
       description: character ? summarizeText(character.personality, 72) : '',
       id: characterId,
+      isSessionCharacter: false,
       name: character?.name ?? characterId,
     }
   })
@@ -1857,119 +1622,43 @@ export function StagePage() {
         summary={selectedStageCharacter}
       />
 
+      <SessionCharacterDialog
+        character={selectedSessionCharacter}
+        copy={copy}
+        onDelete={(sessionCharacterId) => {
+          void handleDeleteSessionCharacter(sessionCharacterId)
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDetailsSessionCharacterId(null)
+          }
+        }}
+        onSave={(character) => {
+          void handleSaveSessionCharacter(character)
+        }}
+        onToggleScene={(sessionCharacterId, inScene) => {
+          void handleSetSessionCharacterScene(sessionCharacterId, inScene)
+        }}
+        open={detailsSessionCharacterId !== null}
+      />
+
       <div className="grid h-full min-h-0 w-full gap-5 overflow-visible lg:grid-cols-[17rem_minmax(0,1fr)_18rem]">
-        <WorkspacePanelShell className="h-full min-h-0">
-          <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
-            <StagePanelHeader
-              actions={
-                <>
-                  <IconButton
-                    disabled={isRefreshingList}
-                    icon={
-                      <FontAwesomeIcon
-                        className={cn(isRefreshingList ? 'animate-spin' : '')}
-                        icon={faRotateRight}
-                      />
-                    }
-                    label={copy.list.refresh}
-                    onClick={() => void handleRefreshSessions()}
-                    variant="ghost"
-                  />
-                  <IconButton
-                    icon={<FontAwesomeIcon icon={faPlus} />}
-                    label={copy.createSession.title}
-                    onClick={() => {
-                      setIsStartDialogOpen(true)
-                    }}
-                  />
-                </>
-              }
-              title={copy.list.section}
-              titleClassName="text-[1.35rem]"
-            />
-
-            <CardContent className="min-h-0 flex-1 overflow-y-auto pt-5">
-              <div className="space-y-4 pr-1">
-                {isListLoading ? (
-                  <SessionListSkeleton />
-                ) : sessions.length === 0 ? (
-                  <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-5 text-sm leading-7 text-[var(--color-text-secondary)]">
-                    {copy.list.empty}
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {sessions.map((session) => {
-                      const story = storiesById.get(session.story_id)
-                      const isActive = session.session_id === routeSessionId
-                      const timeText =
-                        formatTime(dateFormatter, session.updated_at_ms ?? session.created_at_ms) ??
-                        copy.time.unknown
-
-                      return (
-                        <div
-                          className={cn(
-                            'w-full rounded-[1.4rem] border px-4 py-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--color-bg-canvas)]',
-                            isActive
-                              ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)] shadow-[0_18px_40px_var(--color-accent-glow-soft)]'
-                              : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
-                          )}
-                          key={session.session_id}
-                          onClick={() => {
-                            selectSession(session.session_id)
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault()
-                              selectSession(session.session_id)
-                            }
-                          }}
-                          role="button"
-                          tabIndex={0}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 space-y-2">
-                              <p className="truncate font-display text-[1.05rem] leading-tight">
-                                {session.display_name}
-                              </p>
-                              <p className="text-xs text-[var(--color-text-muted)]">{timeText}</p>
-                              <p className="line-clamp-2 text-sm leading-6">
-                                {story?.introduction
-                                  ? summarizeText(story.introduction, 88)
-                                  : copy.list.untitledStory}
-                              </p>
-                            </div>
-                            <IconButton
-                              className="shrink-0"
-                              icon={<FontAwesomeIcon icon={faPen} />}
-                              label={copy.editSession}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setRenameTarget(session)
-                              }}
-                              size="sm"
-                              variant="secondary"
-                            />
-                            <IconButton
-                              className="shrink-0"
-                              icon={<FontAwesomeIcon icon={faTrashCan} />}
-                              label={copy.deleteSession.title}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setDeleteTarget(session)
-                              }}
-                              size="sm"
-                              variant="danger"
-                            />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </WorkspacePanelShell>
+        <StageSessionListPanel
+          copy={copy}
+          dateFormatter={dateFormatter}
+          isListLoading={isListLoading}
+          isRefreshingList={isRefreshingList}
+          onDeleteSession={setDeleteTarget}
+          onEditSession={setRenameTarget}
+          onRefreshSessions={() => void handleRefreshSessions()}
+          onSelectSession={selectSession}
+          onStartSession={() => {
+            setIsStartDialogOpen(true)
+          }}
+          routeSessionId={routeSessionId}
+          sessions={sessions}
+          storiesById={storiesById}
+        />
 
         <WorkspacePanelShell className="h-full min-h-0">
           <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
@@ -2018,9 +1707,17 @@ export function StagePage() {
                       onSavePlayerDescription={handleUpdatePlayerDescription}
                       onSavePlayerProfile={handleSetPlayerProfile}
                       onSaveSessionConfig={handleSaveSessionConfig}
+                      onSessionCharacterDelete={(sessionCharacterId) => {
+                        void handleDeleteSessionCharacter(sessionCharacterId)
+                      }}
+                      onSessionCharacterOpen={setDetailsSessionCharacterId}
+                      onSessionCharacterToggleScene={(sessionCharacterId, inScene) => {
+                        void handleSetSessionCharacterScene(sessionCharacterId, inScene)
+                      }}
                       playerProfiles={playerProfiles}
                       presets={presets}
                       runtimeSnapshot={currentSnapshot}
+                      sessionCharacters={sessionCharacters}
                     />
                   </div>
                 ) : (
@@ -2223,145 +1920,27 @@ export function StagePage() {
           </Card>
         </WorkspacePanelShell>
 
-        <WorkspacePanelShell className="h-full min-h-0">
-          <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_92%,transparent)] shadow-none">
-            <StagePanelHeader
-              title={copy.stage.title}
-              titleClassName="text-[1.5rem]"
-            />
-
-            <CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
-              <div className="space-y-6 pr-1">
-                <RightPanelSection title={copy.cast.section}>
-                  {activeCast.length === 0 ? (
-                    <div className="rounded-[1.35rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                      {copy.cast.empty}
-                    </div>
-                  ) : (
-                    <LayoutGroup id="stage-cast">
-                      <div className="space-y-3">
-                        <AnimatePresence initial={false}>
-                          {activeCast.map((character) => {
-                            const isActive = character.id === activeSpeakerId
-
-                            return (
-                              <motion.button
-                                animate={{ opacity: 1, y: 0 }}
-                                className={cn(
-                                  'w-full rounded-[1.2rem] border px-3.5 py-3 text-left',
-                                  isActive
-                                    ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] shadow-[0_16px_38px_var(--color-accent-glow-soft)]'
-                                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)]',
-                                )}
-                                exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, y: -12 }}
-                                initial={prefersReducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 18 }}
-                                key={character.id}
-                                layout
-                                onClick={() => {
-                                  setDetailsCharacterId(character.id)
-                                }}
-                                transition={
-                                  prefersReducedMotion
-                                    ? { duration: 0 }
-                                    : { duration: 0.24, ease: panelEase }
-                                }
-                                type="button"
-                              >
-                                <div className="flex items-start gap-2.5">
-                                  <CharacterAvatar coverUrl={character.coverUrl} name={character.name} />
-                                  <div className="min-w-0 flex-1 space-y-0.5">
-                                    <div className="flex items-center gap-2">
-                                      <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-                                        {character.name}
-                                      </p>
-                                      {isActive ? (
-                                        <Badge variant="subtle">{copy.cast.active}</Badge>
-                                      ) : null}
-                                    </div>
-                                    <p className="truncate font-mono text-[0.68rem] text-[var(--color-text-muted)]">
-                                      {character.id}
-                                    </p>
-                                    <p className="line-clamp-2 text-xs leading-5 text-[var(--color-text-secondary)]">
-                                      {character.description}
-                                    </p>
-                                  </div>
-                                </div>
-                              </motion.button>
-                            )
-                          })}
-                        </AnimatePresence>
-                      </div>
-                    </LayoutGroup>
-                  )}
-                </RightPanelSection>
-
-                <RightPanelSection
-                  action={
-                    hasExpandableNodeDetails ? (
-                      <Button
-                        onClick={() => {
-                          setIsStoryNodeExpanded((current) => !current)
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {isStoryNodeExpanded ? copy.storyNode.collapse : copy.storyNode.expand}
-                      </Button>
-                    ) : null
-                  }
-                  title={copy.storyNode.section}
-                >
-                  <div className="space-y-3">
-                    <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-                      <p className="text-xs text-[var(--color-text-muted)]">{copy.storyNode.goal}</p>
-                      <p className="mt-2 text-sm leading-6 text-[var(--color-text-primary)]">
-                        {currentNode?.goal ?? '—'}
-                      </p>
-                    </div>
-
-                    {isStoryNodeExpanded ? (
-                      <>
-                        <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-                          <p className="text-xs text-[var(--color-text-muted)]">{copy.storyNode.nodeId}</p>
-                          <p className="mt-2 font-mono text-sm text-[var(--color-text-primary)]">
-                            {currentSnapshot?.world_state.current_node ?? '—'}
-                          </p>
-                        </div>
-                        <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-                          <p className="text-xs text-[var(--color-text-muted)]">{copy.storyNode.scene}</p>
-                          <p className="mt-2 text-sm leading-6 text-[var(--color-text-primary)]">
-                            {currentNode?.scene ?? '—'}
-                          </p>
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
-                </RightPanelSection>
-
-                <RightPanelSection
-                  action={
-                    storyIntroNeedsExpand ? (
-                      <Button
-                        onClick={() => {
-                          setIsStoryIntroExpanded((current) => !current)
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {isStoryIntroExpanded ? copy.intro.collapse : copy.intro.expand}
-                      </Button>
-                    ) : null
-                  }
-                  title={copy.intro.section}
-                >
-                  <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-6 text-[var(--color-text-secondary)]">
-                    {visibleStoryIntroduction}
-                  </div>
-                </RightPanelSection>
-              </div>
-            </CardContent>
-          </Card>
-        </WorkspacePanelShell>
+        <StageRightPanel
+          activeCast={activeCast}
+          activeSpeakerId={activeSpeakerId}
+          copy={copy}
+          currentNode={currentNode}
+          currentSnapshot={currentSnapshot}
+          hasExpandableNodeDetails={hasExpandableNodeDetails}
+          isStoryIntroExpanded={isStoryIntroExpanded}
+          isStoryNodeExpanded={isStoryNodeExpanded}
+          onOpenCharacter={setDetailsCharacterId}
+          onOpenSessionCharacter={setDetailsSessionCharacterId}
+          onToggleStoryIntro={() => {
+            setIsStoryIntroExpanded((current) => !current)
+          }}
+          onToggleStoryNode={() => {
+            setIsStoryNodeExpanded((current) => !current)
+          }}
+          prefersReducedMotion={prefersReducedMotion}
+          storyIntroNeedsExpand={storyIntroNeedsExpand}
+          visibleStoryIntroduction={visibleStoryIntroduction}
+        />
       </div>
     </section>
   )

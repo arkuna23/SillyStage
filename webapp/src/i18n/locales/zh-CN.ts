@@ -1106,6 +1106,8 @@ const zhCN = {
       descriptionWithResource: '架构师正在根据故事资源 {{id}} 整理故事结构与状态节点，这个过程可能要一点时间。',
       elapsed: '已用时间',
       finalizing: '正在把草稿整理成最终故事。',
+      progressLabel: '当前进度',
+      progressValue: '{{current}} / {{total}}',
       starting: '正在启动故事草稿生成流程。',
       title: '正在生成这段故事草稿',
     },
@@ -1154,17 +1156,14 @@ const zhCN = {
       saveChanges: '保存修改',
       saving: '正在保存...',
       addStateField: '添加状态字段',
-      addTendency: '添加倾向',
       selectAll: '全选',
       selectMode: '选择模式',
     },
     card: {
       coverAlt: '{{name}} 的封面',
       idLabel: '角色 ID',
-      noTendencies: '还没有添加倾向',
       personality: '性格',
       style: '表现风格',
-      tendencies: '倾向',
     },
     create: {
       errors: {
@@ -1198,7 +1197,6 @@ const zhCN = {
         stateType: '值类型',
         style: '表现风格',
         systemPrompt: 'System Prompt',
-        tendencies: '倾向',
       },
       placeholders: {
         characterId: 'hakurei-reimu',
@@ -1213,7 +1211,6 @@ const zhCN = {
         style: '说话干脆，不绕弯子，带一点不耐烦，但总能稳住场面。',
         systemPrompt:
           '始终以博丽神社巫女的身份行动，先判断异变和来意，再用简洁直接的口吻回应。',
-        tendency: '嘴硬、护短、嫌麻烦、关键时刻会认真起来...',
       },
       stateTypes: {
         array: '数组',

@@ -74,7 +74,6 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -128,8 +127,16 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             .content
             .contains("\"type\": \"SetCharacterState\"")
     );
-    assert!(system_message.content.contains("\"key\": \"current_event\""));
-    assert!(system_message.content.contains("\"value\": \"approaching_swamp\""));
+    assert!(
+        system_message
+            .content
+            .contains("\"key\": \"current_event\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("\"value\": \"approaching_swamp\"")
+    );
     assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
     assert!(system_message.content.contains("\"value_type\": \"bool\""));
     assert!(
@@ -175,7 +182,6 @@ async fn architect_can_generate_schema_without_seed() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -229,7 +235,6 @@ async fn architect_prefers_planned_story_when_provided() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -282,7 +287,6 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -353,8 +357,16 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
             .content
             .contains("\"type\": \"SetPlayerState\"")
     );
-    assert!(system_message.content.contains("\"key\": \"current_event\""));
-    assert!(system_message.content.contains("\"value\": \"approaching_swamp\""));
+    assert!(
+        system_message
+            .content
+            .contains("\"key\": \"current_event\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("\"value\": \"approaching_swamp\"")
+    );
     assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
 }
 
@@ -402,7 +414,6 @@ async fn architect_draft_init_prompt_requires_value_type_in_schema_fields() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -470,7 +481,6 @@ async fn architect_attempts_repair_after_invalid_json_output() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -498,7 +508,11 @@ async fn architect_attempts_repair_after_invalid_json_output() {
         .expect("repair user message should exist");
     assert!(repair_user_message.content.contains("RAW_OUTPUT"));
     assert!(repair_user_message.content.contains("not valid json"));
-    assert!(repair_user_message.content.contains("\"value_type\": \"bool\""));
+    assert!(
+        repair_user_message
+            .content
+            .contains("\"value_type\": \"bool\"")
+    );
     assert!(
         repair_user_message
             .content
@@ -552,7 +566,6 @@ async fn architect_draft_continue_repairs_missing_future_transition_targets() {
         name: "Old Merchant".to_owned(),
         personality: "greedy but friendly trader".to_owned(),
         style: "talkative".to_owned(),
-        tendencies: vec!["likes profitable deals".to_owned()],
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
     }];
@@ -608,5 +621,9 @@ async fn architect_draft_continue_repairs_missing_future_transition_targets() {
         .find(|message| matches!(message.role, llm::Role::User))
         .expect("repair user message should exist");
     assert!(repair_user_message.content.contains("node-13"));
-    assert!(repair_user_message.content.contains("allowed targets are existing graph nodes [start] or returned nodes [node-12]"));
+    assert!(
+        repair_user_message.content.contains(
+            "allowed targets are existing graph nodes [start] or returned nodes [node-12]"
+        )
+    );
 }
