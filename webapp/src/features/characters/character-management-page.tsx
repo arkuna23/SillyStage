@@ -30,16 +30,16 @@ import {
 import { SectionHeader } from "../../components/ui/section-header";
 import { useToastNotice } from "../../components/ui/toast-context";
 import { cn } from "../../lib/cn";
+import { revokeObjectUrl } from "../../lib/binary-resource";
 import { isRpcConflict } from "../../lib/rpc";
 import { demoCharacterDefinitions, loadDemoCoverFile } from "../demo-content/konosuba-sample-data";
 import { createSchema, listSchemas } from "../schemas/api";
 import { buildSchemaPresetDefinitions } from "../schemas/schema-presets";
 import {
 	createCharacter,
-	createCoverDataUrl,
 	deleteCharacter,
 	downloadCharacterArchive,
-	getCharacterCover,
+	getCharacterCoverUrl,
 	hasCharacterCardExtension,
 	importCharacterArchive,
 	listCharacters,
@@ -92,6 +92,18 @@ function truncateSummaryText(text: string, maxLength: number) {
 	}
 
 	return `${characters.slice(0, maxLength).join("").trimEnd()}…`;
+}
+
+function demoCharacterNeedsCoverSync(
+	definition: (typeof demoCharacterDefinitions)[number],
+	summary?: CharacterSummary,
+) {
+	return Boolean(
+		summary &&
+		definition.coverUrl &&
+		definition.coverFileName &&
+		!summary.cover_file_name,
+	);
 }
 
 function CharacterArtwork({
@@ -622,6 +634,17 @@ export function CharacterManagementPage() {
 					return;
 				}
 
+				const availableIds = new Set(
+					summaries.map((summary) => summary.character_id),
+				);
+
+				for (const [characterId, coverUrl] of coverCacheRef.current.entries()) {
+					if (!availableIds.has(characterId)) {
+						revokeObjectUrl(coverUrl);
+						coverCacheRef.current.delete(characterId);
+					}
+				}
+
 				setCharacters(summaries);
 
 				const cachedCoverUrls: Record<string, string> = {};
@@ -651,19 +674,20 @@ export function CharacterManagementPage() {
 
 				const coverResults = await Promise.allSettled(
 					summariesNeedingCover.map(async (summary) => {
-						const cover = await getCharacterCover(summary.character_id, signal);
-
 						return {
 							characterId: summary.character_id,
-							coverUrl: createCoverDataUrl({
-								coverBase64: cover.cover_base64,
-								coverMimeType: cover.cover_mime_type,
-							}),
+							coverUrl: await getCharacterCoverUrl(summary.character_id, signal),
 						};
 					}),
 				);
 
 				if (signal?.aborted) {
+					for (const result of coverResults) {
+						if (result.status === "fulfilled") {
+							revokeObjectUrl(result.value.coverUrl);
+						}
+					}
+
 					return;
 				}
 
@@ -716,6 +740,18 @@ export function CharacterManagementPage() {
 	}, [refreshCharacters]);
 
 	useEffect(() => {
+		const coverCache = coverCacheRef.current;
+
+		return () => {
+			for (const coverUrl of coverCache.values()) {
+				revokeObjectUrl(coverUrl);
+			}
+
+			coverCache.clear();
+		};
+	}, []);
+
+	useEffect(() => {
 		const availableIds = new Set(characters.map((character) => character.character_id));
 
 		setSelectedCharacterIds((currentSelection) =>
@@ -763,6 +799,7 @@ export function CharacterManagementPage() {
 		}
 
 		for (const characterId of characterIds) {
+			revokeObjectUrl(coverCacheRef.current.get(characterId));
 			coverCacheRef.current.delete(characterId);
 		}
 
@@ -818,15 +855,20 @@ export function CharacterManagementPage() {
 	}
 
 	async function handleCreateDemoCharacters() {
-		const existingCharacterIds = new Set(
-			characters.map((character) => character.character_id),
+		const existingCharacters = new Map(
+			characters.map((character) => [character.character_id, character]),
 		);
+		const hasPendingSampleChanges = demoCharacterDefinitions.some((definition) => {
+			const existingCharacter = existingCharacters.get(definition.characterId);
 
-		if (
-			demoCharacterDefinitions.every((definition) =>
-				existingCharacterIds.has(definition.characterId),
-			)
-		) {
+			if (!existingCharacter) {
+				return true;
+			}
+
+			return demoCharacterNeedsCoverSync(definition, existingCharacter);
+		});
+
+		if (!hasPendingSampleChanges) {
 			setNotice({
 				message: t("characters.feedback.samplesExist"),
 				tone: "warning",
@@ -838,13 +880,36 @@ export function CharacterManagementPage() {
 
 		const createdNames: string[] = [];
 		const failedNames: string[] = [];
+		const processedNames: string[] = [];
 		const skippedNames: string[] = [];
 
 		try {
 			const schemaId = await ensureActorSchemaId();
 
 			for (const definition of demoCharacterDefinitions) {
-				if (existingCharacterIds.has(definition.characterId)) {
+				const existingCharacter = existingCharacters.get(definition.characterId);
+
+				if (existingCharacter) {
+					if (demoCharacterNeedsCoverSync(definition, existingCharacter)) {
+						try {
+							const coverFile = await loadDemoCoverFile(
+								definition.coverUrl!,
+								definition.coverFileName!,
+							);
+
+							await setCharacterCover({
+								characterId: existingCharacter.character_id,
+								coverFile,
+							});
+
+							processedNames.push(definition.content.name);
+						} catch {
+							failedNames.push(definition.content.name);
+						}
+
+						continue;
+					}
+
 					skippedNames.push(definition.content.name);
 					continue;
 				}
@@ -866,28 +931,29 @@ export function CharacterManagementPage() {
 						});
 					}
 
-					existingCharacterIds.add(definition.characterId);
+					existingCharacters.set(created.character_id, created.character_summary);
 					createdNames.push(definition.content.name);
+					processedNames.push(definition.content.name);
 				} catch {
 					failedNames.push(definition.content.name);
 				}
 			}
 
-			if (createdNames.length > 0) {
+			if (processedNames.length > 0) {
 				await refreshCharacters();
 			}
 
-			if (failedNames.length === 0 && createdNames.length > 0 && skippedNames.length === 0) {
+			if (failedNames.length === 0 && processedNames.length > 0 && skippedNames.length === 0) {
 				setNotice({
 					message: t("characters.feedback.samplesCreated", {
-						names: createdNames.join("、"),
+						names: processedNames.join("、"),
 					}),
 					tone: "success",
 				});
-			} else if (createdNames.length > 0 && (skippedNames.length > 0 || failedNames.length > 0)) {
+			} else if (processedNames.length > 0 && (skippedNames.length > 0 || failedNames.length > 0)) {
 				setNotice({
 					message: t("characters.feedback.samplesCreatedPartial", {
-						created: createdNames.join("、"),
+						created: processedNames.join("、"),
 						skipped: [...skippedNames, ...failedNames].join("、"),
 					}),
 					tone: "warning",
@@ -1144,11 +1210,17 @@ export function CharacterManagementPage() {
 			<InsertSampleDialog
 				cancelLabel={t("characters.actions.cancel")}
 				confirmLabel={t("characters.sampleDialog.confirm")}
-				confirmDisabled={demoCharacterDefinitions.every((definition) =>
-					characters.some(
+				confirmDisabled={!demoCharacterDefinitions.some((definition) => {
+					const existingCharacter = characters.find(
 						(character) => character.character_id === definition.characterId,
-					),
-				)}
+					);
+
+					if (!existingCharacter) {
+						return true;
+					}
+
+					return demoCharacterNeedsCoverSync(definition, existingCharacter);
+				})}
 				description={t("characters.sampleDialog.description")}
 				existingLabel={t("characters.sampleDialog.existing")}
 				items={demoCharacterDefinitions.map((definition) => ({

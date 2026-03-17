@@ -38,29 +38,6 @@ export type CharacterSchemaResult = {
   type: 'character'
 }
 
-export type CharacterCoverResult = {
-  character_id: string
-  cover_base64: string
-  cover_file_name: string
-  cover_mime_type: CharacterCoverMimeType
-  type: 'character_cover'
-}
-
-export type CharacterCoverUpdatedResult = {
-  character_id: string
-  cover_file_name: string
-  cover_mime_type: CharacterCoverMimeType
-  type: 'character_cover_updated'
-}
-
-export type CharacterExportResult = {
-  character_id: string
-  chr_base64: string
-  content_type: string
-  file_name: string
-  type: 'character_chr_export'
-}
-
 export type CharactersListedResult = {
   characters: CharacterSummary[]
   type: 'characters_listed'
@@ -71,21 +48,10 @@ export type CharacterDeletedResult = {
   type: 'character_deleted'
 }
 
-export type CharacterCardUploadedResult = {
-  character_id: string
-  character_summary: CharacterSummary
-  type: 'character_card_uploaded'
-}
-
-export type UploadChunkAcceptedResult = {
-  received_bytes: number
-  received_chunk_index: number
-  type: 'upload_chunk_accepted'
-  upload_id: string
-}
-
-export type UploadInitializedResult = {
-  chunk_size_hint: number
-  type: 'upload_initialized'
-  upload_id: string
+export type ResourceFilePayload = {
+  content_type: string
+  file_id: string
+  file_name: string | null
+  resource_id: string
+  size_bytes: number
 }

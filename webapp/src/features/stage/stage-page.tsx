@@ -12,11 +12,12 @@ import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { appPaths } from '../../app/paths'
+import { revokeObjectUrl } from '../../lib/binary-resource'
 import { isRpcConflict } from '../../lib/rpc'
 import { listApiGroups, listApis, listPresets } from '../apis/api'
 import type { ApiConfig, ApiGroup, Preset } from '../apis/types'
 import { CharacterDetailsDialog } from '../characters/character-details-dialog'
-import { createCoverDataUrl, getCharacterCover, listCharacters } from '../characters/api'
+import { getCharacterCoverUrl, listCharacters } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
 import { listPlayerProfiles } from '../player-profiles/api'
 import type { PlayerProfile } from '../player-profiles/types'
@@ -289,6 +290,7 @@ export function StagePage() {
   const conversationScrollRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
+  const coverCacheRef = useRef<CoverCache>({})
   const [sessions, setSessions] = useState<SessionSummary[]>([])
   const [stories, setStories] = useState<StorySummary[]>([])
   const [characters, setCharacters] = useState<CharacterSummary[]>([])
@@ -344,6 +346,39 @@ export function StagePage() {
       }),
     [i18n.language],
   )
+
+  useEffect(() => {
+    coverCacheRef.current = coverCache
+  }, [coverCache])
+
+  useEffect(() => {
+    return () => {
+      for (const coverUrl of Object.values(coverCacheRef.current)) {
+        revokeObjectUrl(coverUrl)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
+    const availableCharacterIds = new Set(characters.map((character) => character.character_id))
+
+    setCoverCache((current) => {
+      let changed = false
+      const next = { ...current }
+
+      for (const [characterId, coverUrl] of Object.entries(current)) {
+        if (availableCharacterIds.has(characterId)) {
+          continue
+        }
+
+        revokeObjectUrl(coverUrl)
+        delete next[characterId]
+        changed = true
+      }
+
+      return changed ? next : current
+    })
+  }, [characters])
 
   const characterMap = useMemo(() => buildCharacterMap(characters), [characters])
   const sessionCharacterMap = useMemo(
@@ -674,14 +709,9 @@ export function StagePage() {
     void Promise.all(
       charactersNeedingCover.map(async (characterId) => {
         try {
-          const cover = await getCharacterCover(characterId)
-
           return {
             characterId,
-            coverUrl: createCoverDataUrl({
-              coverBase64: cover.cover_base64,
-              coverMimeType: cover.cover_mime_type,
-            }),
+            coverUrl: await getCharacterCoverUrl(characterId),
           }
         } catch {
           return { characterId, coverUrl: null }
@@ -689,6 +719,12 @@ export function StagePage() {
       }),
     ).then((entries) => {
       if (cancelled) {
+        for (const entry of entries) {
+          if (entry.coverUrl) {
+            revokeObjectUrl(entry.coverUrl)
+          }
+        }
+
         return
       }
 

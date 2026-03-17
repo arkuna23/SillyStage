@@ -16,6 +16,12 @@ export const appPaths = {
 } as const
 
 export const backendPaths = {
+  download(resourceId: string, fileId: string) {
+    return `/download/${encodeURIComponent(resourceId)}/${encodeURIComponent(fileId)}`
+  },
   healthz: '/healthz',
   rpc: '/rpc',
+  upload(resourceId: string, fileId: string) {
+    return `/upload/${encodeURIComponent(resourceId)}/${encodeURIComponent(fileId)}`
+  },
 } as const

@@ -26,8 +26,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      '/download': devBackendOrigin,
       '/healthz': devBackendOrigin,
       '/rpc': devBackendOrigin,
+      '/upload': devBackendOrigin,
     },
   },
   plugins: [react(), tailwindcss()],
