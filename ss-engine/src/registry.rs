@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use agents::SystemPromptEntry;
 use llm::{LlmApi, LlmError, OpenAiClient, OpenAiConfig};
-use store::{AgentPresetConfig, ApiRecord, LlmProvider, PresetRecord};
+use store::{AgentPresetConfig, AgentPromptEntryConfig, ApiRecord, LlmProvider, PresetRecord};
 
 use crate::engine::{AgentModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs};
 
@@ -122,7 +123,8 @@ impl LlmApiRegistry {
         if let Ok(registered) = self.resolve(&api.api_id) {
             return Ok(AgentModelConfig::new(registered.client, registered.model)
                 .with_temperature(preset.temperature)
-                .with_max_tokens(preset.max_tokens));
+                .with_max_tokens(preset.max_tokens)
+                .with_system_prompt_entries(system_prompt_entries(preset)));
         }
 
         let client: Arc<dyn LlmApi> = match api.provider {
@@ -138,7 +140,25 @@ impl LlmApiRegistry {
 
         Ok(AgentModelConfig::new(client, &api.model)
             .with_temperature(preset.temperature)
-            .with_max_tokens(preset.max_tokens))
+            .with_max_tokens(preset.max_tokens)
+            .with_system_prompt_entries(system_prompt_entries(preset)))
+    }
+}
+
+fn system_prompt_entries(preset: &AgentPresetConfig) -> Vec<SystemPromptEntry> {
+    preset
+        .prompt_entries
+        .iter()
+        .filter(|entry| entry.enabled && !entry.content.trim().is_empty())
+        .map(system_prompt_entry)
+        .collect()
+}
+
+fn system_prompt_entry(entry: &AgentPromptEntryConfig) -> SystemPromptEntry {
+    SystemPromptEntry {
+        entry_id: entry.entry_id.clone(),
+        title: entry.title.clone(),
+        content: entry.content.clone(),
     }
 }
 

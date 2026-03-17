@@ -110,6 +110,35 @@ fn sample_player_transition_story_graph() -> StoryGraph {
     )
 }
 
+fn sample_eq_transition_story_graph() -> StoryGraph {
+    StoryGraph::new(
+        "crossroads",
+        vec![
+            NarrativeNode::new(
+                "crossroads",
+                "Crossroads",
+                "Two flooded lanes split around a toppled shrine.",
+                "Commit to one route.",
+                vec!["merchant".to_owned()],
+                vec![Transition::new(
+                    "canal_gate",
+                    Condition::new("route", ConditionOperator::Eq, json!("canal_path")),
+                )],
+                vec![],
+            ),
+            NarrativeNode::new(
+                "canal_gate",
+                "Canal Gate",
+                "The courier reaches the canal gate.",
+                "Continue through the gate.",
+                vec!["merchant".to_owned()],
+                vec![],
+                vec![],
+            ),
+        ],
+    )
+}
+
 fn sample_player_state_schema() -> PlayerStateSchema {
     let mut schema = PlayerStateSchema::new();
     schema.insert_field(
@@ -173,6 +202,23 @@ fn user_message_content(request: &llm::ChatRequest) -> String {
         .map(|message| message.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn keeper_update_for_phase(
+    events: &[EngineEvent],
+    phase: agents::keeper::KeeperPhase,
+) -> state::StateUpdate {
+    events
+        .iter()
+        .find_map(|event| match event {
+            EngineEvent::KeeperApplied {
+                phase: event_phase,
+                update,
+                ..
+            } if *event_phase == phase => Some(update.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("missing keeper update for phase {phase:?}"))
 }
 
 #[tokio::test]
@@ -344,6 +390,9 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
     let requests = llm.recorded_requests();
     let final_keeper_request = requests.last().expect("final keeper request");
     let final_keeper_user = user_message_content(final_keeper_request);
+    assert!(final_keeper_user.contains("NODE_CHANGE"));
+    assert!(final_keeper_user.contains("PROGRESSION_HINTS"));
+    assert!(final_keeper_user.contains("matched_transition_hints"));
     assert!(final_keeper_user.contains("COMPLETED_BEATS"));
     assert!(final_keeper_user.contains("Follow me."));
     assert!(!final_keeper_user.contains("I can still profit from this."));
@@ -475,6 +524,117 @@ async fn run_turn_transitions_using_player_state_conditions() {
         .expect("run_turn should succeed");
 
     assert_eq!(poor_result.director.current_node_id, "checkpoint");
+}
+
+#[tokio::test]
+async fn second_keeper_fallback_restates_simple_eq_transition_fact() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response(
+                "{\"ops\":[{\"type\":\"SetState\",\"key\":\"route\",\"value\":\"canal_path\"}]}",
+                Some(json!({
+                    "ops": [
+                        {
+                            "type": "SetState",
+                            "key": "route",
+                            "value": "canal_path"
+                        }
+                    ]
+                })),
+            )),
+            Ok(assistant_response(
+                "{\"beats\":[]}",
+                Some(json!({ "beats": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+        ],
+        Vec::new(),
+    ));
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(llm, "test-model"),
+        sample_runtime_state_with_story_graph(sample_eq_transition_story_graph()),
+    )
+    .expect("engine");
+
+    let mut stream = engine
+        .run_turn_stream("Take the canal path.")
+        .await
+        .expect("stream should start");
+    let mut events = Vec::new();
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    let after_turn_update =
+        keeper_update_for_phase(&events, agents::keeper::KeeperPhase::AfterTurnOutputs);
+    assert_eq!(after_turn_update.ops.len(), 1);
+    assert!(matches!(
+        &after_turn_update.ops[0],
+        state::StateOp::SetState { key, value }
+            if key == "route" && value == &json!("canal_path")
+    ));
+
+    let EngineEvent::TurnCompleted { result } = events.last().expect("completed event").clone()
+    else {
+        panic!("expected completed event");
+    };
+    assert_eq!(result.director.current_node_id, "canal_gate");
+}
+
+#[tokio::test]
+async fn second_keeper_fallback_skips_non_eq_transition_fact() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![
+            Ok(assistant_response(
+                "{\"ops\":[{\"type\":\"SetPlayerState\",\"key\":\"coins\",\"value\":12}]}",
+                Some(json!({
+                    "ops": [
+                        {
+                            "type": "SetPlayerState",
+                            "key": "coins",
+                            "value": 12
+                        }
+                    ]
+                })),
+            )),
+            Ok(assistant_response(
+                "{\"beats\":[]}",
+                Some(json!({ "beats": [] })),
+            )),
+            Ok(assistant_response(
+                "{\"ops\":[]}",
+                Some(json!({ "ops": [] })),
+            )),
+        ],
+        Vec::new(),
+    ));
+    let mut engine = Engine::new(
+        RuntimeAgentConfigs::shared(llm, "test-model"),
+        sample_runtime_state_with_story_graph(sample_player_transition_story_graph()),
+    )
+    .expect("engine");
+
+    let mut stream = engine
+        .run_turn_stream("Show the permit.")
+        .await
+        .expect("stream should start");
+    let mut events = Vec::new();
+    while let Some(event) = stream.next().await {
+        events.push(event);
+    }
+
+    let after_turn_update =
+        keeper_update_for_phase(&events, agents::keeper::KeeperPhase::AfterTurnOutputs);
+    assert!(after_turn_update.ops.is_empty());
+
+    let EngineEvent::TurnCompleted { result } = events.last().expect("completed event").clone()
+    else {
+        panic!("expected completed event");
+    };
+    assert_eq!(result.director.current_node_id, "vip_gate");
 }
 
 #[tokio::test]

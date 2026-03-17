@@ -4,8 +4,9 @@ use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    compact_json, render_character_summaries, render_director_world_state, render_node,
-    render_player, render_sections, render_state_schema_fields,
+    SystemPromptEntry, append_system_prompt_entries, compact_json, render_character_summaries,
+    render_director_world_state, render_node, render_player, render_sections,
+    render_state_schema_fields,
 };
 use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
@@ -134,6 +135,11 @@ impl Director {
             temperature: None,
             max_tokens: None,
         })
+    }
+
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+        self
     }
 
     pub async fn decide(

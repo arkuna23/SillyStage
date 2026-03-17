@@ -12,13 +12,14 @@ use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCard
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
 use crate::prompt::{
-    compact_json, normalize_inline_text, render_character_summaries, render_keeper_node,
-    render_observable_world_state, render_player, render_sections, render_state_schema_fields,
+    SystemPromptEntry, append_system_prompt_entries, compact_json, normalize_inline_text,
+    render_character_summaries, render_keeper_node, render_observable_world_state, render_player,
+    render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
-use story::NarrativeNode;
+use story::{Condition, ConditionScope, NarrativeNode};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum KeeperPhase {
     AfterPlayerInput,
@@ -151,6 +152,11 @@ impl Keeper {
         })
     }
 
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+        self
+    }
+
     pub async fn keep(&self, request: KeeperRequest<'_>) -> Result<KeeperResponse, KeeperError> {
         Self::validate_request(&request)?;
 
@@ -269,12 +275,20 @@ impl Keeper {
                 .unwrap_or_else(|| "null".to_owned()),
         ));
         stable_sections.push((
+            "NODE_CHANGE",
+            render_keeper_node_change(request.previous_node, request.current_node),
+        ));
+        stable_sections.push((
             "PREVIOUS_CAST",
             self.previous_cast_summaries(request)?
                 .map(|summaries| render_character_summaries(&summaries, request.player_name))
                 .unwrap_or_else(|| "null".to_owned()),
         ));
         stable_sections.push(("CURRENT_NODE", render_keeper_node(request.current_node)));
+        stable_sections.push((
+            "PROGRESSION_HINTS",
+            render_keeper_progression_hints(request.current_node),
+        ));
         stable_sections.push((
             "CURRENT_CAST",
             render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
@@ -330,6 +344,133 @@ impl Keeper {
                 )
             })
             .transpose()
+    }
+}
+
+fn render_keeper_node_change(
+    previous_node: Option<&NarrativeNode>,
+    current_node: &NarrativeNode,
+) -> String {
+    let Some(previous_node) = previous_node else {
+        return "null".to_owned();
+    };
+
+    let transitioned = previous_node.id != current_node.id;
+    let matched_transition_lines = previous_node
+        .transitions
+        .iter()
+        .filter(|transition| transition.to == current_node.id)
+        .map(render_keeper_progression_hint_line)
+        .collect::<Vec<_>>();
+
+    render_sections(&[
+        ("transitioned", compact_bool(transitioned)),
+        ("from", previous_node.id.clone()),
+        ("to", current_node.id.clone()),
+        (
+            "matched_transition_hints",
+            if matched_transition_lines.is_empty() {
+                "- none".to_owned()
+            } else {
+                matched_transition_lines
+                    .into_iter()
+                    .map(|line| format!("- {line}"))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            },
+        ),
+    ])
+}
+
+fn render_keeper_progression_hints(node: &NarrativeNode) -> String {
+    if node.transitions.is_empty() {
+        return "- none".to_owned();
+    }
+
+    node.transitions
+        .iter()
+        .map(render_keeper_progression_hint_line)
+        .map(|line| format!("- {line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn render_keeper_progression_hint_line(transition: &story::Transition) -> String {
+    match &transition.condition {
+        Some(condition) => {
+            let (scope, key, character) = keeper_condition_tracking_hint(condition);
+            match character {
+                Some(character) => format!(
+                    "target_node={} | condition={} | likely_state_scope={} | tracked_key={} | tracked_character={}",
+                    transition.to,
+                    render_condition_for_keeper(condition),
+                    scope,
+                    key,
+                    character
+                ),
+                None => format!(
+                    "target_node={} | condition={} | likely_state_scope={} | tracked_key={}",
+                    transition.to,
+                    render_condition_for_keeper(condition),
+                    scope,
+                    key
+                ),
+            }
+        }
+        None => format!(
+            "target_node={} | condition=always | likely_state_scope=none | tracked_key=none",
+            transition.to
+        ),
+    }
+}
+
+fn keeper_condition_tracking_hint(condition: &Condition) -> (&str, &str, Option<&str>) {
+    match condition.scope {
+        ConditionScope::Global => ("global", condition.key.as_str(), None),
+        ConditionScope::Player => ("player", condition.key.as_str(), None),
+        ConditionScope::Character => (
+            "character",
+            condition.key.as_str(),
+            condition.character.as_deref(),
+        ),
+    }
+}
+
+fn render_condition_for_keeper(condition: &Condition) -> String {
+    let left = match condition.scope {
+        ConditionScope::Global => format!("global.{}", condition.key),
+        ConditionScope::Player => format!("player.{}", condition.key),
+        ConditionScope::Character => format!(
+            "character[{}].{}",
+            condition.character.as_deref().unwrap_or("?"),
+            condition.key
+        ),
+    };
+
+    format!(
+        "{left} {} {}",
+        keeper_operator_symbol(&condition.op),
+        condition.value
+    )
+}
+
+fn keeper_operator_symbol(operator: &story::ConditionOperator) -> &'static str {
+    match operator {
+        story::ConditionOperator::Eq => "==",
+        story::ConditionOperator::Ne => "!=",
+        story::ConditionOperator::Gt => ">",
+        story::ConditionOperator::Gte => ">=",
+        story::ConditionOperator::Lt => "<",
+        story::ConditionOperator::Lte => "<=",
+        story::ConditionOperator::Contains => "contains",
+    }
+}
+
+fn compact_bool(value: bool) -> String {
+    if value {
+        "true".to_owned()
+    } else {
+        "false".to_owned()
     }
 }
 

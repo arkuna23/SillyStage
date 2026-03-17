@@ -6,6 +6,7 @@ pub mod narrator;
 pub mod planner;
 mod prompt;
 pub mod replyer;
+pub use prompt::SystemPromptEntry;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

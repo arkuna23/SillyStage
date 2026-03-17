@@ -14,9 +14,9 @@ use tracing::error;
 
 use crate::director::ActorPurpose;
 use crate::prompt::{
-    CharacterTemplateContext, compact_json, render_actor_history, render_actor_world_state,
-    render_character_summaries, render_character_text, render_node, render_player, render_sections,
-    render_state_schema_fields,
+    CharacterTemplateContext, SystemPromptEntry, append_system_prompt_entries, compact_json,
+    render_actor_history, render_actor_world_state, render_character_summaries,
+    render_character_text, render_node, render_player, render_sections, render_state_schema_fields,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
@@ -215,6 +215,11 @@ impl Actor {
         })
     }
 
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+        self
+    }
+
     pub async fn perform(
         &self,
         request: ActorRequest<'_>,
@@ -250,8 +255,7 @@ impl Actor {
                     self.build_user_prompts(&request, world_state)?;
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.system_prompt)
-                    .system_message(character_prompt)
+                    .system_message(join_system_prompts(&self.system_prompt, &character_prompt))
                     .user_message(stable_user_prompt)
                     .user_message(dynamic_user_prompt);
                 if let Some(temperature) = self.temperature {
@@ -465,6 +469,15 @@ impl Actor {
                     })
             })
             .collect()
+    }
+}
+
+fn join_system_prompts(base: &str, extra: &str) -> String {
+    match (base.trim(), extra.trim()) {
+        ("", "") => String::new(),
+        ("", extra) => extra.to_owned(),
+        (base, "") => base.to_owned(),
+        (base, extra) => format!("{base}\n\n{extra}"),
     }
 }
 

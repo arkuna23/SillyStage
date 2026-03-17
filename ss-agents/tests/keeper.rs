@@ -11,7 +11,7 @@ use state::{
     ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateOp,
     StateValueType, WorldState,
 };
-use story::NarrativeNode;
+use story::{Condition, ConditionOperator, NarrativeNode, Transition};
 
 use common::{MockLlm, assistant_response};
 
@@ -106,7 +106,10 @@ fn previous_node() -> NarrativeNode {
         "A lantern-lit market lane.",
         "Reach the dock.",
         vec!["merchant".to_owned()],
-        vec![],
+        vec![Transition::new(
+            "dock",
+            Condition::new("route_marker", ConditionOperator::Eq, json!("dock_arrival")),
+        )],
         vec![StateOp::SetState {
             key: "entered_market".to_owned(),
             value: json!(true),
@@ -121,7 +124,21 @@ fn current_node() -> NarrativeNode {
         "A flooded dock at dusk.",
         "Decide whether to trust the guide.",
         vec!["merchant".to_owned(), "guide".to_owned()],
-        vec![],
+        vec![
+            Transition::new(
+                "canal_gate",
+                Condition::new("route_committed", ConditionOperator::Eq, json!(true)),
+            ),
+            Transition::new(
+                "safe_route",
+                Condition::for_character(
+                    "guide",
+                    "knows_safe_route",
+                    ConditionOperator::Eq,
+                    json!(true),
+                ),
+            ),
+        ],
         vec![StateOp::SetState {
             key: "entered_dock".to_owned(),
             value: json!(true),
@@ -284,6 +301,8 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("PLAYER_INPUT"));
     assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("PLAYER:"));
+    assert!(user_message.contains("NODE_CHANGE"));
+    assert!(user_message.contains("PROGRESSION_HINTS"));
     assert!(user_message.contains("COMPLETED_BEATS"));
     assert!(user_message.contains("shared_history"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
@@ -293,6 +312,11 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("player_state"));
     assert!(user_message.contains("coins=12"));
     assert!(user_message.contains("coins:"));
+    assert!(user_message.contains("target_node=canal_gate"));
+    assert!(user_message.contains("global.route_committed == true"));
+    assert!(user_message.contains("tracked_key=route_committed"));
+    assert!(user_message.contains("tracked_character=guide"));
+    assert!(user_message.contains("global.route_marker == \"dock_arrival\""));
     assert!(!user_message.contains("StateUpdate schema"));
     assert!(
         system_message
@@ -308,6 +332,16 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
         system_message
             .content
             .contains("\"type\": \"RemoveCharacterState\"")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("Scene progression can be relevant context.")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("If NODE_CHANGE says `transitioned=true`, consider")
     );
     assert!(user_message.contains("We'll reach the canal gate before the tide turns."));
     assert!(user_message.contains("I agree to follow the guide toward the canal gate."));

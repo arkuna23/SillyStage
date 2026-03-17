@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
 use crate::prompt::{
-    compact_json, render_character_summaries, render_observable_world_state, render_optional_node,
-    render_player, render_sections, render_state_schema_fields,
+    SystemPromptEntry, append_system_prompt_entries, compact_json, render_character_summaries,
+    render_observable_world_state, render_optional_node, render_player, render_sections,
+    render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -90,6 +91,11 @@ impl Narrator {
             temperature: None,
             max_tokens: None,
         })
+    }
+
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+        self
     }
 
     pub async fn narrate(
@@ -278,7 +284,7 @@ impl Narrator {
 
         let mut dynamic_sections = vec![(
             "WORLD_STATE",
-            render_observable_world_state(&filtered_narrator_world_state(request.world_state)?),
+            render_observable_world_state(request.world_state),
         )];
         if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
             dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
@@ -364,12 +370,4 @@ fn cast_summaries<'a>(
                 })
         })
         .collect()
-}
-
-fn filtered_narrator_world_state(world_state: &WorldState) -> Result<WorldState, NarratorError> {
-    let mut clone = world_state.clone();
-    clone
-        .actor_shared_history
-        .retain(|entry| entry.speaker_id != "narrator");
-    Ok(clone)
 }

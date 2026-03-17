@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use crate::actor::CharacterCard;
 use crate::prompt::{
-    CharacterTemplateContext, compact_json, render_character_text, render_sections,
+    CharacterTemplateContext, SystemPromptEntry, append_system_prompt_entries, compact_json,
+    render_character_text, render_sections,
 };
 use llm::{ChatRequest, LlmApi};
 use serde::de::DeserializeOwned;
@@ -167,6 +168,9 @@ struct RecentSectionDetailNode {
 pub struct Architect {
     client: Arc<dyn LlmApi>,
     model: String,
+    graph_system_prompt: String,
+    draft_init_system_prompt: String,
+    draft_continue_system_prompt: String,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -185,9 +189,22 @@ impl Architect {
         Self {
             client,
             model: model.into(),
+            graph_system_prompt: include_str!("./prompts/architect.txt").to_owned(),
+            draft_init_system_prompt: include_str!("./prompts/architect_draft_init.txt").to_owned(),
+            draft_continue_system_prompt: include_str!("./prompts/architect_draft_continue.txt")
+                .to_owned(),
             temperature,
             max_tokens,
         }
+    }
+
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.graph_system_prompt = append_system_prompt_entries(&self.graph_system_prompt, entries);
+        self.draft_init_system_prompt =
+            append_system_prompt_entries(&self.draft_init_system_prompt, entries);
+        self.draft_continue_system_prompt =
+            append_system_prompt_entries(&self.draft_continue_system_prompt, entries);
+        self
     }
 
     pub async fn generate_graph(
@@ -197,7 +214,7 @@ impl Architect {
         let user_messages = self.build_user_messages(&req)?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                include_str!("./prompts/architect.txt"),
+                &self.graph_system_prompt,
                 user_messages,
                 ArchitectRepairTarget::FullGraph,
                 Self::parse_json_output::<ArchitectOutputBundle>,
@@ -243,7 +260,7 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                include_str!("./prompts/architect_draft_init.txt"),
+                &self.draft_init_system_prompt,
                 user_messages,
                 ArchitectRepairTarget::DraftInit,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
@@ -304,7 +321,7 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                include_str!("./prompts/architect_draft_continue.txt"),
+                &self.draft_continue_system_prompt,
                 user_messages,
                 ArchitectRepairTarget::DraftContinue,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,

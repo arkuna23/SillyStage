@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::json;
+use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{
     Architect, ArchitectDraftContinueRequest, ArchitectDraftInitRequest, ArchitectRequest,
@@ -61,7 +62,13 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             "introduction": "The courier arrives at a flooded market gate where a merchant is waiting."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model").with_system_prompt_entries(&[
+        SystemPromptEntry {
+            entry_id: "architect-tone".to_owned(),
+            title: "Architect Tone".to_owned(),
+            content: "Favor compact node descriptions.".to_owned(),
+        },
+    ]);
 
     let mut schema = WorldStateSchema::new();
     schema.insert_field(
@@ -115,6 +122,17 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     assert!(user_message.contains("coins:"));
     assert!(!user_message.contains("Stay in character."));
     assert!(system_message.content.contains("\"type\": \"SetState\""));
+    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
+    assert!(
+        system_message
+            .content
+            .contains("[architect-tone] Architect Tone")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("Favor compact node descriptions.")
+    );
     assert!(
         system_message
             .content

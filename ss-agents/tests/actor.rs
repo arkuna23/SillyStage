@@ -319,61 +319,66 @@ async fn perform_stream_sends_character_specific_system_prompt() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    assert_eq!(request.messages.len(), 4);
+    assert_eq!(request.messages.len(), 3);
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("Old Merchant keeps a careful eye on Courier.")
     );
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("Measured when speaking to Courier.")
     );
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("Address Courier directly as Old Merchant.")
     );
-    assert!(!request.messages[2].content.contains("PLAYER_NAME"));
-    assert!(request.messages[2].content.contains("CURRENT_NODE"));
-    assert!(!request.messages[2].content.contains("on_enter_updates"));
-    assert!(!request.messages[2].content.contains("entered_intro"));
     assert!(
-        request.messages[2]
+        request.messages[0]
+            .content
+            .contains("You are the Actor agent of a multi-agent narrative system.")
+    );
+    assert!(!request.messages[1].content.contains("PLAYER_NAME"));
+    assert!(request.messages[1].content.contains("CURRENT_NODE"));
+    assert!(!request.messages[1].content.contains("on_enter_updates"));
+    assert!(!request.messages[1].content.contains("entered_intro"));
+    assert!(
+        request.messages[1]
             .content
             .contains("A cautious courier carrying a sealed satchel")
     );
-    assert!(request.messages[3].content.contains("SHARED_SCENE_HISTORY"));
+    assert!(request.messages[2].content.contains("SHARED_SCENE_HISTORY"));
     assert!(
-        request.messages[3]
+        request.messages[2]
             .content
             .contains("Stay close to the lantern light.")
     );
     assert!(
-        request.messages[3]
+        request.messages[2]
             .content
             .contains("Can you get us through the flooded gate?")
     );
-    assert!(!request.messages[3].content.contains("\"player_state\""));
-    assert!(!request.messages[3].content.contains("\"coins\": 12"));
+    assert!(!request.messages[2].content.contains("\"player_state\""));
+    assert!(!request.messages[2].content.contains("\"coins\": 12"));
     assert!(
-        request.messages[3]
+        request.messages[2]
             .content
             .contains("PRIVATE_CHARACTER_MEMORY")
     );
     assert!(
-        request.messages[3]
+        request.messages[2]
             .content
             .contains("If I play this right, the route stays mine.")
     );
     assert!(
-        !request.messages[3]
+        !request.messages[2]
             .content
             .contains("\"actor_shared_history\"")
     );
     assert!(
-        !request.messages[3]
+        !request.messages[2]
             .content
             .contains("\"actor_private_memory\"")
     );
@@ -415,7 +420,7 @@ async fn perform_stream_uses_user_fallback_for_character_templates() {
     let request = requests.first().expect("request should be recorded");
 
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("Speak to User as Old Merchant.")
     );
@@ -474,18 +479,18 @@ async fn perform_stream_renders_character_schema_templates_from_runtime_state() 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
 
-    assert!(request.messages[1].content.contains("trust=3"));
+    assert!(request.messages[0].content.contains("trust=3"));
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("inventory=[\"lantern\",\"rope\"]")
     );
     assert!(
-        request.messages[1]
+        request.messages[0]
             .content
             .contains("profile={\"mood\":\"alert\"}")
     );
-    assert!(request.messages[1].content.contains("missing={{missing}}"));
+    assert!(request.messages[0].content.contains("missing={{missing}}"));
 }
 
 #[tokio::test]

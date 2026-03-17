@@ -10,6 +10,13 @@ use crate::actor::CharacterCardSummaryRef;
 
 const DEFAULT_USER_NAME: &str = "User";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemPromptEntry {
+    pub entry_id: String,
+    pub title: String,
+    pub content: String,
+}
+
 pub(crate) struct CharacterTemplateContext<'a> {
     pub(crate) character_name: &'a str,
     pub(crate) player_name: Option<&'a str>,
@@ -29,6 +36,22 @@ pub(crate) fn render_sections(sections: &[(&str, String)]) -> String {
         .join("\n\n")
 }
 
+pub(crate) fn append_system_prompt_entries(
+    base_prompt: &str,
+    entries: &[SystemPromptEntry],
+) -> String {
+    let rendered_entries = render_system_prompt_entries(entries);
+    if rendered_entries.is_empty() {
+        return base_prompt.to_owned();
+    }
+
+    format!(
+        "{}\n\nPRESET_PROMPT_ENTRIES:\n{}",
+        base_prompt.trim_end(),
+        rendered_entries
+    )
+}
+
 pub(crate) fn render_list_lines(lines: &[String]) -> String {
     if lines.is_empty() {
         return "- none".to_owned();
@@ -39,6 +62,32 @@ pub(crate) fn render_list_lines(lines: &[String]) -> String {
         .map(|line| format!("- {line}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn render_system_prompt_entries(entries: &[SystemPromptEntry]) -> String {
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let content = entry.content.trim();
+            if content.is_empty() {
+                return None;
+            }
+
+            let title = if entry.title.trim().is_empty() {
+                entry.entry_id.as_str()
+            } else {
+                entry.title.trim()
+            };
+
+            Some(format!(
+                "[{}] {}\n{}",
+                entry.entry_id.trim(),
+                title,
+                content
+            ))
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 pub(crate) fn render_character_text(text: &str, context: &CharacterTemplateContext<'_>) -> String {

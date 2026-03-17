@@ -6,6 +6,7 @@ use std::sync::Arc;
 use futures_util::StreamExt;
 use llm::ChatChunk;
 use serde_json::json;
+use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::NarratorPurpose;
 use ss_agents::narrator::{Narrator, NarratorRequest, NarratorStreamEvent};
@@ -162,7 +163,13 @@ async fn narrate_stream_emits_text_deltas_and_done() {
             usage: None,
         }),
     ]));
-    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
+    let narrator = Narrator::new(llm.clone(), "test-model")
+        .expect("narrator should build")
+        .with_system_prompt_entries(&[SystemPromptEntry {
+            entry_id: "narrator-tone".to_owned(),
+            title: "Narrator Tone".to_owned(),
+            content: "Keep narration tactile and concrete.".to_owned(),
+        }]);
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -205,7 +212,13 @@ async fn narrate_stream_emits_text_deltas_and_done() {
 #[tokio::test]
 async fn describe_transition_requires_previous_node() {
     let llm = Arc::new(MockLlm::with_stream_chunks(vec![]));
-    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
+    let narrator = Narrator::new(llm.clone(), "test-model")
+        .expect("narrator should build")
+        .with_system_prompt_entries(&[SystemPromptEntry {
+            entry_id: "narrator-tone".to_owned(),
+            title: "Narrator Tone".to_owned(),
+            content: "Keep narration tactile and concrete.".to_owned(),
+        }]);
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -246,7 +259,13 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
             usage: None,
         }),
     ]));
-    let narrator = Narrator::new(llm.clone(), "test-model").expect("narrator should build");
+    let narrator = Narrator::new(llm.clone(), "test-model")
+        .expect("narrator should build")
+        .with_system_prompt_entries(&[SystemPromptEntry {
+            entry_id: "narrator-tone".to_owned(),
+            title: "Narrator Tone".to_owned(),
+            content: "Keep narration tactile and concrete.".to_owned(),
+        }]);
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -295,8 +314,24 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
+    let system_message = request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::System))
+        .expect("system message should exist");
     let user_message = joined_user_messages(request);
 
+    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
+    assert!(
+        system_message
+            .content
+            .contains("[narrator-tone] Narrator Tone")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("Keep narration tactile and concrete.")
+    );
     assert!(user_message.contains("CURRENT_NODE"));
     assert!(user_message.contains("PREVIOUS_NODE"));
     assert!(user_message.contains("shared_history"));
@@ -315,7 +350,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("coins:"));
     assert!(user_message.contains("Can you open the gate before the tide turns?"));
     assert!(user_message.contains("The gate is still jammed."));
-    assert!(!user_message.contains("The dock rocked in the dark."));
+    assert!(user_message.contains("The dock rocked in the dark."));
     assert!(!user_message.contains("actor_private_memory"));
     assert!(!user_message.contains("I should not reveal the shortcut yet."));
 }

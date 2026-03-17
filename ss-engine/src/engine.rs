@@ -2,6 +2,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use agents::SystemPromptEntry;
 use agents::actor::{
     Actor, ActorError, ActorRequest, ActorResponse, ActorStreamEvent, CharacterCard,
 };
@@ -20,8 +21,10 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use llm::LlmApi;
 use serde::{Deserialize, Serialize};
-use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
+use serde_json::Value;
+use state::{ActorMemoryEntry, ActorMemoryKind, StateOp, StateUpdate, WorldState};
 use store::SessionCharacterRecord;
+use story::{Condition, ConditionOperator, ConditionScope};
 use tracing::{debug, info};
 
 use crate::RuntimeSnapshot;
@@ -46,6 +49,7 @@ pub struct AgentModelConfig {
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    pub system_prompt_entries: Vec<SystemPromptEntry>,
 }
 
 impl AgentModelConfig {
@@ -55,6 +59,7 @@ impl AgentModelConfig {
             model: model.into(),
             temperature: None,
             max_tokens: None,
+            system_prompt_entries: Vec::new(),
         }
     }
 
@@ -65,6 +70,14 @@ impl AgentModelConfig {
 
     pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
         self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn with_system_prompt_entries(
+        mut self,
+        system_prompt_entries: Vec<SystemPromptEntry>,
+    ) -> Self {
+        self.system_prompt_entries = system_prompt_entries;
         self
     }
 }
@@ -127,25 +140,29 @@ impl Engine {
                 agent_configs.director.model,
                 agent_configs.director.temperature,
                 agent_configs.director.max_tokens,
-            )?,
+            )?
+            .with_system_prompt_entries(&agent_configs.director.system_prompt_entries),
             actor: Actor::new_with_options(
                 agent_configs.actor.client,
                 agent_configs.actor.model,
                 agent_configs.actor.temperature,
                 agent_configs.actor.max_tokens,
-            )?,
+            )?
+            .with_system_prompt_entries(&agent_configs.actor.system_prompt_entries),
             narrator: Narrator::new_with_options(
                 agent_configs.narrator.client,
                 agent_configs.narrator.model,
                 agent_configs.narrator.temperature,
                 agent_configs.narrator.max_tokens,
-            )?,
+            )?
+            .with_system_prompt_entries(&agent_configs.narrator.system_prompt_entries),
             keeper: Keeper::new_with_options(
                 agent_configs.keeper.client,
                 agent_configs.keeper.model,
                 agent_configs.keeper.temperature,
                 agent_configs.keeper.max_tokens,
-            )?,
+            )?
+            .with_system_prompt_entries(&agent_configs.keeper.system_prompt_entries),
         })
     }
 
@@ -575,7 +592,7 @@ impl Engine {
                 }
             }
 
-            let second_keeper = match self
+            let mut second_keeper = match self
                 .run_second_keeper(&player_input, &director_result, &completed_beats)
                 .await
             {
@@ -585,6 +602,8 @@ impl Engine {
                     return;
                 }
             };
+
+            self.apply_second_keeper_progression_fallback(&director_result, &mut second_keeper);
 
             info!(
                 story_id = %self.runtime_state.story_id(),
@@ -630,6 +649,16 @@ impl Engine {
     async fn run_first_keeper(&self, player_input: &str) -> Result<KeeperResponse, EngineError> {
         let current_node = self.runtime_state.current_node()?;
         let lorebook_sections = self.runtime_lorebook_sections(&current_node.id, player_input);
+
+        debug!(
+            story_id = %self.runtime_state.story_id(),
+            turn_index = self.runtime_state.turn_index().saturating_add(1),
+            phase = ?KeeperPhase::AfterPlayerInput,
+            previous_node_id = ?Option::<&str>::None,
+            current_node_id = %current_node.id,
+            candidate_transition_keys = %json_for_log(&candidate_transition_keys(current_node)),
+            "running keeper"
+        );
 
         self.keeper
             .keep(KeeperRequest {
@@ -679,6 +708,17 @@ impl Engine {
             .map(ExecutedBeat::to_keeper_beat)
             .collect();
 
+        debug!(
+            story_id = %self.runtime_state.story_id(),
+            turn_index = self.runtime_state.turn_index(),
+            phase = ?KeeperPhase::AfterTurnOutputs,
+            previous_node_id = %previous_node.id,
+            current_node_id = %current_node.id,
+            candidate_transition_keys = %json_for_log(&candidate_transition_keys(current_node)),
+            matched_transition_keys = %json_for_log(&matched_transition_keys(previous_node, current_node.id.as_str())),
+            "running keeper"
+        );
+
         self.keeper
             .keep(KeeperRequest {
                 phase: KeeperPhase::AfterTurnOutputs,
@@ -697,6 +737,78 @@ impl Engine {
             })
             .await
             .map_err(EngineError::from)
+    }
+
+    fn apply_second_keeper_progression_fallback(
+        &self,
+        director_result: &DirectorResult,
+        response: &mut KeeperResponse,
+    ) {
+        if !director_result.transitioned {
+            return;
+        }
+
+        let Some(previous_node) = self
+            .runtime_state
+            .runtime_graph()
+            .get_node_index(&director_result.previous_node_id)
+            .and_then(|index| self.runtime_state.runtime_graph().graph.node_weight(index))
+        else {
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                previous_node_id = %director_result.previous_node_id,
+                current_node_id = %director_result.current_node_id,
+                "skipping keeper progression fallback because previous node is missing"
+            );
+            return;
+        };
+
+        let Some(transition) = previous_node
+            .transitions
+            .iter()
+            .find(|transition| transition.to == director_result.current_node_id)
+        else {
+            return;
+        };
+
+        let Some(condition) = transition.condition.as_ref() else {
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                previous_node_id = %director_result.previous_node_id,
+                current_node_id = %director_result.current_node_id,
+                "skipping keeper progression fallback because matched transition is unconditional"
+            );
+            return;
+        };
+
+        if condition_key_touched(&response.update, condition) {
+            return;
+        }
+
+        let Some(op) = state_op_from_simple_transition_condition(condition) else {
+            debug!(
+                story_id = %self.runtime_state.story_id(),
+                turn_index = self.runtime_state.turn_index(),
+                previous_node_id = %director_result.previous_node_id,
+                current_node_id = %director_result.current_node_id,
+                transition_condition = %describe_condition(condition),
+                "skipping keeper progression fallback because transition condition is not a simple equality"
+            );
+            return;
+        };
+
+        info!(
+            story_id = %self.runtime_state.story_id(),
+            turn_index = self.runtime_state.turn_index(),
+            previous_node_id = %director_result.previous_node_id,
+            current_node_id = %director_result.current_node_id,
+            transition_condition = %describe_condition(condition),
+            fallback_op = %json_for_log(&op),
+            "applied keeper progression fallback"
+        );
+        response.update.add_op(op);
     }
 
     fn build_narrator_request(
@@ -955,7 +1067,8 @@ pub async fn generate_story_plan(
         agent_configs.planner.model.clone(),
         agent_configs.planner.temperature,
         agent_configs.planner.max_tokens,
-    )?;
+    )?
+    .with_system_prompt_entries(&agent_configs.planner.system_prompt_entries);
     let lorebook_sections = build_lorebook_prompt_sections(
         resources.lorebook_entries(),
         &[
@@ -1005,7 +1118,8 @@ pub async fn generate_story_graph(
                 .max_tokens
                 .unwrap_or(DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS),
         ),
-    );
+    )
+    .with_system_prompt_entries(&agent_configs.architect.system_prompt_entries);
     let lorebook_sections = build_lorebook_prompt_sections(
         resources.lorebook_entries(),
         &[
@@ -1048,4 +1162,105 @@ fn record_player_input(world_state: &mut WorldState, player_input: &str) -> Acto
     };
     world_state.push_actor_shared_history(entry.clone(), DEFAULT_SHARED_MEMORY_LIMIT);
     entry
+}
+
+fn candidate_transition_keys(node: &story::NarrativeNode) -> Vec<String> {
+    node.transitions
+        .iter()
+        .filter_map(|transition| transition.condition.as_ref())
+        .map(condition_key_label)
+        .collect()
+}
+
+fn matched_transition_keys(
+    previous_node: &story::NarrativeNode,
+    current_node_id: &str,
+) -> Vec<String> {
+    previous_node
+        .transitions
+        .iter()
+        .filter(|transition| transition.to == current_node_id)
+        .filter_map(|transition| transition.condition.as_ref())
+        .map(condition_key_label)
+        .collect()
+}
+
+fn condition_key_label(condition: &Condition) -> String {
+    match condition.scope {
+        ConditionScope::Global => format!("global:{}", condition.key),
+        ConditionScope::Player => format!("player:{}", condition.key),
+        ConditionScope::Character => format!(
+            "character:{}:{}",
+            condition.character.as_deref().unwrap_or("?"),
+            condition.key
+        ),
+    }
+}
+
+fn condition_key_touched(update: &StateUpdate, condition: &Condition) -> bool {
+    update.ops.iter().any(|op| match (op, &condition.scope) {
+        (StateOp::SetState { key, .. }, ConditionScope::Global)
+        | (StateOp::RemoveState { key }, ConditionScope::Global) => key == &condition.key,
+        (StateOp::SetPlayerState { key, .. }, ConditionScope::Player)
+        | (StateOp::RemovePlayerState { key }, ConditionScope::Player) => key == &condition.key,
+        (StateOp::SetCharacterState { character, key, .. }, ConditionScope::Character)
+        | (StateOp::RemoveCharacterState { character, key }, ConditionScope::Character) => {
+            key == &condition.key
+                && condition
+                    .character
+                    .as_deref()
+                    .is_some_and(|expected| expected == character)
+        }
+        _ => false,
+    })
+}
+
+fn state_op_from_simple_transition_condition(condition: &Condition) -> Option<StateOp> {
+    if condition.op != ConditionOperator::Eq {
+        return None;
+    }
+
+    Some(match condition.scope {
+        ConditionScope::Global => StateOp::SetState {
+            key: condition.key.clone(),
+            value: condition.value.clone(),
+        },
+        ConditionScope::Player => StateOp::SetPlayerState {
+            key: condition.key.clone(),
+            value: condition.value.clone(),
+        },
+        ConditionScope::Character => StateOp::SetCharacterState {
+            character: condition.character.clone()?,
+            key: condition.key.clone(),
+            value: condition.value.clone(),
+        },
+    })
+}
+
+fn describe_condition(condition: &Condition) -> String {
+    let left = match condition.scope {
+        ConditionScope::Global => format!("global.{}", condition.key),
+        ConditionScope::Player => format!("player.{}", condition.key),
+        ConditionScope::Character => format!(
+            "character[{}].{}",
+            condition.character.as_deref().unwrap_or("?"),
+            condition.key
+        ),
+    };
+
+    let op = match condition.op {
+        ConditionOperator::Eq => "==",
+        ConditionOperator::Ne => "!=",
+        ConditionOperator::Gt => ">",
+        ConditionOperator::Gte => ">=",
+        ConditionOperator::Lt => "<",
+        ConditionOperator::Lte => "<=",
+        ConditionOperator::Contains => "contains",
+    };
+
+    format!("{left} {op} {}", compact_value(&condition.value))
+}
+
+fn compact_value(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned())
 }

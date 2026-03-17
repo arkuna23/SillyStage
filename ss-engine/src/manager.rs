@@ -599,7 +599,8 @@ impl EngineManager {
             replyer_config.model.clone(),
             replyer_config.temperature,
             replyer_config.max_tokens,
-        )?;
+        )?
+        .with_system_prompt_entries(&replyer_config.system_prompt_entries);
         let lorebook_sections =
             Self::reply_lorebook_sections(&runtime_state, current_node, &history);
         let response = replyer
@@ -1411,6 +1412,7 @@ impl EngineManager {
                     .unwrap_or(DEFAULT_ARCHITECT_INIT_MAX_TOKENS),
             ),
         )
+        .with_system_prompt_entries(&generation_configs.architect.system_prompt_entries)
     }
 
     fn build_architect_for_continue(
@@ -1433,6 +1435,7 @@ impl EngineManager {
                     .unwrap_or(DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS),
             ),
         )
+        .with_system_prompt_entries(&generation_configs.architect.system_prompt_entries)
     }
 
     async fn create_generated_schema(

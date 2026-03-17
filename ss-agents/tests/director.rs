@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::json;
+use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::{ActorPurpose, Director, NarratorPurpose, ResponseBeat};
 use state::{
@@ -52,7 +53,13 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
             ]
         })),
     )));
-    let director = Director::new(llm.clone(), "test-model").expect("director should build");
+    let director = Director::new(llm.clone(), "test-model")
+        .expect("director should build")
+        .with_system_prompt_entries(&[SystemPromptEntry {
+            entry_id: "director-mode".to_owned(),
+            title: "Director Mode".to_owned(),
+            content: "Prefer compact beat plans.".to_owned(),
+        }]);
     let mut player_state_schema = PlayerStateSchema::new();
     player_state_schema.insert_field(
         "coins",
@@ -143,6 +150,17 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
         system_message
             .content
             .contains("You may interleave Narrator and Actor beats in any order")
+    );
+    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
+    assert!(
+        system_message
+            .content
+            .contains("[director-mode] Director Mode")
+    );
+    assert!(
+        system_message
+            .content
+            .contains("Prefer compact beat plans.")
     );
     assert!(user_message.contains("CURRENT_CAST"));
     assert!(user_message.contains("merchant | Old Merchant"));

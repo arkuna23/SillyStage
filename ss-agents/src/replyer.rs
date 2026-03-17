@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    render_character_summaries, render_node, render_observable_world_state, render_player,
-    render_sections, render_state_schema_fields,
+    SystemPromptEntry, append_system_prompt_entries, render_character_summaries, render_node,
+    render_observable_world_state, render_player, render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -105,6 +105,11 @@ impl Replyer {
             temperature: None,
             max_tokens: None,
         })
+    }
+
+    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
+        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+        self
     }
 
     pub async fn suggest(
