@@ -25,6 +25,8 @@ Current built-in resource files:
 
 - `character:{character_id}/cover`
 - `character:{character_id}/archive`
+- `package_import:{import_id}/archive`
+- `package_export:{export_id}/archive`
 
 ## JSON-RPC Request Body
 
@@ -77,6 +79,7 @@ SSE event rules:
 - If `x-file-name` is omitted or blank:
   - `character:{character_id}/cover` falls back to `cover.<ext>` based on the request `Content-Type`
   - `character:{character_id}/archive` reports `{character_id}.chr`
+  - `package_import:{import_id}/archive` reports `sillystage-data-package-{import_id}.zip`
 - Missing or blank `Content-Type` defaults to `application/octet-stream` before validation.
 - `character:{character_id}/cover` requires a supported image `Content-Type`:
   - `image/png`
@@ -84,6 +87,8 @@ SSE event rules:
   - `image/webp`
 - `character:{character_id}/archive` accepts raw `.chr` bytes. Clients should usually send
   `Content-Type: application/x-sillystage-character-card`.
+- `package_import:{import_id}/archive` accepts raw ZIP bytes. Clients should usually send
+  `Content-Type: application/x-sillystage-data-package+zip`.
 
 ## Binary Route Semantics
 
@@ -106,6 +111,9 @@ Current built-in upload semantics:
 - `POST /upload/character:{character_id}/archive`
   - imports one `.chr` archive into the fixed character id slot
   - the archive `content.id` must match `{character_id}`
+- `POST /upload/package_import:{import_id}/archive`
+  - stores one data-package ZIP in a temporary import slot
+  - upload alone does not change persistent resources; `data_package.import_commit` applies it
 
 ### `GET /download/{resource_id}/{file_id}`
 
@@ -120,6 +128,8 @@ Current built-in download semantics:
   - returns the current cover image bytes
 - `GET /download/character:{character_id}/archive`
   - exports the current character as `.chr`
+- `GET /download/package_export:{export_id}/archive`
+  - returns the prepared data-package ZIP created by `data_package.export_prepare`
 
 ## Errors
 

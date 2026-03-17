@@ -113,6 +113,8 @@ JSON-RPC envelopes.
 - Current built-in resource files:
   - `character:{character_id}/cover`
   - `character:{character_id}/archive`
+  - `package_import:{import_id}/archive`
+  - `package_export:{export_id}/archive`
 
 ## 2. Resource Model
 
@@ -162,7 +164,7 @@ Fields:
 
 ### 2.3 `preset`
 
-`preset` is the persistent per-agent generation-parameter bundle.
+`preset` is the persistent per-agent generation-parameter bundle and prompt-entry bundle.
 
 Fields:
 
@@ -175,6 +177,19 @@ Each agent entry currently supports:
 - `temperature`
 - `max_tokens`
 - optional `extra`
+- `prompt_entries`
+
+Each prompt entry contains:
+
+- `entry_id`
+- `title`
+- `content`
+- `enabled`
+
+`preset.create` / `preset.get` / `preset.update` use the full prompt-entry shape.
+
+`preset.list` returns a summary form: per-agent prompt entries include metadata only and omit
+`content`.
 
 The runtime binding model now uses `api_group_id + preset_id`.
 
@@ -264,6 +279,32 @@ Notes:
 - Current built-in resource files:
   - `character:{character_id}/cover`
   - `character:{character_id}/archive`
+  - `package_import:{import_id}/archive`
+  - `package_export:{export_id}/archive`
+
+#### data package transfer
+
+`data_package.*` uses temporary `resource_file` identities for ZIP transfer.
+
+- `data_package.export_prepare`
+  - selects one or more persistent resources
+  - optionally auto-includes dependencies
+  - returns `export_id`, `archive`, and `contents`
+  - the ZIP bytes are downloaded through `GET /download/package_export:{export_id}/archive`
+- `data_package.import_prepare`
+  - allocates one temporary upload slot
+  - returns `import_id` and `archive`
+  - ZIP bytes are uploaded through `POST /upload/package_import:{import_id}/archive`
+- `data_package.import_commit`
+  - validates the uploaded ZIP
+  - applies all resources atomically
+  - returns imported `contents`
+
+Current conflict policy:
+
+- imported ids must not already exist
+- import does not overwrite or remap ids
+- import is all-or-nothing
 
 ### 2.8 `character`
 

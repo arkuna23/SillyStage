@@ -8,6 +8,15 @@ pub enum LlmProvider {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentPromptEntryConfig {
+    pub entry_id: String,
+    pub title: String,
+    pub content: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApiGroupAgentBindings {
     pub planner_api_id: String,
     pub architect_api_id: String,
@@ -26,6 +35,8 @@ pub struct AgentPresetConfig {
     pub max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra: Option<Value>,
+    #[serde(default)]
+    pub prompt_entries: Vec<AgentPromptEntryConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -43,4 +54,8 @@ pub struct PresetAgentConfigs {
 pub struct SessionBindingConfig {
     pub api_group_id: String,
     pub preset_id: String,
+}
+
+fn default_enabled() -> bool {
+    true
 }

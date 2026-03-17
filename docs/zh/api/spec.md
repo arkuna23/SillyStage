@@ -113,6 +113,8 @@ JSON-RPC envelope。
 - 当前内置资源文件：
   - `character:{character_id}/cover`
   - `character:{character_id}/archive`
+  - `package_import:{import_id}/archive`
+  - `package_export:{export_id}/archive`
 
 ## 2. 资源模型
 
@@ -162,7 +164,7 @@ JSON-RPC envelope。
 
 ### 2.3 `preset`
 
-`preset` 是可持久化的每-agent 生成参数集合。
+`preset` 是可持久化的每-agent 生成参数集合，同时也保存 agent 级提示词条目。
 
 字段：
 
@@ -175,6 +177,18 @@ JSON-RPC envelope。
 - `temperature`
 - `max_tokens`
 - 可选 `extra`
+- `prompt_entries`
+
+每个提示词条目包含：
+
+- `entry_id`
+- `title`
+- `content`
+- `enabled`
+
+`preset.create` / `preset.get` / `preset.update` 使用完整条目结构。
+
+`preset.list` 返回摘要形态：每个 agent 的 prompt entries 只带元信息，不带 `content`。
 
 运行时绑定模型现在是 `api_group_id + preset_id`。
 
@@ -263,6 +277,32 @@ JSON-RPC envelope。
 - 当前内置资源文件：
   - `character:{character_id}/cover`
   - `character:{character_id}/archive`
+  - `package_import:{import_id}/archive`
+  - `package_export:{export_id}/archive`
+
+#### data package 传输
+
+`data_package.*` 通过临时 `resource_file` 标识完成 ZIP 传输。
+
+- `data_package.export_prepare`
+  - 选择一个或多个持久化资源
+  - 可选自动带上依赖
+  - 返回 `export_id`、`archive`、`contents`
+  - ZIP 字节通过 `GET /download/package_export:{export_id}/archive` 下载
+- `data_package.import_prepare`
+  - 分配一个临时上传槽位
+  - 返回 `import_id` 和 `archive`
+  - ZIP 字节通过 `POST /upload/package_import:{import_id}/archive` 上传
+- `data_package.import_commit`
+  - 校验已上传的 ZIP
+  - 原子应用包内全部资源
+  - 返回导入后的 `contents`
+
+当前冲突策略：
+
+- 包内 id 不能与现有资源重复
+- 导入不会覆盖已有资源，也不会重映射 id
+- 导入是全有或全无
 
 ### 2.8 `character`
 

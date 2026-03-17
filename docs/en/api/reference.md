@@ -13,6 +13,8 @@ Current built-in resource files:
 
 - `character:{character_id}/cover`
 - `character:{character_id}/archive`
+- `package_import:{import_id}/archive`
+- `package_export:{export_id}/archive`
 
 ## 2. api
 
@@ -72,12 +74,31 @@ Notes:
 | `preset.update` | No | `preset` | Update a preset |
 | `preset.delete` | No | `preset_deleted` | Delete a preset |
 
-A `preset` stores per-agent generation parameters.
+A `preset` stores per-agent generation parameters and agent-level prompt entries.
 
 The currently implemented fields are:
 
 - `temperature`
 - `max_tokens`
+- optional `extra`
+- `prompt_entries`
+
+Each `prompt_entries` item contains:
+
+- `entry_id`
+- `title`
+- `content`
+- `enabled`
+
+Behavior notes:
+
+- `preset.create`, `preset.get`, and `preset.update` use the full prompt-entry shape
+- `preset.update` replaces each submitted agent `prompt_entries` list as a whole; clients should
+  send the final ordered array after any add/remove/reorder/toggle operation
+- `preset.list` returns preset summaries; per-agent prompt entries are metadata-only in that
+  response and do not include `content`
+- enabled prompt entries are appended to the end of the built-in agent system prompt inside a
+  dedicated `PRESET_PROMPT_ENTRIES` section
 
 Notes:
 
@@ -428,3 +449,46 @@ Notes:
 
 - `dashboard.global_config.api_group_id` and `dashboard.global_config.preset_id` may both be `null` when the backend is still unconfigured
 - In that state, browse/configuration APIs still work, but agent-running APIs return an “LLM config is not initialized” error
+
+## 18. data_package
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `data_package.export_prepare` | No | `data_package_export_prepared` | Build a temporary ZIP export slot and return a downloadable archive ref |
+| `data_package.import_prepare` | No | `data_package_import_prepared` | Allocate a temporary ZIP import slot and return an upload archive ref |
+| `data_package.import_commit` | No | `data_package_import_committed` | Validate and atomically import the uploaded ZIP archive |
+
+Supported package resource types:
+
+- `preset`
+- `schema`
+- `lorebook`
+- `player_profile`
+- `character` with optional cover bytes
+- `story_resources`
+- `story`
+
+`data_package.export_prepare` input:
+
+- optional `preset_ids`
+- optional `schema_ids`
+- optional `lorebook_ids`
+- optional `player_profile_ids`
+- optional `character_ids`
+- optional `story_resource_ids`
+- optional `story_ids`
+- optional `include_dependencies`, defaults to `true`
+
+Export behavior notes:
+
+- at least one selected id is required
+- when `include_dependencies = true`, stories automatically pull in their referenced `story_resources`, story/player/world schemas, character schemas, characters, and lorebooks
+- exported characters include cover bytes when a cover exists
+- download the prepared ZIP through `GET /download/package_export:{export_id}/archive`
+
+Import behavior notes:
+
+- call `data_package.import_prepare` first, then upload bytes through `POST /upload/package_import:{import_id}/archive`, then call `data_package.import_commit`
+- import is all-or-nothing
+- the current conflict policy is strict: any imported id that already exists returns `conflict`
+- import does not overwrite or remap ids

@@ -284,6 +284,7 @@ pub fn sample_preset_record(preset_id: &str, token_base: u32) -> PresetRecord {
         temperature: Some(0.1 + (offset as f32 * 0.05)),
         max_tokens: Some(token_base + offset * 64),
         extra: None,
+        prompt_entries: Vec::new(),
     };
 
     PresetRecord {

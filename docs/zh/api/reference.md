@@ -13,6 +13,8 @@
 
 - `character:{character_id}/cover`
 - `character:{character_id}/archive`
+- `package_import:{import_id}/archive`
+- `package_export:{export_id}/archive`
 
 ## 2. api
 
@@ -72,10 +74,26 @@
 | `preset.update` | 否 | `preset` | 更新预设 |
 | `preset.delete` | 否 | `preset_deleted` | 删除预设 |
 
-`preset` 当前支持的每 agent 常用生成参数：
+`preset` 当前支持每 agent 的常用生成参数，以及 agent 级提示词条目：
 
 - `temperature`
 - `max_tokens`
+- 可选 `extra`
+- `prompt_entries`
+
+每个 `prompt_entries` 条目包含：
+
+- `entry_id`
+- `title`
+- `content`
+- `enabled`
+
+行为说明：
+
+- `preset.create`、`preset.get`、`preset.update` 使用完整条目结构
+- `preset.update` 对每个 agent 的 `prompt_entries` 采用整列表替换；前端应提交最终排序后的完整数组
+- `preset.list` 返回的是摘要；其中 prompt entries 只返回元信息，不返回 `content`
+- 启用中的 prompt entries 会追加到内置 agent system prompt 末尾，并放在专门的 `PRESET_PROMPT_ENTRIES` 区块中
 
 说明：
 
@@ -426,3 +444,46 @@
 
 - `dashboard.global_config.api_group_id` 和 `dashboard.global_config.preset_id` 在未初始化时同样可能为 `null`
 - 在这种状态下，浏览类接口仍可用，但需要 agent 的接口会返回“LLM 配置尚未初始化”错误
+
+## 18. data_package
+
+| 方法 | session_id | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `data_package.export_prepare` | 否 | `data_package_export_prepared` | 构建临时 ZIP 导出槽位，并返回可下载的归档引用 |
+| `data_package.import_prepare` | 否 | `data_package_import_prepared` | 分配临时 ZIP 导入槽位，并返回可上传的归档引用 |
+| `data_package.import_commit` | 否 | `data_package_import_committed` | 校验并原子导入已上传的 ZIP 归档 |
+
+支持打包的资源类型：
+
+- `preset`
+- `schema`
+- `lorebook`
+- `player_profile`
+- 带可选封面字节的 `character`
+- `story_resources`
+- `story`
+
+`data_package.export_prepare` 输入：
+
+- 可选 `preset_ids`
+- 可选 `schema_ids`
+- 可选 `lorebook_ids`
+- 可选 `player_profile_ids`
+- 可选 `character_ids`
+- 可选 `story_resource_ids`
+- 可选 `story_ids`
+- 可选 `include_dependencies`，默认是 `true`
+
+导出说明：
+
+- 至少需要选择一个 id
+- 当 `include_dependencies = true` 时，story 会自动带上其引用的 `story_resources`、story/player/world schema、character schema、character、lorebook
+- 导出的 character 如果有封面，会一并带上封面字节
+- 生成好的 ZIP 通过 `GET /download/package_export:{export_id}/archive` 下载
+
+导入说明：
+
+- 先调用 `data_package.import_prepare`，再通过 `POST /upload/package_import:{import_id}/archive` 上传字节，最后调用 `data_package.import_commit`
+- 导入是全有或全无
+- 当前冲突策略是严格失败：只要包内任一 id 已存在，就返回 `conflict`
+- 导入不会覆盖已有资源，也不会重映射 id

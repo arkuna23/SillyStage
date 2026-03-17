@@ -8,6 +8,9 @@ use crate::api_group::{
 };
 use crate::character::CharacterCardContent;
 use crate::config::{ConfigGetGlobalParams, SessionGetConfigParams, SessionUpdateConfigParams};
+use crate::data_package::{
+    DataPackageExportPrepareParams, DataPackageImportCommitParams, DataPackageImportPrepareParams,
+};
 use crate::lorebook::{
     LorebookCreateParams, LorebookDeleteParams, LorebookEntryCreateParams,
     LorebookEntryDeleteParams, LorebookEntryGetParams, LorebookEntryListParams,
@@ -213,6 +216,12 @@ pub enum RequestMethod {
     SessionUpdateConfig,
     #[serde(rename = "dashboard.get")]
     DashboardGet,
+    #[serde(rename = "data_package.export_prepare")]
+    DataPackageExportPrepare,
+    #[serde(rename = "data_package.import_prepare")]
+    DataPackageImportPrepare,
+    #[serde(rename = "data_package.import_commit")]
+    DataPackageImportCommit,
 }
 
 #[derive(Debug, Clone)]
@@ -304,6 +313,9 @@ pub enum RequestParams {
     SessionGetConfig(SessionGetConfigParams),
     SessionUpdateConfig(SessionUpdateConfigParams),
     DashboardGet(DashboardGetParams),
+    DataPackageExportPrepare(DataPackageExportPrepareParams),
+    DataPackageImportPrepare(DataPackageImportPrepareParams),
+    DataPackageImportCommit(DataPackageImportCommitParams),
 }
 
 impl RequestParams {
@@ -398,6 +410,9 @@ impl RequestParams {
             Self::SessionGetConfig(_) => RequestMethod::SessionGetConfig,
             Self::SessionUpdateConfig(_) => RequestMethod::SessionUpdateConfig,
             Self::DashboardGet(_) => RequestMethod::DashboardGet,
+            Self::DataPackageExportPrepare(_) => RequestMethod::DataPackageExportPrepare,
+            Self::DataPackageImportPrepare(_) => RequestMethod::DataPackageImportPrepare,
+            Self::DataPackageImportCommit(_) => RequestMethod::DataPackageImportCommit,
         }
     }
 
@@ -490,6 +505,9 @@ impl RequestParams {
             Self::SessionGetConfig(params) => serde_json::to_value(params),
             Self::SessionUpdateConfig(params) => serde_json::to_value(params),
             Self::DashboardGet(params) => serde_json::to_value(params),
+            Self::DataPackageExportPrepare(params) => serde_json::to_value(params),
+            Self::DataPackageImportPrepare(params) => serde_json::to_value(params),
+            Self::DataPackageImportCommit(params) => serde_json::to_value(params),
         }
     }
 
@@ -693,6 +711,15 @@ impl RequestParams {
                 serde_json::from_value(value).map(Self::SessionUpdateConfig)
             }
             RequestMethod::DashboardGet => serde_json::from_value(value).map(Self::DashboardGet),
+            RequestMethod::DataPackageExportPrepare => {
+                serde_json::from_value(value).map(Self::DataPackageExportPrepare)
+            }
+            RequestMethod::DataPackageImportPrepare => {
+                serde_json::from_value(value).map(Self::DataPackageImportPrepare)
+            }
+            RequestMethod::DataPackageImportCommit => {
+                serde_json::from_value(value).map(Self::DataPackageImportCommit)
+            }
         }
     }
 }

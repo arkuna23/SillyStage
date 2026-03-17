@@ -1,8 +1,9 @@
 use protocol::{
     JsonRpcResponseMessage, PresetCreateParams, PresetDeleteParams, PresetDeletedPayload,
-    PresetGetParams, PresetPayload, PresetUpdateParams, PresetsListedPayload, ResponseResult,
+    PresetGetParams, PresetPayload, PresetSummaryPayload, PresetUpdateParams, PresetsListedPayload,
+    ResponseResult,
 };
-use store::{AgentPresetConfig, PresetAgentConfigs, PresetRecord};
+use store::{AgentPresetConfig, AgentPromptEntryConfig, PresetAgentConfigs, PresetRecord};
 
 use crate::error::HandlerError;
 
@@ -61,7 +62,7 @@ impl Handler {
             .list_presets()
             .await?
             .into_iter()
-            .map(|record| preset_payload_from_record(&record))
+            .map(|record| preset_summary_payload_from_record(&record))
             .collect::<Vec<_>>();
         presets.sort_by(|left, right| left.preset_id.cmp(&right.preset_id));
 
@@ -168,6 +169,11 @@ fn preset_config_from_payload(payload: protocol::AgentPresetConfigPayload) -> Ag
         temperature: payload.temperature,
         max_tokens: payload.max_tokens,
         extra: payload.extra,
+        prompt_entries: payload
+            .prompt_entries
+            .into_iter()
+            .map(prompt_entry_config_from_payload)
+            .collect(),
     }
 }
 
@@ -192,5 +198,68 @@ fn preset_payload_from_config(config: &AgentPresetConfig) -> protocol::AgentPres
         temperature: config.temperature,
         max_tokens: config.max_tokens,
         extra: config.extra.clone(),
+        prompt_entries: config
+            .prompt_entries
+            .iter()
+            .map(prompt_entry_payload_from_config)
+            .collect(),
+    }
+}
+
+fn prompt_entry_config_from_payload(
+    payload: protocol::PresetPromptEntryPayload,
+) -> AgentPromptEntryConfig {
+    AgentPromptEntryConfig {
+        entry_id: payload.entry_id,
+        title: payload.title,
+        content: payload.content,
+        enabled: payload.enabled,
+    }
+}
+
+fn prompt_entry_payload_from_config(
+    config: &AgentPromptEntryConfig,
+) -> protocol::PresetPromptEntryPayload {
+    protocol::PresetPromptEntryPayload {
+        entry_id: config.entry_id.clone(),
+        title: config.title.clone(),
+        content: config.content.clone(),
+        enabled: config.enabled,
+    }
+}
+
+fn preset_summary_payload_from_record(record: &PresetRecord) -> PresetSummaryPayload {
+    PresetSummaryPayload {
+        preset_id: record.preset_id.clone(),
+        display_name: record.display_name.clone(),
+        agents: protocol::PresetAgentSummaryPayloads {
+            planner: preset_summary_payload_from_config(&record.agents.planner),
+            architect: preset_summary_payload_from_config(&record.agents.architect),
+            director: preset_summary_payload_from_config(&record.agents.director),
+            actor: preset_summary_payload_from_config(&record.agents.actor),
+            narrator: preset_summary_payload_from_config(&record.agents.narrator),
+            keeper: preset_summary_payload_from_config(&record.agents.keeper),
+            replyer: preset_summary_payload_from_config(&record.agents.replyer),
+        },
+    }
+}
+
+fn preset_summary_payload_from_config(
+    config: &AgentPresetConfig,
+) -> protocol::AgentPresetConfigSummaryPayload {
+    protocol::AgentPresetConfigSummaryPayload {
+        temperature: config.temperature,
+        max_tokens: config.max_tokens,
+        extra: config.extra.clone(),
+        prompt_entry_count: config.prompt_entries.len(),
+        prompt_entries: config
+            .prompt_entries
+            .iter()
+            .map(|entry| protocol::PresetPromptEntrySummaryPayload {
+                entry_id: entry.entry_id.clone(),
+                title: entry.title.clone(),
+                enabled: entry.enabled,
+            })
+            .collect(),
     }
 }

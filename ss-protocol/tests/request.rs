@@ -5,7 +5,8 @@ use ss_protocol::{
     CharacterCardContent, CharacterCreateParams, CharacterDeleteParams, CharacterGetParams,
     CharacterListParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
     ConfigGetGlobalParams, ContinueStoryDraftParams, CreateSessionMessageParams,
-    CreateStoryResourcesParams, DashboardGetParams, DeleteSessionCharacterParams,
+    CreateStoryResourcesParams, DashboardGetParams, DataPackageExportPrepareParams,
+    DataPackageImportCommitParams, DataPackageImportPrepareParams, DeleteSessionCharacterParams,
     DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
     DeleteStoryResourcesParams, EnterSessionCharacterSceneParams, FinalizeStoryDraftParams,
     GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionCharacterParams,
@@ -56,10 +57,21 @@ fn sample_preset_agents() -> ss_protocol::PresetAgentPayloads {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
+        prompt_entries: Vec::new(),
     };
 
+    let mut planner = config(512);
+    planner
+        .prompt_entries
+        .push(ss_protocol::PresetPromptEntryPayload {
+            entry_id: "planner-tone".to_owned(),
+            title: "Planner Tone".to_owned(),
+            content: "Favor concise story plans.".to_owned(),
+            enabled: true,
+        });
+
     ss_protocol::PresetAgentPayloads {
-        planner: config(512),
+        planner,
         architect: config(8192),
         director: config(512),
         actor: config(512),
@@ -185,6 +197,58 @@ fn story_requests_round_trip_with_stable_methods() {
             .expect("serialize")
             .contains("\"method\": \"story_draft.finalize\"")
     );
+}
+
+#[test]
+fn data_package_requests_round_trip() {
+    let export_prepare = JsonRpcRequestMessage::new(
+        "data-package-export",
+        None::<String>,
+        RequestParams::DataPackageExportPrepare(DataPackageExportPrepareParams {
+            preset_ids: vec!["preset-default".to_owned()],
+            schema_ids: vec!["schema-player-default".to_owned()],
+            lorebook_ids: vec!["lorebook-harbor".to_owned()],
+            player_profile_ids: vec!["profile-courier".to_owned()],
+            character_ids: vec!["merchant".to_owned()],
+            story_resource_ids: vec!["resource-1".to_owned()],
+            story_ids: vec!["story-1".to_owned()],
+            include_dependencies: true,
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&export_prepare)
+            .expect("serialize")
+            .contains("\"method\": \"data_package.export_prepare\"")
+    );
+
+    let import_prepare = JsonRpcRequestMessage::new(
+        "data-package-import-prepare",
+        None::<String>,
+        RequestParams::DataPackageImportPrepare(DataPackageImportPrepareParams::default()),
+    );
+    let import_prepare_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&import_prepare).expect("serialize"))
+            .expect("deserialize");
+    assert!(matches!(
+        import_prepare_round_trip.params,
+        RequestParams::DataPackageImportPrepare(_)
+    ));
+
+    let import_commit = JsonRpcRequestMessage::new(
+        "data-package-import-commit",
+        None::<String>,
+        RequestParams::DataPackageImportCommit(DataPackageImportCommitParams {
+            import_id: "package-import-1".to_owned(),
+        }),
+    );
+    let import_commit_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&import_commit).expect("serialize"))
+            .expect("deserialize");
+    assert!(matches!(
+        import_commit_round_trip.params,
+        RequestParams::DataPackageImportCommit(DataPackageImportCommitParams { import_id })
+            if import_id == "package-import-1"
+    ));
 }
 
 #[test]

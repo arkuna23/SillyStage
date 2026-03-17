@@ -6,6 +6,10 @@ use crate::api::{ApiDeletedPayload, ApiModelsListedPayload, ApiPayload, ApisList
 use crate::api_group::{ApiGroupDeletedPayload, ApiGroupPayload, ApiGroupsListedPayload};
 use crate::character::{CharacterCardContent, CharacterCardSummaryPayload, CharacterCoverMimeType};
 use crate::config::{GlobalConfigPayload, SessionConfigPayload};
+use crate::data_package::{
+    DataPackageExportPreparedPayload, DataPackageImportCommittedPayload,
+    DataPackageImportPreparedPayload,
+};
 use crate::lorebook::{
     LorebookDeletedPayload, LorebookEntriesListedPayload, LorebookEntryDeletedPayload,
     LorebookEntryPayload, LorebookPayload, LorebooksListedPayload,
@@ -85,6 +89,9 @@ pub enum ResponseResult {
     TurnCompleted(Box<TurnCompletedPayload>),
     PlayerDescriptionUpdated(Box<PlayerDescriptionUpdatedPayload>),
     RuntimeSnapshot(Box<RuntimeSnapshotPayload>),
+    DataPackageExportPrepared(DataPackageExportPreparedPayload),
+    DataPackageImportPrepared(DataPackageImportPreparedPayload),
+    DataPackageImportCommitted(DataPackageImportCommittedPayload),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

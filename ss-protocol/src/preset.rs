@@ -3,6 +3,24 @@ use serde_json::Value;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
+pub struct PresetPromptEntryPayload {
+    pub entry_id: String,
+    pub title: String,
+    pub content: String,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct PresetPromptEntrySummaryPayload {
+    pub entry_id: String,
+    pub title: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
 pub struct AgentPresetConfigPayload {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -10,6 +28,23 @@ pub struct AgentPresetConfigPayload {
     pub max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra: Option<Value>,
+    #[serde(default)]
+    pub prompt_entries: Vec<PresetPromptEntryPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct AgentPresetConfigSummaryPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub extra: Option<Value>,
+    #[serde(default)]
+    pub prompt_entry_count: usize,
+    #[serde(default)]
+    pub prompt_entries: Vec<PresetPromptEntrySummaryPayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -22,6 +57,18 @@ pub struct PresetAgentPayloads {
     pub narrator: AgentPresetConfigPayload,
     pub keeper: AgentPresetConfigPayload,
     pub replyer: AgentPresetConfigPayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct PresetAgentSummaryPayloads {
+    pub planner: AgentPresetConfigSummaryPayload,
+    pub architect: AgentPresetConfigSummaryPayload,
+    pub director: AgentPresetConfigSummaryPayload,
+    pub actor: AgentPresetConfigSummaryPayload,
+    pub narrator: AgentPresetConfigSummaryPayload,
+    pub keeper: AgentPresetConfigSummaryPayload,
+    pub replyer: AgentPresetConfigSummaryPayload,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -66,11 +113,22 @@ pub struct PresetPayload {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PresetSummaryPayload {
+    pub preset_id: String,
+    pub display_name: String,
+    pub agents: PresetAgentSummaryPayloads,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PresetsListedPayload {
-    pub presets: Vec<PresetPayload>,
+    pub presets: Vec<PresetSummaryPayload>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PresetDeletedPayload {
     pub preset_id: String,
+}
+
+fn default_enabled() -> bool {
+    true
 }

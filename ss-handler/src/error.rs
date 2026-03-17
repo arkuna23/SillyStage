@@ -31,6 +31,10 @@ pub enum HandlerError {
     MissingStoryDraft(String),
     #[error("story '{0}' not found")]
     MissingStory(String),
+    #[error("data package export '{0}' not found")]
+    MissingDataPackageExport(String),
+    #[error("data package import '{0}' not found")]
+    MissingDataPackageImport(String),
     #[error("session '{0}' not found")]
     MissingSession(String),
     #[error("session character '{0}' not found")]
@@ -51,6 +55,10 @@ pub enum HandlerError {
     DuplicateLorebook(String),
     #[error("player profile '{0}' already exists")]
     DuplicatePlayerProfile(String),
+    #[error("story resources '{0}' already exists")]
+    DuplicateStoryResources(String),
+    #[error("story '{0}' already exists")]
+    DuplicateStory(String),
     #[error("schema_id must not be empty")]
     EmptySchemaId,
     #[error("lorebook_id must not be empty")]
@@ -119,12 +127,18 @@ pub enum HandlerError {
     InvalidCommonVariable(String),
     #[error("invalid session variable update: {0}")]
     InvalidSessionVariableUpdate(String),
+    #[error("data package selection must not be empty")]
+    EmptyDataPackageSelection,
+    #[error("invalid data package: {0}")]
+    InvalidDataPackage(String),
     #[error("{0}")]
     Manager(String),
     #[error(transparent)]
     Llm(#[from] LlmError),
     #[error(transparent)]
     Archive(#[from] protocol::CharacterArchiveError),
+    #[error(transparent)]
+    DataPackageArchive(#[from] protocol::DataPackageArchiveError),
     #[error(transparent)]
     Engine(#[from] EngineError),
     #[error(transparent)]
@@ -156,10 +170,15 @@ impl HandlerError {
             | Self::InvalidSchemaDefinition(_)
             | Self::InvalidCommonVariable(_)
             | Self::InvalidSessionVariableUpdate(_)
+            | Self::EmptyDataPackageSelection
+            | Self::InvalidDataPackage(_)
             | Self::Llm(LlmError::InvalidConfig(_))
             | Self::Llm(LlmError::InvalidRequest(_))
             | Self::Llm(LlmError::UnsupportedCapability(_))
-            | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
+            | Self::Archive(_)
+            | Self::DataPackageArchive(_) => {
+                ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
+            }
             Self::MissingBlob(_)
             | Self::MissingSchema(_)
             | Self::MissingLorebook(_)
@@ -169,6 +188,8 @@ impl HandlerError {
             | Self::MissingStoryResources(_)
             | Self::MissingStoryDraft(_)
             | Self::MissingStory(_)
+            | Self::MissingDataPackageExport(_)
+            | Self::MissingDataPackageImport(_)
             | Self::MissingSession(_)
             | Self::MissingSessionCharacter(_)
             | Self::MissingSessionMessage(_)
@@ -181,6 +202,8 @@ impl HandlerError {
             | Self::DuplicateLorebook(_)
             | Self::DuplicateLorebookEntry { .. }
             | Self::DuplicatePlayerProfile(_)
+            | Self::DuplicateStoryResources(_)
+            | Self::DuplicateStory(_)
             | Self::DuplicateApiGroup(_)
             | Self::DuplicatePreset(_)
             | Self::MissingCharacterCover(_)

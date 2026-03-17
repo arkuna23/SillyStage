@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::json;
 use ss_store::{
-    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord,
-    CharacterCardDefinition, CharacterCardRecord, FileSystemStore, LlmProvider,
+    AgentPresetConfig, AgentPromptEntryConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord,
+    BlobRecord, CharacterCardDefinition, CharacterCardRecord, FileSystemStore, LlmProvider,
     PlayerProfileRecord, PresetAgentConfigs, PresetRecord, RuntimeSnapshot, SchemaRecord,
     SessionBindingConfig, SessionCharacterRecord, SessionMessageKind, SessionMessageRecord,
     SessionRecord, Store, StoryRecord, StoryResourcesRecord,
@@ -77,6 +77,12 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
+        prompt_entries: vec![AgentPromptEntryConfig {
+            entry_id: format!("entry-{max_tokens}"),
+            title: format!("Prompt {max_tokens}"),
+            content: format!("Keep replies under {max_tokens} tokens when practical."),
+            enabled: true,
+        }],
     }
 }
 
@@ -382,12 +388,15 @@ async fn filesystem_store_round_trips_all_records() {
             .expect("load api group")
             .is_some()
     );
-    assert!(
-        store
-            .get_preset("preset-default")
-            .await
-            .expect("load preset")
-            .is_some()
+    let preset = store
+        .get_preset("preset-default")
+        .await
+        .expect("load preset")
+        .expect("preset should exist");
+    assert_eq!(preset.agents.planner.prompt_entries.len(), 1);
+    assert_eq!(
+        preset.agents.planner.prompt_entries[0].entry_id,
+        "entry-512"
     );
     assert!(
         store

@@ -6,7 +6,8 @@ mod record;
 mod store;
 
 pub use config::{
-    AgentPresetConfig, ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, SessionBindingConfig,
+    AgentPresetConfig, AgentPromptEntryConfig, ApiGroupAgentBindings, LlmProvider,
+    PresetAgentConfigs, SessionBindingConfig,
 };
 pub use error::StoreError;
 pub use fs::FileSystemStore;

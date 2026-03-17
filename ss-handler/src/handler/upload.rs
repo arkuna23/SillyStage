@@ -10,6 +10,9 @@ use store::{BlobRecord, CharacterCardDefinition, CharacterCardRecord};
 use crate::error::HandlerError;
 
 use super::Handler;
+use super::data_package::{
+    PACKAGE_ARCHIVE_FILE_ID, PACKAGE_EXPORT_RESOURCE_PREFIX, PACKAGE_IMPORT_RESOURCE_PREFIX,
+};
 
 const CHARACTER_RESOURCE_PREFIX: &str = "character:";
 const CHARACTER_COVER_FILE_ID: &str = "cover";
@@ -52,6 +55,16 @@ impl Handler {
                 self.upload_character_archive(&resource_id, &character_id, file_name, bytes)
                     .await
             }
+            ResourceFileTarget::PackageImportArchive {
+                resource_id,
+                import_id,
+            } => {
+                self.upload_package_import_archive(&import_id, &resource_id, file_name, bytes)
+                    .await
+            }
+            ResourceFileTarget::PackageExportArchive { .. } => Err(
+                HandlerError::InvalidFileReference(format!("{resource_id}/{file_id}")),
+            ),
         }
     }
 
@@ -67,6 +80,12 @@ impl Handler {
             ResourceFileTarget::CharacterArchive { character_id, .. } => {
                 self.download_character_archive(&character_id).await
             }
+            ResourceFileTarget::PackageExportArchive { export_id, .. } => {
+                self.download_package_export_archive(&export_id).await
+            }
+            ResourceFileTarget::PackageImportArchive { .. } => Err(
+                HandlerError::InvalidFileReference(format!("{resource_id}/{file_id}")),
+            ),
         }
     }
 
@@ -429,6 +448,13 @@ enum ResourceFileTarget {
         resource_id: String,
         character_id: String,
     },
+    PackageExportArchive {
+        export_id: String,
+    },
+    PackageImportArchive {
+        resource_id: String,
+        import_id: String,
+    },
 }
 
 impl ResourceFileTarget {
@@ -447,23 +473,52 @@ impl ResourceFileTarget {
             ))
         };
 
-        let character_id = resource_id
+        if let Some(character_id) = resource_id
             .strip_prefix(CHARACTER_RESOURCE_PREFIX)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .ok_or_else(invalid)?;
-
-        match file_id {
-            CHARACTER_COVER_FILE_ID => Ok(Self::CharacterCover {
-                resource_id: resource_id.to_owned(),
-                character_id: character_id.to_owned(),
-            }),
-            CHARACTER_ARCHIVE_FILE_ID => Ok(Self::CharacterArchive {
-                resource_id: resource_id.to_owned(),
-                character_id: character_id.to_owned(),
-            }),
-            _ => Err(invalid()),
+        {
+            return match file_id {
+                CHARACTER_COVER_FILE_ID => Ok(Self::CharacterCover {
+                    resource_id: resource_id.to_owned(),
+                    character_id: character_id.to_owned(),
+                }),
+                CHARACTER_ARCHIVE_FILE_ID => Ok(Self::CharacterArchive {
+                    resource_id: resource_id.to_owned(),
+                    character_id: character_id.to_owned(),
+                }),
+                _ => Err(invalid()),
+            };
         }
+
+        if let Some(export_id) = resource_id
+            .strip_prefix(PACKAGE_EXPORT_RESOURCE_PREFIX)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return match file_id {
+                PACKAGE_ARCHIVE_FILE_ID => Ok(Self::PackageExportArchive {
+                    export_id: export_id.to_owned(),
+                }),
+                _ => Err(invalid()),
+            };
+        }
+
+        if let Some(import_id) = resource_id
+            .strip_prefix(PACKAGE_IMPORT_RESOURCE_PREFIX)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return match file_id {
+                PACKAGE_ARCHIVE_FILE_ID => Ok(Self::PackageImportArchive {
+                    resource_id: resource_id.to_owned(),
+                    import_id: import_id.to_owned(),
+                }),
+                _ => Err(invalid()),
+            };
+        }
+
+        Err(invalid())
     }
 }
 

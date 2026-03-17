@@ -25,6 +25,8 @@
 
 - `character:{character_id}/cover`
 - `character:{character_id}/archive`
+- `package_import:{import_id}/archive`
+- `package_export:{export_id}/archive`
 
 ## JSON-RPC 请求体
 
@@ -76,6 +78,7 @@ SSE 事件规则：
 - 当 `x-file-name` 缺失或为空时：
   - `character:{character_id}/cover` 会根据 `Content-Type` 回退为 `cover.<ext>`
   - `character:{character_id}/archive` 会回报 `{character_id}.chr`
+  - `package_import:{import_id}/archive` 会回报 `sillystage-data-package-{import_id}.zip`
 - 缺失或空白的 `Content-Type` 会先被归一化为 `application/octet-stream`，再做校验。
 - `character:{character_id}/cover` 要求使用支持的图片 `Content-Type`：
   - `image/png`
@@ -83,6 +86,8 @@ SSE 事件规则：
   - `image/webp`
 - `character:{character_id}/archive` 接收原始 `.chr` 字节。客户端通常应发送
   `Content-Type: application/x-sillystage-character-card`。
+- `package_import:{import_id}/archive` 接收原始 ZIP 字节。客户端通常应发送
+  `Content-Type: application/x-sillystage-data-package+zip`。
 
 ## 二进制路由语义
 
@@ -105,6 +110,9 @@ SSE 事件规则：
 - `POST /upload/character:{character_id}/archive`
   - 把一个 `.chr` 导入到固定角色槽位
   - 压缩包里的 `content.id` 必须与 `{character_id}` 一致
+- `POST /upload/package_import:{import_id}/archive`
+  - 把一个数据包 ZIP 上传到临时导入槽位
+  - 单独上传不会修改持久化资源；真正应用由 `data_package.import_commit` 完成
 
 ### `GET /download/{resource_id}/{file_id}`
 
@@ -119,6 +127,8 @@ SSE 事件规则：
   - 返回当前封面图片字节
 - `GET /download/character:{character_id}/archive`
   - 导出当前角色为 `.chr`
+- `GET /download/package_export:{export_id}/archive`
+  - 返回由 `data_package.export_prepare` 准备好的数据包 ZIP
 
 ## 错误
 

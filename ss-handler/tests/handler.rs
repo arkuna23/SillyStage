@@ -9,10 +9,12 @@ use protocol::{
     ApiGroupUpdateParams, CharacterArchive, CharacterCardContent, CharacterCoverMimeType,
     CharacterCreateParams, CharacterGetParams, CharacterUpdateParams, CommonVariableDefinition,
     CommonVariableScope, ConfigGetGlobalParams, CreateSessionMessageParams,
-    CreateStoryResourcesParams, DashboardGetParams, DeleteSessionCharacterParams,
-    DeleteSessionMessageParams, DeleteSessionParams, EnterSessionCharacterSceneParams, ErrorCode,
-    GenerateStoryParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
-    GetSessionVariablesParams, GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
+    CreateStoryResourcesParams, DashboardGetParams, DataPackageArchive,
+    DataPackageExportPrepareParams, DataPackageImportCommitParams, DataPackageImportPrepareParams,
+    DeleteSessionCharacterParams, DeleteSessionMessageParams, DeleteSessionParams,
+    EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams, GetSessionCharacterParams,
+    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryParams,
+    GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
     LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
     LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetCreateParams,
     PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams,
@@ -27,8 +29,8 @@ use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
 use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::{
-    InMemoryStore, SessionBindingConfig, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus,
-    StoryRecord, StoryResourcesRecord,
+    InMemoryStore, LorebookEntryRecord, LorebookRecord, SessionBindingConfig, SessionRecord, Store,
+    StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use story::NarrativeNode;
 
@@ -257,6 +259,65 @@ async fn seed_story_records(store: &InMemoryStore) {
         .save_story(sample_story_record("resource-1", "story-1"))
         .await
         .expect("save story");
+}
+
+async fn seed_lorebook(store: &InMemoryStore) {
+    store
+        .save_lorebook(LorebookRecord {
+            lorebook_id: "lorebook-harbor".to_owned(),
+            display_name: "Harbor Notes".to_owned(),
+            entries: vec![LorebookEntryRecord {
+                entry_id: "entry-tide".to_owned(),
+                title: "Tide".to_owned(),
+                content: "The tide is rising around dusk.".to_owned(),
+                keywords: vec!["tide".to_owned(), "harbor".to_owned()],
+                enabled: true,
+                always_include: false,
+            }],
+        })
+        .await
+        .expect("save lorebook");
+}
+
+async fn export_sample_data_package_bytes(handler: &Handler) -> Vec<u8> {
+    let prepared = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-data-package-export",
+                None::<String>,
+                RequestParams::DataPackageExportPrepare(DataPackageExportPrepareParams {
+                    preset_ids: vec!["preset-default".to_owned()],
+                    schema_ids: vec![],
+                    lorebook_ids: vec![],
+                    player_profile_ids: vec!["profile-courier-a".to_owned()],
+                    character_ids: vec![],
+                    story_resource_ids: vec![],
+                    story_ids: vec!["story-1".to_owned()],
+                    include_dependencies: true,
+                }),
+            ))
+            .await,
+    );
+
+    let archive = match prepared {
+        ResponseResult::DataPackageExportPrepared(payload) => {
+            assert_eq!(payload.contents.presets.count, 1);
+            assert_eq!(payload.contents.player_profiles.count, 1);
+            assert_eq!(payload.contents.characters.count, 1);
+            assert_eq!(payload.contents.story_resources.count, 1);
+            assert_eq!(payload.contents.stories.count, 1);
+            assert_eq!(payload.contents.schemas.count, 5);
+            assert_eq!(payload.contents.lorebooks.count, 1);
+            payload.archive
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    handler
+        .download_resource_file(&archive.resource_id, &archive.file_id)
+        .await
+        .expect("package export should download")
+        .bytes
 }
 
 #[tokio::test]
@@ -641,6 +702,341 @@ async fn character_update_rejects_mismatched_content_id() {
         HandlerReply::Unary(response) => response,
         HandlerReply::Stream { .. } => panic!("expected unary response"),
     };
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error) if error.code == ErrorCode::InvalidRequest.rpc_code()
+    ));
+}
+
+#[tokio::test]
+async fn data_package_export_prepare_downloads_zip_with_auto_dependencies() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (store, handler) = build_handler(llm).await;
+    seed_story_records(&store).await;
+    seed_lorebook(&store).await;
+
+    let mut resources = store
+        .get_story_resources("resource-1")
+        .await
+        .expect("store lookup should succeed")
+        .expect("story resources should exist");
+    resources.lorebook_ids = vec!["lorebook-harbor".to_owned()];
+    store
+        .save_story_resources(resources)
+        .await
+        .expect("story resources should update");
+
+    let bytes = export_sample_data_package_bytes(&handler).await;
+    let archive = DataPackageArchive::from_zip_bytes(&bytes).expect("archive should decode");
+
+    assert_eq!(archive.presets.len(), 1);
+    assert_eq!(archive.presets[0].preset_id, "preset-default");
+    assert_eq!(archive.player_profiles.len(), 1);
+    assert_eq!(
+        archive.player_profiles[0].player_profile_id,
+        "profile-courier-a"
+    );
+    assert_eq!(archive.schemas.len(), 5);
+    assert_eq!(archive.lorebooks.len(), 1);
+    assert_eq!(archive.characters.len(), 1);
+    assert_eq!(
+        archive.characters[0].cover_bytes.as_deref(),
+        Some(&b"cover-bytes"[..])
+    );
+    assert_eq!(archive.story_resources.len(), 1);
+    assert_eq!(
+        archive.story_resources[0].lorebook_ids,
+        vec!["lorebook-harbor".to_owned()]
+    );
+    assert_eq!(archive.stories.len(), 1);
+    assert_eq!(archive.stories[0].story_id, "story-1");
+}
+
+#[tokio::test]
+async fn data_package_import_prepare_upload_and_commit_persist_records() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (source_store, source_handler) = build_handler(llm.clone()).await;
+    seed_story_records(&source_store).await;
+    seed_lorebook(&source_store).await;
+    let mut resources = source_store
+        .get_story_resources("resource-1")
+        .await
+        .expect("store lookup should succeed")
+        .expect("story resources should exist");
+    resources.lorebook_ids = vec!["lorebook-harbor".to_owned()];
+    source_store
+        .save_story_resources(resources)
+        .await
+        .expect("story resources should update");
+
+    let archive_bytes = export_sample_data_package_bytes(&source_handler).await;
+
+    let (target_store, target_handler) = build_handler(llm).await;
+    let prepared = unary_result(
+        target_handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-data-package-import-prepare",
+                None::<String>,
+                RequestParams::DataPackageImportPrepare(DataPackageImportPrepareParams::default()),
+            ))
+            .await,
+    );
+    let (import_id, archive_ref) = match prepared {
+        ResponseResult::DataPackageImportPrepared(payload) => (payload.import_id, payload.archive),
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let uploaded = target_handler
+        .upload_resource_file(
+            &archive_ref.resource_id,
+            &archive_ref.file_id,
+            Some("harbor-package.zip".to_owned()),
+            protocol::DATA_PACKAGE_ARCHIVE_CONTENT_TYPE.to_owned(),
+            archive_bytes,
+        )
+        .await
+        .expect("package upload should succeed");
+    assert_eq!(uploaded.file_name.as_deref(), Some("harbor-package.zip"));
+    assert_eq!(
+        uploaded.content_type,
+        protocol::DATA_PACKAGE_ARCHIVE_CONTENT_TYPE
+    );
+
+    let committed = unary_result(
+        target_handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-data-package-import-commit",
+                None::<String>,
+                RequestParams::DataPackageImportCommit(DataPackageImportCommitParams {
+                    import_id: import_id.clone(),
+                }),
+            ))
+            .await,
+    );
+
+    match committed {
+        ResponseResult::DataPackageImportCommitted(payload) => {
+            assert_eq!(payload.import_id, import_id);
+            assert_eq!(payload.contents.stories.count, 1);
+            assert_eq!(payload.contents.story_resources.count, 1);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    assert!(
+        target_store
+            .get_preset("preset-default")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+    assert!(
+        target_store
+            .get_lorebook("lorebook-harbor")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+    assert!(
+        target_store
+            .get_player_profile("profile-courier-a")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+    assert!(
+        target_store
+            .get_story_resources("resource-1")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+    assert!(
+        target_store
+            .get_story("story-1")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+    assert!(
+        target_store
+            .get_schema("schema-character-merchant")
+            .await
+            .expect("store lookup should succeed")
+            .is_some()
+    );
+
+    let imported_character = unary_result(
+        target_handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-character-get-imported",
+                None::<String>,
+                RequestParams::CharacterGet(CharacterGetParams {
+                    character_id: "merchant".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match imported_character {
+        ResponseResult::Character(payload) => {
+            assert_eq!(payload.content.name, "Haru");
+            assert_eq!(payload.cover_file_name.as_deref(), Some("cover.png"));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let imported_story = unary_result(
+        target_handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-story-get-imported",
+                None::<String>,
+                RequestParams::StoryGet(GetStoryParams {
+                    story_id: "story-1".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    assert!(matches!(imported_story, ResponseResult::Story(_)));
+
+    let cover = target_handler
+        .download_resource_file("character:merchant", "cover")
+        .await
+        .expect("cover should be downloadable");
+    assert_eq!(cover.bytes, b"cover-bytes");
+}
+
+#[tokio::test]
+async fn data_package_import_conflict_returns_conflict_without_partial_import() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (source_store, source_handler) = build_handler(llm.clone()).await;
+    seed_story_records(&source_store).await;
+    seed_lorebook(&source_store).await;
+    let mut resources = source_store
+        .get_story_resources("resource-1")
+        .await
+        .expect("store lookup should succeed")
+        .expect("story resources should exist");
+    resources.lorebook_ids = vec!["lorebook-harbor".to_owned()];
+    source_store
+        .save_story_resources(resources)
+        .await
+        .expect("story resources should update");
+    let archive_bytes = export_sample_data_package_bytes(&source_handler).await;
+
+    let (target_store, target_handler) = build_handler(llm).await;
+    target_store
+        .save_story(sample_story_record("resource-existing", "story-1"))
+        .await
+        .expect("duplicate story should seed");
+
+    let prepared = unary_result(
+        target_handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-data-package-import-prepare-conflict",
+                None::<String>,
+                RequestParams::DataPackageImportPrepare(DataPackageImportPrepareParams::default()),
+            ))
+            .await,
+    );
+    let import_id = match prepared {
+        ResponseResult::DataPackageImportPrepared(payload) => {
+            target_handler
+                .upload_resource_file(
+                    &payload.archive.resource_id,
+                    &payload.archive.file_id,
+                    Some("harbor-package.zip".to_owned()),
+                    protocol::DATA_PACKAGE_ARCHIVE_CONTENT_TYPE.to_owned(),
+                    archive_bytes,
+                )
+                .await
+                .expect("package upload should succeed");
+            payload.import_id
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let response = match target_handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-data-package-import-commit-conflict",
+            None::<String>,
+            RequestParams::DataPackageImportCommit(DataPackageImportCommitParams { import_id }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error) if error.code == ErrorCode::Conflict.rpc_code()
+    ));
+    assert!(
+        target_store
+            .get_preset("preset-default")
+            .await
+            .expect("store lookup should succeed")
+            .is_none()
+    );
+    assert!(
+        target_store
+            .get_character("merchant")
+            .await
+            .expect("store lookup should succeed")
+            .is_none()
+    );
+    assert!(
+        target_store
+            .get_story_resources("resource-1")
+            .await
+            .expect("store lookup should succeed")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn data_package_import_commit_rejects_invalid_archive_bytes() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (_store, handler) = build_handler(llm).await;
+
+    let prepared = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "req-data-package-import-prepare-invalid",
+                None::<String>,
+                RequestParams::DataPackageImportPrepare(DataPackageImportPrepareParams::default()),
+            ))
+            .await,
+    );
+    let import_id = match prepared {
+        ResponseResult::DataPackageImportPrepared(payload) => {
+            handler
+                .upload_resource_file(
+                    &payload.archive.resource_id,
+                    &payload.archive.file_id,
+                    Some("broken.zip".to_owned()),
+                    protocol::DATA_PACKAGE_ARCHIVE_CONTENT_TYPE.to_owned(),
+                    b"not-a-zip".to_vec(),
+                )
+                .await
+                .expect("upload should succeed");
+            payload.import_id
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "req-data-package-import-commit-invalid",
+            None::<String>,
+            RequestParams::DataPackageImportCommit(DataPackageImportCommitParams { import_id }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
     assert!(matches!(
         response.outcome,
         JsonRpcOutcome::Err(error) if error.code == ErrorCode::InvalidRequest.rpc_code()
@@ -3109,36 +3505,53 @@ async fn preset_crud_round_trips_and_preserves_values() {
                             temperature: Some(0.1),
                             max_tokens: Some(256),
                             extra: None,
+                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
+                                entry_id: "planner-tone".to_owned(),
+                                title: "Planner Tone".to_owned(),
+                                content: "Favor concise story plans.".to_owned(),
+                                enabled: true,
+                            }],
                         },
                         architect: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.2),
                             max_tokens: Some(1024),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         director: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.3),
                             max_tokens: Some(384),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         actor: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.4),
                             max_tokens: Some(512),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         narrator: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.5),
                             max_tokens: Some(640),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         keeper: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.6),
                             max_tokens: Some(768),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         replyer: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.7),
                             max_tokens: Some(128),
                             extra: None,
+                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
+                                entry_id: "replyer-style".to_owned(),
+                                title: "Replyer Style".to_owned(),
+                                content: "Prefer short candidate replies.".to_owned(),
+                                enabled: true,
+                            }],
                         },
                     },
                 }),
@@ -3149,6 +3562,11 @@ async fn preset_crud_round_trips_and_preserves_values() {
         ResponseResult::Preset(payload) => {
             assert_eq!(payload.preset_id, "managed");
             assert_eq!(payload.agents.actor.max_tokens, Some(512));
+            assert_eq!(payload.agents.planner.prompt_entries.len(), 1);
+            assert_eq!(
+                payload.agents.planner.prompt_entries[0].entry_id,
+                "planner-tone"
+            );
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -3168,6 +3586,11 @@ async fn preset_crud_round_trips_and_preserves_values() {
         ResponseResult::Preset(payload) => {
             assert_eq!(payload.display_name, "Managed Preset");
             assert_eq!(payload.agents.architect.max_tokens, Some(1024));
+            assert_eq!(payload.agents.replyer.prompt_entries.len(), 1);
+            assert_eq!(
+                payload.agents.replyer.prompt_entries[0].content,
+                "Prefer short candidate replies."
+            );
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -3185,36 +3608,61 @@ async fn preset_crud_round_trips_and_preserves_values() {
                             temperature: Some(0.2),
                             max_tokens: Some(300),
                             extra: None,
+                            prompt_entries: vec![
+                                protocol::PresetPromptEntryPayload {
+                                    entry_id: "planner-voice".to_owned(),
+                                    title: "Planner Voice".to_owned(),
+                                    content: "Keep outline sections punchy.".to_owned(),
+                                    enabled: true,
+                                },
+                                protocol::PresetPromptEntryPayload {
+                                    entry_id: "planner-disabled".to_owned(),
+                                    title: "Disabled".to_owned(),
+                                    content: "Do not use.".to_owned(),
+                                    enabled: false,
+                                },
+                            ],
                         },
                         architect: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.25),
                             max_tokens: Some(2048),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         director: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.3),
                             max_tokens: Some(400),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         actor: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.35),
                             max_tokens: Some(500),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         narrator: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.4),
                             max_tokens: Some(600),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         keeper: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.45),
                             max_tokens: Some(700),
                             extra: None,
+                            prompt_entries: Vec::new(),
                         },
                         replyer: protocol::AgentPresetConfigPayload {
                             temperature: Some(0.5),
                             max_tokens: Some(200),
                             extra: Some(json!({"style":"short"})),
+                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
+                                entry_id: "replyer-style".to_owned(),
+                                title: "Replyer Style".to_owned(),
+                                content: "Offer direct but varied replies.".to_owned(),
+                                enabled: true,
+                            }],
                         },
                     }),
                 }),
@@ -3226,6 +3674,11 @@ async fn preset_crud_round_trips_and_preserves_values() {
             assert_eq!(payload.display_name, "Updated Preset");
             assert_eq!(payload.agents.architect.max_tokens, Some(2048));
             assert_eq!(payload.agents.replyer.extra, Some(json!({"style":"short"})));
+            assert_eq!(payload.agents.planner.prompt_entries.len(), 2);
+            assert_eq!(
+                payload.agents.planner.prompt_entries[0].entry_id,
+                "planner-voice"
+            );
         }
         other => panic!("unexpected response: {other:?}"),
     }
@@ -3240,11 +3693,16 @@ async fn preset_crud_round_trips_and_preserves_values() {
     );
     match listed {
         ResponseResult::PresetsListed(payload) => {
-            assert!(
-                payload
-                    .presets
-                    .iter()
-                    .any(|preset| preset.preset_id == "managed")
+            let preset = payload
+                .presets
+                .iter()
+                .find(|preset| preset.preset_id == "managed")
+                .expect("managed preset should be listed");
+            assert_eq!(preset.agents.planner.prompt_entry_count, 2);
+            assert_eq!(preset.agents.planner.prompt_entries.len(), 2);
+            assert_eq!(
+                preset.agents.planner.prompt_entries[0].entry_id,
+                "planner-voice"
             );
         }
         other => panic!("unexpected response: {other:?}"),

@@ -2,6 +2,7 @@ mod api;
 mod api_group;
 mod config;
 mod dashboard;
+mod data_package;
 mod lorebook;
 mod player_profile;
 mod preset;
@@ -37,6 +38,7 @@ pub struct Handler {
     store: Arc<dyn Store>,
     manager: EngineManager,
     id_generator: IdGenerator,
+    data_packages: data_package::TempDataPackages,
 }
 
 impl Handler {
@@ -50,6 +52,7 @@ impl Handler {
             store,
             manager,
             id_generator: IdGenerator::default(),
+            data_packages: data_package::TempDataPackages::default(),
         })
     }
 
@@ -319,6 +322,18 @@ impl Handler {
                     .await
             }
             RequestParams::DashboardGet(_) => self.handle_dashboard_get(&request_id).await,
+            RequestParams::DataPackageExportPrepare(params) => {
+                self.handle_data_package_export_prepare(&request_id, params)
+                    .await
+            }
+            RequestParams::DataPackageImportPrepare(params) => {
+                self.handle_data_package_import_prepare(&request_id, params)
+                    .await
+            }
+            RequestParams::DataPackageImportCommit(params) => {
+                self.handle_data_package_import_commit(&request_id, params)
+                    .await
+            }
         };
 
         match result {

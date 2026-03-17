@@ -76,7 +76,7 @@ impl CharacterArchiveManifest {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CharacterCardContent {
     pub id: String,
     pub name: String,

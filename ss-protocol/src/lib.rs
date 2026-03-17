@@ -3,6 +3,7 @@ pub mod api_group;
 pub mod binary;
 pub mod character;
 pub mod config;
+pub mod data_package;
 pub mod error;
 pub mod lorebook;
 pub mod message;
@@ -37,6 +38,15 @@ pub use config::{
     ConfigGetGlobalParams, GlobalConfigPayload, SessionConfigPayload, SessionGetConfigParams,
     SessionUpdateConfigParams,
 };
+pub use data_package::{
+    DATA_PACKAGE_ARCHIVE_CONTENT_TYPE, DATA_PACKAGE_ARCHIVE_FORMAT,
+    DATA_PACKAGE_ARCHIVE_MANIFEST_PATH, DATA_PACKAGE_ARCHIVE_VERSION, DataPackageArchive,
+    DataPackageArchiveError, DataPackageCharacterEntry, DataPackageCharacterManifestEntry,
+    DataPackageContentsPayload, DataPackageExportPrepareParams, DataPackageExportPreparedPayload,
+    DataPackageImportCommitParams, DataPackageImportCommittedPayload,
+    DataPackageImportPrepareParams, DataPackageImportPreparedPayload, DataPackageManifest,
+    DataPackageResourceSummaryPayload,
+};
 pub use error::{ErrorCode, ErrorPayload};
 pub use lorebook::{
     LorebookCreateParams, LorebookDeleteParams, LorebookDeletedPayload,
@@ -55,8 +65,10 @@ pub use player_profile::{
     PlayerProfileUpdateParams, PlayerProfilesListedPayload,
 };
 pub use preset::{
-    AgentPresetConfigPayload, PresetAgentPayloads, PresetCreateParams, PresetDeleteParams,
-    PresetDeletedPayload, PresetGetParams, PresetListParams, PresetPayload, PresetUpdateParams,
+    AgentPresetConfigPayload, AgentPresetConfigSummaryPayload, PresetAgentPayloads,
+    PresetAgentSummaryPayloads, PresetCreateParams, PresetDeleteParams, PresetDeletedPayload,
+    PresetGetParams, PresetListParams, PresetPayload, PresetPromptEntryPayload,
+    PresetPromptEntrySummaryPayload, PresetSummaryPayload, PresetUpdateParams,
     PresetsListedPayload,
 };
 pub use reply_suggestion::{ReplyOptionPayload, SuggestRepliesParams, SuggestedRepliesPayload};
