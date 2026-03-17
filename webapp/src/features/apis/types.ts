@@ -72,7 +72,16 @@ export type ApiGroupDeletedResult = {
 export type AgentPresetConfig = {
   extra?: unknown | null
   max_tokens?: number | null
+  prompt_entries?: PresetPromptEntry[] | null
+  prompt_entry_count?: number | null
   temperature?: number | null
+}
+
+export type PresetPromptEntry = {
+  content?: string
+  enabled: boolean
+  entry_id: string
+  title: string
 }
 
 export type PresetAgentConfigs = AgentRoleRecord<AgentPresetConfig>
@@ -98,6 +107,33 @@ export type GlobalConfigResult = {
   api_group_id?: string | null
   preset_id?: string | null
   type: 'global_config'
+}
+
+export function getPresetPromptEntries(agent: AgentPresetConfig) {
+  return agent.prompt_entries ?? []
+}
+
+export function getPresetPromptEntryCount(agent: AgentPresetConfig) {
+  return typeof agent.prompt_entry_count === 'number'
+    ? agent.prompt_entry_count
+    : getPresetPromptEntries(agent).length
+}
+
+export function getEnabledPresetPromptEntryCount(agent: AgentPresetConfig) {
+  return getPresetPromptEntries(agent).filter((entry) => entry.enabled).length
+}
+
+export function hasPresetAgentConfiguration(agent: AgentPresetConfig) {
+  return (
+    agent.temperature !== undefined &&
+    agent.temperature !== null
+  ) || (
+    agent.max_tokens !== undefined &&
+    agent.max_tokens !== null
+  ) || (
+    agent.extra !== undefined &&
+    agent.extra !== null
+  ) || getPresetPromptEntryCount(agent) > 0
 }
 
 export function getAgentBindingKey(roleKey: AgentRoleKey): AgentBindingKey {
