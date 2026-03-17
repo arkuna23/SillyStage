@@ -103,22 +103,21 @@ LLM 更新变量时更稳定地落在预期取值集合内。
 
 角色卡有两种创建路径。
 
-### 3.1 上传 `.chr`
+### 3.1 导入 `.chr`
 
 流程：
 
-1. `upload.init`
-2. `upload.chunk`
-3. `upload.complete`
+1. `POST /upload/character:{character_id}/archive`
 
-上传完成后，服务端会解析 `.chr` 并生成一个 `character` 资源。
+请求体是原始 `.chr` 字节，不使用 JSON-RPC，也不使用 base64。导入完成后，服务端会
+解析归档、在内部保存封面，并生成一个 `character` 资源。
 
 ### 3.2 直接创建角色卡
 
 流程：
 
 1. `character.create`
-2. 可选 `character.set_cover`
+2. 可选 `POST /upload/character:{character_id}/cover`
 
 角色内容现在只保存：
 
@@ -130,6 +129,8 @@ LLM 更新变量时更稳定地落在预期取值集合内。
 - `system_prompt`
 
 也就是说，角色卡通过 `schema_id` 引用自己的私有状态 schema，而不是内联 schema 内容。
+角色 payload 现在会暴露 `cover_file_name` 和 `cover_mime_type`；实际封面字节通过
+`GET /download/character:{character_id}/cover` 获取。
 
 ## 4. 创建 story resources
 

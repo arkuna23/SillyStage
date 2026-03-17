@@ -127,22 +127,36 @@ merchant.chr
 
 当前角色卡支持两种创建路径。
 
-### 6.1 上传 `.chr`
+### 6.1 导入 `.chr`
 
 通过：
 
-1. `upload.init`
-2. `upload.chunk`
-3. `upload.complete`
+1. `POST /upload/character:{character_id}/archive`
 
-服务端会解析 `.chr`，并创建角色卡对象。
+请求规则：
+
+- body 是原始 `.chr` 字节
+- 不使用 JSON-RPC envelope
+- 不使用 base64 包装
+- 客户端通常应发送 `Content-Type: application/x-sillystage-character-card`
+- 压缩包中的 `content.id` 必须与 `{character_id}` 一致
+
+服务端会解析归档、在内部保存封面，并创建角色卡对象。成功返回的 JSON body 是
+`character:{character_id}/archive` 对应的 `ResourceFilePayload`。
 
 ### 6.2 直接创建对象
 
 通过：
 
 1. `character.create`
-2. 可选 `character.set_cover`
+2. 可选 `POST /upload/character:{character_id}/cover`
+
+封面上传规则：
+
+- body 是原始图片字节
+- `Content-Type` 必须是 `image/png`、`image/jpeg` 或 `image/webp`
+- 可选 `x-file-name` 用来保存封面文件名
+- 如果未提供 `x-file-name`，后端会使用 `cover.<ext>`
 
 这种方式适合前端表单编辑器。
 
@@ -152,27 +166,50 @@ merchant.chr
 
 - `character.list`: 获取角色摘要
 - `character.get`: 获取完整角色内容
+- JSON payload 返回封面元数据，而不是直接内联封面字节
 
-### 7.2 获取封面
+详情 payload 结构示例：
 
-- `character.get_cover`
+```json
+{
+  "character_id": "merchant",
+  "content": {
+    "id": "merchant",
+    "name": "Old Merchant",
+    "personality": "greedy but friendly trader",
+    "style": "talkative, casual, slightly cunning",
+    "schema_id": "schema-character-merchant",
+    "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。"
+  },
+  "cover_file_name": "cover.png",
+  "cover_mime_type": "image/png"
+}
+```
+
+说明：
+
+- 当角色尚未设置封面时，`cover_file_name` 与 `cover_mime_type` 为 `null`
+- `character.list` 的摘要也会暴露相同的封面元数据字段
+- 可以通过 `GET /download/character:{character_id}/cover` 按角色 id 获取当前封面
+
+### 7.2 获取封面字节
+
+- `GET /download/character:{character_id}/cover`
 
 返回：
 
-- `character_id`
-- `cover_file_name`
-- `cover_mime_type`
-- `cover_base64`
+- HTTP body 中的原始封面字节
+- `Content-Type` 为已保存的封面 MIME 类型
+- 如果存在封面文件名，则可能返回附件 `Content-Disposition` 文件名
 
 ### 7.3 导出 `.chr`
 
-- `character.export_chr`
+- `GET /download/character:{character_id}/archive`
 
 返回：
 
-- `character_id`
-- `file_name`
-- `content_type`
-- `chr_base64`
+- HTTP body 中的原始 `.chr` 字节
+- `Content-Type: application/x-sillystage-character-card`
+- 可选附件文件名，通常是 `{character_id}.chr`
 
 服务端会基于当前存储中的角色卡内容和封面重新打包 `.chr`，不要求与最初上传的原始字节完全一致。

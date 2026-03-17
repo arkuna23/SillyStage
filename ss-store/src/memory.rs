@@ -5,14 +5,15 @@ use tokio::sync::RwLock;
 
 use crate::error::StoreError;
 use crate::record::{
-    ApiGroupRecord, ApiRecord, CharacterCardRecord, LorebookRecord, PlayerProfileRecord,
-    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
-    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardRecord, LorebookRecord,
+    PlayerProfileRecord, PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord,
+    SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
 #[derive(Default)]
 pub struct InMemoryStore {
+    blobs: RwLock<HashMap<String, BlobRecord>>,
     apis: RwLock<HashMap<String, ApiRecord>>,
     api_groups: RwLock<HashMap<String, ApiGroupRecord>>,
     presets: RwLock<HashMap<String, PresetRecord>>,
@@ -36,6 +37,22 @@ impl InMemoryStore {
 
 #[async_trait]
 impl Store for InMemoryStore {
+    async fn get_blob(&self, blob_id: &str) -> Result<Option<BlobRecord>, StoreError> {
+        Ok(self.blobs.read().await.get(blob_id).cloned())
+    }
+
+    async fn save_blob(&self, record: BlobRecord) -> Result<(), StoreError> {
+        self.blobs
+            .write()
+            .await
+            .insert(record.blob_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_blob(&self, blob_id: &str) -> Result<Option<BlobRecord>, StoreError> {
+        Ok(self.blobs.write().await.remove(blob_id))
+    }
+
     async fn get_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError> {
         Ok(self.apis.read().await.get(api_id).cloned())
     }

@@ -4,7 +4,8 @@ This document describes the current `ss-protocol` wire structure. It focuses on 
 
 ## 1. Transport Model
 
-The backend protocol uses JSON-RPC 2.0 for request/response envelopes and a separate server-event envelope for streaming output.
+The backend uses JSON-RPC 2.0 for protocol request/response envelopes, a separate server-event
+envelope for streaming output, and dedicated binary HTTP routes for file transfer.
 
 ### 1.1 Request
 
@@ -98,6 +99,20 @@ Session-bound APIs can also return ordinary unary JSON-RPC results. The current 
   - notes:
     - it only generates suggestions and does not write them into the session transcript
     - it returns 3 suggestions by default and accepts `2..=5`
+
+### 1.4 Binary File Transfer
+
+Routes under `/upload/{resource_id}/{file_id}` and `/download/{resource_id}/{file_id}` do not use
+JSON-RPC envelopes.
+
+- Upload request bodies are raw bytes.
+- `resource_id + file_id` is the protocol-level file identity.
+- `x-file-name` is an optional upload request header.
+- Download responses return raw bytes with HTTP `Content-Type`.
+- Binary route failures return plain `ErrorPayload` JSON bodies with transport HTTP status codes.
+- Current built-in resource files:
+  - `character:{character_id}/cover`
+  - `character:{character_id}/archive`
 
 ## 2. Resource Model
 
@@ -229,7 +244,28 @@ Notes:
 - A session activates at most one `player_profile_id` at a time.
 - Switching player profiles does not switch `player_state`.
 
-### 2.7 `character`
+### 2.7 `resource_file`
+
+`resource_file` is the transport-neutral public identity for binary transfer.
+
+Fields:
+
+- `resource_id`
+- `file_id`
+- `file_name`
+- `content_type`
+- `size_bytes`
+
+Notes:
+
+- Public APIs identify files through `resource_id + file_id`, not through internal blob ids.
+- `POST /upload/{resource_id}/{file_id}` returns `ResourceFilePayload`.
+- `GET /download/{resource_id}/{file_id}` returns the raw bytes for that logical file.
+- Current built-in resource files:
+  - `character:{character_id}/cover`
+  - `character:{character_id}/archive`
+
+### 2.8 `character`
 
 Character content is represented by `CharacterCardContent`:
 
@@ -240,13 +276,22 @@ Character content is represented by `CharacterCardContent`:
 - `schema_id`
 - `system_prompt`
 
+Character read payloads add optional cover metadata around that content:
+
+- `cover_file_name`
+- `cover_mime_type`
+
 Notes:
 
 - Characters no longer embed `state_schema`.
 - Character-private schema is referenced through `schema_id`.
-- Cover retrieval and `.chr` export remain separate APIs.
+- Cover bytes are not embedded in JSON-RPC payloads.
+- Fetch cover bytes through `GET /download/character:{character_id}/cover`.
+- Import and export `.chr` files through:
+  - `POST /upload/character:{character_id}/archive`
+  - `GET /download/character:{character_id}/archive`
 
-### 2.8 `story_resources`
+### 2.9 `story_resources`
 
 `story_resources` is the editable input bundle used before story generation.
 
@@ -267,7 +312,7 @@ Notes:
 - `lorebook_ids` only reference existing lorebooks and may be empty.
 - `planned_story` is optional planner output text.
 
-### 2.9 `story`
+### 2.10 `story`
 
 A generated `story` record contains:
 
@@ -284,7 +329,7 @@ Notes:
 - After `Architect` generates world/player schema content, the engine manager stores them as `schema` resources first.
 - The story itself stores only schema ids.
 
-### 2.10 `session`
+### 2.11 `session`
 
 A session binds a story to a runtime snapshot.
 
@@ -325,6 +370,11 @@ Notes:
 
 `content.json` uses `CharacterCardContent`.
 
+Import and export happen through:
+
+- `POST /upload/character:{character_id}/archive`
+- `GET /download/character:{character_id}/archive`
+
 For details, see:
 
 - [../character.md](../character.md)
@@ -333,7 +383,7 @@ For details, see:
 
 Current protocol families:
 
-- `upload.*`
+- binary file routes under `/upload/{resource_id}/{file_id}` and `/download/{resource_id}/{file_id}`
 - `api.*`
 - `api_group.*`
 - `preset.*`

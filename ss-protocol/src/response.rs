@@ -27,9 +27,6 @@ use crate::session_variable::SessionVariablesPayload;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResponseResult {
-    UploadInitialized(UploadInitializedPayload),
-    UploadChunkAccepted(UploadChunkAcceptedPayload),
-    CharacterCardUploaded(CharacterCardUploadedPayload),
     Api(Box<ApiPayload>),
     ApisListed(ApisListedPayload),
     ApiModelsListed(ApiModelsListedPayload),
@@ -54,9 +51,6 @@ pub enum ResponseResult {
     PlayerProfileDeleted(PlayerProfileDeletedPayload),
     CharacterCreated(CharacterCreatedPayload),
     Character(Box<CharacterSchemaPayload>),
-    CharacterCover(Box<CharacterCoverPayload>),
-    CharacterChrExport(Box<CharacterChrExportPayload>),
-    CharacterCoverUpdated(CharacterCoverUpdatedPayload),
     CharactersListed(CharactersListedPayload),
     CharacterDeleted(CharacterDeletedPayload),
     StoryResourcesCreated(Box<StoryResourcesPayload>),
@@ -94,25 +88,6 @@ pub enum ResponseResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UploadInitializedPayload {
-    pub upload_id: String,
-    pub chunk_size_hint: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct UploadChunkAcceptedPayload {
-    pub upload_id: String,
-    pub received_chunk_index: u64,
-    pub received_bytes: u64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CharacterCardUploadedPayload {
-    pub character_id: String,
-    pub character_summary: CharacterCardSummaryPayload,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CharacterCreatedPayload {
     pub character_id: String,
     pub character_summary: CharacterCardSummaryPayload,
@@ -124,29 +99,6 @@ pub struct CharacterSchemaPayload {
     pub content: CharacterCardContent,
     pub cover_file_name: Option<String>,
     pub cover_mime_type: Option<CharacterCoverMimeType>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterCoverPayload {
-    pub character_id: String,
-    pub cover_file_name: String,
-    pub cover_mime_type: CharacterCoverMimeType,
-    pub cover_base64: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CharacterChrExportPayload {
-    pub character_id: String,
-    pub file_name: String,
-    pub content_type: String,
-    pub chr_base64: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct CharacterCoverUpdatedPayload {
-    pub character_id: String,
-    pub cover_file_name: String,
-    pub cover_mime_type: CharacterCoverMimeType,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

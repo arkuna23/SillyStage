@@ -1,13 +1,12 @@
 use serde_json::json;
 use ss_protocol::{
-    CharacterCardSummaryPayload, CharacterChrExportPayload, CharacterCoverMimeType,
-    CharacterCoverPayload, CharacterCoverUpdatedPayload, CharacterCreatedPayload,
-    DashboardCountsPayload, DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
+    CharacterCardSummaryPayload, CharacterCreatedPayload, DashboardCountsPayload,
+    DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
     DashboardSessionSummaryPayload, DashboardStorySummaryPayload, ErrorCode, ErrorPayload,
     GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage,
-    JsonRpcResponseMessage, RequestParams, ResponseResult, RuntimeSnapshotPayload,
-    ServerEventMessage, SessionDetailPayload, SessionMessageKind, SessionMessagePayload,
-    StoryPlannedPayload, StreamEventBody, StreamFrame,
+    JsonRpcResponseMessage, RequestParams, ResourceFilePayload, ResponseResult,
+    RuntimeSnapshotPayload, ServerEventMessage, SessionDetailPayload, SessionMessageKind,
+    SessionMessagePayload, StoryPlannedPayload, StreamEventBody, StreamFrame,
 };
 use state::WorldState;
 
@@ -104,44 +103,6 @@ fn json_rpc_request_and_response_round_trip() {
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::GlobalConfig(_))
     ));
 
-    let cover_response = JsonRpcResponseMessage::ok(
-        "req-4",
-        None::<String>,
-        ResponseResult::CharacterCover(Box::new(CharacterCoverPayload {
-            character_id: "merchant".to_owned(),
-            cover_file_name: "cover.png".to_owned(),
-            cover_mime_type: CharacterCoverMimeType::Png,
-            cover_base64: "ZmFrZS1jb3Zlcg==".to_owned(),
-        })),
-    );
-    let cover_json =
-        serde_json::to_string_pretty(&cover_response).expect("cover response should serialize");
-    let cover_round_trip: JsonRpcResponseMessage =
-        serde_json::from_str(&cover_json).expect("cover response should deserialize");
-    assert!(matches!(
-        cover_round_trip.outcome,
-        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCover(_))
-    ));
-
-    let chr_export_response = JsonRpcResponseMessage::ok(
-        "req-5",
-        None::<String>,
-        ResponseResult::CharacterChrExport(Box::new(CharacterChrExportPayload {
-            character_id: "merchant".to_owned(),
-            file_name: "merchant.chr".to_owned(),
-            content_type: "application/x-sillystage-character-card".to_owned(),
-            chr_base64: "UEsDBAoAAAAAA".to_owned(),
-        })),
-    );
-    let chr_export_json = serde_json::to_string_pretty(&chr_export_response)
-        .expect("chr export response should serialize");
-    let chr_export_round_trip: JsonRpcResponseMessage =
-        serde_json::from_str(&chr_export_json).expect("chr export response should deserialize");
-    assert!(matches!(
-        chr_export_round_trip.outcome,
-        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterChrExport(_))
-    ));
-
     let created_response = JsonRpcResponseMessage::ok(
         "req-6",
         None::<String>,
@@ -164,25 +125,6 @@ fn json_rpc_request_and_response_round_trip() {
     assert!(matches!(
         created_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCreated(_))
-    ));
-
-    let cover_updated_response = JsonRpcResponseMessage::ok(
-        "req-7",
-        None::<String>,
-        ResponseResult::CharacterCoverUpdated(CharacterCoverUpdatedPayload {
-            character_id: "merchant".to_owned(),
-            cover_file_name: "cover.png".to_owned(),
-            cover_mime_type: CharacterCoverMimeType::Png,
-        }),
-    );
-    let cover_updated_json = serde_json::to_string_pretty(&cover_updated_response)
-        .expect("cover updated response should serialize");
-    let cover_updated_round_trip: JsonRpcResponseMessage =
-        serde_json::from_str(&cover_updated_json)
-            .expect("cover updated response should deserialize");
-    assert!(matches!(
-        cover_updated_round_trip.outcome,
-        JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::CharacterCoverUpdated(_))
     ));
 
     let dashboard_response = JsonRpcResponseMessage::ok(
@@ -282,6 +224,27 @@ fn json_rpc_request_and_response_round_trip() {
         session_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::Session(_))
     ));
+}
+
+#[test]
+fn resource_file_payload_round_trip() {
+    let payload = ResourceFilePayload {
+        resource_id: "character:merchant".to_owned(),
+        file_id: "cover".to_owned(),
+        file_name: Some("cover.png".to_owned()),
+        content_type: "image/png".to_owned(),
+        size_bytes: 42,
+    };
+
+    let json = serde_json::to_string_pretty(&payload).expect("payload should serialize");
+    let round_trip: ResourceFilePayload =
+        serde_json::from_str(&json).expect("payload should deserialize");
+
+    assert_eq!(round_trip.resource_id, "character:merchant");
+    assert_eq!(round_trip.file_id, "cover");
+    assert_eq!(round_trip.file_name.as_deref(), Some("cover.png"));
+    assert_eq!(round_trip.content_type, "image/png");
+    assert_eq!(round_trip.size_bytes, 42);
 }
 
 #[test]

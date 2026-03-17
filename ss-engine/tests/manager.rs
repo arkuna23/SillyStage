@@ -8,9 +8,9 @@ use serde_json::json;
 use ss_engine::{EngineEvent, EngineManager, LlmApiRegistry};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use store::{
-    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
-    CharacterCardRecord, InMemoryStore, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
-    SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord,
+    CharacterCardDefinition, CharacterCardRecord, InMemoryStore, PlayerProfileRecord,
+    PresetAgentConfigs, PresetRecord, SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
 };
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
@@ -99,9 +99,18 @@ fn sample_character_record() -> CharacterCardRecord {
             schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
         },
+        cover_blob_id: Some("blob-cover-merchant".to_owned()),
         cover_file_name: Some("cover.png".to_owned()),
         cover_mime_type: Some("image/png".to_owned()),
-        cover_bytes: Some(b"cover".to_vec()),
+    }
+}
+
+fn sample_blob_record() -> BlobRecord {
+    BlobRecord {
+        blob_id: "blob-cover-merchant".to_owned(),
+        file_name: Some("cover.png".to_owned()),
+        content_type: "image/png".to_owned(),
+        bytes: b"cover".to_vec(),
     }
 }
 
@@ -289,6 +298,10 @@ async fn seed_story(store: &InMemoryStore) {
         ))
         .await
         .expect("save player profile b");
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await

@@ -103,22 +103,21 @@ A session activates at most one player profile at a time, but the system can sto
 
 Characters can be created in two ways.
 
-### 3.1 Upload `.chr`
+### 3.1 Import `.chr`
 
 Flow:
 
-1. `upload.init`
-2. `upload.chunk`
-3. `upload.complete`
+1. `POST /upload/character:{character_id}/archive`
 
-After completion, the backend parses the archive and stores a `character` resource.
+The request body is raw `.chr` bytes, not JSON-RPC and not base64. After completion, the backend
+parses the archive, stores the cover internally, and stores a `character` resource.
 
 ### 3.2 Create Character Directly
 
 Flow:
 
 1. `character.create`
-2. optional `character.set_cover`
+2. optional `POST /upload/character:{character_id}/cover`
 
 Character content now stores only:
 
@@ -130,6 +129,8 @@ Character content now stores only:
 - `system_prompt`
 
 That means a character references its private schema by `schema_id` instead of embedding the schema body.
+Character payloads now expose `cover_file_name` and `cover_mime_type`; fetch the actual cover
+bytes through `GET /download/character:{character_id}/cover`.
 
 ## 4. Create Story Resources
 

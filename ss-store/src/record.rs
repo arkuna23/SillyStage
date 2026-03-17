@@ -98,9 +98,17 @@ pub struct CharacterCardDefinition {
 pub struct CharacterCardRecord {
     pub character_id: String,
     pub content: CharacterCardDefinition,
+    pub cover_blob_id: Option<String>,
     pub cover_file_name: Option<String>,
     pub cover_mime_type: Option<String>,
-    pub cover_bytes: Option<Vec<u8>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlobRecord {
+    pub blob_id: String,
+    pub file_name: Option<String>,
+    pub content_type: String,
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

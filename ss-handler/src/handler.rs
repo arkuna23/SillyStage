@@ -20,7 +20,8 @@ use protocol::{JsonRpcRequestMessage, JsonRpcResponseMessage, RequestParams, Ser
 use store::{InMemoryStore, Store};
 
 use crate::error::HandlerError;
-use crate::store::UploadStore;
+
+pub use upload::BinaryAsset;
 
 pub type HandlerEventStream = Pin<Box<dyn Stream<Item = ServerEventMessage> + Send>>;
 
@@ -35,7 +36,6 @@ pub enum HandlerReply {
 pub struct Handler {
     store: Arc<dyn Store>,
     manager: EngineManager,
-    uploads: UploadStore,
     id_generator: IdGenerator,
 }
 
@@ -49,7 +49,6 @@ impl Handler {
         Ok(Self {
             store,
             manager,
-            uploads: UploadStore::new(),
             id_generator: IdGenerator::default(),
         })
     }
@@ -63,13 +62,6 @@ impl Handler {
         let session_id = request.session_id.clone();
 
         let result = match request.params {
-            RequestParams::UploadInit(params) => self.handle_upload_init(&request_id, params).await,
-            RequestParams::UploadChunk(params) => {
-                self.handle_upload_chunk(&request_id, params).await
-            }
-            RequestParams::UploadComplete(params) => {
-                self.handle_upload_complete(&request_id, params).await
-            }
             RequestParams::ApiCreate(params) => self.handle_api_create(&request_id, params).await,
             RequestParams::ApiGet(params) => self.handle_api_get(&request_id, params).await,
             RequestParams::ApiList(_) => self.handle_api_list(&request_id).await,
@@ -164,15 +156,6 @@ impl Handler {
             }
             RequestParams::CharacterUpdate(params) => {
                 self.handle_character_update(&request_id, params).await
-            }
-            RequestParams::CharacterGetCover(params) => {
-                self.handle_character_get_cover(&request_id, params).await
-            }
-            RequestParams::CharacterExportChr(params) => {
-                self.handle_character_export_chr(&request_id, params).await
-            }
-            RequestParams::CharacterSetCover(params) => {
-                self.handle_character_set_cover(&request_id, params).await
             }
             RequestParams::CharacterList(_) => self.handle_character_list(&request_id).await,
             RequestParams::CharacterDelete(params) => {

@@ -21,8 +21,8 @@ pub enum HandlerError {
     MissingLorebook(String),
     #[error("player profile '{0}' not found")]
     MissingPlayerProfile(String),
-    #[error("upload '{0}' not found")]
-    MissingUpload(String),
+    #[error("blob '{0}' not found")]
+    MissingBlob(String),
     #[error("character '{0}' not found")]
     MissingCharacter(String),
     #[error("story resources '{0}' not found")]
@@ -79,6 +79,8 @@ pub enum HandlerError {
     EmptyApiGroupId,
     #[error("preset_id must not be empty")]
     EmptyPresetId,
+    #[error("invalid resource file reference '{0}'")]
+    InvalidFileReference(String),
     #[error("character '{0}' does not have a cover yet")]
     MissingCharacterCover(String),
     #[error("schema '{0}' is still referenced")]
@@ -103,14 +105,6 @@ pub enum HandlerError {
     StoryHasSessions(String),
     #[error("character_ids cannot be empty")]
     EmptyCharacterIds,
-    #[error("upload chunk index {got} does not match expected {expected}")]
-    InvalidChunkIndex { expected: u64, got: u64 },
-    #[error("upload chunk offset {got} does not match expected {expected}")]
-    InvalidChunkOffset { expected: u64, got: u64 },
-    #[error("upload total size mismatch: expected {expected}, got {got}")]
-    UploadSizeMismatch { expected: u64, got: u64 },
-    #[error("invalid upload chunk payload: {0}")]
-    InvalidUploadChunkPayload(String),
     #[error("invalid character cover payload: {0}")]
     InvalidCharacterCoverPayload(String),
     #[error("suggested reply limit must be between 2 and 5, got {0}")]
@@ -146,10 +140,6 @@ impl HandlerError {
         match self {
             Self::MissingSessionId
             | Self::EmptyCharacterIds
-            | Self::InvalidChunkIndex { .. }
-            | Self::InvalidChunkOffset { .. }
-            | Self::UploadSizeMismatch { .. }
-            | Self::InvalidUploadChunkPayload(_)
             | Self::EmptySchemaId
             | Self::EmptyLorebookId
             | Self::EmptyLorebookEntryId
@@ -159,6 +149,7 @@ impl HandlerError {
             | Self::EmptyApiId
             | Self::EmptyApiGroupId
             | Self::EmptyPresetId
+            | Self::InvalidFileReference(_)
             | Self::InvalidCharacterCoverPayload(_)
             | Self::InvalidSuggestedReplyLimit(_)
             | Self::InvalidStoryGraph(_)
@@ -169,7 +160,7 @@ impl HandlerError {
             | Self::Llm(LlmError::InvalidRequest(_))
             | Self::Llm(LlmError::UnsupportedCapability(_))
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
-            Self::MissingUpload(_)
+            Self::MissingBlob(_)
             | Self::MissingSchema(_)
             | Self::MissingLorebook(_)
             | Self::MissingLorebookEntry { .. }

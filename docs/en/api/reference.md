@@ -1,14 +1,18 @@
 # API Reference
 
-This document lists the currently implemented JSON-RPC methods.
+This document lists the currently implemented JSON-RPC methods and transport-level binary HTTP endpoints.
 
-## 1. upload
+## 1. binary HTTP
 
-| Method | session_id | Result | Notes |
+| Route | Body | Success response | Notes |
 | --- | --- | --- | --- |
-| `upload.init` | No | `upload_initialized` | Start chunked upload |
-| `upload.chunk` | No | `upload_chunk_accepted` | Upload a chunk |
-| `upload.complete` | No | `character_card_uploaded` | Finish `.chr` upload and persist the character |
+| `POST /upload/{resource_id}/{file_id}` | Raw bytes | `ResourceFilePayload` JSON (`200 OK`) | Optional `x-file-name`; transport adapter for logical resource files |
+| `GET /download/{resource_id}/{file_id}` | None | Raw bytes (`200 OK`) | Downloads one logical resource file; uses attachment disposition when a file name is known |
+
+Current built-in resource files:
+
+- `character:{character_id}/cover`
+- `character:{character_id}/archive`
 
 ## 2. api
 
@@ -170,9 +174,6 @@ Notes:
 | `character.update` | No | `character` | Update full character content |
 | `character.list` | No | `characters_listed` | List character summaries |
 | `character.delete` | No | `character_deleted` | Delete a character |
-| `character.set_cover` | No | `character_cover_updated` | Set or replace the cover |
-| `character.get_cover` | No | `character_cover` | Get cover as base64 |
-| `character.export_chr` | No | `character_chr_export` | Export `.chr` |
 
 Character content fields:
 
@@ -186,8 +187,14 @@ Character content fields:
 Notes:
 
 - `schema_id` references the character-private state schema
-- Cover upload is a separate update step
-- `.chr` export requires the character to have a cover
+- character summaries and detail payloads also include:
+  - `cover_file_name`
+  - `cover_mime_type`
+- cover bytes are fetched through `GET /download/character:{character_id}/cover`
+- `.chr` import and export use:
+  - `POST /upload/character:{character_id}/archive`
+  - `GET /download/character:{character_id}/archive`
+- cover upload uses `POST /upload/character:{character_id}/cover`
 
 ## 10. story_resources
 
@@ -356,7 +363,7 @@ Notes:
 - those temporary characters are created and entered before beat execution, so they can act in the same turn
 - session-scoped temporary characters do not modify the underlying story graph and do not persist outside the current session
 
-## 11. session_character
+## 14. session_character
 
 | Method | session_id | Result | Streaming |
 | --- | --- | --- | --- |
@@ -374,7 +381,7 @@ Notes:
 - `session_character.enter_scene` and `session_character.leave_scene` only change whether the character is in the current active cast
 - session characters are not part of `story`, `story_draft`, or `character`
 
-## 12. session_message
+## 15. session_message
 
 | Method | session_id | Result | Streaming |
 | --- | --- | --- | --- |
@@ -391,7 +398,7 @@ Notes:
 - manual `create` appends to the end of the current session transcript
 - `session.get.history` and `session_message.list` use the same ordered message shape
 
-## 13. config
+## 16. config
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -403,7 +410,7 @@ Notes:
 - in that case both `api_group_id` and `preset_id` are `null`
 - otherwise it returns the current fallback pair, which is the first available `api_group` and first available `preset` after sorting by id
 
-## 14. dashboard
+## 17. dashboard
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |

@@ -1,14 +1,18 @@
 # API 参考
 
-本文档列出当前已经实现的 JSON-RPC 方法。
+本文档列出当前已经实现的 JSON-RPC 方法和传输层二进制 HTTP 端点。
 
-## 1. upload
+## 1. binary HTTP
 
-| 方法 | session_id | 返回 | 说明 |
+| 路由 | 请求体 | 成功响应 | 说明 |
 | --- | --- | --- | --- |
-| `upload.init` | 否 | `upload_initialized` | 初始化分段上传 |
-| `upload.chunk` | 否 | `upload_chunk_accepted` | 上传分片 |
-| `upload.complete` | 否 | `character_card_uploaded` | 完成 `.chr` 上传并落为角色卡 |
+| `POST /upload/{resource_id}/{file_id}` | 原始字节 | `ResourceFilePayload` JSON（`200 OK`） | 可选 `x-file-name`；作为逻辑资源文件的传输适配层 |
+| `GET /download/{resource_id}/{file_id}` | 无 | 原始字节（`200 OK`） | 下载一个逻辑资源文件；若存在文件名则使用附件下载 disposition |
+
+当前内置资源文件：
+
+- `character:{character_id}/cover`
+- `character:{character_id}/archive`
 
 ## 2. api
 
@@ -168,9 +172,6 @@
 | `character.update` | 否 | `character` | 更新角色内容 |
 | `character.list` | 否 | `characters_listed` | 获取角色摘要列表 |
 | `character.delete` | 否 | `character_deleted` | 删除角色卡 |
-| `character.set_cover` | 否 | `character_cover_updated` | 设置或替换封面 |
-| `character.get_cover` | 否 | `character_cover` | 获取封面 base64 |
-| `character.export_chr` | 否 | `character_chr_export` | 导出 `.chr` |
 
 角色内容字段：
 
@@ -184,8 +185,14 @@
 说明：
 
 - `schema_id` 引用角色私有状态 schema
-- 封面是独立更新接口
-- `.chr` 导出要求角色卡已具备封面
+- 角色摘要和详情 payload 还会包含：
+  - `cover_file_name`
+  - `cover_mime_type`
+- 封面字节通过 `GET /download/character:{character_id}/cover` 获取
+- `.chr` 导入与导出使用：
+  - `POST /upload/character:{character_id}/archive`
+  - `GET /download/character:{character_id}/archive`
+- 封面上传使用 `POST /upload/character:{character_id}/cover`
 
 ## 10. story_resources
 
@@ -354,7 +361,7 @@
 - 这些临时角色会在 beat 执行前先被创建并加入当前场景，因此可以在同一回合立即参与表演
 - session 级临时角色不会修改底层 story graph，也不会持久化到当前 session 之外
 
-## 11. session_character
+## 14. session_character
 
 | 方法 | session_id | 返回 | 流式 |
 | --- | --- | --- | --- |
@@ -372,7 +379,7 @@
 - `session_character.enter_scene` 和 `session_character.leave_scene` 只修改该角色是否处于当前 active cast
 - session character 不属于 `story`、`story_draft` 或 `character`
 
-## 12. session_message
+## 15. session_message
 
 | 方法 | session_id | 返回 | 流式 |
 | --- | --- | --- | --- |
@@ -389,7 +396,7 @@
 - 手动 `create` 会把消息追加到当前 transcript 末尾
 - `session.get.history` 和 `session_message.list` 使用同一套有序消息结构
 
-## 13. config
+## 16. config
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -401,7 +408,7 @@
 - 此时 `api_group_id` 和 `preset_id` 都为 `null`
 - 若存在资源，则返回按 id 排序后的第一个 `api_group` 和第一个 `preset`
 
-## 14. dashboard
+## 17. dashboard
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |

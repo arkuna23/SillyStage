@@ -10,9 +10,9 @@ use protocol::{CharacterArchive, CharacterCardContent};
 use serde_json::json;
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use store::{
-    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
-    CharacterCardRecord, LlmProvider, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
-    SchemaRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord,
+    CharacterCardDefinition, CharacterCardRecord, LlmProvider, PlayerProfileRecord,
+    PresetAgentConfigs, PresetRecord, SchemaRecord,
 };
 use story::{NarrativeNode, StoryGraph};
 
@@ -178,6 +178,7 @@ pub fn sample_character_record() -> CharacterCardRecord {
             schema_id: archive.content.schema_id.clone(),
             system_prompt: archive.content.system_prompt.clone(),
         },
+        cover_blob_id: Some("blob-cover-merchant".to_owned()),
         cover_file_name: Some(archive.manifest.cover_path.clone()),
         cover_mime_type: Some(
             serde_json::to_string(&archive.manifest.cover_mime_type)
@@ -185,7 +186,18 @@ pub fn sample_character_record() -> CharacterCardRecord {
                 .trim_matches('"')
                 .to_owned(),
         ),
-        cover_bytes: Some(archive.cover_bytes.clone()),
+    }
+}
+
+pub fn sample_blob_record() -> BlobRecord {
+    let archive = sample_archive();
+    BlobRecord {
+        blob_id: "blob-cover-merchant".to_owned(),
+        file_name: Some(archive.manifest.cover_path.clone()),
+        content_type: protocol::CharacterCoverMimeType::Png
+            .as_content_type()
+            .to_owned(),
+        bytes: archive.cover_bytes.clone(),
     }
 }
 

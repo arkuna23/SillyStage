@@ -1,5 +1,6 @@
 pub mod api;
 pub mod api_group;
+pub mod binary;
 pub mod character;
 pub mod config;
 pub mod error;
@@ -25,6 +26,7 @@ pub use api_group::{
     ApiGroupDeletedPayload, ApiGroupGetParams, ApiGroupListParams, ApiGroupPayload,
     ApiGroupUpdateParams, ApiGroupsListedPayload,
 };
+pub use binary::{ResourceFilePayload, ResourceFileRefPayload};
 pub use character::{
     CHARACTER_ARCHIVE_CONTENT_PATH, CHARACTER_ARCHIVE_CONTENT_TYPE, CHARACTER_ARCHIVE_FORMAT,
     CHARACTER_ARCHIVE_MANIFEST_PATH, CHARACTER_ARCHIVE_VERSION, CharacterArchive,
@@ -59,8 +61,7 @@ pub use preset::{
 };
 pub use reply_suggestion::{ReplyOptionPayload, SuggestRepliesParams, SuggestedRepliesPayload};
 pub use request::{
-    CharacterCreateParams, CharacterDeleteParams, CharacterExportChrParams,
-    CharacterGetCoverParams, CharacterGetParams, CharacterListParams, CharacterSetCoverParams,
+    CharacterCreateParams, CharacterDeleteParams, CharacterGetParams, CharacterListParams,
     CharacterUpdateParams, ContinueStoryDraftParams, CreateStoryResourcesParams,
     DashboardGetParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
     DeleteStoryResourcesParams, FinalizeStoryDraftParams, GenerateStoryParams,
@@ -69,22 +70,19 @@ pub use request::{
     ListStoryDraftsParams, ListStoryResourcesParams, RequestMethod, RequestParams, RunTurnParams,
     SetPlayerProfileParams, StartSessionFromStoryParams, StartStoryDraftParams,
     UpdatePlayerDescriptionParams, UpdateSessionParams, UpdateStoryDraftGraphParams,
-    UpdateStoryGraphParams, UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams,
-    UploadCompleteParams, UploadInitParams, UploadTargetKind,
+    UpdateStoryGraphParams, UpdateStoryParams, UpdateStoryResourcesParams,
 };
 pub use response::{
-    CharacterCardUploadedPayload, CharacterChrExportPayload, CharacterCoverPayload,
-    CharacterCoverUpdatedPayload, CharacterCreatedPayload, CharacterDeletedPayload,
-    CharacterSchemaPayload, CharactersListedPayload, DashboardCountsPayload,
-    DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
-    DashboardSessionSummaryPayload, DashboardStorySummaryPayload, PlayerDescriptionUpdatedPayload,
-    ResponseResult, RuntimeSnapshotPayload, SessionDeletedPayload, SessionDetailPayload,
-    SessionStartedPayload, SessionSummaryPayload, SessionsListedPayload, StoriesListedPayload,
-    StoryDeletedPayload, StoryDetailPayload, StoryDraftDeletedPayload, StoryDraftDetailPayload,
-    StoryDraftStatusPayload, StoryDraftSummaryPayload, StoryDraftsListedPayload,
-    StoryGeneratedPayload, StoryPlannedPayload, StoryResourcesDeletedPayload,
-    StoryResourcesListedPayload, StoryResourcesPayload, StorySummaryPayload, TurnCompletedPayload,
-    TurnStreamAcceptedPayload, UploadChunkAcceptedPayload, UploadInitializedPayload,
+    CharacterCreatedPayload, CharacterDeletedPayload, CharacterSchemaPayload,
+    CharactersListedPayload, DashboardCountsPayload, DashboardHealthPayload, DashboardHealthStatus,
+    DashboardPayload, DashboardSessionSummaryPayload, DashboardStorySummaryPayload,
+    PlayerDescriptionUpdatedPayload, ResponseResult, RuntimeSnapshotPayload, SessionDeletedPayload,
+    SessionDetailPayload, SessionStartedPayload, SessionSummaryPayload, SessionsListedPayload,
+    StoriesListedPayload, StoryDeletedPayload, StoryDetailPayload, StoryDraftDeletedPayload,
+    StoryDraftDetailPayload, StoryDraftStatusPayload, StoryDraftSummaryPayload,
+    StoryDraftsListedPayload, StoryGeneratedPayload, StoryPlannedPayload,
+    StoryResourcesDeletedPayload, StoryResourcesListedPayload, StoryResourcesPayload,
+    StorySummaryPayload, TurnCompletedPayload, TurnStreamAcceptedPayload,
 };
 pub use schema::{
     SchemaCreateParams, SchemaDeleteParams, SchemaDeletedPayload, SchemaGetParams,

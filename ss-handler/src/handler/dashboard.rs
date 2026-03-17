@@ -103,7 +103,7 @@ impl Handler {
 }
 
 fn character_has_cover(character: &store::CharacterCardRecord) -> bool {
-    character.cover_file_name.is_some()
+    character.cover_blob_id.is_some()
+        && character.cover_file_name.is_some()
         && character.cover_mime_type.is_some()
-        && character.cover_bytes.is_some()
 }

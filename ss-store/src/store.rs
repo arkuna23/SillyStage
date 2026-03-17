@@ -2,13 +2,17 @@ use async_trait::async_trait;
 
 use crate::error::StoreError;
 use crate::record::{
-    ApiGroupRecord, ApiRecord, CharacterCardRecord, LorebookRecord, PlayerProfileRecord,
-    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
-    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardRecord, LorebookRecord,
+    PlayerProfileRecord, PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord,
+    SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 
 #[async_trait]
 pub trait Store: Send + Sync {
+    async fn get_blob(&self, blob_id: &str) -> Result<Option<BlobRecord>, StoreError>;
+    async fn save_blob(&self, record: BlobRecord) -> Result<(), StoreError>;
+    async fn delete_blob(&self, blob_id: &str) -> Result<Option<BlobRecord>, StoreError>;
+
     async fn get_api(&self, api_id: &str) -> Result<Option<ApiRecord>, StoreError>;
     async fn list_apis(&self) -> Result<Vec<ApiRecord>, StoreError>;
     async fn save_api(&self, record: ApiRecord) -> Result<(), StoreError>;

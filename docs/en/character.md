@@ -127,22 +127,36 @@ Requirements:
 
 Character cards can currently be created in two ways.
 
-### 6.1 Upload `.chr`
+### 6.1 Import `.chr`
 
 Through:
 
-1. `upload.init`
-2. `upload.chunk`
-3. `upload.complete`
+1. `POST /upload/character:{character_id}/archive`
 
-The backend parses the archive and creates the character object.
+Request rules:
+
+- body is raw `.chr` bytes
+- no JSON-RPC envelope
+- no base64 wrapper
+- clients should usually send `Content-Type: application/x-sillystage-character-card`
+- archive `content.id` must match `{character_id}`
+
+The backend parses the archive, stores the cover internally, and creates the character object. The
+success JSON body is `ResourceFilePayload` for `character:{character_id}/archive`.
 
 ### 6.2 Create from Request Data
 
 Through:
 
 1. `character.create`
-2. optional `character.set_cover`
+2. optional `POST /upload/character:{character_id}/cover`
+
+Cover upload rules:
+
+- body is raw image bytes
+- `Content-Type` must be `image/png`, `image/jpeg`, or `image/webp`
+- optional `x-file-name` stores the cover file name
+- if `x-file-name` is omitted, the backend uses `cover.<ext>`
 
 This is the preferred flow for a frontend form editor.
 
@@ -152,27 +166,50 @@ This is the preferred flow for a frontend form editor.
 
 - `character.list`: get summaries
 - `character.get`: get the full character content
+- the JSON payloads include cover metadata instead of cover bytes
 
-### 7.2 Get Cover
+Example detail payload shape:
 
-- `character.get_cover`
+```json
+{
+  "character_id": "merchant",
+  "content": {
+    "id": "merchant",
+    "name": "Old Merchant",
+    "personality": "greedy but friendly trader",
+    "style": "talkative, casual, slightly cunning",
+    "schema_id": "schema-character-merchant",
+    "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion."
+  },
+  "cover_file_name": "cover.png",
+  "cover_mime_type": "image/png"
+}
+```
+
+Notes:
+
+- `cover_file_name` and `cover_mime_type` are `null` when the character has no cover yet
+- `character.list` summaries expose the same cover metadata fields
+- use `GET /download/character:{character_id}/cover` to fetch the current cover bytes
+
+### 7.2 Get Cover Bytes
+
+- `GET /download/character:{character_id}/cover`
 
 Returns:
 
-- `character_id`
-- `cover_file_name`
-- `cover_mime_type`
-- `cover_base64`
+- raw cover bytes in the HTTP body
+- `Content-Type` set to the stored cover MIME type
+- optional attachment `Content-Disposition` filename when a cover file name exists
 
 ### 7.3 Export `.chr`
 
-- `character.export_chr`
+- `GET /download/character:{character_id}/archive`
 
 Returns:
 
-- `character_id`
-- `file_name`
-- `content_type`
-- `chr_base64`
+- raw `.chr` bytes in the HTTP body
+- `Content-Type: application/x-sillystage-character-card`
+- optional attachment file name, typically `{character_id}.chr`
 
 The backend repacks the `.chr` archive from the currently stored character content and cover. It does not need to preserve byte-for-byte identity with the originally uploaded archive.

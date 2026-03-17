@@ -2,9 +2,8 @@ use serde_json::json;
 use ss_protocol::{
     ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiGroupBindingsInput, ApiGroupCreateParams,
     ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams, ApiListParams, ApiUpdateParams,
-    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterDeleteParams,
-    CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
-    CharacterSetCoverParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
+    CharacterCardContent, CharacterCreateParams, CharacterDeleteParams, CharacterGetParams,
+    CharacterListParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
     ConfigGetGlobalParams, ContinueStoryDraftParams, CreateSessionMessageParams,
     CreateStoryResourcesParams, DashboardGetParams, DeleteSessionCharacterParams,
     DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
@@ -23,8 +22,7 @@ use ss_protocol::{
     StartSessionFromStoryParams, StartStoryDraftParams, SuggestRepliesParams,
     UpdateSessionCharacterParams, UpdateSessionMessageParams, UpdateSessionParams,
     UpdateSessionVariablesParams, UpdateStoryDraftGraphParams, UpdateStoryGraphParams,
-    UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams,
-    UploadInitParams, UploadTargetKind,
+    UpdateStoryParams, UpdateStoryResourcesParams,
 };
 use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::LlmProvider;
@@ -91,56 +89,7 @@ fn sample_common_variables() -> Vec<CommonVariableDefinition> {
 }
 
 #[test]
-fn upload_and_story_requests_round_trip_with_stable_methods() {
-    let upload_init = JsonRpcRequestMessage::new(
-        "upload-1",
-        None::<String>,
-        RequestParams::UploadInit(UploadInitParams {
-            target_kind: UploadTargetKind::CharacterCard,
-            file_name: "merchant.chr".to_owned(),
-            content_type: "application/x-sillystage-character-card".to_owned(),
-            total_size: 4096,
-            sha256: "abcd1234".to_owned(),
-        }),
-    );
-    assert!(
-        serde_json::to_string_pretty(&upload_init)
-            .expect("serialize")
-            .contains("\"method\": \"upload.init\"")
-    );
-
-    let upload_chunk = JsonRpcRequestMessage::new(
-        "upload-2",
-        None::<String>,
-        RequestParams::UploadChunk(UploadChunkParams {
-            upload_id: "up-1".to_owned(),
-            chunk_index: 0,
-            offset: 0,
-            payload_base64: "aGVsbG8=".to_owned(),
-            is_last: false,
-        }),
-    );
-    let upload_chunk_round_trip: JsonRpcRequestMessage =
-        serde_json::from_str(&serde_json::to_string(&upload_chunk).expect("serialize"))
-            .expect("deserialize");
-    assert!(matches!(
-        upload_chunk_round_trip.params,
-        RequestParams::UploadChunk(UploadChunkParams { upload_id, .. }) if upload_id == "up-1"
-    ));
-
-    let upload_complete = JsonRpcRequestMessage::new(
-        "upload-3",
-        None::<String>,
-        RequestParams::UploadComplete(UploadCompleteParams {
-            upload_id: "up-1".to_owned(),
-        }),
-    );
-    assert!(
-        serde_json::to_string_pretty(&upload_complete)
-            .expect("serialize")
-            .contains("\"method\": \"upload.complete\"")
-    );
-
+fn story_requests_round_trip_with_stable_methods() {
     let generate_story = JsonRpcRequestMessage::new(
         "story-1",
         None::<String>,
@@ -390,29 +339,6 @@ fn character_schema_and_session_requests_round_trip() {
             RequestParams::CharacterUpdate(CharacterUpdateParams {
                 character_id: "merchant".to_owned(),
                 content: sample_character_content(),
-            }),
-        ),
-        JsonRpcRequestMessage::new(
-            "character-cover",
-            None::<String>,
-            RequestParams::CharacterGetCover(CharacterGetCoverParams {
-                character_id: "merchant".to_owned(),
-            }),
-        ),
-        JsonRpcRequestMessage::new(
-            "character-export",
-            None::<String>,
-            RequestParams::CharacterExportChr(CharacterExportChrParams {
-                character_id: "merchant".to_owned(),
-            }),
-        ),
-        JsonRpcRequestMessage::new(
-            "character-set-cover",
-            None::<String>,
-            RequestParams::CharacterSetCover(CharacterSetCoverParams {
-                character_id: "merchant".to_owned(),
-                cover_mime_type: CharacterCoverMimeType::Png,
-                cover_base64: "aGVsbG8=".to_owned(),
             }),
         ),
         JsonRpcRequestMessage::new(

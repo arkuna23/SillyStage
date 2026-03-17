@@ -2,19 +2,16 @@ mod common;
 
 use std::sync::Arc;
 
-use base64::Engine as _;
-use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
 use engine::LlmApiRegistry;
 use futures_util::StreamExt;
 use protocol::{
     ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
     ApiGroupUpdateParams, CharacterArchive, CharacterCardContent, CharacterCoverMimeType,
-    CharacterCreateParams, CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams,
-    CharacterSetCoverParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
-    ConfigGetGlobalParams, CreateSessionMessageParams, CreateStoryResourcesParams,
-    DashboardGetParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
-    DeleteSessionParams, EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams,
-    GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
+    CharacterCreateParams, CharacterGetParams, CharacterUpdateParams, CommonVariableDefinition,
+    CommonVariableScope, ConfigGetGlobalParams, CreateSessionMessageParams,
+    CreateStoryResourcesParams, DashboardGetParams, DeleteSessionCharacterParams,
+    DeleteSessionMessageParams, DeleteSessionParams, EnterSessionCharacterSceneParams, ErrorCode,
+    GenerateStoryParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
     GetSessionVariablesParams, GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
     LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
     LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetCreateParams,
@@ -24,8 +21,7 @@ use protocol::{
     StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionCharacterParams,
     UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
     UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
-    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    UpdateStoryResourcesParams,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
@@ -38,7 +34,7 @@ use story::NarrativeNode;
 
 use common::{
     QueuedMockLlm, assistant_response, sample_api_group_record, sample_api_record, sample_archive,
-    sample_character_content, sample_character_record, sample_player_profile,
+    sample_blob_record, sample_character_content, sample_character_record, sample_player_profile,
     sample_player_state_schema, sample_preset_record, sample_schema_record,
     sample_session_character_record, sample_story_graph, sample_story_record,
     sample_world_state_schema,
@@ -234,6 +230,14 @@ async fn seed_story_records(store: &InMemoryStore) {
     seed_player_profiles(store).await;
     seed_api_groups_and_presets(store).await;
     store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
+    store
         .save_character(sample_character_record())
         .await
         .expect("save character");
@@ -256,63 +260,34 @@ async fn seed_story_records(store: &InMemoryStore) {
 }
 
 #[tokio::test]
-async fn upload_character_card_and_create_resources_via_character_id() {
+async fn import_character_card_and_create_resources_via_character_id() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let (store, handler) = build_handler(llm.clone()).await;
     seed_schema_records(&store).await;
     let archive_bytes = sample_archive()
         .to_chr_bytes()
         .expect("archive should serialize");
+    let archive_size = archive_bytes.len() as u64;
 
-    let upload_init = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-1",
-                None::<String>,
-                RequestParams::UploadInit(UploadInitParams {
-                    target_kind: UploadTargetKind::CharacterCard,
-                    file_name: "merchant.chr".to_owned(),
-                    content_type: "application/x-sillystage-character-card".to_owned(),
-                    total_size: archive_bytes.len() as u64,
-                    sha256: "demo-sha".to_owned(),
-                }),
-            ))
-            .await,
+    let uploaded = handler
+        .upload_resource_file(
+            "character:merchant",
+            "archive",
+            Some("merchant.chr".to_owned()),
+            protocol::CHARACTER_ARCHIVE_CONTENT_TYPE.to_owned(),
+            archive_bytes,
+        )
+        .await
+        .expect("character should import");
+    let character_id = "merchant".to_owned();
+    assert_eq!(uploaded.resource_id, "character:merchant");
+    assert_eq!(uploaded.file_id, "archive");
+    assert_eq!(uploaded.file_name.as_deref(), Some("merchant.chr"));
+    assert_eq!(
+        uploaded.content_type,
+        protocol::CHARACTER_ARCHIVE_CONTENT_TYPE
     );
-    let upload_id = match upload_init {
-        ResponseResult::UploadInitialized(payload) => payload.upload_id,
-        other => panic!("unexpected response: {other:?}"),
-    };
-
-    unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-2",
-                None::<String>,
-                RequestParams::UploadChunk(UploadChunkParams {
-                    upload_id: upload_id.clone(),
-                    chunk_index: 0,
-                    offset: 0,
-                    payload_base64: BASE64_STANDARD.encode(&archive_bytes),
-                    is_last: true,
-                }),
-            ))
-            .await,
-    );
-
-    let uploaded = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-3",
-                None::<String>,
-                RequestParams::UploadComplete(UploadCompleteParams { upload_id }),
-            ))
-            .await,
-    );
-    let character_id = match uploaded {
-        ResponseResult::CharacterCardUploaded(payload) => payload.character_id,
-        other => panic!("unexpected response: {other:?}"),
-    };
+    assert_eq!(uploaded.size_bytes, archive_size);
 
     let got_character = unary_result(
         handler
@@ -333,62 +308,28 @@ async fn upload_character_card_and_create_resources_via_character_id() {
         other => panic!("unexpected response: {other:?}"),
     }
 
-    let got_cover = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-3b",
-                None::<String>,
-                RequestParams::CharacterGetCover(CharacterGetCoverParams {
-                    character_id: character_id.clone(),
-                }),
-            ))
-            .await,
-    );
-    match got_cover {
-        ResponseResult::CharacterCover(payload) => {
-            assert_eq!(payload.character_id, character_id);
-            assert_eq!(payload.cover_file_name, "cover.png");
-            assert_eq!(
-                BASE64_STANDARD
-                    .decode(payload.cover_base64)
-                    .expect("cover should decode"),
-                b"cover-bytes"
-            );
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    let got_cover = handler
+        .download_resource_file(&format!("character:{character_id}"), "cover")
+        .await
+        .expect("cover should be available");
+    assert_eq!(got_cover.file_name.as_deref(), Some("cover.png"));
+    assert_eq!(got_cover.content_type, "image/png");
+    assert_eq!(got_cover.bytes, b"cover-bytes");
 
-    let exported_chr = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-3c",
-                None::<String>,
-                RequestParams::CharacterExportChr(CharacterExportChrParams {
-                    character_id: character_id.clone(),
-                }),
-            ))
-            .await,
+    let exported_chr = handler
+        .download_resource_file(&format!("character:{character_id}"), "archive")
+        .await
+        .expect("chr export should succeed");
+    assert_eq!(exported_chr.file_name.as_deref(), Some("merchant.chr"));
+    assert_eq!(
+        exported_chr.content_type,
+        "application/x-sillystage-character-card"
     );
-    match exported_chr {
-        ResponseResult::CharacterChrExport(payload) => {
-            assert_eq!(payload.character_id, character_id);
-            assert_eq!(payload.file_name, "merchant.chr");
-            assert_eq!(
-                payload.content_type,
-                "application/x-sillystage-character-card"
-            );
-
-            let chr_bytes = BASE64_STANDARD
-                .decode(payload.chr_base64)
-                .expect("chr should decode");
-            let archive =
-                CharacterArchive::from_chr_bytes(&chr_bytes).expect("chr archive should decode");
-            assert_eq!(archive.content.id, "merchant");
-            assert_eq!(archive.manifest.cover_path, "cover.png");
-            assert_eq!(archive.cover_bytes, b"cover-bytes");
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    let archive =
+        CharacterArchive::from_chr_bytes(&exported_chr.bytes).expect("chr archive should decode");
+    assert_eq!(archive.content.id, "merchant");
+    assert_eq!(archive.manifest.cover_path, "cover.png");
+    assert_eq!(archive.cover_bytes, b"cover-bytes");
 
     let created = unary_result(
         handler
@@ -476,111 +417,53 @@ async fn character_create_then_set_cover_enables_cover_and_chr_export() {
         other => panic!("unexpected response: {other:?}"),
     }
 
-    let missing_cover_response = match handler
-        .handle(JsonRpcRequestMessage::new(
-            "req-get-cover",
-            None::<String>,
-            RequestParams::CharacterGetCover(CharacterGetCoverParams {
-                character_id: "merchant".to_owned(),
-            }),
-        ))
-        .await
-    {
-        HandlerReply::Unary(response) => response,
-        HandlerReply::Stream { .. } => panic!("expected unary response"),
-    };
     assert!(matches!(
-        missing_cover_response.outcome,
-        JsonRpcOutcome::Err(error) if error.code == ErrorCode::Conflict.rpc_code()
+        handler
+            .download_resource_file("character:merchant", "cover")
+            .await,
+        Err(ss_handler::HandlerError::MissingCharacterCover(_))
+    ));
+    assert!(matches!(
+        handler
+            .download_resource_file("character:merchant", "archive")
+            .await,
+        Err(ss_handler::HandlerError::MissingCharacterCover(_))
     ));
 
-    let missing_chr_response = match handler
-        .handle(JsonRpcRequestMessage::new(
-            "req-export",
-            None::<String>,
-            RequestParams::CharacterExportChr(CharacterExportChrParams {
-                character_id: "merchant".to_owned(),
-            }),
-        ))
+    let updated = handler
+        .upload_resource_file(
+            "character:merchant",
+            "cover",
+            None,
+            CharacterCoverMimeType::Png.as_content_type().to_owned(),
+            b"cover-bytes".to_vec(),
+        )
         .await
-    {
-        HandlerReply::Unary(response) => response,
-        HandlerReply::Stream { .. } => panic!("expected unary response"),
-    };
-    assert!(matches!(
-        missing_chr_response.outcome,
-        JsonRpcOutcome::Err(error) if error.code == ErrorCode::Conflict.rpc_code()
-    ));
-
-    let updated = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-set-cover",
-                None::<String>,
-                RequestParams::CharacterSetCover(CharacterSetCoverParams {
-                    character_id: "merchant".to_owned(),
-                    cover_mime_type: CharacterCoverMimeType::Png,
-                    cover_base64: BASE64_STANDARD.encode(b"cover-bytes"),
-                }),
-            ))
-            .await,
+        .expect("cover should update");
+    assert_eq!(updated.resource_id, "character:merchant");
+    assert_eq!(updated.file_id, "cover");
+    assert_eq!(updated.file_name.as_deref(), Some("cover.png"));
+    assert_eq!(
+        updated.content_type,
+        CharacterCoverMimeType::Png.as_content_type()
     );
-    match updated {
-        ResponseResult::CharacterCoverUpdated(payload) => {
-            assert_eq!(payload.character_id, "merchant");
-            assert_eq!(payload.cover_file_name, "cover.png");
-            assert_eq!(payload.cover_mime_type, CharacterCoverMimeType::Png);
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    assert_eq!(updated.size_bytes, b"cover-bytes".len() as u64);
 
-    let got_cover = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-get-cover-success",
-                None::<String>,
-                RequestParams::CharacterGetCover(CharacterGetCoverParams {
-                    character_id: "merchant".to_owned(),
-                }),
-            ))
-            .await,
-    );
-    match got_cover {
-        ResponseResult::CharacterCover(payload) => {
-            assert_eq!(
-                BASE64_STANDARD
-                    .decode(payload.cover_base64)
-                    .expect("cover should decode"),
-                b"cover-bytes"
-            );
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    let got_cover = handler
+        .download_resource_file("character:merchant", "cover")
+        .await
+        .expect("cover should be readable");
+    assert_eq!(got_cover.bytes, b"cover-bytes");
 
-    let exported_chr = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-export-success",
-                None::<String>,
-                RequestParams::CharacterExportChr(CharacterExportChrParams {
-                    character_id: "merchant".to_owned(),
-                }),
-            ))
-            .await,
-    );
-    match exported_chr {
-        ResponseResult::CharacterChrExport(payload) => {
-            let chr_bytes = BASE64_STANDARD
-                .decode(payload.chr_base64)
-                .expect("chr should decode");
-            let archive =
-                CharacterArchive::from_chr_bytes(&chr_bytes).expect("chr archive should decode");
-            assert_eq!(archive.content.id, "merchant");
-            assert_eq!(archive.manifest.cover_path, "cover.png");
-            assert_eq!(archive.cover_bytes, b"cover-bytes");
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    let exported_chr = handler
+        .download_resource_file("character:merchant", "archive")
+        .await
+        .expect("chr export should succeed");
+    let archive =
+        CharacterArchive::from_chr_bytes(&exported_chr.bytes).expect("chr archive should decode");
+    assert_eq!(archive.content.id, "merchant");
+    assert_eq!(archive.manifest.cover_path, "cover.png");
+    assert_eq!(archive.cover_bytes, b"cover-bytes");
 }
 
 #[tokio::test]
@@ -588,6 +471,10 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let (store, handler) = build_handler(llm).await;
     seed_schema_records(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await
@@ -668,19 +555,16 @@ async fn character_update_replaces_content_and_preserves_cover() {
             ))
             .await,
     );
-    unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-set-cover",
-                None::<String>,
-                RequestParams::CharacterSetCover(CharacterSetCoverParams {
-                    character_id: "merchant".to_owned(),
-                    cover_mime_type: CharacterCoverMimeType::Png,
-                    cover_base64: BASE64_STANDARD.encode(b"cover-bytes"),
-                }),
-            ))
-            .await,
-    );
+    handler
+        .upload_resource_file(
+            "character:merchant",
+            "cover",
+            None,
+            CharacterCoverMimeType::Png.as_content_type().to_owned(),
+            b"cover-bytes".to_vec(),
+        )
+        .await
+        .expect("cover should update");
 
     let updated = unary_result(
         handler
@@ -711,28 +595,11 @@ async fn character_update_replaces_content_and_preserves_cover() {
         other => panic!("unexpected response: {other:?}"),
     }
 
-    let got_cover = unary_result(
-        handler
-            .handle(JsonRpcRequestMessage::new(
-                "req-get-cover",
-                None::<String>,
-                RequestParams::CharacterGetCover(CharacterGetCoverParams {
-                    character_id: "merchant".to_owned(),
-                }),
-            ))
-            .await,
-    );
-    match got_cover {
-        ResponseResult::CharacterCover(payload) => {
-            assert_eq!(
-                BASE64_STANDARD
-                    .decode(payload.cover_base64)
-                    .expect("cover should decode"),
-                b"cover-bytes"
-            );
-        }
-        other => panic!("unexpected response: {other:?}"),
-    }
+    let got_cover = handler
+        .download_resource_file("character:merchant", "cover")
+        .await
+        .expect("cover should be readable");
+    assert_eq!(got_cover.bytes, b"cover-bytes");
 }
 
 #[tokio::test]
@@ -801,6 +668,10 @@ async fn story_and_session_crud_follow_store_objects() {
     seed_schema_records(&store).await;
     seed_player_profiles(&store).await;
     seed_api_groups_and_presets(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await
@@ -978,6 +849,10 @@ async fn story_generate_persists_common_variables() {
     seed_schema_records(&store).await;
     seed_api_groups_and_presets(&store).await;
     store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
+    store
         .save_character(sample_character_record())
         .await
         .expect("save character");
@@ -1050,6 +925,10 @@ async fn story_generate_rejects_invalid_common_variables() {
     let store = Arc::new(InMemoryStore::new());
     seed_schema_records(&store).await;
     seed_api_groups_and_presets(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await
@@ -1138,6 +1017,10 @@ async fn story_draft_start_persists_common_variables() {
     let store = Arc::new(InMemoryStore::new());
     seed_schema_records(&store).await;
     seed_api_groups_and_presets(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await
@@ -2262,14 +2145,18 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
         .await
         .expect("handler should build");
 
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save covered blob");
     let character_with_cover = sample_character_record();
     let mut character_without_cover = sample_character_record();
     character_without_cover.character_id = "guard".to_owned();
     character_without_cover.content.id = "guard".to_owned();
     character_without_cover.content.name = "Mina".to_owned();
+    character_without_cover.cover_blob_id = None;
     character_without_cover.cover_file_name = None;
     character_without_cover.cover_mime_type = None;
-    character_without_cover.cover_bytes = None;
 
     store
         .save_character(character_with_cover)

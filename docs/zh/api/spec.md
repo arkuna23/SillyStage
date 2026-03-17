@@ -4,7 +4,8 @@
 
 ## 1. 传输模型
 
-后端协议使用 JSON-RPC 2.0 作为请求/响应封装，流式结果通过独立的服务端事件消息发送。
+后端同时使用 JSON-RPC 2.0 作为协议请求/响应封装、独立的服务端事件消息作为流式输出，
+以及专门的二进制 HTTP 路由来传输文件。
 
 ### 1.1 请求
 
@@ -98,6 +99,20 @@
   - 说明：
     - 只生成建议，不写入 session transcript
     - 默认返回 3 条，允许 `2..=5`
+
+### 1.4 二进制文件传输
+
+`/upload/{resource_id}/{file_id}` 与 `/download/{resource_id}/{file_id}` 下的路由不使用
+JSON-RPC envelope。
+
+- 上传请求体直接发送原始字节。
+- `resource_id + file_id` 是协议层的文件标识。
+- `x-file-name` 是上传路由的可选请求头。
+- 下载响应直接返回原始字节，并通过 HTTP `Content-Type` 标明类型。
+- 二进制路由出错时会返回普通 `ErrorPayload` JSON，并使用对应的 HTTP 状态码。
+- 当前内置资源文件：
+  - `character:{character_id}/cover`
+  - `character:{character_id}/archive`
 
 ## 2. 资源模型
 
@@ -228,7 +243,28 @@
 - 一个 session 同时只激活一个 `player_profile_id`。
 - 切换 player profile 不会切换 `player_state`。
 
-### 2.7 `character`
+### 2.7 `resource_file`
+
+`resource_file` 是公开的、与传输方式无关的二进制文件标识。
+
+字段：
+
+- `resource_id`
+- `file_id`
+- `file_name`
+- `content_type`
+- `size_bytes`
+
+说明：
+
+- 对外接口通过 `resource_id + file_id` 标识文件，不暴露内部 blob id。
+- `POST /upload/{resource_id}/{file_id}` 返回 `ResourceFilePayload`。
+- `GET /download/{resource_id}/{file_id}` 返回该逻辑文件的原始字节。
+- 当前内置资源文件：
+  - `character:{character_id}/cover`
+  - `character:{character_id}/archive`
+
+### 2.8 `character`
 
 角色卡内容通过 `CharacterCardContent` 表示：
 
@@ -239,13 +275,22 @@
 - `schema_id`
 - `system_prompt`
 
+角色读取 payload 会在内容之外附带可选封面元数据：
+
+- `cover_file_name`
+- `cover_mime_type`
+
 说明：
 
 - 角色卡不再内联 `state_schema`。
 - 角色私有 schema 通过 `schema_id` 引用独立 `schema` 资源。
-- 封面与 `.chr` 导出是独立接口。
+- JSON-RPC payload 中不再内联封面字节。
+- 封面字节通过 `GET /download/character:{character_id}/cover` 获取。
+- `.chr` 的导入与导出通过以下路由完成：
+  - `POST /upload/character:{character_id}/archive`
+  - `GET /download/character:{character_id}/archive`
 
-### 2.8 `story_resources`
+### 2.9 `story_resources`
 
 `story_resources` 是生成 story 前的输入资源集合。
 
@@ -266,7 +311,7 @@
 - `lorebook_ids` 只引用已存在的 lorebook，也可以为空。
 - `planned_story` 是可选的 planner 文本。
 
-### 2.9 `story`
+### 2.10 `story`
 
 生成完成后的 `story` 记录包含：
 
@@ -283,7 +328,7 @@
 - `Architect` 生成 world/player schema 本体后，engine manager 会先落成 `schema` 资源，再把 id 写入 story。
 - story 本身只保存 schema id。
 
-### 2.10 `session`
+### 2.11 `session`
 
 session 绑定一个 story 和一份运行时快照。
 
@@ -324,6 +369,11 @@ session 绑定一个 story 和一份运行时快照。
 
 `content.json` 使用 `CharacterCardContent`。
 
+导入与导出通过以下路由完成：
+
+- `POST /upload/character:{character_id}/archive`
+- `GET /download/character:{character_id}/archive`
+
 更多细节见：
 
 - [../character.md](../character.md)
@@ -332,7 +382,7 @@ session 绑定一个 story 和一份运行时快照。
 
 当前协议按资源分为以下方法族：
 
-- `upload.*`
+- `/upload/{resource_id}/{file_id}` 与 `/download/{resource_id}/{file_id}` 下的二进制文件路由
 - `api.*`
 - `api_group.*`
 - `preset.*`

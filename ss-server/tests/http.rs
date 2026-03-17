@@ -6,12 +6,9 @@ use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode, header};
 use handler::Handler;
 use protocol::{
-    CharacterCoverMimeType, CharacterCreateParams, CharacterExportChrParams,
-    CharacterGetCoverParams, CharacterSetCoverParams, CreateStoryResourcesParams,
-    DashboardGetParams, ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage,
-    JsonRpcResponseMessage, RequestParams, RunTurnParams, StartSessionFromStoryParams,
-    SuggestRepliesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
-    UploadTargetKind,
+    CharacterArchive, CharacterCreateParams, CreateStoryResourcesParams, DashboardGetParams,
+    ErrorPayload, GenerateStoryParams, JsonRpcRequestMessage, JsonRpcResponseMessage,
+    RequestParams, RunTurnParams, StartSessionFromStoryParams, SuggestRepliesParams,
 };
 use serde_json::json;
 use ss_server::http::build_router;
@@ -20,9 +17,9 @@ use tower::util::ServiceExt;
 
 use common::{
     QueuedMockLlm, assistant_response, registry_with_ids, sample_api_group_record,
-    sample_api_record, sample_archive, sample_character_content, sample_character_record,
-    sample_player_profile, sample_player_state_schema, sample_preset_record, sample_schema_record,
-    sample_story_graph, sample_world_state_schema,
+    sample_api_record, sample_archive, sample_blob_record, sample_character_content,
+    sample_character_record, sample_player_profile, sample_player_state_schema,
+    sample_preset_record, sample_schema_record, sample_story_graph, sample_world_state_schema,
 };
 
 async fn seed_schema_records(store: &InMemoryStore) {
@@ -144,9 +141,13 @@ async fn rpc_unary_request_returns_json_rpc_response() {
 }
 
 #[tokio::test]
-async fn rpc_character_get_cover_returns_json_rpc_response() {
+async fn binary_character_cover_returns_raw_bytes() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("blob should save");
     store
         .save_character(sample_character_record())
         .await
@@ -158,22 +159,12 @@ async fn rpc_character_get_cover_returns_json_rpc_response() {
     );
     let router = build_router(handler);
 
-    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
-        "req-cover",
-        None::<String>,
-        RequestParams::CharacterGetCover(CharacterGetCoverParams {
-            character_id: "merchant".to_owned(),
-        }),
-    ))
-    .expect("request should serialize");
-
     let response = router
         .oneshot(
             Request::builder()
-                .method("POST")
-                .uri("/rpc")
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(body))
+                .method("GET")
+                .uri("/download/character:merchant/cover")
+                .body(Body::empty())
                 .expect("request should build"),
         )
         .await
@@ -182,25 +173,23 @@ async fn rpc_character_get_cover_returns_json_rpc_response() {
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(
         response.headers().get(header::CONTENT_TYPE).unwrap(),
-        "application/json"
+        "image/png"
     );
 
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should collect");
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).expect("response should deserialize");
-
-    assert_eq!(value["id"], "req-cover");
-    assert_eq!(value["result"]["type"], "character_cover");
-    assert_eq!(value["result"]["character_id"], "merchant");
-    assert_eq!(value["result"]["cover_file_name"], "cover.png");
+    assert_eq!(bytes.as_ref(), b"cover-bytes");
 }
 
 #[tokio::test]
-async fn rpc_character_export_chr_returns_json_rpc_response() {
+async fn binary_character_export_returns_chr_bytes() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("blob should save");
     store
         .save_character(sample_character_record())
         .await
@@ -212,42 +201,28 @@ async fn rpc_character_export_chr_returns_json_rpc_response() {
     );
     let router = build_router(handler);
 
-    let body = serde_json::to_vec(&JsonRpcRequestMessage::new(
-        "req-export",
-        None::<String>,
-        RequestParams::CharacterExportChr(CharacterExportChrParams {
-            character_id: "merchant".to_owned(),
-        }),
-    ))
-    .expect("request should serialize");
-
     let response = router
         .oneshot(
             Request::builder()
-                .method("POST")
-                .uri("/rpc")
-                .header(header::CONTENT_TYPE, "application/json")
-                .body(Body::from(body))
+                .method("GET")
+                .uri("/download/character:merchant/archive")
+                .body(Body::empty())
                 .expect("request should build"),
         )
         .await
         .expect("router should respond");
 
     assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(
+        response.headers().get(header::CONTENT_TYPE).unwrap(),
+        "application/x-sillystage-character-card"
+    );
     let bytes = to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("body should collect");
-    let value: serde_json::Value =
-        serde_json::from_slice(&bytes).expect("response should deserialize");
-
-    assert_eq!(value["id"], "req-export");
-    assert_eq!(value["result"]["type"], "character_chr_export");
-    assert_eq!(value["result"]["character_id"], "merchant");
-    assert_eq!(value["result"]["file_name"], "merchant.chr");
-    assert_eq!(
-        value["result"]["content_type"],
-        "application/x-sillystage-character-card"
-    );
+    let archive = CharacterArchive::from_chr_bytes(&bytes).expect("archive should decode");
+    assert_eq!(archive.content.id, "merchant");
+    assert_eq!(archive.cover_bytes, b"cover-bytes");
 }
 
 #[tokio::test]
@@ -351,6 +326,10 @@ async fn rpc_session_suggest_replies_returns_json_rpc_response() {
     seed_schema_records(&store).await;
     seed_player_profiles(&store).await;
     seed_runtime_bindings(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("blob should save");
     store
         .save_character(sample_character_record())
         .await
@@ -513,58 +492,31 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
         .to_chr_bytes()
         .expect("archive should serialize");
 
-    let upload_init = request_json(
-        &router,
-        JsonRpcRequestMessage::new(
-            "req-upload-init",
-            None::<String>,
-            RequestParams::UploadInit(UploadInitParams {
-                target_kind: UploadTargetKind::CharacterCard,
-                file_name: "merchant.chr".to_owned(),
-                content_type: "application/x-sillystage-character-card".to_owned(),
-                total_size: archive_bytes.len() as u64,
-                sha256: "sha".to_owned(),
-            }),
-        ),
-    )
-    .await;
-    let upload_id = upload_init["result"]["upload_id"]
-        .as_str()
-        .expect("upload id should exist")
-        .to_owned();
-
-    request_json(
-        &router,
-        JsonRpcRequestMessage::new(
-            "req-upload-chunk",
-            None::<String>,
-            RequestParams::UploadChunk(UploadChunkParams {
-                upload_id: upload_id.clone(),
-                chunk_index: 0,
-                offset: 0,
-                payload_base64: {
-                    use base64::Engine as _;
-                    base64::engine::general_purpose::STANDARD.encode(archive_bytes)
-                },
-                is_last: true,
-            }),
-        ),
-    )
-    .await;
-
-    let upload_complete = request_json(
-        &router,
-        JsonRpcRequestMessage::new(
-            "req-upload-complete",
-            None::<String>,
-            RequestParams::UploadComplete(UploadCompleteParams { upload_id }),
-        ),
-    )
-    .await;
-    let character_id = upload_complete["result"]["character_id"]
-        .as_str()
-        .expect("character id should exist")
-        .to_owned();
+    let import_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/upload/character:merchant/archive")
+                .header(
+                    header::CONTENT_TYPE,
+                    "application/x-sillystage-character-card",
+                )
+                .body(Body::from(archive_bytes))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+    assert_eq!(import_response.status(), StatusCode::OK);
+    let import_bytes = to_bytes(import_response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let import_value: serde_json::Value =
+        serde_json::from_slice(&import_bytes).expect("response should deserialize");
+    assert_eq!(import_value["resource_id"], "character:merchant");
+    assert_eq!(import_value["file_id"], "archive");
+    assert_eq!(import_value["file_name"], "merchant.chr");
+    let character_id = "merchant".to_owned();
 
     let resources = request_json(
         &router,
@@ -699,29 +651,30 @@ async fn rpc_character_create_and_set_cover_return_json_rpc_response() {
     assert_eq!(create["result"]["type"], "character_created");
     assert!(create["result"]["character_summary"]["cover_file_name"].is_null());
 
-    let set_cover = request_json(
-        &router,
-        JsonRpcRequestMessage::new(
-            "req-set-cover",
-            None::<String>,
-            RequestParams::CharacterSetCover(CharacterSetCoverParams {
-                character_id: "merchant".to_owned(),
-                cover_mime_type: CharacterCoverMimeType::Png,
-                cover_base64: {
-                    use base64::Engine as _;
-                    base64::engine::general_purpose::STANDARD.encode(b"cover-bytes")
-                },
-            }),
-        ),
-    )
-    .await;
-    assert_eq!(set_cover["id"], "req-set-cover");
-    assert_eq!(set_cover["result"]["type"], "character_cover_updated");
-    assert_eq!(set_cover["result"]["cover_file_name"], "cover.png");
+    let set_cover = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/upload/character:merchant/cover")
+                .header(header::CONTENT_TYPE, "image/png")
+                .body(Body::from("cover-bytes"))
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
+    assert_eq!(set_cover.status(), StatusCode::OK);
+    let set_cover_bytes = to_bytes(set_cover.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let set_cover_value: serde_json::Value =
+        serde_json::from_slice(&set_cover_bytes).expect("response should deserialize");
+    assert_eq!(set_cover_value["resource_id"], "character:merchant");
+    assert_eq!(set_cover_value["file_id"], "cover");
+    assert_eq!(set_cover_value["file_name"], "cover.png");
 }
 
 #[tokio::test]
-async fn rpc_character_export_chr_without_cover_returns_conflict() {
+async fn binary_character_export_without_cover_returns_conflict() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_schema_records(&store).await;
@@ -744,21 +697,25 @@ async fn rpc_character_export_chr_without_cover_returns_conflict() {
     )
     .await;
 
-    let response = request_json(
-        &router,
-        JsonRpcRequestMessage::new(
-            "req-export",
-            None::<String>,
-            RequestParams::CharacterExportChr(CharacterExportChrParams {
-                character_id: "merchant".to_owned(),
-            }),
-        ),
-    )
-    .await;
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/download/character:merchant/archive")
+                .body(Body::empty())
+                .expect("request should build"),
+        )
+        .await
+        .expect("router should respond");
 
-    assert_eq!(response["id"], "req-export");
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let response_bytes = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("body should collect");
+    let response_value: serde_json::Value =
+        serde_json::from_slice(&response_bytes).expect("response should deserialize");
     assert_eq!(
-        response["error"]["code"],
+        response_value["code"],
         protocol::ErrorCode::Conflict.rpc_code()
     );
 }

@@ -1,3 +1,4 @@
+mod binary;
 mod logging;
 mod router;
 mod rpc;

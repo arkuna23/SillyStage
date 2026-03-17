@@ -2,11 +2,10 @@ use protocol::{
     JsonRpcRequestMessage, JsonRpcResponseMessage, RequestMethod, ServerEventMessage, StreamFrame,
 };
 use serde::Serialize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use tracing::{debug, info};
 
 const REDACTED_STRING_KEYS: &[&str] = &["api_key"];
-const OMITTED_BASE64_KEYS: &[&str] = &["payload_base64", "cover_base64", "chr_base64"];
 
 pub(crate) fn json_for_log<T: Serialize>(payload: &T) -> String {
     let mut value = match serde_json::to_value(payload) {
@@ -100,9 +99,7 @@ fn log_level_for_method(method: RequestMethod) -> LogLevel {
 fn is_frequent_method(method: RequestMethod) -> bool {
     matches!(
         method,
-        RequestMethod::UploadInit
-            | RequestMethod::UploadChunk
-            | RequestMethod::ApiGroupGet
+        RequestMethod::ApiGroupGet
             | RequestMethod::ApiGroupList
             | RequestMethod::PresetGet
             | RequestMethod::PresetList
@@ -111,7 +108,6 @@ fn is_frequent_method(method: RequestMethod) -> bool {
             | RequestMethod::PlayerProfileGet
             | RequestMethod::PlayerProfileList
             | RequestMethod::CharacterGet
-            | RequestMethod::CharacterGetCover
             | RequestMethod::CharacterList
             | RequestMethod::StoryResourcesGet
             | RequestMethod::StoryResourcesList
@@ -139,19 +135,10 @@ fn redact_value(value: &mut Value, key: Option<&str>) {
                 redact_value(entry, key);
             }
         }
-        Value::String(content) => {
+        Value::String(_) => {
             if let Some(key) = key {
                 if REDACTED_STRING_KEYS.contains(&key) {
                     *value = Value::String("<redacted>".to_owned());
-                    return;
-                }
-
-                if OMITTED_BASE64_KEYS.contains(&key) {
-                    *value = json!({
-                        "omitted": true,
-                        "kind": "base64",
-                        "length": content.len(),
-                    });
                 }
             }
         }

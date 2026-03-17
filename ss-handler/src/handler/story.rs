@@ -624,10 +624,10 @@ fn character_summary_payload_from_record(
         personality: record.content.personality.clone(),
         style: record.content.style.clone(),
         cover_file_name: record.cover_file_name.clone(),
-        cover_mime_type: record.cover_mime_type.as_deref().map(|mime_type| {
-            serde_json::from_str(&format!("\"{mime_type}\""))
-                .expect("stored cover mime type should deserialize")
-        }),
+        cover_mime_type: record
+            .cover_mime_type
+            .as_deref()
+            .and_then(protocol::CharacterCoverMimeType::parse),
     }
 }
 

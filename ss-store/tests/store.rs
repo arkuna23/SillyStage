@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use serde_json::json;
 use ss_store::{
-    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, CharacterCardDefinition,
-    CharacterCardRecord, InMemoryStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
-    PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionCharacterRecord,
-    SessionMessageKind, SessionMessageRecord, SessionRecord, Store, StoryDraftRecord,
-    StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    AgentPresetConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord,
+    CharacterCardDefinition, CharacterCardRecord, InMemoryStore, LlmProvider, PlayerProfileRecord,
+    PresetAgentConfigs, PresetRecord, RuntimeSnapshot, SchemaRecord, SessionBindingConfig,
+    SessionCharacterRecord, SessionMessageKind, SessionMessageRecord, SessionRecord, Store,
+    StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -22,9 +22,18 @@ fn sample_character_record() -> CharacterCardRecord {
             schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
         },
+        cover_blob_id: Some("blob-cover-merchant".to_owned()),
         cover_file_name: Some("cover.png".to_owned()),
         cover_mime_type: Some("image/png".to_owned()),
-        cover_bytes: Some(b"cover".to_vec()),
+    }
+}
+
+fn sample_blob_record() -> BlobRecord {
+    BlobRecord {
+        blob_id: "blob-cover-merchant".to_owned(),
+        file_name: Some("cover.png".to_owned()),
+        content_type: "image/png".to_owned(),
+        bytes: b"cover".to_vec(),
     }
 }
 
@@ -306,6 +315,10 @@ async fn in_memory_store_persists_all_records() {
         .await
         .expect("save player profile");
     store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
+    store
         .save_character(sample_character_record())
         .await
         .expect("save character");
@@ -364,6 +377,13 @@ async fn in_memory_store_persists_all_records() {
             .get_player_profile("profile-courier")
             .await
             .expect("load player profile")
+            .is_some()
+    );
+    assert!(
+        store
+            .get_blob("blob-cover-merchant")
+            .await
+            .expect("load blob")
             .is_some()
     );
     assert!(
@@ -453,6 +473,10 @@ async fn in_memory_store_lists_and_deletes_records() {
         .save_player_profile(sample_player_profile())
         .await
         .expect("save player profile");
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
     store
         .save_character(sample_character_record())
         .await
@@ -571,6 +595,13 @@ async fn in_memory_store_lists_and_deletes_records() {
     );
     assert!(
         store
+            .delete_blob("blob-cover-merchant")
+            .await
+            .expect("delete blob")
+            .is_some()
+    );
+    assert!(
+        store
             .delete_api_group("group-default")
             .await
             .expect("delete api group")
@@ -626,9 +657,9 @@ async fn in_memory_store_supports_characters_without_cover() {
     let mut character = sample_character_record();
     character.character_id = "coverless".to_owned();
     character.content.id = "coverless".to_owned();
+    character.cover_blob_id = None;
     character.cover_file_name = None;
     character.cover_mime_type = None;
-    character.cover_bytes = None;
 
     store
         .save_character(character)
@@ -641,9 +672,9 @@ async fn in_memory_store_supports_characters_without_cover() {
         .expect("load character")
         .expect("character should exist");
 
+    assert!(loaded.cover_blob_id.is_none());
     assert!(loaded.cover_file_name.is_none());
     assert!(loaded.cover_mime_type.is_none());
-    assert!(loaded.cover_bytes.is_none());
 }
 
 #[test]
