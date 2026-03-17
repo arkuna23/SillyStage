@@ -281,6 +281,20 @@ export function StoryResourceFormDialog({
     return null
   }
 
+  function hasUnsupportedSeedClear(nextFormState: FormState) {
+    if (!initialResource) {
+      return false
+    }
+
+    const hadPlayerSeed = Boolean(initialResource.player_schema_id_seed?.trim())
+    const hadWorldSeed = Boolean(initialResource.world_schema_id_seed?.trim())
+
+    return (
+      (hadPlayerSeed && nextFormState.playerSchemaIdSeed.length === 0) ||
+      (hadWorldSeed && nextFormState.worldSchemaIdSeed.length === 0)
+    )
+  }
+
   async function handleSubmit(intent: SubmitIntent) {
     const nextFormState = {
       ...formState,
@@ -303,6 +317,11 @@ export function StoryResourceFormDialog({
 
     if (isEditMode && !initialResource) {
       setSubmitError(t('storyResources.feedback.loadResourceFailed'))
+      return
+    }
+
+    if (isEditMode && hasUnsupportedSeedClear(nextFormState)) {
+      setSubmitError(t('storyResources.form.errors.schemaSeedClearUnsupported'))
       return
     }
 
@@ -509,6 +528,8 @@ export function StoryResourceFormDialog({
                   label={t('storyResources.form.fields.playerSchemaIdSeed')}
                 >
                   <Select
+                    allowClear
+                    clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
                     disabled={availableSchemas.length === 0}
                     items={schemaOptions}
                     onValueChange={(value) => {
@@ -529,6 +550,8 @@ export function StoryResourceFormDialog({
                   label={t('storyResources.form.fields.worldSchemaIdSeed')}
                 >
                   <Select
+                    allowClear
+                    clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
                     disabled={availableSchemas.length === 0}
                     items={schemaOptions}
                     onValueChange={(value) => {

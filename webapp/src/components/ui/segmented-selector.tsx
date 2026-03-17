@@ -23,6 +23,7 @@ type SegmentedSelectorProps = {
   className?: string
   items: ReadonlyArray<SegmentedSelectorItem>
   layoutId?: string
+  onDisabledValueClick?: (value: string) => void
   onValueChange?: (value: string) => void
   value: string
 }
@@ -32,6 +33,7 @@ export function SegmentedSelector({
   className,
   items,
   layoutId,
+  onDisabledValueClick,
   onValueChange,
   value,
 }: SegmentedSelectorProps) {
@@ -150,16 +152,22 @@ export function SegmentedSelector({
           <button
             aria-label={item.ariaLabel}
             aria-current={selected ? 'page' : undefined}
+            aria-disabled={item.disabled || undefined}
             className={cn(
-              'relative inline-flex h-10 min-w-[2.9rem] items-center justify-center self-stretch rounded-[0.95rem] px-3 text-[0.82rem] font-medium leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] xl:min-w-[6rem] xl:px-3.5 disabled:pointer-events-none disabled:opacity-40',
+              'relative inline-flex h-10 min-w-[2.9rem] items-center justify-center self-stretch rounded-[0.95rem] px-3 text-[0.82rem] font-medium leading-none transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] xl:min-w-[6rem] xl:px-3.5',
               selected
                 ? 'text-[color:var(--color-accent-ink)]'
                 : 'text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+              item.disabled ? 'cursor-not-allowed opacity-40' : undefined,
             )}
-            disabled={item.disabled}
             key={item.value}
             onClick={() => {
-              if (item.disabled || item.value === value) {
+              if (item.disabled) {
+                onDisabledValueClick?.(item.value)
+                return
+              }
+
+              if (item.value === value) {
                 return
               }
 

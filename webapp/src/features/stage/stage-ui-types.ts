@@ -19,7 +19,6 @@ export type CoverCache = Record<string, string | null | undefined>
 
 export type StageCastMember = {
   coverUrl?: string | null
-  description: string
   id: string
   isSessionCharacter: boolean
   name: string

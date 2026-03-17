@@ -137,6 +137,7 @@ const zhCN = {
     headbar: {
       apiRequiredWarning: '当前还没有配置 API，请先前往 API 管理完成设置。',
       label: '舞台',
+      presetRequiredWarning: '当前还没有可用预设，请先前往预设管理完成设置。',
     },
     intro: {
       empty: '当前故事还没有介绍。',
@@ -762,6 +763,7 @@ const zhCN = {
         apiGroupRequired: '请先选择一个 API 组。',
         charactersRequired: '至少选择一个角色。',
         presetRequired: '请先选择一个预设。',
+        schemaSeedClearUnsupported: '当前后端还不支持清空已经保存的状态结构，请保留原值或重新选择。',
         storyConceptRequired: '请填写原始剧情输入。',
         submitFailed: '保存剧情输入失败。',
       },
@@ -790,6 +792,7 @@ const zhCN = {
         apiGroupId: '选择这次整理使用的 API 组',
         plannedStory: '如果你交给规划师整理，这里会出现整理后的剧情输入稿，你也可以继续手动调整。',
         presetId: '选择这次整理使用的预设',
+        schemaSeedClear: '不使用状态结构',
         schemaSeed: '选择一个可选的状态结构',
         storyConcept: '写下冲突、人物关系和开场局势。规划师会在这条原始剧情输入上继续整理。',
       },

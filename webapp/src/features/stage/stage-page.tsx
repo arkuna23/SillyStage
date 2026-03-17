@@ -1495,7 +1495,6 @@ export function StagePage() {
 
     if (sessionCharacter) {
       return {
-        description: summarizeText(sessionCharacter.personality, 72),
         id: characterId,
         isSessionCharacter: true,
         name: sessionCharacter.display_name,
@@ -1504,7 +1503,6 @@ export function StagePage() {
 
     return {
       coverUrl: coverCache[characterId],
-      description: character ? summarizeText(character.personality, 72) : '',
       id: characterId,
       isSessionCharacter: false,
       name: character?.name ?? characterId,

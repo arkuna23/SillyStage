@@ -141,6 +141,7 @@ const en = {
     headbar: {
       apiRequiredWarning: 'No API has been configured yet. Open API Management first.',
       label: 'Stage',
+      presetRequiredWarning: 'No preset is available yet. Open Preset Management first.',
     },
     intro: {
       empty: 'This story does not have an introduction yet.',
@@ -772,6 +773,8 @@ const en = {
         apiGroupRequired: 'Choose an API Group first.',
         charactersRequired: 'Choose at least one character.',
         presetRequired: 'Choose a preset first.',
+        schemaSeedClearUnsupported:
+          'The backend does not support clearing a saved schema seed yet. Keep the current value or choose another schema.',
         storyConceptRequired: 'Raw story input is required.',
         submitFailed: 'Failed to save the story input.',
       },
@@ -803,6 +806,7 @@ const en = {
         apiGroupId: 'Select the API Group for this refinement',
         plannedStory: 'If Planner refines this input, the refined version will appear here and remain editable.',
         presetId: 'Select the preset for this refinement',
+        schemaSeedClear: 'Do not use a schema',
         schemaSeed: 'Choose an optional schema',
         storyConcept: 'Write the conflict, cast, and opening situation here. Planner will refine this same input instead of creating a different artifact.',
       },

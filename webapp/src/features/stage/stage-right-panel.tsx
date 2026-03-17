@@ -101,7 +101,7 @@ export function StageRightPanel({
                           >
                             <div className="flex items-start gap-2.5">
                               <CharacterAvatar coverUrl={character.coverUrl} name={character.name} />
-                              <div className="min-w-0 flex-1 space-y-0.5">
+                              <div className="min-w-0 flex-1 space-y-1">
                                 <div className="flex items-center gap-2">
                                   <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
                                     {character.name}
@@ -115,9 +115,6 @@ export function StageRightPanel({
                                 </div>
                                 <p className="truncate font-mono text-[0.68rem] text-[var(--color-text-muted)]">
                                   {character.id}
-                                </p>
-                                <p className="line-clamp-2 text-xs leading-5 text-[var(--color-text-secondary)]">
-                                  {character.description}
                                 </p>
                               </div>
                             </div>

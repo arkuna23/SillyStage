@@ -524,6 +524,8 @@ export function CreateStoryResourceDialog({
                     label={t('storyResources.form.fields.playerSchemaIdSeed')}
                   >
                     <Select
+                      allowClear
+                      clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
                       disabled={availableSchemas.length === 0}
                       items={schemaOptions}
                       onValueChange={(value) => {
@@ -545,6 +547,8 @@ export function CreateStoryResourceDialog({
                     label={t('storyResources.form.fields.worldSchemaIdSeed')}
                   >
                     <Select
+                      allowClear
+                      clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
                       disabled={availableSchemas.length === 0}
                       items={schemaOptions}
                       onValueChange={(value) => {

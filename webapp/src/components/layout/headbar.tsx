@@ -1,19 +1,34 @@
 import { faMasksTheater } from '@fortawesome/free-solid-svg-icons/faMasksTheater'
 import { faTableCellsLarge } from '@fortawesome/free-solid-svg-icons/faTableCellsLarge'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import type { TFunction } from 'i18next'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
 import {
-  hasConfiguredStageApis,
+  getStageAccessStatus,
   STAGE_API_AVAILABILITY_REFRESH_EVENT,
+  type StageAccessStatus,
 } from '../../features/stage/stage-access'
 import { HeadbarMenu } from '../headbar-menu'
 import { SegmentedSelector } from '../ui/segmented-selector'
 import { useToast } from '../ui/toast-context'
 import { cn } from '../../lib/cn'
+
+type HeadbarStageAccessStatus = StageAccessStatus | 'checking'
+
+function getStageUnavailableMessage(
+  status: Exclude<HeadbarStageAccessStatus, 'checking' | 'ready'>,
+  t: TFunction,
+) {
+  if (status === 'blockedPresets') {
+    return t('stage.headbar.presetRequiredWarning')
+  }
+
+  return t('stage.headbar.apiRequiredWarning')
+}
 
 export function Headbar() {
   const { t } = useTranslation()
@@ -21,15 +36,15 @@ export function Headbar() {
   const navigate = useNavigate()
   const { pushToast } = useToast()
   const [isAtTop, setIsAtTop] = useState(true)
-  const [isStageAvailable, setIsStageAvailable] = useState<boolean | null>(null)
-  const lastStageAvailabilityRef = useRef<boolean | null>(null)
+  const [stageAccessStatus, setStageAccessStatus] = useState<HeadbarStageAccessStatus>('checking')
+  const lastStageAccessStatusRef = useRef<HeadbarStageAccessStatus>('checking')
   const currentTopLevelPath = location.pathname.startsWith(appPaths.stageRoot)
     ? appPaths.stage
     : appPaths.workspace
 
-  const getStageAvailability = useCallback(async (signal?: AbortSignal) => {
+  const loadStageAccessStatus = useCallback(async (signal?: AbortSignal) => {
     try {
-      return await hasConfiguredStageApis(signal)
+      return await getStageAccessStatus(signal)
     } catch {
       if (signal?.aborted) {
         return null
@@ -55,49 +70,63 @@ export function Headbar() {
   useEffect(() => {
     const controller = new AbortController()
     void (async () => {
-      const nextAvailability = await getStageAvailability(controller.signal)
+      const nextStatus = await loadStageAccessStatus(controller.signal)
 
       if (controller.signal.aborted) {
         return
       }
 
-      setIsStageAvailable(nextAvailability)
+      if (nextStatus === null) {
+        return
+      }
 
-      if (lastStageAvailabilityRef.current !== false && nextAvailability === false) {
+      setStageAccessStatus(nextStatus)
+
+      if (
+        lastStageAccessStatusRef.current !== nextStatus &&
+        nextStatus !== 'ready'
+      ) {
         pushToast({
-          message: t('stage.headbar.apiRequiredWarning'),
+          message: getStageUnavailableMessage(nextStatus, t),
           tone: 'warning',
         })
       }
 
-      lastStageAvailabilityRef.current = nextAvailability
+      lastStageAccessStatusRef.current = nextStatus
     })()
 
     return () => {
       controller.abort()
     }
-  }, [getStageAvailability, location.pathname, pushToast, t])
+  }, [loadStageAccessStatus, location.pathname, pushToast, t])
 
   useEffect(() => {
     const handleRefresh = () => {
       const controller = new AbortController()
       void (async () => {
-        const nextAvailability = await getStageAvailability(controller.signal)
+        const nextStatus = await loadStageAccessStatus(controller.signal)
 
         if (controller.signal.aborted) {
           return
         }
 
-        setIsStageAvailable(nextAvailability)
+        if (nextStatus === null) {
+          return
+        }
 
-        if (lastStageAvailabilityRef.current !== false && nextAvailability === false) {
+        setStageAccessStatus(nextStatus)
+
+        if (
+          lastStageAccessStatusRef.current !== nextStatus &&
+          nextStatus !== 'ready'
+        ) {
           pushToast({
-            message: t('stage.headbar.apiRequiredWarning'),
+            message: getStageUnavailableMessage(nextStatus, t),
             tone: 'warning',
           })
         }
 
-        lastStageAvailabilityRef.current = nextAvailability
+        lastStageAccessStatusRef.current = nextStatus
       })()
     }
 
@@ -106,7 +135,7 @@ export function Headbar() {
     return () => {
       window.removeEventListener(STAGE_API_AVAILABILITY_REFRESH_EVENT, handleRefresh)
     }
-  }, [getStageAvailability, pushToast, t])
+  }, [loadStageAccessStatus, pushToast, t])
 
   return (
     <header
@@ -151,12 +180,31 @@ export function Headbar() {
               },
               {
                 ariaLabel: t('stage.headbar.label'),
-                disabled: isStageAvailable === false,
+                disabled:
+                  stageAccessStatus !== 'checking' &&
+                  stageAccessStatus !== 'ready',
                 icon: <FontAwesomeIcon fixedWidth icon={faMasksTheater} />,
                 label: <span>{t('stage.headbar.label')}</span>,
                 value: appPaths.stage,
               },
             ]}
+            onDisabledValueClick={(value) => {
+              if (value !== appPaths.stage) {
+                return
+              }
+
+              if (
+                stageAccessStatus === 'checking' ||
+                stageAccessStatus === 'ready'
+              ) {
+                return
+              }
+
+              pushToast({
+                message: getStageUnavailableMessage(stageAccessStatus, t),
+                tone: 'warning',
+              })
+            }}
             onValueChange={(value) => {
               if (value !== currentTopLevelPath) {
                 navigate(value)

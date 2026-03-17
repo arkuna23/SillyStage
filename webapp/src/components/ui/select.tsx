@@ -1,5 +1,5 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
-import type { ComponentPropsWithoutRef } from 'react'
+import { useMemo, type ComponentPropsWithoutRef } from 'react'
 
 import { cn } from '../../lib/cn'
 
@@ -8,12 +8,33 @@ type SelectOption = {
   value: string
 }
 
-type SelectProps = Omit<ComponentPropsWithoutRef<typeof SelectPrimitive.Root>, 'children'> & {
+type SelectProps = Omit<
+  ComponentPropsWithoutRef<typeof SelectPrimitive.Root>,
+  'children' | 'onValueChange' | 'value'
+> & {
+  allowClear?: boolean
+  clearLabel?: string
   items: SelectOption[]
+  onValueChange?: (value: string) => void
   placeholder?: string
   textAlign?: 'start' | 'center'
   triggerId?: string
   triggerClassName?: string
+  value?: string
+}
+
+const clearValuePrefix = '__select_clear__'
+
+function createClearValue(items: ReadonlyArray<SelectOption>) {
+  let index = 0
+  let nextValue = clearValuePrefix
+
+  while (items.some((item) => item.value === nextValue)) {
+    index += 1
+    nextValue = `${clearValuePrefix}_${index}`
+  }
+
+  return nextValue
 }
 
 function ChevronDownIcon() {
@@ -37,15 +58,28 @@ function ChevronDownIcon() {
 }
 
 export function Select({
+  allowClear = false,
+  clearLabel,
   items,
+  onValueChange,
   placeholder,
   textAlign = 'start',
   triggerClassName,
   triggerId,
+  value,
   ...props
 }: SelectProps) {
+  const clearValue = useMemo(() => createClearValue(items), [items])
+  const rootValue = typeof value === 'string' && value.length > 0 ? value : undefined
+
   return (
-    <SelectPrimitive.Root {...props}>
+    <SelectPrimitive.Root
+      {...props}
+      onValueChange={(nextValue) => {
+        onValueChange?.(allowClear && nextValue === clearValue ? '' : nextValue)
+      }}
+      value={rootValue}
+    >
       <SelectPrimitive.Trigger
         className={cn(
           'inline-flex h-12 w-full items-center justify-between gap-3 rounded-2xl border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-[1.125rem] text-sm text-[var(--color-text-primary)] outline-none transition focus:border-[var(--color-accent-copper)] focus:ring-2 focus:ring-[var(--color-focus-ring)] data-[placeholder]:text-[var(--color-text-muted)]',
@@ -73,6 +107,17 @@ export function Select({
           sideOffset={8}
         >
           <SelectPrimitive.Viewport className="scrollbar-none w-full space-y-1.5">
+            {allowClear ? (
+              <SelectPrimitive.Item
+                className={cn(
+                  'relative flex cursor-pointer select-none items-center rounded-xl px-4 py-3 text-sm text-[var(--color-text-secondary)] outline-none transition hover:bg-white/10 hover:text-[var(--color-text-primary)] focus:bg-white/10 focus:text-[var(--color-text-primary)]',
+                  textAlign === 'center' ? 'justify-center text-center' : 'justify-start text-left',
+                )}
+                value={clearValue}
+              >
+                <SelectPrimitive.ItemText>{clearLabel ?? placeholder}</SelectPrimitive.ItemText>
+              </SelectPrimitive.Item>
+            ) : null}
             {items.map((item) => (
               <SelectPrimitive.Item
                 key={item.value}

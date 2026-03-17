@@ -1,11 +1,25 @@
-import { listApis } from '../apis/api'
+import { listApiGroups, listApis, listPresets } from '../apis/api'
 
 export const STAGE_API_AVAILABILITY_REFRESH_EVENT = 'sillystage:stage-api-availability-refresh'
 
-export async function hasConfiguredStageApis(signal?: AbortSignal) {
-  const apis = await listApis(signal)
+export type StageAccessStatus = 'blockedApiResources' | 'blockedPresets' | 'ready'
 
-  return apis.length > 0
+export async function getStageAccessStatus(signal?: AbortSignal): Promise<StageAccessStatus> {
+  const [apis, apiGroups, presets] = await Promise.all([
+    listApis(signal),
+    listApiGroups(signal),
+    listPresets(signal),
+  ])
+
+  if (apis.length === 0 || apiGroups.length === 0) {
+    return 'blockedApiResources'
+  }
+
+  if (presets.length === 0) {
+    return 'blockedPresets'
+  }
+
+  return 'ready'
 }
 
 export function dispatchStageApiAvailabilityRefresh() {
