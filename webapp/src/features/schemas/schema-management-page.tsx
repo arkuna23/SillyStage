@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
+import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faUpload } from '@fortawesome/free-solid-svg-icons/faUpload'
 import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -14,12 +19,14 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
-import { isRpcConflict } from '../../lib/rpc'
+import { runBatchDelete } from '../../lib/batch-delete'
+import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
 import { createSchema, deleteSchema, listSchemas } from './api'
 import { DeleteSchemaDialog } from './delete-schema-dialog'
 import { SchemaFormDialog } from './schema-form-dialog'
 import { SchemaPresetDialog } from './schema-preset-dialog'
 import { buildSchemaPresetDefinitions } from './schema-presets'
+import { createSchemaBundle, isSchemaBundle } from './schema-transfer'
 import type { SchemaResource } from './types'
 
 type NoticeTone = 'success' | 'warning' | 'error'
@@ -59,15 +66,19 @@ function countTaggedSchemas(schemas: ReadonlyArray<SchemaResource>, tag: string)
 export function SchemaManagementPage() {
   const { t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const [schemas, setSchemas] = useState<SchemaResource[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingPresets, setIsCreatingPresets] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [notice, setNotice] = useState<NoticeState | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [presetDialogOpen, setPresetDialogOpen] = useState(false)
   const [editSchemaId, setEditSchemaId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<SchemaResource | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedSchemaIds, setSelectedSchemaIds] = useState<string[]>([])
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const existingSchemaIds = useMemo(
@@ -75,6 +86,13 @@ export function SchemaManagementPage() {
     [schemas],
   )
   const existingSchemaIdSet = useMemo(() => new Set(existingSchemaIds), [existingSchemaIds])
+  const deleteTargets = useMemo(
+    () =>
+      deleteTargetIds
+        .map((schemaId) => schemas.find((schema) => schema.schema_id === schemaId))
+        .filter((schema): schema is SchemaResource => schema !== undefined),
+    [deleteTargetIds, schemas],
+  )
   const schemaPresets = useMemo(() => buildSchemaPresetDefinitions(t), [t])
 
   const refreshSchemas = useCallback(async (signal?: AbortSignal) => {
@@ -107,6 +125,21 @@ export function SchemaManagementPage() {
     }
   }, [refreshSchemas])
 
+  useEffect(() => {
+    const availableSchemaIds = new Set(schemas.map((schema) => schema.schema_id))
+
+    setSelectedSchemaIds((currentSelection) =>
+      currentSelection.filter((schemaId) => availableSchemaIds.has(schemaId)),
+    )
+    setDeleteTargetIds((currentSelection) =>
+      currentSelection.filter((schemaId) => availableSchemaIds.has(schemaId)),
+    )
+
+    if (editSchemaId !== null && !availableSchemaIds.has(editSchemaId)) {
+      setEditSchemaId(null)
+    }
+  }, [editSchemaId, schemas])
+
   useLayoutEffect(() => {
     setRailContent({
       description: t('schemas.rail.description'),
@@ -125,34 +158,171 @@ export function SchemaManagementPage() {
   }, [schemas, setRailContent, t])
 
   async function handleDelete() {
-    if (!deleteTarget) {
+    if (deleteTargets.length === 0) {
       return
     }
 
-    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteSchema(target.schema_id)
-      setNotice({
-        message: t('schemas.feedback.deleted', { name: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteTargets, async (target) => {
+        await deleteSchema(target.schema_id)
       })
-      setDeleteTarget(null)
-      await refreshSchemas()
-    } catch (error) {
-      setDeleteTarget(null)
-      setNotice({
-        message:
-          isRpcConflict(error)
-            ? t('schemas.deleteDialog.conflict')
-            : error instanceof Error
-              ? error.message
+
+      setDeleteTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.schema_id))
+        setSelectedSchemaIds((currentSelection) =>
+          currentSelection.filter((schemaId) => !deletedIds.has(schemaId)),
+        )
+        setDeleteTargetIds([])
+
+        if (editSchemaId !== null && deletedIds.has(editSchemaId)) {
+          setEditSchemaId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('schemas.feedback.deletedMany', { count: result.deleted.length })
+              : t('schemas.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (selectionMode) {
+          setSelectionMode(false)
+          setSelectedSchemaIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('schemas.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteTargets.length > 1
+                ? t('schemas.deleteDialog.conflictMany')
+                : t('schemas.deleteDialog.conflict')
               : t('schemas.feedback.deleteFailed'),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
+      await refreshSchemas()
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  function toggleSchemaSelection(schemaId: string) {
+    setSelectedSchemaIds((currentSelection) =>
+      currentSelection.includes(schemaId)
+        ? currentSelection.filter((currentSchemaId) => currentSchemaId !== schemaId)
+        : [...currentSelection, schemaId],
+    )
+  }
+
+  async function handleExportSelection() {
+    const exportTargets = schemas.filter((schema) => selectedSchemaIds.includes(schema.schema_id))
+
+    if (exportTargets.length === 0) {
+      return
+    }
+
+    try {
+      downloadJsonFile(
+        createJsonExportFileName('sillystage-schemas'),
+        createSchemaBundle(exportTargets),
+      )
+      setNotice({
+        message: t('schemas.feedback.exported', { count: exportTargets.length }),
+        tone: 'success',
+      })
+    } catch (error) {
+      setNotice({
+        message: error instanceof Error ? error.message : t('schemas.feedback.exportFailed'),
+        tone: 'error',
+      })
+    }
+  }
+
+  async function handleImportSelection(file: File) {
+    setIsImporting(true)
+
+    try {
+      const payload = await readJsonFile(file)
+
+      if (!isSchemaBundle(payload)) {
+        setNotice({
+          message: t('schemas.feedback.importInvalid'),
+          tone: 'error',
+        })
+        return
+      }
+
+      const existingIds = new Set(schemas.map((schema) => schema.schema_id))
+      const createdNames: string[] = []
+      const skippedNames: string[] = []
+      const failedNames: string[] = []
+
+      for (const schema of payload.schemas) {
+        if (existingIds.has(schema.schema_id)) {
+          skippedNames.push(schema.display_name)
+          continue
+        }
+
+        try {
+          await createSchema({
+            display_name: schema.display_name,
+            fields: schema.fields,
+            schema_id: schema.schema_id,
+            tags: schema.tags,
+          })
+          createdNames.push(schema.display_name)
+          existingIds.add(schema.schema_id)
+        } catch {
+          failedNames.push(schema.display_name)
+        }
+      }
+
+      if (createdNames.length > 0) {
+        await refreshSchemas()
+      }
+
+      if (createdNames.length > 0 && skippedNames.length === 0 && failedNames.length === 0) {
+        setNotice({
+          message: t('schemas.feedback.imported', { count: createdNames.length }),
+          tone: 'success',
+        })
+      } else if (createdNames.length > 0 || skippedNames.length > 0) {
+        setNotice({
+          message: t('schemas.feedback.importedPartial', {
+            failed: failedNames.length,
+            skipped: skippedNames.length,
+            success: createdNames.length,
+          }),
+          tone: failedNames.length > 0 ? 'warning' : 'success',
+        })
+      } else {
+        setNotice({
+          message: t('schemas.feedback.importSkipped', { count: skippedNames.length }),
+          tone: 'warning',
+        })
+      }
+    } catch (error) {
+      setNotice({
+        message: error instanceof Error ? error.message : t('schemas.feedback.importFailed'),
+        tone: 'error',
+      })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -264,9 +434,26 @@ export function SchemaManagementPage() {
           void handleDelete()
         }}
         onOpenChange={() => {
-          setDeleteTarget(null)
+          setDeleteTargetIds([])
         }}
-        schema={deleteTarget}
+        targets={deleteTargets}
+      />
+
+      <input
+        accept="application/json,.json"
+        className="sr-only"
+        name="schema_import"
+        onChange={(event) => {
+          const selectedFile = event.target.files?.[0]
+
+          event.target.value = ''
+
+          if (selectedFile) {
+            void handleImportSelection(selectedFile)
+          }
+        }}
+        ref={importInputRef}
+        type="file"
       />
 
       <WorkspacePanelShell className="flex min-h-0 flex-1">
@@ -274,24 +461,94 @@ export function SchemaManagementPage() {
         <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
           <SectionHeader
             actions={
-              <div className="flex min-h-10 items-center justify-end gap-2">
-                <IconButton
-                  icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-                  label={t('schemas.actions.createPreset')}
-                  onClick={() => {
-                    setPresetDialogOpen(true)
-                  }}
-                  size="md"
-                  variant="secondary"
-                />
-                <IconButton
-                  icon={<FontAwesomeIcon icon={faPlus} />}
-                  label={t('schemas.actions.create')}
-                  onClick={() => {
-                    setCreateOpen(true)
-                  }}
-                  size="md"
-                />
+              <div className="flex min-h-10 flex-wrap items-center justify-end gap-2">
+                {selectionMode ? (
+                  <>
+                    <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                      {t('schemas.selection.count', { count: selectedSchemaIds.length })}
+                    </Badge>
+                    <IconButton
+                      disabled={schemas.length === 0}
+                      icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                      label={t('schemas.actions.selectAll')}
+                      onClick={() => {
+                        setSelectedSchemaIds(schemas.map((schema) => schema.schema_id))
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={selectedSchemaIds.length === 0}
+                      icon={<FontAwesomeIcon icon={faDownload} />}
+                      label={t('schemas.actions.export')}
+                      onClick={() => {
+                        void handleExportSelection()
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={selectedSchemaIds.length === 0}
+                      icon={<FontAwesomeIcon icon={faTrashCan} />}
+                      label={t('schemas.actions.deleteSelected')}
+                      onClick={() => {
+                        setDeleteTargetIds(selectedSchemaIds)
+                      }}
+                      size="md"
+                      variant="danger"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faXmark} />}
+                      label={t('schemas.actions.cancelSelection')}
+                      onClick={() => {
+                        setSelectionMode(false)
+                        setSelectedSchemaIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                      label={t('schemas.actions.selectMode')}
+                      onClick={() => {
+                        setSelectionMode(true)
+                        setSelectedSchemaIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={isImporting}
+                      icon={<FontAwesomeIcon icon={faUpload} />}
+                      label={isImporting ? t('schemas.actions.importing') : t('schemas.actions.import')}
+                      onClick={() => {
+                        importInputRef.current?.click()
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                      label={t('schemas.actions.createPreset')}
+                      onClick={() => {
+                        setPresetDialogOpen(true)
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faPlus} />}
+                      label={t('schemas.actions.create')}
+                      onClick={() => {
+                        setCreateOpen(true)
+                      }}
+                      size="md"
+                    />
+                  </>
+                )}
               </div>
             }
             title={t('schemas.title')}
@@ -364,24 +621,44 @@ export function SchemaManagementPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                      <IconButton
-                        icon={<FontAwesomeIcon icon={faPen} />}
-                        label={t('schemas.actions.edit')}
-                        onClick={() => {
-                          setEditSchemaId(schema.schema_id)
-                        }}
-                        size="sm"
-                        variant="secondary"
-                      />
-                      <IconButton
-                        icon={<FontAwesomeIcon icon={faTrashCan} />}
-                        label={t('schemas.actions.delete')}
-                        onClick={() => {
-                          setDeleteTarget(schema)
-                        }}
-                        size="sm"
-                        variant="danger"
-                      />
+                      {selectionMode ? (
+                        <IconButton
+                          icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                          label={
+                            selectedSchemaIds.includes(schema.schema_id)
+                              ? t('schemas.actions.deselect')
+                              : t('schemas.actions.select')
+                          }
+                          onClick={() => {
+                            toggleSchemaSelection(schema.schema_id)
+                          }}
+                          size="sm"
+                          variant={
+                            selectedSchemaIds.includes(schema.schema_id) ? 'primary' : 'secondary'
+                          }
+                        />
+                      ) : (
+                        <>
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faPen} />}
+                            label={t('schemas.actions.edit')}
+                            onClick={() => {
+                              setEditSchemaId(schema.schema_id)
+                            }}
+                            size="sm"
+                            variant="secondary"
+                          />
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faTrashCan} />}
+                            label={t('schemas.actions.delete')}
+                            onClick={() => {
+                              setDeleteTargetIds([schema.schema_id])
+                            }}
+                            size="sm"
+                            variant="danger"
+                          />
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
 
+import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import {
   Dialog,
@@ -16,35 +17,59 @@ type DeletePlayerProfileDialogProps = {
   deleting: boolean
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
-  open: boolean
-  profile: PlayerProfile | null
+  targets: ReadonlyArray<PlayerProfile>
 }
 
 export function DeletePlayerProfileDialog({
   deleting,
   onConfirm,
   onOpenChange,
-  open,
-  profile,
+  targets,
 }: DeletePlayerProfileDialogProps) {
   const { t } = useTranslation()
+  const open = targets.length > 0
+  const isBulk = targets.length > 1
+  const previewTargets = targets.slice(0, 5)
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent aria-describedby={undefined} className="w-[min(92vw,32rem)]">
-        {profile ? (
+        {open ? (
           <>
             <DialogHeader className="border-b border-[var(--color-border-subtle)]">
-              <DialogTitle>{t('playerProfiles.deleteDialog.title')}</DialogTitle>
+              <DialogTitle>
+                {isBulk
+                  ? t('playerProfiles.deleteDialog.titleMany')
+                  : t('playerProfiles.deleteDialog.title')}
+              </DialogTitle>
             </DialogHeader>
 
             <DialogBody className="space-y-5 pt-6">
               <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                {t('playerProfiles.deleteDialog.message', {
-                  id: profile.player_profile_id,
-                  name: profile.display_name,
-                })}
+                {isBulk
+                  ? t('playerProfiles.deleteDialog.messageMany', { count: targets.length })
+                  : t('playerProfiles.deleteDialog.message', {
+                      id: targets[0]?.player_profile_id ?? '—',
+                      name: targets[0]?.display_name ?? '—',
+                    })}
               </p>
+
+              <div className="flex flex-wrap gap-2">
+                {previewTargets.map((target) => (
+                  <Badge
+                    className="normal-case px-3 py-1.5"
+                    key={target.player_profile_id}
+                    variant="subtle"
+                  >
+                    {target.display_name}
+                  </Badge>
+                ))}
+                {targets.length > previewTargets.length ? (
+                  <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                    +{targets.length - previewTargets.length}
+                  </Badge>
+                ) : null}
+              </div>
             </DialogBody>
 
             <DialogFooter>
@@ -55,14 +80,16 @@ export function DeletePlayerProfileDialog({
               </DialogClose>
 
               <Button
-                disabled={deleting}
+                disabled={deleting || targets.length === 0}
                 onClick={onConfirm}
                 size="md"
                 variant="danger"
               >
                 {deleting
                   ? t('playerProfiles.actions.deleting')
-                  : t('playerProfiles.actions.confirmDelete')}
+                  : isBulk
+                    ? t('playerProfiles.actions.deleteSelected')
+                    : t('playerProfiles.actions.confirmDelete')}
               </Button>
             </DialogFooter>
           </>

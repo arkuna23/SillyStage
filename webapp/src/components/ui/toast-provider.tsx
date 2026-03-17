@@ -45,7 +45,7 @@ function ToastCard({
 
   return (
     <motion.div
-      animate={{ opacity: 1, x: 0, y: 0, scale: 1 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       className={cn(
         'pointer-events-auto flex w-[min(24rem,calc(100vw-2rem))] items-center gap-3 rounded-[1.45rem] border px-4 py-3 shadow-[0_18px_42px_rgba(0,0,0,0.18)] backdrop-blur-xl',
         toast.tone === 'success'
@@ -57,12 +57,12 @@ function ToastCard({
       exit={
         prefersReducedMotion
           ? { opacity: 0 }
-          : { opacity: 0, x: -18, y: 8, scale: 0.98 }
+          : { opacity: 0, y: -10, scale: 0.98 }
       }
       initial={
         prefersReducedMotion
           ? { opacity: 0 }
-          : { opacity: 0, x: -22, y: 10, scale: 0.97 }
+          : { opacity: 0, y: -14, scale: 0.97 }
       }
       layout
       transition={
@@ -115,9 +115,9 @@ function ToastViewport({
   }
 
   return createPortal(
-    <div className="pointer-events-none fixed bottom-4 left-4 z-[90] flex max-h-[calc(100vh-2rem)] flex-col-reverse gap-3">
+    <div className="pointer-events-none fixed inset-x-0 top-[calc(env(safe-area-inset-top)+4.5rem)] z-[90] flex max-h-[calc(100vh-7rem)] flex-col items-center gap-3 px-4 sm:top-[calc(env(safe-area-inset-top)+5rem)] sm:px-5 lg:top-[calc(env(safe-area-inset-top)+5.5rem)] lg:px-6">
       <AnimatePresence initial={false}>
-        {toasts.map((toast) => (
+        {[...toasts].reverse().map((toast) => (
           <ToastCard key={toast.id} onDismiss={onDismiss} toast={toast} />
         ))}
       </AnimatePresence>

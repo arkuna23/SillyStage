@@ -17,16 +17,19 @@ type DeleteStoryResourceDialogProps = {
   deleting: boolean
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
-  resource: StoryResource | null
+  targets: ReadonlyArray<StoryResource>
 }
 
 export function DeleteStoryResourceDialog({
   deleting,
   onConfirm,
   onOpenChange,
-  resource,
+  targets,
 }: DeleteStoryResourceDialogProps) {
   const { t } = useTranslation()
+  const open = targets.length > 0
+  const isBulk = targets.length > 1
+  const previewTargets = targets.slice(0, 5)
 
   return (
     <Dialog
@@ -35,29 +38,37 @@ export function DeleteStoryResourceDialog({
           onOpenChange(false)
         }
       }}
-      open={resource !== null}
+      open={open}
     >
       <DialogContent aria-describedby={undefined} className="w-[min(92vw,34rem)]">
-        {resource ? (
+        {open ? (
           <>
             <DialogHeader className="border-b border-[var(--color-border-subtle)]">
-              <DialogTitle>{t('storyResources.deleteDialog.title')}</DialogTitle>
+              <DialogTitle>
+                {isBulk
+                  ? t('storyResources.deleteDialog.titleMany')
+                  : t('storyResources.deleteDialog.title')}
+              </DialogTitle>
             </DialogHeader>
 
             <DialogBody className="space-y-5 pt-6">
               <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                {t('storyResources.deleteDialog.message', { id: resource.resource_id })}
+                {isBulk
+                  ? t('storyResources.deleteDialog.messageMany', { count: targets.length })
+                  : t('storyResources.deleteDialog.message', { id: targets[0]?.resource_id ?? '—' })}
               </p>
 
               <div className="flex flex-wrap gap-2">
-                <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                  {resource.resource_id}
-                </Badge>
-                <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                  {t('storyResources.list.charactersCount', {
-                    count: resource.character_ids.length,
-                  })}
-                </Badge>
+                {previewTargets.map((target) => (
+                  <Badge className="normal-case px-3 py-1.5" key={target.resource_id} variant="subtle">
+                    {target.resource_id}
+                  </Badge>
+                ))}
+                {targets.length > previewTargets.length ? (
+                  <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                    +{targets.length - previewTargets.length}
+                  </Badge>
+                ) : null}
               </div>
             </DialogBody>
 
@@ -69,14 +80,16 @@ export function DeleteStoryResourceDialog({
               </DialogClose>
 
               <Button
-                disabled={deleting}
+                disabled={deleting || targets.length === 0}
                 onClick={onConfirm}
                 size="md"
                 variant="danger"
               >
                 {deleting
                   ? t('storyResources.actions.deleting')
-                  : t('storyResources.actions.confirmDelete')}
+                  : isBulk
+                    ? t('storyResources.actions.deleteSelected')
+                    : t('storyResources.actions.confirmDelete')}
               </Button>
             </DialogFooter>
           </>

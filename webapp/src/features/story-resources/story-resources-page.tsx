@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -14,7 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
-import { isRpcConflict } from '../../lib/rpc'
+import { runBatchDelete } from '../../lib/batch-delete'
 import { listApiGroups, listPresets } from '../apis/api'
 import type { ApiGroup, Preset } from '../apis/types'
 import { listCharacters } from '../characters/api'
@@ -97,10 +100,19 @@ export function StoryResourcesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editResourceId, setEditResourceId] = useState<string | null>(null)
   const [generateTarget, setGenerateTarget] = useState<StoryResource | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<StoryResource | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([])
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const refinedCount = useMemo(() => countRefinedInputs(resources), [resources])
+  const deleteTargets = useMemo(
+    () =>
+      deleteTargetIds
+        .map((resourceId) => resources.find((resource) => resource.resource_id === resourceId))
+        .filter((resource): resource is StoryResource => resource !== undefined),
+    [deleteTargetIds, resources],
+  )
 
   const refreshResources = useCallback(
     async (signal?: AbortSignal) => {
@@ -177,6 +189,25 @@ export function StoryResourcesPage() {
     }
   }, [refreshReferences, refreshResources])
 
+  useEffect(() => {
+    const availableResourceIds = new Set(resources.map((resource) => resource.resource_id))
+
+    setSelectedResourceIds((currentSelection) =>
+      currentSelection.filter((resourceId) => availableResourceIds.has(resourceId)),
+    )
+    setDeleteTargetIds((currentSelection) =>
+      currentSelection.filter((resourceId) => availableResourceIds.has(resourceId)),
+    )
+
+    if (editResourceId !== null && !availableResourceIds.has(editResourceId)) {
+      setEditResourceId(null)
+    }
+
+    if (generateTarget !== null && !availableResourceIds.has(generateTarget.resource_id)) {
+      setGenerateTarget(null)
+    }
+  }, [editResourceId, generateTarget, resources])
+
   useLayoutEffect(() => {
     setRailContent({
       description: t('storyResources.rail.description'),
@@ -193,32 +224,79 @@ export function StoryResourcesPage() {
   }, [refinedCount, resources.length, setRailContent, t])
 
   async function handleDeleteResource() {
-    if (!deleteTarget) {
+    if (deleteTargets.length === 0) {
       return
     }
 
-    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteStoryResource(target.resource_id)
-      setNotice({
-        message: t('storyResources.feedback.deleted', { id: target.resource_id }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteTargets, async (target) => {
+        await deleteStoryResource(target.resource_id)
       })
-      setDeleteTarget(null)
+
+      setDeleteTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.resource_id))
+        setSelectedResourceIds((currentSelection) =>
+          currentSelection.filter((resourceId) => !deletedIds.has(resourceId)),
+        )
+        setDeleteTargetIds([])
+
+        if (editResourceId !== null && deletedIds.has(editResourceId)) {
+          setEditResourceId(null)
+        }
+
+        if (generateTarget !== null && deletedIds.has(generateTarget.resource_id)) {
+          setGenerateTarget(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('storyResources.feedback.deletedMany', { count: result.deleted.length })
+              : t('storyResources.feedback.deleted', { id: result.deleted[0]?.resource_id ?? '' }),
+          tone: 'success',
+        })
+        if (selectionMode) {
+          setSelectionMode(false)
+          setSelectedResourceIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('storyResources.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteTargets.length > 1
+                ? t('storyResources.deleteDialog.conflictMany')
+                : t('storyResources.deleteDialog.conflict')
+              : t('storyResources.feedback.deleteFailed'),
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
       await refreshResources()
-    } catch (error) {
-      setDeleteTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('storyResources.deleteDialog.conflict')
-          : getErrorMessage(error, t('storyResources.feedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function toggleResourceSelection(resourceId: string) {
+    setSelectedResourceIds((currentSelection) =>
+      currentSelection.includes(resourceId)
+        ? currentSelection.filter((currentResourceId) => currentResourceId !== resourceId)
+        : [...currentSelection, resourceId],
+    )
   }
 
   return (
@@ -282,9 +360,9 @@ export function StoryResourcesPage() {
           void handleDeleteResource()
         }}
         onOpenChange={() => {
-          setDeleteTarget(null)
+          setDeleteTargetIds([])
         }}
-        resource={deleteTarget}
+        targets={deleteTargets}
       />
 
       <WorkspacePanelShell className="flex min-h-0 flex-1">
@@ -292,15 +370,69 @@ export function StoryResourcesPage() {
         <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
           <SectionHeader
             actions={
-              <div className="flex min-h-10 items-center justify-end">
-                <IconButton
-                  icon={<FontAwesomeIcon icon={faPlus} />}
-                  label={t('storyResources.actions.create')}
-                  onClick={() => {
-                    setIsCreateDialogOpen(true)
-                  }}
-                  size="md"
-                />
+              <div className="flex min-h-10 flex-wrap items-center justify-end gap-2">
+                {selectionMode ? (
+                  <>
+                    <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                      {t('storyResources.selection.count', { count: selectedResourceIds.length })}
+                    </Badge>
+                    <IconButton
+                      disabled={resources.length === 0}
+                      icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                      label={t('storyResources.actions.selectAll')}
+                      onClick={() => {
+                        setSelectedResourceIds(
+                          resources
+                            .filter((resource) => resource.resource_id !== generatingResourceId)
+                            .map((resource) => resource.resource_id),
+                        )
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={selectedResourceIds.length === 0}
+                      icon={<FontAwesomeIcon icon={faTrashCan} />}
+                      label={t('storyResources.actions.deleteSelected')}
+                      onClick={() => {
+                        setDeleteTargetIds(selectedResourceIds)
+                      }}
+                      size="md"
+                      variant="danger"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faXmark} />}
+                      label={t('storyResources.actions.cancelSelection')}
+                      onClick={() => {
+                        setSelectionMode(false)
+                        setSelectedResourceIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                      label={t('storyResources.actions.selectMode')}
+                      onClick={() => {
+                        setSelectionMode(true)
+                        setSelectedResourceIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faPlus} />}
+                      label={t('storyResources.actions.create')}
+                      onClick={() => {
+                        setIsCreateDialogOpen(true)
+                      }}
+                      size="md"
+                    />
+                  </>
+                )}
               </div>
             }
             title={t('storyResources.title')}
@@ -375,37 +507,60 @@ export function StoryResourcesPage() {
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">
-                          <IconButton
-                            disabled={isGenerating}
-                            icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-                            label={t('storyResources.actions.generate')}
-                            onClick={() => {
-                              setGeneratingResourceId(resource.resource_id)
-                              setGenerateTarget(resource)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          />
-                          <IconButton
-                            disabled={isGenerating}
-                            icon={<FontAwesomeIcon icon={faPen} />}
-                            label={t('storyResources.actions.edit')}
-                            onClick={() => {
-                              setEditResourceId(resource.resource_id)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          />
-                          <IconButton
-                            disabled={isGenerating}
-                            icon={<FontAwesomeIcon icon={faTrashCan} />}
-                            label={t('storyResources.actions.delete')}
-                            onClick={() => {
-                              setDeleteTarget(resource)
-                            }}
-                            size="sm"
-                            variant="danger"
-                          />
+                          {selectionMode ? (
+                            <IconButton
+                              disabled={isGenerating}
+                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                              label={
+                                selectedResourceIds.includes(resource.resource_id)
+                                  ? t('storyResources.actions.deselect')
+                                  : t('storyResources.actions.select')
+                              }
+                              onClick={() => {
+                                toggleResourceSelection(resource.resource_id)
+                              }}
+                              size="sm"
+                              variant={
+                                selectedResourceIds.includes(resource.resource_id)
+                                  ? 'primary'
+                                  : 'secondary'
+                              }
+                            />
+                          ) : (
+                            <>
+                              <IconButton
+                                disabled={isGenerating}
+                                icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                                label={t('storyResources.actions.generate')}
+                                onClick={() => {
+                                  setGeneratingResourceId(resource.resource_id)
+                                  setGenerateTarget(resource)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              />
+                              <IconButton
+                                disabled={isGenerating}
+                                icon={<FontAwesomeIcon icon={faPen} />}
+                                label={t('storyResources.actions.edit')}
+                                onClick={() => {
+                                  setEditResourceId(resource.resource_id)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              />
+                              <IconButton
+                                disabled={isGenerating}
+                                icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                label={t('storyResources.actions.delete')}
+                                onClick={() => {
+                                  setDeleteTargetIds([resource.resource_id])
+                                }}
+                                size="sm"
+                                variant="danger"
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     )

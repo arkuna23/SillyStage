@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -14,7 +17,7 @@ import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
-import { isRpcConflict } from '../../lib/rpc'
+import { runBatchDelete } from '../../lib/batch-delete'
 import { ApiDetailsDialog } from './api-details-dialog'
 import { ApiFormDialog } from './api-form-dialog'
 import { ApiGroupDetailsDialog } from './api-group-details-dialog'
@@ -90,12 +93,30 @@ export function ApiManagementPage() {
   const [editApiGroupId, setEditApiGroupId] = useState<string | null>(null)
   const [detailsApiId, setDetailsApiId] = useState<string | null>(null)
   const [detailsApiGroupId, setDetailsApiGroupId] = useState<string | null>(null)
-  const [deleteApiTarget, setDeleteApiTarget] = useState<ApiConfig | null>(null)
-  const [deleteGroupTarget, setDeleteGroupTarget] = useState<ApiGroup | null>(null)
+  const [apiSelectionMode, setApiSelectionMode] = useState(false)
+  const [groupSelectionMode, setGroupSelectionMode] = useState(false)
+  const [selectedApiIds, setSelectedApiIds] = useState<string[]>([])
+  const [selectedGroupIds, setSelectedGroupIds] = useState<string[]>([])
+  const [deleteApiTargetIds, setDeleteApiTargetIds] = useState<string[]>([])
+  const [deleteGroupTargetIds, setDeleteGroupTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const apiIds = useMemo(() => apis.map((apiConfig) => apiConfig.api_id), [apis])
   const apiGroupIds = useMemo(() => apiGroups.map((apiGroup) => apiGroup.api_group_id), [apiGroups])
+  const deleteApiTargets = useMemo(
+    () =>
+      deleteApiTargetIds
+        .map((apiId) => apis.find((apiConfig) => apiConfig.api_id === apiId))
+        .filter((apiConfig): apiConfig is ApiConfig => apiConfig !== undefined),
+    [apis, deleteApiTargetIds],
+  )
+  const deleteGroupTargets = useMemo(
+    () =>
+      deleteGroupTargetIds
+        .map((apiGroupId) => apiGroups.find((apiGroup) => apiGroup.api_group_id === apiGroupId))
+        .filter((apiGroup): apiGroup is ApiGroup => apiGroup !== undefined),
+    [apiGroups, deleteGroupTargetIds],
+  )
   const resolvedGroupCount = useMemo(
     () => apiGroups.filter((apiGroup) => isApiGroupResolved(apiGroup, apis)).length,
     [apiGroups, apis],
@@ -154,6 +175,38 @@ export function ApiManagementPage() {
     }
   }, [refreshApiResources])
 
+  useEffect(() => {
+    const availableApiIds = new Set(apis.map((apiConfig) => apiConfig.api_id))
+    const availableGroupIds = new Set(apiGroups.map((apiGroup) => apiGroup.api_group_id))
+
+    setSelectedApiIds((currentSelection) => currentSelection.filter((apiId) => availableApiIds.has(apiId)))
+    setDeleteApiTargetIds((currentSelection) =>
+      currentSelection.filter((apiId) => availableApiIds.has(apiId)),
+    )
+    setSelectedGroupIds((currentSelection) =>
+      currentSelection.filter((apiGroupId) => availableGroupIds.has(apiGroupId)),
+    )
+    setDeleteGroupTargetIds((currentSelection) =>
+      currentSelection.filter((apiGroupId) => availableGroupIds.has(apiGroupId)),
+    )
+
+    if (detailsApiId !== null && !availableApiIds.has(detailsApiId)) {
+      setDetailsApiId(null)
+    }
+
+    if (editApiId !== null && !availableApiIds.has(editApiId)) {
+      setEditApiId(null)
+    }
+
+    if (detailsApiGroupId !== null && !availableGroupIds.has(detailsApiGroupId)) {
+      setDetailsApiGroupId(null)
+    }
+
+    if (editApiGroupId !== null && !availableGroupIds.has(editApiGroupId)) {
+      setEditApiGroupId(null)
+    }
+  }, [apiGroups, apis, detailsApiGroupId, detailsApiId, editApiGroupId, editApiId])
+
   useLayoutEffect(() => {
     setRailContent({
       description: t('apis.rail.description'),
@@ -180,61 +233,173 @@ export function ApiManagementPage() {
   }, [apiGroups.length, apis.length, resolvedGroupCount, setRailContent, t])
 
   async function handleDeleteApi() {
-    if (!deleteApiTarget) {
+    if (deleteApiTargets.length === 0) {
       return
     }
 
-    const target = deleteApiTarget
     setIsDeletingApi(true)
 
     try {
-      await deleteApi(target.api_id)
-      setNotice({
-        message: t('apis.apiFeedback.deleted', { id: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteApiTargets, async (target) => {
+        await deleteApi(target.api_id)
       })
-      setDeleteApiTarget(null)
+
+      setDeleteApiTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.api_id))
+
+        setSelectedApiIds((currentSelection) =>
+          currentSelection.filter((apiId) => !deletedIds.has(apiId)),
+        )
+        setDeleteApiTargetIds([])
+
+        if (detailsApiId !== null && deletedIds.has(detailsApiId)) {
+          setDetailsApiId(null)
+        }
+
+        if (editApiId !== null && deletedIds.has(editApiId)) {
+          setEditApiId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('apis.apiFeedback.deletedMany', { count: result.deleted.length })
+              : t('apis.apiFeedback.deleted', { id: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (apiSelectionMode) {
+          setApiSelectionMode(false)
+          setSelectedApiIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('apis.apiFeedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteApiTargets.length > 1
+                ? t('apis.apiDeleteDialog.conflictMany')
+                : t('apis.apiDeleteDialog.conflict')
+              : t('apis.apiFeedback.deleteFailed'),
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
       await refreshApiResources()
-    } catch (error) {
-      setDeleteApiTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('apis.apiDeleteDialog.conflict')
-          : getErrorMessage(error, t('apis.apiFeedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeletingApi(false)
     }
   }
 
   async function handleDeleteApiGroup() {
-    if (!deleteGroupTarget) {
+    if (deleteGroupTargets.length === 0) {
       return
     }
 
-    const target = deleteGroupTarget
     setIsDeletingGroup(true)
 
     try {
-      await deleteApiGroup(target.api_group_id)
-      setNotice({
-        message: t('apis.groupFeedback.deleted', { id: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteGroupTargets, async (target) => {
+        await deleteApiGroup(target.api_group_id)
       })
-      setDeleteGroupTarget(null)
+
+      setDeleteGroupTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.api_group_id))
+
+        setSelectedGroupIds((currentSelection) =>
+          currentSelection.filter((apiGroupId) => !deletedIds.has(apiGroupId)),
+        )
+        setDeleteGroupTargetIds([])
+
+        if (detailsApiGroupId !== null && deletedIds.has(detailsApiGroupId)) {
+          setDetailsApiGroupId(null)
+        }
+
+        if (editApiGroupId !== null && deletedIds.has(editApiGroupId)) {
+          setEditApiGroupId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('apis.groupFeedback.deletedMany', { count: result.deleted.length })
+              : t('apis.groupFeedback.deleted', { id: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (groupSelectionMode) {
+          setGroupSelectionMode(false)
+          setSelectedGroupIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('apis.groupFeedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteGroupTargets.length > 1
+                ? t('apis.deleteDialog.conflictMany')
+                : t('apis.deleteDialog.conflict')
+              : t('apis.groupFeedback.deleteFailed'),
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
       await refreshApiResources()
-    } catch (error) {
-      setDeleteGroupTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('apis.deleteDialog.conflict')
-          : getErrorMessage(error, t('apis.groupFeedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeletingGroup(false)
     }
+  }
+
+  function enterApiSelectionMode() {
+    setGroupSelectionMode(false)
+    setSelectedGroupIds([])
+    setApiSelectionMode(true)
+    setSelectedApiIds([])
+    setDetailsApiId(null)
+  }
+
+  function enterGroupSelectionMode() {
+    setApiSelectionMode(false)
+    setSelectedApiIds([])
+    setGroupSelectionMode(true)
+    setSelectedGroupIds([])
+    setDetailsApiGroupId(null)
+  }
+
+  function toggleApiSelection(apiId: string) {
+    setSelectedApiIds((currentSelection) =>
+      currentSelection.includes(apiId)
+        ? currentSelection.filter((currentApiId) => currentApiId !== apiId)
+        : [...currentSelection, apiId],
+    )
+  }
+
+  function toggleGroupSelection(apiGroupId: string) {
+    setSelectedGroupIds((currentSelection) =>
+      currentSelection.includes(apiGroupId)
+        ? currentSelection.filter((currentApiGroupId) => currentApiGroupId !== apiGroupId)
+        : [...currentSelection, apiGroupId],
+    )
   }
 
   function describeApiGroupBinding(apiGroup: ApiGroup, roleKey: AgentRoleKey) {
@@ -286,15 +451,14 @@ export function ApiManagementPage() {
       />
 
       <DeleteApiDialog
-        apiConfig={deleteApiTarget}
         deleting={isDeletingApi}
         onConfirm={() => void handleDeleteApi()}
         onOpenChange={(open) => {
           if (!open) {
-            setDeleteApiTarget(null)
+            setDeleteApiTargetIds([])
           }
         }}
-        open={deleteApiTarget !== null}
+        targets={deleteApiTargets}
       />
 
       <ApiGroupFormDialog
@@ -338,15 +502,14 @@ export function ApiManagementPage() {
       />
 
       <DeleteApiGroupDialog
-        apiGroup={deleteGroupTarget}
         deleting={isDeletingGroup}
         onConfirm={() => void handleDeleteApiGroup()}
         onOpenChange={(open) => {
           if (!open) {
-            setDeleteGroupTarget(null)
+            setDeleteGroupTargetIds([])
           }
         }}
-        open={deleteGroupTarget !== null}
+        targets={deleteGroupTargets}
       />
 
       <WorkspacePanelShell className="h-full min-h-0">
@@ -360,13 +523,58 @@ export function ApiManagementPage() {
               <section className="space-y-5">
                 <SectionHeader
                   actions={
-                    <IconButton
-                      icon={<FontAwesomeIcon icon={faPlus} />}
-                      label={t('apis.apiActions.create')}
-                      onClick={() => {
-                        setIsCreateApiDialogOpen(true)
-                      }}
-                    />
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {apiSelectionMode ? (
+                        <>
+                          <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                            {t('apis.selection.count', { count: selectedApiIds.length })}
+                          </Badge>
+                          <IconButton
+                            disabled={apis.length === 0}
+                            icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                            label={t('apis.actions.selectAll')}
+                            onClick={() => {
+                              setSelectedApiIds(apis.map((apiConfig) => apiConfig.api_id))
+                            }}
+                            variant="secondary"
+                          />
+                          <IconButton
+                            disabled={selectedApiIds.length === 0}
+                            icon={<FontAwesomeIcon icon={faTrashCan} />}
+                            label={t('apis.actions.deleteSelected')}
+                            onClick={() => {
+                              setDeleteApiTargetIds(selectedApiIds)
+                            }}
+                            variant="danger"
+                          />
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faXmark} />}
+                            label={t('apis.actions.cancelSelection')}
+                            onClick={() => {
+                              setApiSelectionMode(false)
+                              setSelectedApiIds([])
+                            }}
+                            variant="secondary"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            label={t('apis.actions.selectMode')}
+                            onClick={enterApiSelectionMode}
+                            variant="secondary"
+                          />
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faPlus} />}
+                            label={t('apis.apiActions.create')}
+                            onClick={() => {
+                              setIsCreateApiDialogOpen(true)
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
                   }
                   description={t('apis.apiSection.description')}
                   title={t('apis.apiSection.title')}
@@ -405,33 +613,53 @@ export function ApiManagementPage() {
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faEye} />}
-                            label={t('apis.actions.view')}
-                            onClick={() => {
-                              setDetailsApiId(apiConfig.api_id)
-                            }}
-                            size="sm"
-                            variant="ghost"
-                          />
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faPen} />}
-                            label={t('apis.actions.edit')}
-                            onClick={() => {
-                              setEditApiId(apiConfig.api_id)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          />
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faTrashCan} />}
-                            label={t('apis.actions.delete')}
-                            onClick={() => {
-                              setDeleteApiTarget(apiConfig)
-                            }}
-                            size="sm"
-                            variant="danger"
-                          />
+                          {apiSelectionMode ? (
+                            <IconButton
+                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                              label={
+                                selectedApiIds.includes(apiConfig.api_id)
+                                  ? t('apis.actions.deselect')
+                                  : t('apis.actions.select')
+                              }
+                              onClick={() => {
+                                toggleApiSelection(apiConfig.api_id)
+                              }}
+                              size="sm"
+                              variant={
+                                selectedApiIds.includes(apiConfig.api_id) ? 'primary' : 'secondary'
+                              }
+                            />
+                          ) : (
+                            <>
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faEye} />}
+                                label={t('apis.actions.view')}
+                                onClick={() => {
+                                  setDetailsApiId(apiConfig.api_id)
+                                }}
+                                size="sm"
+                                variant="ghost"
+                              />
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faPen} />}
+                                label={t('apis.actions.edit')}
+                                onClick={() => {
+                                  setEditApiId(apiConfig.api_id)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              />
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                label={t('apis.actions.delete')}
+                                onClick={() => {
+                                  setDeleteApiTargetIds([apiConfig.api_id])
+                                }}
+                                size="sm"
+                                variant="danger"
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -444,14 +672,59 @@ export function ApiManagementPage() {
               <section className="space-y-5">
                 <SectionHeader
                   actions={
-                    <IconButton
-                      disabled={apis.length === 0}
-                      icon={<FontAwesomeIcon icon={faPlus} />}
-                      label={t('apis.actions.create')}
-                      onClick={() => {
-                        setIsCreateApiGroupDialogOpen(true)
-                      }}
-                    />
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {groupSelectionMode ? (
+                        <>
+                          <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                            {t('apis.selection.count', { count: selectedGroupIds.length })}
+                          </Badge>
+                          <IconButton
+                            disabled={apiGroups.length === 0}
+                            icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                            label={t('apis.actions.selectAll')}
+                            onClick={() => {
+                              setSelectedGroupIds(apiGroups.map((apiGroup) => apiGroup.api_group_id))
+                            }}
+                            variant="secondary"
+                          />
+                          <IconButton
+                            disabled={selectedGroupIds.length === 0}
+                            icon={<FontAwesomeIcon icon={faTrashCan} />}
+                            label={t('apis.actions.deleteSelected')}
+                            onClick={() => {
+                              setDeleteGroupTargetIds(selectedGroupIds)
+                            }}
+                            variant="danger"
+                          />
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faXmark} />}
+                            label={t('apis.actions.cancelSelection')}
+                            onClick={() => {
+                              setGroupSelectionMode(false)
+                              setSelectedGroupIds([])
+                            }}
+                            variant="secondary"
+                          />
+                        </>
+                      ) : (
+                        <>
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            label={t('apis.actions.selectMode')}
+                            onClick={enterGroupSelectionMode}
+                            variant="secondary"
+                          />
+                          <IconButton
+                            disabled={apis.length === 0}
+                            icon={<FontAwesomeIcon icon={faPlus} />}
+                            label={t('apis.actions.create')}
+                            onClick={() => {
+                              setIsCreateApiGroupDialogOpen(true)
+                            }}
+                          />
+                        </>
+                      )}
+                    </div>
                   }
                   description={t('apis.groupSection.description')}
                   title={t('apis.groupSection.title')}
@@ -493,33 +766,55 @@ export function ApiManagementPage() {
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faEye} />}
-                            label={t('apis.actions.view')}
-                            onClick={() => {
-                              setDetailsApiGroupId(apiGroup.api_group_id)
-                            }}
-                            size="sm"
-                            variant="ghost"
-                          />
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faPen} />}
-                            label={t('apis.actions.edit')}
-                            onClick={() => {
-                              setEditApiGroupId(apiGroup.api_group_id)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          />
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faTrashCan} />}
-                            label={t('apis.actions.delete')}
-                            onClick={() => {
-                              setDeleteGroupTarget(apiGroup)
-                            }}
-                            size="sm"
-                            variant="danger"
-                          />
+                          {groupSelectionMode ? (
+                            <IconButton
+                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                              label={
+                                selectedGroupIds.includes(apiGroup.api_group_id)
+                                  ? t('apis.actions.deselect')
+                                  : t('apis.actions.select')
+                              }
+                              onClick={() => {
+                                toggleGroupSelection(apiGroup.api_group_id)
+                              }}
+                              size="sm"
+                              variant={
+                                selectedGroupIds.includes(apiGroup.api_group_id)
+                                  ? 'primary'
+                                  : 'secondary'
+                              }
+                            />
+                          ) : (
+                            <>
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faEye} />}
+                                label={t('apis.actions.view')}
+                                onClick={() => {
+                                  setDetailsApiGroupId(apiGroup.api_group_id)
+                                }}
+                                size="sm"
+                                variant="ghost"
+                              />
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faPen} />}
+                                label={t('apis.actions.edit')}
+                                onClick={() => {
+                                  setEditApiGroupId(apiGroup.api_group_id)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              />
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                label={t('apis.actions.delete')}
+                                onClick={() => {
+                                  setDeleteGroupTargetIds([apiGroup.api_group_id])
+                                }}
+                                size="sm"
+                                variant="danger"
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}

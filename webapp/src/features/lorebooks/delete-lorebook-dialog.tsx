@@ -14,43 +14,59 @@ import type { Lorebook } from './types'
 
 type DeleteLorebookDialogProps = {
   deleting: boolean
-  lorebook: Lorebook | null
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
+  targets: ReadonlyArray<Lorebook>
 }
 
 export function DeleteLorebookDialog({
   deleting,
-  lorebook,
   onConfirm,
   onOpenChange,
+  targets,
 }: DeleteLorebookDialogProps) {
   const { t } = useTranslation()
+  const open = targets.length > 0
+  const isBulk = targets.length > 1
+  const previewTargets = targets.slice(0, 5)
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={lorebook !== null}>
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          onOpenChange(false)
+        }
+      }}
+      open={open}
+    >
       <DialogContent aria-describedby={undefined} className="w-[min(92vw,32rem)]">
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
-          <DialogTitle>{t('lorebooks.deleteDialog.title')}</DialogTitle>
+          <DialogTitle>
+            {isBulk ? t('lorebooks.deleteDialog.titleMany') : t('lorebooks.deleteDialog.title')}
+          </DialogTitle>
         </DialogHeader>
 
         <DialogBody className="space-y-4 pt-6">
           <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-            {t('lorebooks.deleteDialog.message', {
-              id: lorebook?.lorebook_id ?? '—',
-            })}
+            {isBulk
+              ? t('lorebooks.deleteDialog.messageMany', { count: targets.length })
+              : t('lorebooks.deleteDialog.message', {
+                  id: targets[0]?.lorebook_id ?? '—',
+                })}
           </p>
 
-          {lorebook ? (
-            <div className="flex flex-wrap gap-2">
-              <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                {lorebook.display_name}
+          <div className="flex flex-wrap gap-2">
+            {previewTargets.map((target) => (
+              <Badge className="normal-case px-3 py-1.5" key={target.lorebook_id} variant="subtle">
+                {target.display_name}
               </Badge>
+            ))}
+            {targets.length > previewTargets.length ? (
               <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                {t('lorebooks.list.entriesCount', { count: lorebook.entries.length })}
+                +{targets.length - previewTargets.length}
               </Badge>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </DialogBody>
 
         <DialogFooter className="justify-end gap-2">
@@ -63,8 +79,12 @@ export function DeleteLorebookDialog({
           >
             {t('lorebooks.actions.cancel')}
           </Button>
-          <Button disabled={deleting} onClick={onConfirm} variant="danger">
-            {deleting ? t('lorebooks.actions.deleting') : t('lorebooks.actions.delete')}
+          <Button disabled={deleting || targets.length === 0} onClick={onConfirm} variant="danger">
+            {deleting
+              ? t('lorebooks.actions.deleting')
+              : isBulk
+                ? t('lorebooks.actions.deleteSelected')
+                : t('lorebooks.actions.delete')}
           </Button>
         </DialogFooter>
       </DialogContent>

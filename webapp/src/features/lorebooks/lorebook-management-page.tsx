@@ -1,9 +1,14 @@
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
+import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faUpload } from '@fortawesome/free-solid-svg-icons/faUpload'
 import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
@@ -14,12 +19,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/ca
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
+import { runBatchDelete } from '../../lib/batch-delete'
+import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
 import { isRpcConflict } from '../../lib/rpc'
 import { demoLorebook } from '../demo-content/lorebook-sample-data'
 import { InsertSampleDialog } from '../demo-content/insert-sample-dialog'
 import { createLorebook, deleteLorebook, listLorebooks } from './api'
 import { DeleteLorebookDialog } from './delete-lorebook-dialog'
 import { LorebookFormDialog } from './lorebook-form-dialog'
+import { createLorebookBundle, isLorebookBundle } from './lorebook-transfer'
 import type { Lorebook } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
@@ -88,15 +96,19 @@ function summarizeLorebook(lorebook: Lorebook, emptyLabel: string) {
 export function LorebookManagementPage() {
   const { t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isCreatingSample, setIsCreatingSample] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isSampleDialogOpen, setIsSampleDialogOpen] = useState(false)
   const [editLorebookId, setEditLorebookId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Lorebook | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedLorebookIds, setSelectedLorebookIds] = useState<string[]>([])
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const existingLorebookIds = useMemo(
@@ -118,6 +130,13 @@ export function LorebookManagementPage() {
   const sampleLorebookExists = useMemo(
     () => existingLorebookIds.includes(demoLorebook.lorebookId),
     [existingLorebookIds],
+  )
+  const deleteTargets = useMemo(
+    () =>
+      deleteTargetIds
+        .map((lorebookId) => lorebooks.find((lorebook) => lorebook.lorebook_id === lorebookId))
+        .filter((lorebook): lorebook is Lorebook => lorebook !== undefined),
+    [deleteTargetIds, lorebooks],
   )
 
   const refreshLorebooks = useCallback(
@@ -155,6 +174,21 @@ export function LorebookManagementPage() {
     }
   }, [refreshLorebooks])
 
+  useEffect(() => {
+    const availableLorebookIds = new Set(lorebooks.map((lorebook) => lorebook.lorebook_id))
+
+    setSelectedLorebookIds((currentSelection) =>
+      currentSelection.filter((lorebookId) => availableLorebookIds.has(lorebookId)),
+    )
+    setDeleteTargetIds((currentSelection) =>
+      currentSelection.filter((lorebookId) => availableLorebookIds.has(lorebookId)),
+    )
+
+    if (editLorebookId !== null && !availableLorebookIds.has(editLorebookId)) {
+      setEditLorebookId(null)
+    }
+  }, [editLorebookId, lorebooks])
+
   useLayoutEffect(() => {
     setRailContent({
       description: t('lorebooks.rail.description'),
@@ -181,31 +215,172 @@ export function LorebookManagementPage() {
   ])
 
   async function handleDeleteLorebook() {
-    if (!deleteTarget) {
+    if (deleteTargets.length === 0) {
       return
     }
 
-    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteLorebook(target.lorebook_id)
-      setNotice({
-        message: t('lorebooks.feedback.deleted', { name: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteTargets, async (target) => {
+        await deleteLorebook(target.lorebook_id)
       })
-      setDeleteTarget(null)
+
+      setDeleteTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.lorebook_id))
+        setSelectedLorebookIds((currentSelection) =>
+          currentSelection.filter((lorebookId) => !deletedIds.has(lorebookId)),
+        )
+        setDeleteTargetIds([])
+
+        if (editLorebookId !== null && deletedIds.has(editLorebookId)) {
+          setEditLorebookId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('lorebooks.feedback.deletedMany', { count: result.deleted.length })
+              : t('lorebooks.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (selectionMode) {
+          setSelectionMode(false)
+          setSelectedLorebookIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('lorebooks.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteTargets.length > 1
+                ? t('lorebooks.deleteDialog.conflictMany')
+                : t('lorebooks.deleteDialog.conflict')
+              : t('lorebooks.feedback.deleteFailed'),
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
       await refreshLorebooks()
-    } catch (error) {
-      setDeleteTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('lorebooks.deleteDialog.conflict')
-          : getErrorMessage(error, t('lorebooks.feedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  function toggleLorebookSelection(lorebookId: string) {
+    setSelectedLorebookIds((currentSelection) =>
+      currentSelection.includes(lorebookId)
+        ? currentSelection.filter((currentLorebookId) => currentLorebookId !== lorebookId)
+        : [...currentSelection, lorebookId],
+    )
+  }
+
+  async function handleExportSelection() {
+    const exportTargets = lorebooks.filter((lorebook) =>
+      selectedLorebookIds.includes(lorebook.lorebook_id),
+    )
+
+    if (exportTargets.length === 0) {
+      return
+    }
+
+    try {
+      downloadJsonFile(
+        createJsonExportFileName('sillystage-lorebooks'),
+        createLorebookBundle(exportTargets),
+      )
+      setNotice({
+        message: t('lorebooks.feedback.exported', { count: exportTargets.length }),
+        tone: 'success',
+      })
+    } catch (error) {
+      setNotice({
+        message: getErrorMessage(error, t('lorebooks.feedback.exportFailed')),
+        tone: 'error',
+      })
+    }
+  }
+
+  async function handleImportSelection(file: File) {
+    setIsImporting(true)
+
+    try {
+      const payload = await readJsonFile(file)
+
+      if (!isLorebookBundle(payload)) {
+        setNotice({
+          message: t('lorebooks.feedback.importInvalid'),
+          tone: 'error',
+        })
+        return
+      }
+
+      const existingIds = new Set(lorebooks.map((lorebook) => lorebook.lorebook_id))
+      const createdNames: string[] = []
+      const skippedNames: string[] = []
+      const failedNames: string[] = []
+
+      for (const lorebook of payload.lorebooks) {
+        if (existingIds.has(lorebook.lorebook_id)) {
+          skippedNames.push(lorebook.display_name)
+          continue
+        }
+
+        try {
+          await createLorebook({
+            display_name: lorebook.display_name,
+            entries: lorebook.entries,
+            lorebook_id: lorebook.lorebook_id,
+          })
+          createdNames.push(lorebook.display_name)
+          existingIds.add(lorebook.lorebook_id)
+        } catch {
+          failedNames.push(lorebook.display_name)
+        }
+      }
+
+      if (createdNames.length > 0) {
+        await refreshLorebooks()
+      }
+
+      if (createdNames.length > 0 && skippedNames.length === 0 && failedNames.length === 0) {
+        setNotice({
+          message: t('lorebooks.feedback.imported', { count: createdNames.length }),
+          tone: 'success',
+        })
+      } else if (createdNames.length > 0 || skippedNames.length > 0) {
+        setNotice({
+          message: t('lorebooks.feedback.importedPartial', {
+            failed: failedNames.length,
+            skipped: skippedNames.length,
+            success: createdNames.length,
+          }),
+          tone: failedNames.length > 0 ? 'warning' : 'success',
+        })
+      } else {
+        setNotice({
+          message: t('lorebooks.feedback.importSkipped', { count: skippedNames.length }),
+          tone: 'warning',
+        })
+      }
+    } catch (error) {
+      setNotice({
+        message: getErrorMessage(error, t('lorebooks.feedback.importFailed')),
+        tone: 'error',
+      })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -301,15 +476,32 @@ export function LorebookManagementPage() {
 
       <DeleteLorebookDialog
         deleting={isDeleting}
-        lorebook={deleteTarget}
         onConfirm={() => {
           void handleDeleteLorebook()
         }}
         onOpenChange={(open) => {
           if (!open) {
-            setDeleteTarget(null)
+            setDeleteTargetIds([])
           }
         }}
+        targets={deleteTargets}
+      />
+
+      <input
+        accept="application/json,.json"
+        className="sr-only"
+        name="lorebook_import"
+        onChange={(event) => {
+          const selectedFile = event.target.files?.[0]
+
+          event.target.value = ''
+
+          if (selectedFile) {
+            void handleImportSelection(selectedFile)
+          }
+        }}
+        ref={importInputRef}
+        type="file"
       />
 
       <WorkspacePanelShell className="flex min-h-0 flex-1">
@@ -317,31 +509,99 @@ export function LorebookManagementPage() {
           <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
             <SectionHeader
               actions={
-                <div className="flex min-h-10 items-center justify-end">
-                  <div className="flex items-center gap-2.5">
-                    <IconButton
-                      disabled={isCreatingSample}
-                      icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-                      label={
-                        isCreatingSample
-                          ? t('lorebooks.actions.creatingSample')
-                          : t('lorebooks.actions.createSample')
-                      }
-                      onClick={() => {
-                        setIsSampleDialogOpen(true)
-                      }}
-                      size="md"
-                      variant="secondary"
-                    />
-                    <IconButton
-                      icon={<FontAwesomeIcon icon={faPlus} />}
-                      label={t('lorebooks.actions.create')}
-                      onClick={() => {
-                        setIsCreateDialogOpen(true)
-                      }}
-                      size="md"
-                    />
-                  </div>
+                <div className="flex min-h-10 flex-wrap items-center justify-end gap-2">
+                  {selectionMode ? (
+                    <>
+                      <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                        {t('lorebooks.selection.count', { count: selectedLorebookIds.length })}
+                      </Badge>
+                      <IconButton
+                        disabled={lorebooks.length === 0}
+                        icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                        label={t('lorebooks.actions.selectAll')}
+                        onClick={() => {
+                          setSelectedLorebookIds(lorebooks.map((lorebook) => lorebook.lorebook_id))
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={selectedLorebookIds.length === 0}
+                        icon={<FontAwesomeIcon icon={faDownload} />}
+                        label={t('lorebooks.actions.export')}
+                        onClick={() => {
+                          void handleExportSelection()
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={selectedLorebookIds.length === 0}
+                        icon={<FontAwesomeIcon icon={faTrashCan} />}
+                        label={t('lorebooks.actions.deleteSelected')}
+                        onClick={() => {
+                          setDeleteTargetIds(selectedLorebookIds)
+                        }}
+                        size="md"
+                        variant="danger"
+                      />
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faXmark} />}
+                        label={t('lorebooks.actions.cancelSelection')}
+                        onClick={() => {
+                          setSelectionMode(false)
+                          setSelectedLorebookIds([])
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                        label={t('lorebooks.actions.selectMode')}
+                        onClick={() => {
+                          setSelectionMode(true)
+                          setSelectedLorebookIds([])
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={isImporting}
+                        icon={<FontAwesomeIcon icon={faUpload} />}
+                        label={isImporting ? t('lorebooks.actions.importing') : t('lorebooks.actions.import')}
+                        onClick={() => {
+                          importInputRef.current?.click()
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={isCreatingSample}
+                        icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                        label={
+                          isCreatingSample
+                            ? t('lorebooks.actions.creatingSample')
+                            : t('lorebooks.actions.createSample')
+                        }
+                        onClick={() => {
+                          setIsSampleDialogOpen(true)
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faPlus} />}
+                        label={t('lorebooks.actions.create')}
+                        onClick={() => {
+                          setIsCreateDialogOpen(true)
+                        }}
+                        size="md"
+                      />
+                    </>
+                  )}
                 </div>
               }
               title={t('lorebooks.title')}
@@ -429,24 +689,46 @@ export function LorebookManagementPage() {
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faPen} />}
-                            label={t('lorebooks.actions.edit')}
-                            onClick={() => {
-                              setEditLorebookId(lorebook.lorebook_id)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          />
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faTrashCan} />}
-                            label={t('lorebooks.actions.delete')}
-                            onClick={() => {
-                              setDeleteTarget(lorebook)
-                            }}
-                            size="sm"
-                            variant="danger"
-                          />
+                          {selectionMode ? (
+                            <IconButton
+                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                              label={
+                                selectedLorebookIds.includes(lorebook.lorebook_id)
+                                  ? t('lorebooks.actions.deselect')
+                                  : t('lorebooks.actions.select')
+                              }
+                              onClick={() => {
+                                toggleLorebookSelection(lorebook.lorebook_id)
+                              }}
+                              size="sm"
+                              variant={
+                                selectedLorebookIds.includes(lorebook.lorebook_id)
+                                  ? 'primary'
+                                  : 'secondary'
+                              }
+                            />
+                          ) : (
+                            <>
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faPen} />}
+                                label={t('lorebooks.actions.edit')}
+                                onClick={() => {
+                                  setEditLorebookId(lorebook.lorebook_id)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              />
+                              <IconButton
+                                icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                label={t('lorebooks.actions.delete')}
+                                onClick={() => {
+                                  setDeleteTargetIds([lorebook.lorebook_id])
+                                }}
+                                size="sm"
+                                variant="danger"
+                              />
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}

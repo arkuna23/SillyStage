@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
 import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons/faRotateRight'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -18,8 +21,8 @@ import { IconButton } from '../../components/ui/icon-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
+import { runBatchDelete } from '../../lib/batch-delete'
 import { cn } from '../../lib/cn'
-import { isRpcConflict } from '../../lib/rpc'
 import { listApiGroups, listPresets } from '../apis/api'
 import type { ApiGroup, Preset } from '../apis/types'
 import { listCharacters } from '../characters/api'
@@ -136,7 +139,9 @@ export function StoriesPage() {
   const [detailsStoryId, setDetailsStoryId] = useState<string | null>(null)
   const [detailsDraftId, setDetailsDraftId] = useState<string | null>(null)
   const [editStoryId, setEditStoryId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<StorySummary | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedStoryIds, setSelectedStoryIds] = useState<string[]>([])
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   const [deleteDraftTarget, setDeleteDraftTarget] = useState<StoryDraftSummary | null>(null)
   useToastNotice(notice)
 
@@ -147,6 +152,13 @@ export function StoriesPage() {
   const readyDraftCount = useMemo(
     () => drafts.filter((draft) => draft.status === 'ready_to_finalize').length,
     [drafts],
+  )
+  const deleteTargets = useMemo(
+    () =>
+      deleteTargetIds
+        .map((storyId) => stories.find((story) => story.story_id === storyId))
+        .filter((story): story is StorySummary => story !== undefined),
+    [deleteTargetIds, stories],
   )
 
   const refreshStories = useCallback(
@@ -243,6 +255,32 @@ export function StoriesPage() {
     }
   }, [refreshDrafts, refreshResources, refreshStories])
 
+  useEffect(() => {
+    const availableStoryIds = new Set(stories.map((story) => story.story_id))
+
+    setSelectedStoryIds((currentSelection) =>
+      currentSelection.filter((storyId) => availableStoryIds.has(storyId)),
+    )
+    setDeleteTargetIds((currentSelection) =>
+      currentSelection.filter((storyId) => availableStoryIds.has(storyId)),
+    )
+
+    if (detailsStoryId !== null && !availableStoryIds.has(detailsStoryId)) {
+      setDetailsStoryId(null)
+    }
+
+    if (editStoryId !== null && !availableStoryIds.has(editStoryId)) {
+      setEditStoryId(null)
+    }
+  }, [detailsStoryId, editStoryId, stories])
+
+  useEffect(() => {
+    if (viewMode !== 'stories') {
+      setSelectionMode(false)
+      setSelectedStoryIds([])
+    }
+  }, [viewMode])
+
   useLayoutEffect(() => {
     setRailContent({
       description:
@@ -266,32 +304,79 @@ export function StoriesPage() {
   }, [distinctResourceCount, drafts.length, readyDraftCount, setRailContent, stories.length, t, viewMode])
 
   async function handleDeleteStory() {
-    if (!deleteTarget) {
+    if (deleteTargets.length === 0) {
       return
     }
 
-    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deleteStory(target.story_id)
-      setNotice({
-        message: t('stories.feedback.deleted', { name: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteTargets, async (target) => {
+        await deleteStory(target.story_id)
       })
-      setDeleteTarget(null)
+
+      setDeleteTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.story_id))
+        setSelectedStoryIds((currentSelection) =>
+          currentSelection.filter((storyId) => !deletedIds.has(storyId)),
+        )
+        setDeleteTargetIds([])
+
+        if (detailsStoryId !== null && deletedIds.has(detailsStoryId)) {
+          setDetailsStoryId(null)
+        }
+
+        if (editStoryId !== null && deletedIds.has(editStoryId)) {
+          setEditStoryId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('stories.feedback.deletedMany', { count: result.deleted.length })
+              : t('stories.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (selectionMode) {
+          setSelectionMode(false)
+          setSelectedStoryIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('stories.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message:
+            result.conflictCount > 0
+              ? deleteTargets.length > 1
+                ? t('stories.deleteDialog.conflictMany')
+                : t('stories.deleteDialog.conflict')
+              : t('stories.feedback.deleteFailed'),
+          tone: result.conflictCount > 0 ? 'warning' : 'error',
+        })
+      }
+
       await refreshStories()
-    } catch (error) {
-      setDeleteTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('stories.deleteDialog.conflict')
-          : getErrorMessage(error, t('stories.feedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function toggleStorySelection(storyId: string) {
+    setSelectedStoryIds((currentSelection) =>
+      currentSelection.includes(storyId)
+        ? currentSelection.filter((currentStoryId) => currentStoryId !== storyId)
+        : [...currentSelection, storyId],
+    )
   }
 
   async function handleContinueDraft(draft: StoryDraftSummary) {
@@ -441,10 +526,9 @@ export function StoriesPage() {
           void handleDeleteStory()
         }}
         onOpenChange={() => {
-          setDeleteTarget(null)
+          setDeleteTargetIds([])
         }}
-        open={deleteTarget !== null}
-        story={deleteTarget}
+        targets={deleteTargets}
       />
 
       <DeleteStoryDraftDialog
@@ -485,14 +569,66 @@ export function StoriesPage() {
                     }}
                     value={viewMode}
                   />
-                  <IconButton
-                    icon={<FontAwesomeIcon icon={faPlus} />}
-                    label={t('stories.actions.createDraft')}
-                    onClick={() => {
-                      setIsCreateDialogOpen(true)
-                    }}
-                    size="md"
-                  />
+                  {viewMode === 'stories' && selectionMode ? (
+                    <>
+                      <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                        {t('stories.selection.count', { count: selectedStoryIds.length })}
+                      </Badge>
+                      <IconButton
+                        disabled={stories.length === 0}
+                        icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                        label={t('stories.actions.selectAll')}
+                        onClick={() => {
+                          setSelectedStoryIds(stories.map((story) => story.story_id))
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={selectedStoryIds.length === 0}
+                        icon={<FontAwesomeIcon icon={faTrashCan} />}
+                        label={t('stories.actions.deleteSelected')}
+                        onClick={() => {
+                          setDeleteTargetIds(selectedStoryIds)
+                        }}
+                        size="md"
+                        variant="danger"
+                      />
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faXmark} />}
+                        label={t('stories.actions.cancelSelection')}
+                        onClick={() => {
+                          setSelectionMode(false)
+                          setSelectedStoryIds([])
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                    </>
+                  ) : (
+                    <>
+                      {viewMode === 'stories' ? (
+                        <IconButton
+                          icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                          label={t('stories.actions.selectMode')}
+                          onClick={() => {
+                            setSelectionMode(true)
+                            setSelectedStoryIds([])
+                          }}
+                          size="md"
+                          variant="secondary"
+                        />
+                      ) : null}
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faPlus} />}
+                        label={t('stories.actions.createDraft')}
+                        onClick={() => {
+                          setIsCreateDialogOpen(true)
+                        }}
+                        size="md"
+                      />
+                    </>
+                  )}
                 </div>
               }
               title={t('stories.title')}
@@ -565,36 +701,56 @@ export function StoriesPage() {
                         </div>
 
                         <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                          <Button
-                            onClick={() => {
-                              setDetailsStoryId(story.story_id)
-                            }}
-                            size="sm"
-                            variant="ghost"
-                          >
-                            <FontAwesomeIcon icon={faEye} />
-                            {t('stories.actions.view')}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setEditStoryId(story.story_id)
-                            }}
-                            size="sm"
-                            variant="secondary"
-                          >
-                            <FontAwesomeIcon icon={faPen} />
-                            {t('stories.actions.edit')}
-                          </Button>
-                          <Button
-                            onClick={() => {
-                              setDeleteTarget(story)
-                            }}
-                            size="sm"
-                            variant="danger"
-                          >
-                            <FontAwesomeIcon icon={faTrashCan} />
-                            {t('stories.actions.delete')}
-                          </Button>
+                          {selectionMode ? (
+                            <IconButton
+                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                              label={
+                                selectedStoryIds.includes(story.story_id)
+                                  ? t('stories.actions.deselect')
+                                  : t('stories.actions.select')
+                              }
+                              onClick={() => {
+                                toggleStorySelection(story.story_id)
+                              }}
+                              size="sm"
+                              variant={
+                                selectedStoryIds.includes(story.story_id) ? 'primary' : 'secondary'
+                              }
+                            />
+                          ) : (
+                            <>
+                              <Button
+                                onClick={() => {
+                                  setDetailsStoryId(story.story_id)
+                                }}
+                                size="sm"
+                                variant="ghost"
+                              >
+                                <FontAwesomeIcon icon={faEye} />
+                                {t('stories.actions.view')}
+                              </Button>
+                              <Button
+                                onClick={() => {
+                                  setEditStoryId(story.story_id)
+                                }}
+                                size="sm"
+                                variant="secondary"
+                              >
+                                <FontAwesomeIcon icon={faPen} />
+                                {t('stories.actions.edit')}
+                              </Button>
+                              <Button
+                                onClick={() => {
+                                  setDeleteTargetIds([story.story_id])
+                                }}
+                                size="sm"
+                                variant="danger"
+                              >
+                                <FontAwesomeIcon icon={faTrashCan} />
+                                {t('stories.actions.delete')}
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}

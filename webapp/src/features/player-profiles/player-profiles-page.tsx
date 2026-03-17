@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
+import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
@@ -8,12 +12,13 @@ import { demoPlayerProfile } from '../demo-content/konosuba-sample-data'
 import { InsertSampleDialog } from '../demo-content/insert-sample-dialog'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
+import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
-import { isRpcConflict } from '../../lib/rpc'
+import { runBatchDelete } from '../../lib/batch-delete'
 import { createPlayerProfile, deletePlayerProfile, listPlayerProfiles } from './api'
 import { DeletePlayerProfileDialog } from './delete-player-profile-dialog'
 import { PlayerProfileFormDialog } from './player-profile-form-dialog'
@@ -74,12 +79,21 @@ export function PlayerProfilesPage() {
   const [isSampleDialogOpen, setIsSampleDialogOpen] = useState(false)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editProfileId, setEditProfileId] = useState<string | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<PlayerProfile | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedProfileIds, setSelectedProfileIds] = useState<string[]>([])
+  const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const existingProfileIds = useMemo(
     () => profiles.map((profile) => profile.player_profile_id),
     [profiles],
+  )
+  const deleteTargets = useMemo(
+    () =>
+      deleteTargetIds
+        .map((profileId) => profiles.find((profile) => profile.player_profile_id === profileId))
+        .filter((profile): profile is PlayerProfile => profile !== undefined),
+    [deleteTargetIds, profiles],
   )
 
   const refreshProfiles = useCallback(
@@ -118,6 +132,21 @@ export function PlayerProfilesPage() {
     }
   }, [refreshProfiles])
 
+  useEffect(() => {
+    const availableProfileIds = new Set(profiles.map((profile) => profile.player_profile_id))
+
+    setSelectedProfileIds((currentSelection) =>
+      currentSelection.filter((profileId) => availableProfileIds.has(profileId)),
+    )
+    setDeleteTargetIds((currentSelection) =>
+      currentSelection.filter((profileId) => availableProfileIds.has(profileId)),
+    )
+
+    if (editProfileId !== null && !availableProfileIds.has(editProfileId)) {
+      setEditProfileId(null)
+    }
+  }, [editProfileId, profiles])
+
   useLayoutEffect(() => {
     setRailContent({
       description: t('playerProfiles.rail.description'),
@@ -136,32 +165,70 @@ export function PlayerProfilesPage() {
   }, [profiles.length, setRailContent, t])
 
   async function handleDeleteProfile() {
-    if (!deleteTarget) {
+    if (deleteTargets.length === 0) {
       return
     }
 
-    const target = deleteTarget
     setIsDeleting(true)
 
     try {
-      await deletePlayerProfile(target.player_profile_id)
-      setNotice({
-        message: t('playerProfiles.feedback.deleted', { name: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteTargets, async (target) => {
+        await deletePlayerProfile(target.player_profile_id)
       })
-      setDeleteTarget(null)
+
+      setDeleteTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.player_profile_id))
+        setSelectedProfileIds((currentSelection) =>
+          currentSelection.filter((profileId) => !deletedIds.has(profileId)),
+        )
+        setDeleteTargetIds([])
+
+        if (editProfileId !== null && deletedIds.has(editProfileId)) {
+          setEditProfileId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('playerProfiles.feedback.deletedMany', { count: result.deleted.length })
+              : t('playerProfiles.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+        if (selectionMode) {
+          setSelectionMode(false)
+          setSelectedProfileIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('playerProfiles.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message: t('playerProfiles.feedback.deleteFailed'),
+          tone: 'error',
+        })
+      }
+
       await refreshProfiles()
-    } catch (error) {
-      setDeleteTarget(null)
-      setNotice({
-        message: isRpcConflict(error)
-          ? t('playerProfiles.deleteDialog.conflict')
-          : getErrorMessage(error, t('playerProfiles.feedback.deleteFailed')),
-        tone: isRpcConflict(error) ? 'warning' : 'error',
-      })
     } finally {
       setIsDeleting(false)
     }
+  }
+
+  function toggleProfileSelection(playerProfileId: string) {
+    setSelectedProfileIds((currentSelection) =>
+      currentSelection.includes(playerProfileId)
+        ? currentSelection.filter((currentProfileId) => currentProfileId !== playerProfileId)
+        : [...currentSelection, playerProfileId],
+    )
   }
 
   async function handleCreateSampleProfile() {
@@ -232,10 +299,9 @@ export function PlayerProfilesPage() {
           void handleDeleteProfile()
         }}
         onOpenChange={() => {
-          setDeleteTarget(null)
+          setDeleteTargetIds([])
         }}
-        open={deleteTarget !== null}
-        profile={deleteTarget}
+        targets={deleteTargets}
       />
 
       <InsertSampleDialog
@@ -270,31 +336,79 @@ export function PlayerProfilesPage() {
         <CardHeader className="gap-4 border-b border-[var(--color-border-subtle)] px-6 py-5 md:min-h-[5.75rem] md:px-7 md:py-5">
           <SectionHeader
             actions={
-              <div className="flex min-h-10 items-center justify-end">
-                <div className="flex items-center gap-2.5">
-                  <IconButton
-                    disabled={isCreatingSample}
-                    icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
-                    label={
-                      isCreatingSample
-                        ? t('playerProfiles.actions.creatingSample')
-                        : t('playerProfiles.actions.createSample')
-                    }
-                    onClick={() => {
-                      setIsSampleDialogOpen(true)
-                    }}
-                    size="md"
-                    variant="secondary"
-                  />
-                  <IconButton
-                    icon={<FontAwesomeIcon icon={faPlus} />}
-                    label={t('playerProfiles.actions.create')}
-                    onClick={() => {
-                      setIsCreateDialogOpen(true)
-                    }}
-                    size="md"
-                  />
-                </div>
+              <div className="flex min-h-10 flex-wrap items-center justify-end gap-2">
+                {selectionMode ? (
+                  <>
+                    <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                      {t('playerProfiles.selection.count', { count: selectedProfileIds.length })}
+                    </Badge>
+                    <IconButton
+                      disabled={profiles.length === 0}
+                      icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                      label={t('playerProfiles.actions.selectAll')}
+                      onClick={() => {
+                        setSelectedProfileIds(profiles.map((profile) => profile.player_profile_id))
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={selectedProfileIds.length === 0}
+                      icon={<FontAwesomeIcon icon={faTrashCan} />}
+                      label={t('playerProfiles.actions.deleteSelected')}
+                      onClick={() => {
+                        setDeleteTargetIds(selectedProfileIds)
+                      }}
+                      size="md"
+                      variant="danger"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faXmark} />}
+                      label={t('playerProfiles.actions.cancelSelection')}
+                      onClick={() => {
+                        setSelectionMode(false)
+                        setSelectedProfileIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                  </>
+                ) : (
+                  <>
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                      label={t('playerProfiles.actions.selectMode')}
+                      onClick={() => {
+                        setSelectionMode(true)
+                        setSelectedProfileIds([])
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      disabled={isCreatingSample}
+                      icon={<FontAwesomeIcon icon={faWandMagicSparkles} />}
+                      label={
+                        isCreatingSample
+                          ? t('playerProfiles.actions.creatingSample')
+                          : t('playerProfiles.actions.createSample')
+                      }
+                      onClick={() => {
+                        setIsSampleDialogOpen(true)
+                      }}
+                      size="md"
+                      variant="secondary"
+                    />
+                    <IconButton
+                      icon={<FontAwesomeIcon icon={faPlus} />}
+                      label={t('playerProfiles.actions.create')}
+                      onClick={() => {
+                        setIsCreateDialogOpen(true)
+                      }}
+                      size="md"
+                    />
+                  </>
+                )}
               </div>
             }
             title={t('playerProfiles.title')}
@@ -357,24 +471,46 @@ export function PlayerProfilesPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                        <Button
-                          onClick={() => {
-                            setEditProfileId(profile.player_profile_id)
-                          }}
-                          size="sm"
-                          variant="secondary"
-                        >
-                          {t('playerProfiles.actions.edit')}
-                        </Button>
-                        <Button
-                          onClick={() => {
-                            setDeleteTarget(profile)
-                          }}
-                          size="sm"
-                          variant="danger"
-                        >
-                          {t('playerProfiles.actions.delete')}
-                        </Button>
+                        {selectionMode ? (
+                          <IconButton
+                            icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            label={
+                              selectedProfileIds.includes(profile.player_profile_id)
+                                ? t('playerProfiles.actions.deselect')
+                                : t('playerProfiles.actions.select')
+                            }
+                            onClick={() => {
+                              toggleProfileSelection(profile.player_profile_id)
+                            }}
+                            size="sm"
+                            variant={
+                              selectedProfileIds.includes(profile.player_profile_id)
+                                ? 'primary'
+                                : 'secondary'
+                            }
+                          />
+                        ) : (
+                          <>
+                            <Button
+                              onClick={() => {
+                                setEditProfileId(profile.player_profile_id)
+                              }}
+                              size="sm"
+                              variant="secondary"
+                            >
+                              {t('playerProfiles.actions.edit')}
+                            </Button>
+                            <Button
+                              onClick={() => {
+                                setDeleteTargetIds([profile.player_profile_id])
+                              }}
+                              size="sm"
+                              variant="danger"
+                            >
+                              {t('playerProfiles.actions.delete')}
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}

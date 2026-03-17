@@ -17,41 +17,50 @@ type DeleteStoryDialogProps = {
   deleting: boolean
   onConfirm: () => void
   onOpenChange: (open: boolean) => void
-  open: boolean
-  story: StorySummary | null
+  targets: ReadonlyArray<StorySummary>
 }
 
 export function DeleteStoryDialog({
   deleting,
   onConfirm,
   onOpenChange,
-  open,
-  story,
+  targets,
 }: DeleteStoryDialogProps) {
   const { t } = useTranslation()
+  const open = targets.length > 0
+  const isBulk = targets.length > 1
+  const previewTargets = targets.slice(0, 5)
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent aria-describedby={undefined} className="w-[min(92vw,30rem)]">
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
-          <DialogTitle>{t('stories.deleteDialog.title')}</DialogTitle>
+          <DialogTitle>
+            {isBulk ? t('stories.deleteDialog.titleMany') : t('stories.deleteDialog.title')}
+          </DialogTitle>
         </DialogHeader>
 
         <DialogBody className="space-y-4 pt-6">
           <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-            {story ? t('stories.deleteDialog.message', { id: story.story_id }) : null}
+            {isBulk
+              ? t('stories.deleteDialog.messageMany', { count: targets.length })
+              : targets[0]
+                ? t('stories.deleteDialog.message', { id: targets[0].story_id })
+                : null}
           </p>
 
-          {story ? (
-            <div className="flex flex-wrap gap-2">
-              <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                {story.display_name}
+          <div className="flex flex-wrap gap-2">
+            {previewTargets.map((target) => (
+              <Badge className="normal-case px-3 py-1.5" key={target.story_id} variant="subtle">
+                {target.display_name}
               </Badge>
+            ))}
+            {targets.length > previewTargets.length ? (
               <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                {story.story_id}
+                +{targets.length - previewTargets.length}
               </Badge>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </DialogBody>
 
         <DialogFooter className="justify-end">
@@ -60,8 +69,12 @@ export function DeleteStoryDialog({
               {t('stories.actions.cancel')}
             </Button>
           </DialogClose>
-          <Button disabled={deleting} onClick={onConfirm} variant="danger">
-            {deleting ? t('stories.actions.deleting') : t('stories.actions.delete')}
+          <Button disabled={deleting || targets.length === 0} onClick={onConfirm} variant="danger">
+            {deleting
+              ? t('stories.actions.deleting')
+              : isBulk
+                ? t('stories.actions.deleteSelected')
+                : t('stories.actions.delete')}
           </Button>
         </DialogFooter>
       </DialogContent>
