@@ -76,7 +76,18 @@ export type StoryGraph = {
   start_node: string
 }
 
+export type CommonVariableScope = 'character' | 'player' | 'world'
+
+export type CommonVariableDefinition = {
+  character_id?: string | null
+  display_name: string
+  key: string
+  pinned: boolean
+  scope: CommonVariableScope
+}
+
 export type StorySummary = {
+  common_variables: CommonVariableDefinition[]
   display_name: string
   introduction: string
   player_schema_id: string
@@ -116,6 +127,7 @@ export type StoryDraftSummary = {
 
 export type StoryDraftDetail = {
   api_group_id?: string | null
+  common_variables: CommonVariableDefinition[]
   created_at_ms?: number | null
   display_name: string
   draft_id: string

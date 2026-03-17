@@ -23,9 +23,11 @@ import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
+import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import { createStoryResource, generateAndSaveStoryPlan } from './api'
 import { StoryInputFlowCard } from './story-input-flow-card'
+import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
@@ -34,6 +36,7 @@ type CreateWizardStep = 'concept' | 'seeds' | 'planner' | 'generating'
 type CreateStoryResourceDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
   availableApiGroups: ReadonlyArray<ApiGroup>
+  availableLorebooks: ReadonlyArray<Lorebook>
   availablePresets: ReadonlyArray<Preset>
   availableSchemas: ReadonlyArray<SchemaResource>
   onCompleted: (result: {
@@ -49,6 +52,7 @@ type CreateStoryResourceDialogProps = {
 type FormState = {
   apiGroupId: string
   characterIds: string[]
+  lorebookIds: string[]
   presetId: string
   playerSchemaIdSeed: string
   shouldGenerate: boolean
@@ -60,6 +64,7 @@ function createInitialFormState(): FormState {
   return {
     apiGroupId: '',
     characterIds: [],
+    lorebookIds: [],
     presetId: '',
     playerSchemaIdSeed: '',
     shouldGenerate: true,
@@ -138,6 +143,7 @@ function StepChip({
 export function CreateStoryResourceDialog({
   availableCharacters,
   availableApiGroups,
+  availableLorebooks,
   availablePresets,
   availableSchemas,
   onCompleted,
@@ -197,6 +203,14 @@ export function CreateStoryResourceDialog({
       formState.characterIds.map((characterId) => characterLookup.get(characterId)?.name ?? characterId),
     [characterLookup, formState.characterIds],
   )
+  const lorebookOptions = useMemo(
+    () =>
+      availableLorebooks.map((lorebook) => ({
+        display_name: lorebook.display_name,
+        lorebook_id: lorebook.lorebook_id,
+      })),
+    [availableLorebooks],
+  )
 
   function resetDialogState() {
     setActiveStep('concept')
@@ -225,6 +239,19 @@ export function CreateStoryResourceDialog({
         characterIds: isSelected
           ? currentFormState.characterIds.filter((id) => id !== characterId)
           : [...currentFormState.characterIds, characterId],
+      }
+    })
+  }
+
+  function toggleLorebook(lorebookId: string) {
+    setFormState((currentFormState) => {
+      const isSelected = currentFormState.lorebookIds.includes(lorebookId)
+
+      return {
+        ...currentFormState,
+        lorebookIds: isSelected
+          ? currentFormState.lorebookIds.filter((id) => id !== lorebookId)
+          : [...currentFormState.lorebookIds, lorebookId],
       }
     })
   }
@@ -313,6 +340,7 @@ export function CreateStoryResourceDialog({
     try {
       const savedResource = await createStoryResource({
         character_ids: [...new Set(formState.characterIds)],
+        lorebook_ids: [...new Set(formState.lorebookIds)],
         ...(formState.playerSchemaIdSeed
           ? { player_schema_id_seed: formState.playerSchemaIdSeed.trim() }
           : {}),
@@ -570,6 +598,30 @@ export function CreateStoryResourceDialog({
                     {t('storyResources.createWizard.noSchemas')}
                   </div>
                 ) : null}
+
+                <Field
+                  description={t('storyResources.createWizard.seedHints.lorebooks')}
+                  label={t('storyResources.form.fields.lorebooks')}
+                >
+                  <StoryResourceLorebookSelector
+                    emptyAction={
+                      <DialogRouteButton
+                        onRequestClose={() => {
+                          handleOpenChange(false)
+                        }}
+                        to={appPaths.lorebooks}
+                        variant="secondary"
+                      >
+                        {t('storyResources.form.openLorebooks')}
+                      </DialogRouteButton>
+                    }
+                    emptyMessage={t('storyResources.form.emptyLorebooks')}
+                    lorebooks={lorebookOptions}
+                    noSelectionLabel={t('storyResources.form.emptyLorebookSelection')}
+                    onToggleLorebook={toggleLorebook}
+                    selectedLorebookIds={formState.lorebookIds}
+                  />
+                </Field>
               </motion.div>
             ) : null}
 

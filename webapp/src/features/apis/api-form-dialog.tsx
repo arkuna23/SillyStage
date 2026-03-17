@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui/button'
@@ -12,8 +12,8 @@ import {
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
-import { useToastMessage } from '../../components/ui/toast-context'
-import { createApi, getApi, updateApi } from './api'
+import { useToast, useToastMessage } from '../../components/ui/toast-context'
+import { createApi, getApi, listApiModels, updateApi } from './api'
 import { llmProviders, type ApiConfig, type LlmProvider } from './types'
 
 type ApiFormDialogProps = {
@@ -58,30 +58,64 @@ export function ApiFormDialog({
   open,
 }: ApiFormDialogProps) {
   const { t } = useTranslation()
+  const { pushToast } = useToast()
+  const fieldIdPrefix = useId()
   const [formState, setFormState] = useState<FormState>(createInitialState)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isFetchingModels, setIsFetchingModels] = useState(false)
+  const [availableModels, setAvailableModels] = useState<string[]>([])
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [modelsError, setModelsError] = useState<string | null>(null)
   useToastMessage(submitError)
+  useToastMessage(modelsError)
+
+  const fieldIds = {
+    apiId: `${fieldIdPrefix}-api-id`,
+    apiKey: `${fieldIdPrefix}-api-key`,
+    baseUrl: `${fieldIdPrefix}-base-url`,
+    displayName: `${fieldIdPrefix}-display-name`,
+    model: `${fieldIdPrefix}-model`,
+    modelSelect: `${fieldIdPrefix}-model-select`,
+    provider: `${fieldIdPrefix}-provider`,
+  } as const
+
+  const modelOptions = useMemo(
+    () =>
+      availableModels.map((model) => ({
+        label: model,
+        value: model,
+      })),
+    [availableModels],
+  )
+  const canFetchModels =
+    formState.baseUrl.trim().length > 0 && formState.apiKey.trim().length > 0
 
   useEffect(() => {
     if (!open) {
       setFormState(createInitialState())
       setIsLoading(false)
       setIsSubmitting(false)
+      setIsFetchingModels(false)
+      setAvailableModels([])
       setSubmitError(null)
+      setModelsError(null)
       return
     }
 
     if (mode !== 'edit' || !apiId) {
       setFormState(createInitialState())
+      setAvailableModels([])
       setSubmitError(null)
+      setModelsError(null)
       return
     }
 
     const controller = new AbortController()
     setIsLoading(true)
     setSubmitError(null)
+    setModelsError(null)
+    setAvailableModels([])
 
     void getApi(apiId, controller.signal)
       .then((result) => {
@@ -113,6 +147,54 @@ export function ApiFormDialog({
       controller.abort()
     }
   }, [apiId, mode, open, t])
+
+  async function handleFetchModels() {
+    if (!formState.baseUrl.trim()) {
+      setModelsError(t('apis.apiForm.errors.baseUrlRequired'))
+      return
+    }
+
+    if (!formState.apiKey.trim()) {
+      setModelsError(
+        mode === 'edit'
+          ? t('apis.apiForm.errors.apiKeyRequiredForProbe')
+          : t('apis.apiForm.errors.apiKeyRequired'),
+      )
+      return
+    }
+
+    setModelsError(null)
+    setIsFetchingModels(true)
+
+    try {
+      const result = await listApiModels({
+        api_key: formState.apiKey.trim(),
+        base_url: formState.baseUrl.trim(),
+        provider: formState.provider,
+      })
+      const nextModels = Array.from(
+        new Set(
+          result.models
+            .map((model) => model.trim())
+            .filter((model) => model.length > 0),
+        ),
+      )
+
+      setAvailableModels(nextModels)
+
+      pushToast({
+        message:
+          nextModels.length > 0
+            ? t('apis.apiForm.feedback.modelsLoaded', { count: nextModels.length })
+            : t('apis.apiForm.feedback.modelsEmpty'),
+        tone: nextModels.length > 0 ? 'success' : 'warning',
+      })
+    } catch (error) {
+      setModelsError(getErrorMessage(error, t('apis.apiForm.errors.listModelsFailed')))
+    } finally {
+      setIsFetchingModels(false)
+    }
+  }
 
   async function handleSubmit() {
     if (!formState.apiId.trim()) {
@@ -208,6 +290,8 @@ export function ApiFormDialog({
                 </span>
                 <Input
                   disabled={mode === 'edit'}
+                  id={fieldIds.apiId}
+                  name="api_id"
                   placeholder={t('apis.apiForm.placeholders.apiId')}
                   value={formState.apiId}
                   onChange={(event) => {
@@ -221,6 +305,8 @@ export function ApiFormDialog({
                   {t('apis.apiForm.fields.displayName')}
                 </span>
                 <Input
+                  id={fieldIds.displayName}
+                  name="display_name"
                   placeholder={t('apis.apiForm.placeholders.displayName')}
                   value={formState.displayName}
                   onChange={(event) => {
@@ -238,6 +324,7 @@ export function ApiFormDialog({
                     label: provider === 'open_ai' ? t('apis.providers.open_ai') : provider,
                     value: provider,
                   }))}
+                  triggerId={fieldIds.provider}
                   textAlign="start"
                   value={formState.provider}
                   onValueChange={(value) => {
@@ -254,23 +341,12 @@ export function ApiFormDialog({
                   {t('apis.apiForm.fields.baseUrl')}
                 </span>
                 <Input
+                  id={fieldIds.baseUrl}
+                  name="base_url"
                   placeholder={t('apis.apiForm.placeholders.baseUrl')}
                   value={formState.baseUrl}
                   onChange={(event) => {
                     setFormState((current) => ({ ...current, baseUrl: event.target.value }))
-                  }}
-                />
-              </label>
-
-              <label className="space-y-2.5">
-                <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-                  {t('apis.apiForm.fields.model')}
-                </span>
-                <Input
-                  placeholder={t('apis.apiForm.placeholders.model')}
-                  value={formState.model}
-                  onChange={(event) => {
-                    setFormState((current) => ({ ...current, model: event.target.value }))
                   }}
                 />
               </label>
@@ -287,6 +363,8 @@ export function ApiFormDialog({
                   ) : null}
                 </div>
                 <Input
+                  id={fieldIds.apiKey}
+                  name="api_key"
                   placeholder={t('apis.apiForm.placeholders.apiKey')}
                   type="password"
                   value={formState.apiKey}
@@ -295,6 +373,62 @@ export function ApiFormDialog({
                   }}
                 />
               </label>
+
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between gap-3">
+                  <label
+                    className="block text-sm font-medium text-[var(--color-text-primary)]"
+                    htmlFor={fieldIds.model}
+                  >
+                    {t('apis.apiForm.fields.model')}
+                  </label>
+                  <Button
+                    disabled={isLoading || isSubmitting || isFetchingModels || !canFetchModels}
+                    onClick={() => {
+                      void handleFetchModels()
+                    }}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    {isFetchingModels
+                      ? t('apis.apiForm.actions.fetchingModels')
+                      : availableModels.length > 0
+                        ? t('apis.apiForm.actions.refetchModels')
+                        : t('apis.apiForm.actions.fetchModels')}
+                  </Button>
+                </div>
+
+                {availableModels.length > 0 ? (
+                  <Select
+                    allowClear
+                    clearLabel={t('apis.apiForm.placeholders.modelSelectClear')}
+                    items={modelOptions}
+                    onValueChange={(value) => {
+                      setFormState((current) => ({ ...current, model: value }))
+                    }}
+                    placeholder={t('apis.apiForm.placeholders.modelSelect')}
+                    textAlign="start"
+                    triggerId={fieldIds.modelSelect}
+                    value={availableModels.includes(formState.model) ? formState.model : undefined}
+                  />
+                ) : null}
+
+                <Input
+                  id={fieldIds.model}
+                  name="model"
+                  placeholder={t('apis.apiForm.placeholders.model')}
+                  value={formState.model}
+                  onChange={(event) => {
+                    setFormState((current) => ({ ...current, model: event.target.value }))
+                  }}
+                />
+
+                <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                  {availableModels.length > 0
+                    ? t('apis.apiForm.hints.modelEditable')
+                    : t('apis.apiForm.hints.modelProbe')}
+                </p>
+              </div>
 
             </>
           )}

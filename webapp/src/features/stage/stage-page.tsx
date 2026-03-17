@@ -1,25 +1,17 @@
 import { faComments } from '@fortawesome/free-solid-svg-icons/faComments'
 import { faDatabase } from '@fortawesome/free-solid-svg-icons/faDatabase'
-import { faPaperPlane } from '@fortawesome/free-solid-svg-icons/faPaperPlane'
 import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
-import { faRotateRight } from '@fortawesome/free-solid-svg-icons/faRotateRight'
-import { faSpinner } from '@fortawesome/free-solid-svg-icons/faSpinner'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useReducedMotion } from 'framer-motion'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
-import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
-import { IconButton } from '../../components/ui/icon-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
-import { Switch } from '../../components/ui/switch'
-import { Textarea } from '../../components/ui/textarea'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { appPaths } from '../../app/paths'
-import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
 import { listApiGroups, listApis, listPresets } from '../apis/api'
 import type { ApiConfig, ApiGroup, Preset } from '../apis/types'
@@ -52,15 +44,22 @@ import {
 import { SessionCharacterDialog } from './session-character-dialog'
 import { SessionDeleteDialog } from './session-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
+import { buildStageCommonVariables } from './stage-common-variable-utils'
 import { StageCharacterVariablesPanel } from './stage-character-variables-panel'
-import { StageConversation, TurnStatusBar } from './stage-conversation'
+import { StageDialoguePanel } from './stage-dialogue-panel'
 import { StagePanelHeader } from './stage-panel-shared'
 import { StageRightPanel } from './stage-right-panel'
 import { StageSessionListPanel } from './stage-session-list-panel'
 import { SessionStartDialog } from './session-start-dialog'
 import { StageSessionSettingsPanel } from './stage-session-settings-panel'
 import { StageSessionVariablesPanel } from './stage-session-variables-panel'
-import type { CoverCache, StageCastMember, StageMessage, TurnWorkerStatus } from './stage-ui-types'
+import type {
+  CoverCache,
+  StageCastMember,
+  StageMessage,
+  StageRightRailTab,
+  TurnWorkerStatus,
+} from './stage-ui-types'
 import type {
   EngineTurnResult,
   ReplySuggestion,
@@ -77,7 +76,6 @@ import type {
 } from './types'
 
 const stageRoot = '/stage'
-const panelEase = [0.16, 1, 0.3, 1] as const
 
 type PanelMode = 'dialogue' | 'settings' | 'variables'
 type ComposerMode = 'input' | 'suggestions'
@@ -86,6 +84,10 @@ type NoticeTone = 'error' | 'success' | 'warning'
 type Notice = {
   message: string
   tone: NoticeTone
+}
+
+function getDefaultRightPanelTab(hasCommonVariables: boolean): StageRightRailTab {
+  return hasCommonVariables ? 'variables' : 'status'
 }
 
 function buildStagePath(sessionId?: string) {
@@ -283,6 +285,7 @@ export function StagePage() {
   const prefersReducedMotion = useReducedMotion()
   const streamAbortRef = useRef<AbortController | null>(null)
   const suggestionsAbortRef = useRef<AbortController | null>(null)
+  const autoResolvedRightPanelTabSessionRef = useRef<string | null>(null)
   const conversationScrollRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -313,6 +316,7 @@ export function StagePage() {
   const [expandedThoughtIds, setExpandedThoughtIds] = useState<Set<string>>(createInitialThoughtState)
   const [isStoryIntroExpanded, setIsStoryIntroExpanded] = useState(false)
   const [isStoryNodeExpanded, setIsStoryNodeExpanded] = useState(false)
+  const [rightPanelTab, setRightPanelTab] = useState<StageRightRailTab>('status')
   const [detailsCharacterId, setDetailsCharacterId] = useState<string | null>(null)
   const [detailsSessionCharacterId, setDetailsSessionCharacterId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -363,7 +367,14 @@ export function StagePage() {
     [detailsSessionCharacterId, sessionCharacterMap],
   )
   const currentSnapshot = liveSnapshot ?? selectedSession?.snapshot ?? null
-  const currentNode = useMemo(() => getStoryNode(selectedStoryDetail, currentSnapshot), [currentSnapshot, selectedStoryDetail])
+  const currentNode = useMemo(
+    () => getStoryNode(selectedStoryDetail, currentSnapshot),
+    [currentSnapshot, selectedStoryDetail],
+  )
+  const stageCommonVariables = useMemo(
+    () => buildStageCommonVariables(selectedStoryDetail, currentSnapshot),
+    [currentSnapshot, selectedStoryDetail],
+  )
   const getSpeakerDisplayName = useCallback(
     (speakerId: string) =>
       characterMap.get(speakerId)?.name ??
@@ -544,6 +555,7 @@ export function StagePage() {
     }
 
     if (!routeSessionId) {
+      autoResolvedRightPanelTabSessionRef.current = null
       shouldStickToBottomRef.current = true
       setSelectedSession(null)
       setSessionCharacters([])
@@ -559,6 +571,7 @@ export function StagePage() {
       setDeletingPlayerMessageId(null)
       setIsStoryIntroExpanded(false)
       setIsStoryNodeExpanded(false)
+      setRightPanelTab(getDefaultRightPanelTab(false))
       setDetailsCharacterId(null)
       setDetailsSessionCharacterId(null)
       setBeatSpeakerIds([])
@@ -581,6 +594,8 @@ export function StagePage() {
   }, [loadSelectedSession, routeSessionId, stageAccessStatus])
 
   useEffect(() => {
+    autoResolvedRightPanelTabSessionRef.current = null
+
     if (suggestionsAbortRef.current) {
       suggestionsAbortRef.current.abort()
       suggestionsAbortRef.current = null
@@ -597,9 +612,31 @@ export function StagePage() {
     setDeletingPlayerMessageId(null)
     setIsStoryIntroExpanded(false)
     setIsStoryNodeExpanded(false)
+    setRightPanelTab(getDefaultRightPanelTab(false))
     setDetailsCharacterId(null)
     setDetailsSessionCharacterId(null)
   }, [routeSessionId])
+
+  useEffect(() => {
+    if (!routeSessionId || !selectedSession) {
+      return
+    }
+
+    if (selectedSession.session_id !== routeSessionId) {
+      return
+    }
+
+    if (autoResolvedRightPanelTabSessionRef.current === routeSessionId) {
+      return
+    }
+
+    if (isSessionLoading) {
+      return
+    }
+
+    setRightPanelTab(getDefaultRightPanelTab(stageCommonVariables.length > 0))
+    autoResolvedRightPanelTabSessionRef.current = routeSessionId
+  }, [isSessionLoading, routeSessionId, selectedSession, stageCommonVariables.length])
 
   useEffect(() => {
     if (composerMode !== 'input') {
@@ -1741,178 +1778,60 @@ export function StagePage() {
                   </div>
                 )
               ) : (
-                <div className="flex h-full min-h-0 flex-col">
-                  <div
-                    className="scrollbar-none min-h-0 flex-1 overflow-y-auto pr-1"
-                    onScroll={(event) => {
-                      shouldStickToBottomRef.current = isScrolledNearBottom(event.currentTarget)
-                    }}
-                    ref={conversationScrollRef}
-                  >
-                    <StageConversation
-                      composerLocked={isRunningTurn}
-                      characterCovers={coverCache}
-                      characterMap={characterMap}
-                      copy={copy}
-                      deletingPlayerMessageId={deletingPlayerMessageId}
-                      editingPlayerDraft={editingPlayerDraft}
-                      editingPlayerMessageId={editingPlayerMessageId}
-                      expandedThoughtIds={expandedThoughtIds}
-                      isLoading={Boolean(routeSessionId) && isSessionLoading}
-                      messages={sessionMessages}
-                      onCancelEditPlayerMessage={() => {
-                        setEditingPlayerMessageId(null)
-                        setEditingPlayerDraft('')
-                      }}
-                      onChangePlayerMessageDraft={setEditingPlayerDraft}
-                      onDeletePlayerMessage={(message) => void handleDeletePlayerMessage(message)}
-                      onEditPlayerMessage={handleEditPlayerMessage}
-                      onSavePlayerMessage={() => void handleSaveEditedPlayerMessage()}
-                      onToggleThought={(messageId) => {
-                        setExpandedThoughtIds((current) => {
-                          const next = new Set(current)
+                <StageDialoguePanel
+                  characterCovers={coverCache}
+                  characterMap={characterMap}
+                  composerInput={composerInput}
+                  composerLocked={isRunningTurn}
+                  composerMode={composerMode}
+                  composerRef={composerRef}
+                  conversationScrollRef={conversationScrollRef}
+                  copy={copy}
+                  deletingPlayerMessageId={deletingPlayerMessageId}
+                  editingPlayerDraft={editingPlayerDraft}
+                  editingPlayerMessageId={editingPlayerMessageId}
+                  expandedThoughtIds={expandedThoughtIds}
+                  isLoading={Boolean(routeSessionId) && isSessionLoading}
+                  isRunningTurn={isRunningTurn}
+                  isSuggestingReplies={isSuggestingReplies}
+                  messages={sessionMessages}
+                  onCancelEditPlayerMessage={() => {
+                    setEditingPlayerMessageId(null)
+                    setEditingPlayerDraft('')
+                  }}
+                  onChangeComposerInput={setComposerInput}
+                  onChangePlayerMessageDraft={setEditingPlayerDraft}
+                  onDeletePlayerMessage={(message) => void handleDeletePlayerMessage(message)}
+                  onEditPlayerMessage={handleEditPlayerMessage}
+                  onGenerateReplySuggestions={() => void handleSuggestReplies()}
+                  onRunTurn={() => void handleRunTurn()}
+                  onSavePlayerMessage={() => void handleSaveEditedPlayerMessage()}
+                  onScrollConversation={(element) => {
+                    shouldStickToBottomRef.current = isScrolledNearBottom(element)
+                  }}
+                  onSelectReplySuggestion={handleUseReplySuggestion}
+                  onToggleReplySuggestions={handleToggleReplySuggestions}
+                  onToggleThought={(messageId) => {
+                    setExpandedThoughtIds((current) => {
+                      const next = new Set(current)
 
-                          if (next.has(messageId)) {
-                            next.delete(messageId)
-                          } else {
-                            next.add(messageId)
-                          }
+                      if (next.has(messageId)) {
+                        next.delete(messageId)
+                      } else {
+                        next.add(messageId)
+                      }
 
-                          return next
-                        })
-                      }}
-                      prefersReducedMotion={prefersReducedMotion}
-                      savingPlayerMessageId={savingPlayerMessageId}
-                    />
-                  </div>
-
-                  <div className="relative mt-6 border-t border-[var(--color-border-subtle)] pt-7">
-                    <AnimatePresence>
-                      <TurnStatusBar status={overlayStatus} />
-                    </AnimatePresence>
-                    <div className="flex items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <AnimatePresence initial={false} mode="wait">
-                          {composerMode === 'input' ? (
-                            <motion.div
-                              animate={{ opacity: 1, x: 0 }}
-                              exit={{ opacity: 0, x: -10 }}
-                              initial={{ opacity: 0, x: 10 }}
-                              key="composer-input"
-                              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }}
-                            >
-                              <Textarea
-                                className="min-h-[7.5rem] flex-1"
-                                id="stage-composer-input"
-                                name="stage-composer-input"
-                                ref={composerRef}
-                                onChange={(event) => {
-                                  setComposerInput(event.target.value)
-                                }}
-                                placeholder={copy.composer.placeholder}
-                                value={composerInput}
-                              />
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              animate={{ opacity: 1, x: 0 }}
-                              className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-3.5"
-                              exit={{ opacity: 0, x: 10 }}
-                              initial={{ opacity: 0, x: -10 }}
-                              key="composer-suggestions"
-                              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }}
-                            >
-                              <div className="space-y-3">
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                                      {copy.composer.suggestions}
-                                    </p>
-                                    <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-                                      {copy.composer.suggestionsDescription}
-                                    </p>
-                                  </div>
-
-                                  <Button
-                                    disabled={isSuggestingReplies || isRunningTurn}
-                                    onClick={() => void handleSuggestReplies()}
-                                    size="sm"
-                                    variant="ghost"
-                                  >
-                                    {copy.composer.suggestionsGenerate}
-                                  </Button>
-                                </div>
-                                {suggestionsError ? (
-                                  <div className="rounded-[1rem] border border-[var(--color-state-error-line)] bg-[var(--color-state-error-soft)] px-3.5 py-3 text-sm leading-6 text-[var(--color-text-primary)]">
-                                    {suggestionsError}
-                                  </div>
-                                ) : isRunningTurn ? (
-                                  <div className="rounded-[1rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_80%,transparent)] px-4 py-4 text-sm leading-6 text-[var(--color-text-secondary)]">
-                                    {copy.composer.suggestionsUnavailable}
-                                  </div>
-                                ) : null}
-                                {isSuggestingReplies ? (
-                                  <div className="flex min-h-[5.75rem] items-center justify-center rounded-[1rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_80%,transparent)] px-4 py-4 text-sm text-[var(--color-text-secondary)]">
-                                    <span className="inline-flex items-center gap-2">
-                                      <FontAwesomeIcon className="animate-spin" icon={faSpinner} />
-                                      {copy.composer.suggestionsLoading}
-                                    </span>
-                                  </div>
-                                ) : replySuggestions.length === 0 ? (
-                                  <div className="rounded-[1rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_80%,transparent)] px-4 py-4 text-sm leading-6 text-[var(--color-text-secondary)]">
-                                    {copy.composer.suggestionsEmpty}
-                                  </div>
-                                ) : (
-                                  <div className="space-y-2">
-                                    {replySuggestions.map((suggestion) => (
-                                      <button
-                                        className="w-full rounded-[1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-3 text-left transition hover:border-[var(--color-accent-copper-soft)] hover:bg-[color-mix(in_srgb,var(--color-bg-panel)_88%,white)]"
-                                        key={suggestion.reply_id}
-                                        onClick={() => {
-                                          handleUseReplySuggestion(suggestion)
-                                        }}
-                                        type="button"
-                                      >
-                                        <p className="text-sm leading-7 text-[var(--color-text-primary)]">
-                                          {suggestion.text}
-                                        </p>
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                      <div className="flex w-[4.5rem] shrink-0 flex-col items-center gap-2.5">
-                        <p className="w-full text-center text-xs leading-5 text-[var(--color-text-secondary)]">
-                          {copy.composer.suggestions}
-                        </p>
-                        <Switch
-                          aria-label={copy.composer.suggestions}
-                          checked={replySuggestionsEnabled}
-                          disabled={!selectedSession || isRunningTurn || isSuggestingReplies}
-                          onCheckedChange={handleToggleReplySuggestions}
-                          size="md"
-                        />
-                        <IconButton
-                          className="w-11"
-                          disabled={!selectedSession || !composerInput.trim() || isRunningTurn}
-                          icon={
-                            <FontAwesomeIcon
-                              className={cn(isRunningTurn ? 'animate-spin' : '')}
-                              icon={isRunningTurn ? faRotateRight : faPaperPlane}
-                            />
-                          }
-                          label={isRunningTurn ? copy.composer.running : copy.composer.send}
-                          onClick={() => void handleRunTurn()}
-                          variant="primary"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                      return next
+                    })
+                  }}
+                  overlayStatus={overlayStatus}
+                  prefersReducedMotion={prefersReducedMotion}
+                  replySuggestions={replySuggestions}
+                  replySuggestionsEnabled={replySuggestionsEnabled}
+                  savingPlayerMessageId={savingPlayerMessageId}
+                  selectedSessionExists={Boolean(selectedSession)}
+                  suggestionsError={suggestionsError}
+                />
               )}
             </CardContent>
           </Card>
@@ -1921,12 +1840,14 @@ export function StagePage() {
         <StageRightPanel
           activeCast={activeCast}
           activeSpeakerId={activeSpeakerId}
+          commonVariables={stageCommonVariables}
           copy={copy}
           currentNode={currentNode}
           currentSnapshot={currentSnapshot}
           hasExpandableNodeDetails={hasExpandableNodeDetails}
           isStoryIntroExpanded={isStoryIntroExpanded}
           isStoryNodeExpanded={isStoryNodeExpanded}
+          onChangeRailTab={setRightPanelTab}
           onOpenCharacter={setDetailsCharacterId}
           onOpenSessionCharacter={setDetailsSessionCharacterId}
           onToggleStoryIntro={() => {
@@ -1936,6 +1857,7 @@ export function StagePage() {
             setIsStoryNodeExpanded((current) => !current)
           }}
           prefersReducedMotion={prefersReducedMotion}
+          railTab={rightPanelTab}
           storyIntroNeedsExpand={storyIntroNeedsExpand}
           visibleStoryIntroduction={visibleStoryIntroduction}
         />

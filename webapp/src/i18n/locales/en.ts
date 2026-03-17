@@ -54,6 +54,9 @@ const en = {
         characters: {
           label: 'Character Management',
         },
+        lorebooks: {
+          label: 'Lorebooks',
+        },
         playerProfiles: {
           label: 'Player Profiles',
         },
@@ -282,17 +285,28 @@ const en = {
       updated: 'API {{id}} updated.',
     },
     apiForm: {
+      actions: {
+        fetchModels: 'Fetch Models',
+        fetchingModels: 'Fetching...',
+        refetchModels: 'Fetch Again',
+      },
       createTitle: 'New API',
       editTitle: 'Edit API',
       errors: {
         apiIdDuplicate: 'API ID already exists.',
         apiIdRequired: 'API ID is required.',
         apiKeyRequired: 'API key is required.',
+        apiKeyRequiredForProbe: 'Re-enter the API key before probing models for an existing API.',
         baseUrlRequired: 'Base URL is required.',
         displayNameRequired: 'Display name is required.',
+        listModelsFailed: 'Failed to fetch models.',
         loadFailed: 'Failed to load the API details.',
         modelRequired: 'Model is required.',
         submitFailed: 'Failed to save the API.',
+      },
+      feedback: {
+        modelsEmpty: 'No models were returned. You can still type a model name manually.',
+        modelsLoaded: '{{count}} models loaded.',
       },
       fields: {
         apiId: 'API ID',
@@ -303,12 +317,18 @@ const en = {
         model: 'Model',
         provider: 'Provider',
       },
+      hints: {
+        modelEditable: 'Pick a probed model above or keep typing any custom model name.',
+        modelProbe: 'Fill Base URL and API key first, then fetch available models manually.',
+      },
       placeholders: {
         apiId: 'api-main',
         apiKey: 'sk-...',
         baseUrl: 'https://api.openai.com/v1',
         displayName: 'Main Stage API',
         model: 'gpt-4.1-mini',
+        modelSelect: 'Pick one of the probed models',
+        modelSelectClear: 'Clear selected model',
       },
     },
     apiList: {
@@ -394,6 +414,113 @@ const en = {
       replyer: 'Replyer',
     },
     title: 'API Management',
+  },
+  lorebooks: {
+    actions: {
+      addEntry: 'Add Entry',
+      cancel: 'Cancel',
+      collapseEntry: 'Collapse Entry',
+      create: 'New Lorebook',
+      createSample: 'Add Sample Lorebook',
+      creatingSample: 'Adding Sample...',
+      delete: 'Delete',
+      deleting: 'Deleting...',
+      edit: 'Edit',
+      expandEntry: 'Expand Entry',
+      removeEntry: 'Remove Entry',
+      save: 'Save',
+      saving: 'Saving...',
+    },
+    deleteDialog: {
+      conflict: 'This lorebook is still referenced by a story resource.',
+      message: 'Delete {{id}}? This action cannot be undone.',
+      title: 'Delete Lorebook',
+    },
+    empty: {
+      description: 'Collect reusable world facts here first, then wire them into story resources later.',
+      title: 'No lorebooks yet.',
+    },
+    feedback: {
+      created: 'Lorebook {{name}} created.',
+      deleteFailed: 'Failed to delete the lorebook.',
+      deleted: 'Lorebook {{name}} deleted.',
+      loadFailed: 'Failed to load lorebooks.',
+      loadLorebookFailed: 'Failed to load lorebook details.',
+      sampleCreated: 'Sample lorebook added: {{name}}.',
+      sampleCreateFailed: 'Failed to insert the sample lorebook.',
+      sampleExists: 'The sample lorebook already exists.',
+      updated: 'Lorebook {{name}} updated.',
+    },
+    form: {
+      createTitle: 'New Lorebook',
+      emptyEntries: 'This lorebook does not have any entries yet. Save the shell first, then add lore later.',
+      editTitle: 'Edit Lorebook',
+      entryTitle: 'Entry {{index}}',
+      errors: {
+        contentRequired: 'Entry content is required.',
+        displayNameRequired: 'Display name is required.',
+        entryIdDuplicate: 'Lorebook entry IDs must be unique.',
+        entryIdRequired: 'Entry ID is required.',
+        lorebookIdDuplicate: 'Lorebook ID already exists.',
+        lorebookIdRequired: 'Lorebook ID is required.',
+        submitFailed: 'Failed to save the lorebook.',
+        titleRequired: 'Entry title is required.',
+      },
+      fields: {
+        alwaysInclude: 'Always Include',
+        alwaysIncludeDescription: 'Inject this entry even when no keyword matches.',
+        content: 'Content',
+        displayName: 'Display Name',
+        enabled: 'Enabled',
+        enabledDescription: 'Keep the entry stored but stop it from matching.',
+        entries: 'Lorebook Entries',
+        entryId: 'Entry ID',
+        keywords: 'Keywords',
+        lorebookId: 'Lorebook ID',
+        title: 'Title',
+      },
+      hints: {
+        keywords: 'Separate keywords with commas, Chinese commas, or line breaks.',
+        readonlyBasics: 'The backend cannot update lorebook metadata yet, so this dialog only edits entries.',
+      },
+      placeholders: {
+        content: 'Write the concrete lore, limits, and background for this entry.',
+        displayName: 'Adventurer City Notes',
+        entryId: 'entry-capital-city',
+        keywords: 'capital, city gate, nobles, downtown',
+        lorebookId: 'lorebook-main-world',
+        title: 'Capital City and Noble District',
+      },
+      preview: {
+        alwaysInclude: 'Persistent',
+        keywordTriggered: 'On Demand',
+      },
+    },
+    list: {
+      alwaysIncludeCount: '{{count}} always included',
+      emptyEntryId: 'Missing ID',
+      emptyEntryTitle: 'Untitled Entry',
+      emptySummary: 'This lorebook does not contain any entries yet.',
+      enabledCount: '{{count}} enabled',
+      entriesCount: '{{count}} entries',
+      title: 'Lorebook List',
+    },
+    metrics: {
+      alwaysInclude: 'Always Included',
+      entries: 'Entries',
+      total: 'Lorebooks',
+    },
+    rail: {
+      description: 'Manage reusable world facts and lore entries for later story-resource use.',
+    },
+    sampleDialog: {
+      confirm: 'Add Sample Lorebook',
+      description: 'This adds one sample lorebook so you can verify the flow quickly.',
+      existing: 'Exists',
+      new: 'New',
+      title: 'Add Sample Lorebook',
+    },
+    title: 'Lorebooks',
   },
   presetsPage: {
     actions: {
@@ -758,7 +885,7 @@ const en = {
       generateFailed: 'Failed to refine the story input.',
       generated: 'Story input {{id}} refined.',
       loadFailed: 'Failed to load story resources.',
-      loadReferencesFailed: 'Failed to load available characters or schemas.',
+      loadReferencesFailed: 'Failed to load available characters, lorebooks, or schemas.',
       loadResourceFailed: 'Failed to load the story resource details.',
       savedButGenerateFailed: 'The story resource was saved, but Planner refinement failed.',
       updated: 'Story resource {{id}} updated.',
@@ -768,6 +895,8 @@ const en = {
       createTransitionTitle: 'Preparing Story Resource',
       editTitle: 'Edit Story Resource',
       emptyCharacters: 'No characters are available yet. Create or import at least one character first.',
+      emptyLorebooks: 'No lorebooks are available yet. Prepare some world context in Lorebooks, then come back and bind it here.',
+      emptyLorebookSelection: 'Do not bind any lorebooks yet.',
       emptySelection: 'Choose at least one character.',
       errors: {
         apiGroupRequired: 'Choose an API Group first.',
@@ -779,12 +908,14 @@ const en = {
         submitFailed: 'Failed to save the story input.',
       },
       fieldDescriptions: {
+        lorebooks: 'These lorebooks are injected into Planner and Architect during generation as stable background context and keyword-matched entries.',
         plannedStory: 'If you let Planner refine the input, the refined version is stored here. Architect prefers this version when it exists.',
         storyConcept: 'This is the raw story input. Even after Planner refines it, this remains the starting point of the same input chain.',
       },
       fields: {
         apiGroupId: 'API Group',
         characters: 'Characters',
+        lorebooks: 'Lorebooks',
         plannedStory: 'Planner Refined Input',
         playerSchemaIdSeed: 'Player Schema',
         presetId: 'Preset',
@@ -801,6 +932,7 @@ const en = {
       emptyPresets:
         'No presets are available yet. Create at least one preset before asking Planner to refine this input.',
       openApiGroups: 'Open API Management',
+      openLorebooks: 'Open Lorebooks',
       openPresets: 'Open Presets',
       placeholders: {
         apiGroupId: 'Select the API Group for this refinement',
@@ -816,7 +948,7 @@ const en = {
       descriptions: {
         concept: 'Start with the raw story input. Planner and Architect both continue from this same input chain.',
         planner: 'Decide whether to keep only the raw input for now or hand it to Planner for a cleaner editable version.',
-        seeds: 'If you already have player or world schemas, add them here as optional references.',
+        seeds: 'If you already have player or world schemas, or lorebooks with background context, add them here as optional references.',
       },
       bindings: {
         description: 'Choose which API Group and preset Planner should use for this refinement run.',
@@ -853,6 +985,7 @@ const en = {
         },
       },
       seedHints: {
+        lorebooks: 'Optional. Provide stable background setting and keyword-triggered worldbook entries to Planner and Architect.',
         player: 'Optional. Use a schema as the starting structure for player state.',
         world: 'Optional. Use a schema as the starting structure for world state.',
       },
@@ -872,6 +1005,7 @@ const en = {
     },
     list: {
       charactersCount: '{{count}} characters',
+      lorebooksCount: '{{count}} lorebooks',
       notPlanned: 'Raw Only',
       planned: 'Refined',
       title: 'Stored Story Resources',
@@ -892,6 +1026,7 @@ const en = {
   },
   stories: {
     actions: {
+      back: 'Back',
       cancel: 'Cancel',
       close: 'Close',
       create: 'Generate Story',
@@ -903,10 +1038,73 @@ const en = {
       editGraph: 'Edit Graph',
       edit: 'Edit',
       finalizeDraft: 'Finalize',
+      next: 'Next',
       save: 'Save',
       saving: 'Saving...',
       view: 'View',
       viewGraph: 'View Graph',
+    },
+    commonVariables: {
+      add: 'Add Common Variable',
+      availableCharacters: 'Available cast',
+      description:
+        'These variables stay attached to the story so Stage can keep them visible and easy to check.',
+      empty:
+        'No common variables yet. Add the world, player, or cast variables you want to keep in view.',
+      errors: {
+        characterInvalid: 'Common variable {{index}} points to a character outside this story resource.',
+        characterRequired: 'Choose a character for common variable {{index}}.',
+        displayNameRequired: 'Common variable {{index}} still needs a display name.',
+        keyRequired: 'Common variable {{index}} still needs a variable key.',
+      },
+      fields: {
+        characterId: 'Character',
+        displayName: 'Display Name',
+        key: 'Variable Key',
+        pinned: 'Pinned',
+        scope: 'Scope',
+      },
+      itemSubtitle: 'Used for pinned Stage-side visibility and quick checks.',
+      itemTitle: 'Common Variable {{index}}',
+      legacyKey: '{{key}} · legacy field',
+      pinnedDescription: 'Disabled entries are still saved, but they are not treated as pinned variables.',
+      pinnedTitle: 'Always visible',
+      placeholders: {
+        characterId: 'Select a character',
+        displayName: 'For example Current Goal',
+        key: 'Choose a field from the current schema',
+        keyCharacterFirst: 'Choose a character before selecting a field',
+        keyEmpty: 'This schema does not have any fields yet',
+        keyLoadFailed: 'Failed to load schema fields',
+        keyLoading: 'Loading available fields',
+        keySchemaMissingCharacter: 'This character does not have a bound schema',
+        keySchemaMissingPlayer: 'Player scope does not have a bound schema',
+        keySchemaMissingWorld: 'World scope does not have a bound schema',
+      },
+      remove: 'Remove Common Variable',
+      scopes: {
+        character: 'Character',
+        player: 'Player',
+        world: 'World',
+      },
+      unavailableCharacter: 'Outside current resource',
+    },
+    createWizard: {
+      descriptions: {
+        basic:
+          'Start by choosing which story resource this run should build from, then bind the API Group and preset for Architect.',
+        variables:
+          'Then add the common variables you want the finished story to carry and keep easy to inspect.',
+      },
+      headings: {
+        basic: 'Prepare this generation run',
+        variables: 'Add story common variables',
+      },
+      steps: {
+        basic: 'Generation Setup',
+        variables: 'Common Variables',
+      },
+      title: 'Generate Story',
     },
     drafts: {
       deleteDialog: {
@@ -1081,6 +1279,7 @@ const en = {
       deleteFailed: 'Failed to delete the story.',
       deleted: 'Story deleted: {{name}}.',
       loadListFailed: 'Failed to load stories.',
+      loadReferencesFailed: 'Failed to load story references.',
       loadResourcesFailed: 'Failed to load story resources.',
       loadStoryFailed: 'Failed to load story details.',
       updated: 'Story updated: {{name}}.',
@@ -1095,6 +1294,7 @@ const en = {
       emptyResources: 'No story resources are available yet. Prepare one in Story Resources first, then come back here.',
       errors: {
         apiGroupRequired: 'Choose an API Group first.',
+        commonVariablesInvalid: 'Fix the required common-variable fields first.',
         draftSubmitFailed:
           'The draft was created, but generation did not complete. Continue it from the Drafts view.',
         displayNameRequired: 'Display name is required.',
@@ -1104,6 +1304,7 @@ const en = {
       },
       fields: {
         apiGroupId: 'API Group',
+        commonVariables: 'Common Variables',
         displayName: 'Display Name',
         inputPreview: 'Story Input Preview',
         introduction: 'Introduction',

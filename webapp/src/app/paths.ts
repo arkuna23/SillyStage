@@ -2,6 +2,7 @@ export const appPaths = {
   apis: '/workspace/apis',
   characters: '/workspace/characters',
   dashboard: '/workspace/dashboard',
+  lorebooks: '/workspace/lorebooks',
   playerProfiles: '/workspace/player-profiles',
   presets: '/workspace/presets',
   root: '/',

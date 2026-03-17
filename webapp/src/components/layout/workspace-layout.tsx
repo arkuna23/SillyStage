@@ -17,6 +17,7 @@ import type { WorkspaceRailContent } from './workspace-context'
 function shouldShowWorkspaceRail(pathname: string) {
   return (
     pathname.startsWith(appPaths.dashboard) ||
+    pathname.startsWith(appPaths.lorebooks) ||
     pathname.startsWith(appPaths.characters) ||
     pathname.startsWith(appPaths.storyResources) ||
     pathname.startsWith(appPaths.stories) ||

@@ -1,5 +1,6 @@
 export type StoryResource = {
   character_ids: string[]
+  lorebook_ids: string[]
   planned_story: string | null
   player_schema_id_seed: string | null
   resource_id: string

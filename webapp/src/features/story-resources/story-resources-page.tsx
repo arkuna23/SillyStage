@@ -19,6 +19,8 @@ import { listApiGroups, listPresets } from '../apis/api'
 import type { ApiGroup, Preset } from '../apis/types'
 import { listCharacters } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
+import { listLorebooks } from '../lorebooks/api'
+import type { Lorebook } from '../lorebooks/types'
 import { listSchemas } from '../schemas/api'
 import type { SchemaResource } from '../schemas/types'
 import {
@@ -84,6 +86,7 @@ export function StoryResourcesPage() {
   const [resources, setResources] = useState<StoryResource[]>([])
   const [availableCharacters, setAvailableCharacters] = useState<CharacterSummary[]>([])
   const [availableApiGroups, setAvailableApiGroups] = useState<ApiGroup[]>([])
+  const [availableLorebooks, setAvailableLorebooks] = useState<Lorebook[]>([])
   const [availablePresets, setAvailablePresets] = useState<Preset[]>([])
   const [availableSchemas, setAvailableSchemas] = useState<SchemaResource[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -130,10 +133,11 @@ export function StoryResourcesPage() {
       setReferencesLoading(true)
 
       try {
-        const [apiGroups, presets, characters, schemas] = await Promise.all([
+        const [apiGroups, presets, characters, lorebooks, schemas] = await Promise.all([
           listApiGroups(signal),
           listPresets(signal),
           listCharacters(signal),
+          listLorebooks(signal),
           listSchemas(signal),
         ])
 
@@ -141,6 +145,7 @@ export function StoryResourcesPage() {
           setAvailableApiGroups(apiGroups)
           setAvailablePresets(presets)
           setAvailableCharacters(characters)
+          setAvailableLorebooks(lorebooks)
           setAvailableSchemas(schemas)
         }
       } catch (error) {
@@ -221,6 +226,7 @@ export function StoryResourcesPage() {
       <CreateStoryResourceDialog
         availableCharacters={availableCharacters}
         availableApiGroups={availableApiGroups}
+        availableLorebooks={availableLorebooks}
         availablePresets={availablePresets}
         availableSchemas={availableSchemas}
         onCompleted={async ({ message, tone }) => {
@@ -235,6 +241,7 @@ export function StoryResourcesPage() {
       <StoryResourceFormDialog
         availableCharacters={availableCharacters}
         availableApiGroups={availableApiGroups}
+        availableLorebooks={availableLorebooks}
         availablePresets={availablePresets}
         availableSchemas={availableSchemas}
         mode="edit"
@@ -353,6 +360,11 @@ export function StoryResourcesPage() {
                           <Badge className="normal-case px-3 py-1.5" variant="subtle">
                             {t('storyResources.list.charactersCount', {
                               count: resource.character_ids.length,
+                            })}
+                          </Badge>
+                          <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                            {t('storyResources.list.lorebooksCount', {
+                              count: resource.lorebook_ids.length,
                             })}
                           </Badge>
                           <Badge className="normal-case px-3 py-1.5" variant="subtle">

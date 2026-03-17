@@ -15,6 +15,8 @@ import { CharacterAvatar, ConversationSkeleton } from './stage-panel-shared'
 import type { CoverCache, StageMessage, TurnWorkerStatus } from './stage-ui-types'
 
 const panelEase = [0.16, 1, 0.3, 1] as const
+const actorMessageBubbleClass =
+  'w-[min(76%,32rem)] max-w-full rounded-[1.35rem] border px-4 py-3 text-sm leading-7 shadow-[0_12px_26px_rgba(0,0,0,0.1)]'
 
 function ThoughtBubble({
   copy,
@@ -299,7 +301,7 @@ export function StageConversation({
                 ) : (
                   <div
                     className={cn(
-                      'max-w-[min(76%,32rem)] rounded-[1.35rem] border px-4 py-3 text-sm leading-7 shadow-[0_12px_26px_rgba(0,0,0,0.1)]',
+                      actorMessageBubbleClass,
                       message.variant === 'action'
                         ? 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_90%,transparent)] text-[var(--color-text-secondary)] italic'
                         : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]',

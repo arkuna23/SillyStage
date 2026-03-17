@@ -78,6 +78,10 @@ const zh = {
     expand: '展开介绍',
     section: '当前 story 介绍',
   },
+  commonVariables: {
+    empty: '当前没有可展示的常用变量。',
+    section: '变量',
+  },
   list: {
     empty: '还没有会话。',
     refresh: '刷新会话',
@@ -129,7 +133,11 @@ const zh = {
     updateConfigFailed: '保存会话设置失败。',
   },
   rail: {
+    cast: '查看参与角色',
+    intro: '查看故事介绍',
+    status: '查看状态',
     subtitle: 'story、状态与角色。',
+    variables: '查看变量',
   },
   renameSession: {
     cancel: '取消',
@@ -224,7 +232,7 @@ const zh = {
     goal: '当前目标',
     nodeId: '节点 ID',
     scene: '当前场景',
-    section: '当前对话状态',
+    section: '状态',
   },
   tabs: {
     dialogue: '对话',
@@ -356,6 +364,10 @@ const en = {
     expand: 'Expand',
     section: 'Current Story',
   },
+  commonVariables: {
+    empty: 'No common variables are available for this story yet.',
+    section: 'Variables',
+  },
   list: {
     empty: 'No sessions yet.',
     refresh: 'Refresh Sessions',
@@ -407,7 +419,11 @@ const en = {
     updateConfigFailed: 'Failed to save the session settings.',
   },
   rail: {
+    cast: 'Show Cast',
+    intro: 'Show Story',
+    status: 'Show Status',
     subtitle: 'Story, node, and cast status.',
+    variables: 'Show Variables',
   },
   renameSession: {
     cancel: 'Cancel',
@@ -502,7 +518,7 @@ const en = {
     goal: 'Current Goal',
     nodeId: 'Node ID',
     scene: 'Current Scene',
-    section: 'Current Beat',
+    section: 'Status',
   },
   tabs: {
     dialogue: 'Dialogue',

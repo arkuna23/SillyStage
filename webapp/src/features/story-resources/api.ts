@@ -27,6 +27,7 @@ export async function getStoryResource(resourceId: string, signal?: AbortSignal)
 export async function createStoryResource(
   params: {
     character_ids: string[]
+    lorebook_ids?: string[]
     planned_story?: string
     player_schema_id_seed?: string
     story_concept: string
@@ -40,6 +41,7 @@ export async function createStoryResource(
 export async function updateStoryResource(
   params: {
     character_ids?: string[]
+    lorebook_ids?: string[]
     planned_story?: string
     player_schema_id_seed?: string
     resource_id: string

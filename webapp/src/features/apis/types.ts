@@ -38,6 +38,13 @@ export type ApisListedResult = {
   type: 'apis_listed'
 }
 
+export type ApiModelsListedResult = {
+  base_url: string
+  models: string[]
+  provider: LlmProvider
+  type: 'api_models_listed'
+}
+
 export type ApiDeletedResult = {
   api_id: string
   type: 'api_deleted'

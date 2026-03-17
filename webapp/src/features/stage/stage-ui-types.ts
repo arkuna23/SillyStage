@@ -23,3 +23,11 @@ export type StageCastMember = {
   isSessionCharacter: boolean
   name: string
 }
+
+export type StageCommonVariable = {
+  id: string
+  label: string
+  value: string
+}
+
+export type StageRightRailTab = 'status' | 'variables'

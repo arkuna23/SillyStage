@@ -1,4 +1,5 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
+import { faBookAtlas } from '@fortawesome/free-solid-svg-icons/faBookAtlas'
 import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
 import { faFileLines } from '@fortawesome/free-solid-svg-icons/faFileLines'
 import { faGaugeHigh } from '@fortawesome/free-solid-svg-icons/faGaugeHigh'
@@ -15,6 +16,7 @@ export type WorkspaceNavigationKey =
   | 'apis'
   | 'characters'
   | 'dashboard'
+  | 'lorebooks'
   | 'playerProfiles'
   | 'presets'
   | 'schemas'
@@ -53,6 +55,12 @@ export function getWorkspaceNavigationItems(t: TFunction): ReadonlyArray<Workspa
       key: 'schemas',
       label: t('workspace.sidebar.items.schemas.label'),
       to: appPaths.schemas,
+    },
+    {
+      icon: faBookAtlas,
+      key: 'lorebooks',
+      label: t('workspace.sidebar.items.lorebooks.label'),
+      to: appPaths.lorebooks,
     },
     {
       icon: faIdCard,

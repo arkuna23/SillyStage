@@ -7,6 +7,7 @@ import type {
   ApiGroupBindings,
   ApiGroupDeletedResult,
   ApiGroupsListedResult,
+  ApiModelsListedResult,
   ApisListedResult,
   GlobalConfigResult,
   Preset,
@@ -27,6 +28,24 @@ export async function listApis(signal?: AbortSignal) {
 
 export async function getApi(apiId: string, signal?: AbortSignal) {
   return rpcRequest<{ api_id: string }, ApiConfig>('api.get', { api_id: apiId }, { signal })
+}
+
+export async function listApiModels(
+  params: {
+    api_key: string
+    base_url: string
+    provider: ApiConfigInput['provider']
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<
+    {
+      api_key: string
+      base_url: string
+      provider: ApiConfigInput['provider']
+    },
+    ApiModelsListedResult
+  >('api.list_models', params, { signal })
 }
 
 export async function createApi(

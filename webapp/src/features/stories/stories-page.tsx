@@ -22,6 +22,8 @@ import { cn } from '../../lib/cn'
 import { isRpcConflict } from '../../lib/rpc'
 import { listApiGroups, listPresets } from '../apis/api'
 import type { ApiGroup, Preset } from '../apis/types'
+import { listCharacters } from '../characters/api'
+import type { CharacterSummary } from '../characters/types'
 import { listStoryResources } from '../story-resources/api'
 import type { StoryResource } from '../story-resources/types'
 import {
@@ -120,6 +122,7 @@ export function StoriesPage() {
   const [stories, setStories] = useState<StorySummary[]>([])
   const [drafts, setDrafts] = useState<StoryDraftSummary[]>([])
   const [resources, setResources] = useState<StoryResource[]>([])
+  const [characters, setCharacters] = useState<CharacterSummary[]>([])
   const [apiGroups, setApiGroups] = useState<ApiGroup[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -201,13 +204,15 @@ export function StoriesPage() {
   const refreshResources = useCallback(
     async (signal?: AbortSignal) => {
       try {
-        const [nextResources, nextApiGroups, nextPresets] = await Promise.all([
+        const [nextCharacters, nextResources, nextApiGroups, nextPresets] = await Promise.all([
+          listCharacters(signal),
           listStoryResources(signal),
           listApiGroups(signal),
           listPresets(signal),
         ])
 
         if (!signal?.aborted) {
+          setCharacters(nextCharacters)
           setResources(nextResources)
           setApiGroups(nextApiGroups)
           setPresets(nextPresets)
@@ -215,7 +220,7 @@ export function StoriesPage() {
       } catch (error) {
         if (!signal?.aborted) {
           setNotice({
-            message: getErrorMessage(error, t('stories.feedback.loadResourcesFailed')),
+            message: getErrorMessage(error, t('stories.feedback.loadReferencesFailed')),
             tone: 'error',
           })
         }
@@ -381,6 +386,7 @@ export function StoriesPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <GenerateStoryDialog
+        availableCharacters={characters}
         apiGroups={apiGroups}
         onCompleted={async ({ message }) => {
           setNotice({ message, tone: 'success' })
@@ -394,6 +400,8 @@ export function StoriesPage() {
       />
 
       <StoryFormDialog
+        availableCharacters={characters}
+        availableResources={resources}
         onCompleted={async ({ message }) => {
           setNotice({ message, tone: 'success' })
           await refreshStories()

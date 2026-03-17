@@ -22,6 +22,7 @@ import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
+import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import {
   createStoryResource,
@@ -29,6 +30,7 @@ import {
   getStoryResource,
   updateStoryResource,
 } from './api'
+import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
@@ -38,6 +40,7 @@ type StoryResourceFormMode = 'create' | 'edit'
 type StoryResourceFormDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
   availableApiGroups: ReadonlyArray<ApiGroup>
+  availableLorebooks: ReadonlyArray<Lorebook>
   availablePresets: ReadonlyArray<Preset>
   availableSchemas: ReadonlyArray<SchemaResource>
   mode: StoryResourceFormMode
@@ -54,6 +57,7 @@ type StoryResourceFormDialogProps = {
 
 type FormState = {
   characterIds: string[]
+  lorebookIds: string[]
   plannedStory: string
   playerSchemaIdSeed: string
   storyConcept: string
@@ -63,6 +67,7 @@ type FormState = {
 function createInitialFormState(): FormState {
   return {
     characterIds: [],
+    lorebookIds: [],
     plannedStory: '',
     playerSchemaIdSeed: '',
     storyConcept: '',
@@ -73,6 +78,7 @@ function createInitialFormState(): FormState {
 function createFormStateFromResource(resource: StoryResource): FormState {
   return {
     characterIds: [...resource.character_ids],
+    lorebookIds: [...resource.lorebook_ids],
     plannedStory: resource.planned_story ?? '',
     playerSchemaIdSeed: resource.player_schema_id_seed ?? '',
     storyConcept: resource.story_concept,
@@ -131,6 +137,7 @@ function LoadingSkeleton() {
 export function StoryResourceFormDialog({
   availableCharacters,
   availableApiGroups,
+  availableLorebooks,
   availablePresets,
   availableSchemas,
   mode,
@@ -193,6 +200,14 @@ export function StoryResourceFormDialog({
     [availablePresets],
   )
   const plannerBindingsUnavailable = availableApiGroups.length === 0 || availablePresets.length === 0
+  const lorebookOptions = useMemo(
+    () =>
+      availableLorebooks.map((lorebook) => ({
+        display_name: lorebook.display_name,
+        lorebook_id: lorebook.lorebook_id,
+      })),
+    [availableLorebooks],
+  )
 
   useEffect(() => {
     if (!open) {
@@ -269,6 +284,19 @@ export function StoryResourceFormDialog({
     })
   }
 
+  function toggleLorebook(lorebookId: string) {
+    setFormState((currentFormState) => {
+      const isSelected = currentFormState.lorebookIds.includes(lorebookId)
+
+      return {
+        ...currentFormState,
+        lorebookIds: isSelected
+          ? currentFormState.lorebookIds.filter((id) => id !== lorebookId)
+          : [...currentFormState.lorebookIds, lorebookId],
+      }
+    })
+  }
+
   function validateForm(nextFormState: FormState): string | null {
     if (nextFormState.storyConcept.trim().length === 0) {
       return t('storyResources.form.errors.storyConceptRequired')
@@ -299,6 +327,7 @@ export function StoryResourceFormDialog({
     const nextFormState = {
       ...formState,
       characterIds: [...new Set(formState.characterIds)],
+      lorebookIds: [...new Set(formState.lorebookIds)],
       plannedStory: formState.plannedStory.trim(),
       playerSchemaIdSeed: formState.playerSchemaIdSeed.trim(),
       storyConcept: formState.storyConcept.trim(),
@@ -343,6 +372,7 @@ export function StoryResourceFormDialog({
         mode === 'create'
           ? await createStoryResource({
               character_ids: nextFormState.characterIds,
+              lorebook_ids: nextFormState.lorebookIds,
               ...(nextFormState.plannedStory
                 ? { planned_story: nextFormState.plannedStory }
                 : {}),
@@ -356,6 +386,7 @@ export function StoryResourceFormDialog({
             })
           : await updateStoryResource({
               character_ids: nextFormState.characterIds,
+              lorebook_ids: nextFormState.lorebookIds,
               planned_story: nextFormState.plannedStory,
               ...(nextFormState.playerSchemaIdSeed
                 ? { player_schema_id_seed: nextFormState.playerSchemaIdSeed }
@@ -520,6 +551,31 @@ export function StoryResourceFormDialog({
                     </div>
                   </div>
                 )}
+              </Field>
+
+              <Field
+                description={t('storyResources.form.fieldDescriptions.lorebooks')}
+                label={t('storyResources.form.fields.lorebooks')}
+              >
+                <StoryResourceLorebookSelector
+                  disabled={isSubmitting || referencesLoading}
+                  emptyAction={
+                    <DialogRouteButton
+                      onRequestClose={() => {
+                        onOpenChange(false)
+                      }}
+                      to={appPaths.lorebooks}
+                      variant="secondary"
+                    >
+                      {t('storyResources.form.openLorebooks')}
+                    </DialogRouteButton>
+                  }
+                  emptyMessage={t('storyResources.form.emptyLorebooks')}
+                  lorebooks={lorebookOptions}
+                  noSelectionLabel={t('storyResources.form.emptyLorebookSelection')}
+                  onToggleLorebook={toggleLorebook}
+                  selectedLorebookIds={formState.lorebookIds}
+                />
               </Field>
 
               <div className="grid gap-4 md:grid-cols-2">

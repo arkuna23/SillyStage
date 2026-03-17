@@ -3,7 +3,7 @@ import { useMemo, type ComponentPropsWithoutRef } from 'react'
 
 import { cn } from '../../lib/cn'
 
-type SelectOption = {
+export type SelectOption = {
   label: string
   value: string
 }

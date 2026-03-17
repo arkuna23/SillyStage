@@ -1,6 +1,7 @@
 import { rpcRequest } from '../../lib/rpc'
 
 import type {
+  CommonVariableDefinition,
   StoryDraftDeletedResult,
   StoryDraftDetail,
   StoryDraftsListedResult,
@@ -31,6 +32,7 @@ export async function getStory(storyId: string, signal?: AbortSignal) {
 export async function generateStory(
   params: {
     api_group_id?: string
+    common_variables?: CommonVariableDefinition[]
     display_name?: string
     preset_id?: string
     resource_id: string
@@ -61,6 +63,7 @@ export async function getStoryDraft(draftId: string, signal?: AbortSignal) {
 export async function startStoryDraft(
   params: {
     api_group_id?: string
+    common_variables?: CommonVariableDefinition[]
     display_name?: string
     preset_id?: string
     resource_id: string
@@ -98,7 +101,8 @@ export async function deleteStoryDraft(draftId: string, signal?: AbortSignal) {
 
 export async function updateStory(
   params: {
-    display_name: string
+    common_variables?: CommonVariableDefinition[]
+    display_name?: string
     story_id: string
   },
   signal?: AbortSignal,

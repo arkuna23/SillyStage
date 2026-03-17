@@ -31,6 +31,12 @@ const SchemaManagementPage = lazy(() =>
   })),
 )
 
+const LorebookManagementPage = lazy(() =>
+  import('./features/lorebooks/lorebook-management-page').then((module) => ({
+    default: module.LorebookManagementPage,
+  })),
+)
+
 const PresetManagementPage = lazy(() =>
   import('./features/presets/preset-management-page').then((module) => ({
     default: module.PresetManagementPage,
@@ -89,6 +95,7 @@ function AppRoutes() {
             <Route element={<ApiManagementPage />} path="apis" />
             <Route element={<CharacterManagementPage />} path="characters" />
             <Route element={<DashboardPage />} path="dashboard" />
+            <Route element={<LorebookManagementPage />} path="lorebooks" />
             <Route element={<PresetManagementPage />} path="presets" />
             <Route element={<StoryResourcesPage />} path="story-resources" />
             <Route element={<StoriesPage />} path="stories" />
