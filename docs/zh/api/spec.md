@@ -119,6 +119,12 @@
 - `has_api_key`
 - `api_key_masked`
 
+辅助方法：
+
+- `api.list_models` 接收 `provider`、`base_url`、`api_key`
+- 返回 `provider`、规范化后的 `base_url` 和 `models: string[]`
+- 不会创建或更新已保存的 `api`
+
 ### 2.2 `api_group`
 
 `api_group` 是可持久化的每-agent `api_id` 绑定集合。
@@ -175,8 +181,38 @@
 - `schema` 没有固定 `kind`。
 - `tags` 用于用户或前端标注该 schema 的用途，例如 `player`、`world`、`character`。
 - `fields` 的结构与 `StateFieldSchema` 一致。
+- `StateFieldSchema` 支持 `value_type`、可选 `default`、可选 `description`，以及可选 `enum_values`。
+- `enum_values` 当前只支持标量类型：`bool`、`int`、`float`、`string`。
+- 如果配置了 `enum_values`，那么 `default` 也必须类型匹配，并且必须包含在允许值里。
 
-### 2.3 `player_profile`
+### 2.5 `lorebook`
+
+`lorebook` 是可持久化的可复用世界设定集合。
+
+字段：
+
+- `lorebook_id`
+- `display_name`
+- `entries`
+
+每个 `entry` 包含：
+
+- `entry_id`
+- `title`
+- `content`
+- `keywords: string[]`
+- `enabled`
+- `always_include`
+
+说明：
+
+- `lorebook.update` 用于更新基础元数据，例如 `display_name`
+- `lorebook_entry.*` 作用于单个 `lorebook` 内的条目
+- `keywords` 默认是 `[]`
+- `enabled` 默认是 `true`
+- `always_include` 默认是 `false`
+
+### 2.6 `player_profile`
 
 `player_profile` 表示“玩家设定”，是独立的可切换资源。
 
@@ -192,7 +228,7 @@
 - 一个 session 同时只激活一个 `player_profile_id`。
 - 切换 player profile 不会切换 `player_state`。
 
-### 2.4 `character`
+### 2.7 `character`
 
 角色卡内容通过 `CharacterCardContent` 表示：
 
@@ -209,7 +245,7 @@
 - 角色私有 schema 通过 `schema_id` 引用独立 `schema` 资源。
 - 封面与 `.chr` 导出是独立接口。
 
-### 2.5 `story_resources`
+### 2.8 `story_resources`
 
 `story_resources` 是生成 story 前的输入资源集合。
 
@@ -220,15 +256,17 @@
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
+- `lorebook_ids`
 - `planned_story`
 
 说明：
 
 - `character_ids` 只引用已上传或已创建的角色卡。
 - 两个 schema seed 都是可选 id。
+- `lorebook_ids` 只引用已存在的 lorebook，也可以为空。
 - `planned_story` 是可选的 planner 文本。
 
-### 2.6 `story`
+### 2.9 `story`
 
 生成完成后的 `story` 记录包含：
 
@@ -245,7 +283,7 @@
 - `Architect` 生成 world/player schema 本体后，engine manager 会先落成 `schema` 资源，再把 id 写入 story。
 - story 本身只保存 schema id。
 
-### 2.7 `session`
+### 2.10 `session`
 
 session 绑定一个 story 和一份运行时快照。
 
@@ -299,6 +337,8 @@ session 绑定一个 story 和一份运行时快照。
 - `api_group.*`
 - `preset.*`
 - `schema.*`
+- `lorebook.*`
+- `lorebook_entry.*`
 - `player_profile.*`
 - `character.*`
 - `story_resources.*`
@@ -325,10 +365,38 @@ session 绑定一个 story 和一份运行时快照。
 如果省略绑定 id，而后端中至少有一个 `api_group` 和一个 `preset`，就按 id 排序后
 自动选择各自的第一个。
 
+`story.generate` 与 draft start 一样，支持以下创建输入：
+
+- `resource_id`
+- 可选 `display_name`
+- 可选 `api_group_id`
+- 可选 `preset_id`
+- 可选 `common_variables`
+
 `story.update` 只更新 story 的元数据，当前仅支持：
 
 - `story_id`
+- 可选 `display_name`
+- 可选 `common_variables`
+
+每个 `common_variables` 条目包含：
+
+- `scope`: `world | player | character`
+- `key`
 - `display_name`
+- 可选 `character_id`
+- 可选 `pinned`，默认是 `true`
+
+校验规则：
+
+- `world` 和 `player` 条目不能设置 `character_id`
+- `character` 条目必须设置 `character_id`
+- `character_id` 必须属于该 story 绑定的角色之一
+- `key` 必须存在于对应作用域绑定的 schema 中
+- 同一个绑定变量不能重复配置
+
+前端可以把 `story.common_variables` 与 `session.get_variables` 或 runtime snapshot 组合使用，
+从而渲染固定展示的变量面板，而不需要硬编码 schema key。
 
 `story.update_graph` 会整体替换已有 story 的 `graph` 字段，其中也包含每个节点的
 `on_enter_updates`。
@@ -343,12 +411,15 @@ session 绑定一个 story 和一份运行时快照。
 `story_draft.*` 是大体量 story 的推荐生成路径，用来避免一次 Architect 调用塞入过多节点。
 
 - `story_draft.start` 创建服务端 draft，并生成第一段
+- `story_draft.start` 也可以持久化调用方传入的 `common_variables`
 - `story_draft.update_graph` 替换 draft 当前的 `partial_graph`，其中也包含节点的
   `on_enter_updates`
 - `story_draft.continue` 继续把下一个 outline section 合并进 partial graph
 - `story_draft.finalize` 校验合并后的图，并创建最终 `story`
 - `story.generate` 仍保留，作为对整套 draft 流程的兼容封装
 - `story_draft.start` 会把当前选中的 `api_group_id` 和 `preset_id` 一起保存进 draft
+- draft 详情响应也会带上持久化后的 `common_variables`
+- `story_draft.finalize` 会把 draft 中的 `common_variables` 复制到最终 `story`
 
 `story_draft.update_graph` 使用与 `story.update_graph` 相同的 graph 校验规则，并且 finalized draft 不允许再编辑。
 

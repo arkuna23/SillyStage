@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -17,18 +17,22 @@ use futures_core::Stream;
 use futures_util::StreamExt;
 use state::{PlayerStateSchema, StateFieldSchema, WorldStateSchema};
 use store::{
-    ApiGroupRecord, ApiRecord, CharacterCardRecord, PresetRecord, RuntimeSnapshot, SchemaRecord,
-    SessionBindingConfig, SessionCharacterRecord, SessionMessageKind, SessionMessageRecord,
-    SessionRecord, Store, StoreError, StoryDraftRecord, StoryDraftStatus, StoryRecord,
-    StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, LorebookEntryRecord, PresetRecord,
+    RuntimeSnapshot, SchemaRecord, SessionBindingConfig, SessionCharacterRecord,
+    SessionMessageKind, SessionMessageRecord, SessionRecord, Store, StoreError, StoryDraftRecord,
+    StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
-use story::{NarrativeNode, StoryGraph, validate_graph_state_conventions};
+use story::{
+    CommonVariableDefinition, NarrativeNode, StoryGraph, validate_common_variables,
+    validate_graph_state_conventions,
+};
 use tracing::{debug, info};
 
 use crate::logging::{
     json_for_log, summarize_architect_draft_chunk, summarize_architect_draft_init,
     summarize_reply_options,
 };
+use crate::lorebook::{LorebookPromptSections, build_lorebook_prompt_sections};
 use crate::{
     Engine, EngineError, EngineEvent, EngineTurnResult, ExecutedBeat, LlmApiRegistry,
     RegistryError, RuntimeApiRecords, RuntimeError, RuntimeState, StoryResources,
@@ -89,6 +93,18 @@ impl EngineManager {
         self.resolve_first_available_binding().await
     }
 
+    pub async fn list_models(
+        &self,
+        provider: store::LlmProvider,
+        base_url: &str,
+        api_key: &str,
+    ) -> Result<Vec<String>, ManagerError> {
+        self.registry
+            .list_models(provider, base_url, api_key)
+            .await
+            .map_err(ManagerError::Registry)
+    }
+
     pub async fn generate_story_plan(
         &self,
         resource_id: &str,
@@ -122,9 +138,16 @@ impl EngineManager {
         display_name: Option<String>,
         api_group_id: Option<String>,
         preset_id: Option<String>,
+        common_variables: Vec<CommonVariableDefinition>,
     ) -> Result<StoryRecord, ManagerError> {
         let mut draft = self
-            .start_story_draft(resource_id, display_name, api_group_id, preset_id)
+            .start_story_draft(
+                resource_id,
+                display_name,
+                api_group_id,
+                preset_id,
+                common_variables,
+            )
             .await?;
 
         while draft.status == StoryDraftStatus::Building {
@@ -142,6 +165,7 @@ impl EngineManager {
         display_name: Option<String>,
         api_group_id: Option<String>,
         preset_id: Option<String>,
+        common_variables: Vec<CommonVariableDefinition>,
     ) -> Result<StoryDraftRecord, ManagerError> {
         let resource = self
             .store
@@ -169,6 +193,14 @@ impl EngineManager {
             &preset.agents.architect,
         )?;
         let architect = self.build_architect_for_init(&generation_configs);
+        let lorebook_sections = build_lorebook_prompt_sections(
+            story_resources.lorebook_entries(),
+            &[
+                story_resources.story_concept(),
+                &planned_story,
+                &outline_sections[0],
+            ],
+        );
 
         let init = architect
             .start_draft(ArchitectDraftInitRequest {
@@ -183,6 +215,8 @@ impl EngineManager {
                 world_state_schema: story_resources.world_state_schema_seed(),
                 player_state_schema: story_resources.player_state_schema_seed(),
                 available_characters: story_resources.character_cards(),
+                lorebook_base: lorebook_sections.base.as_deref(),
+                lorebook_matched: lorebook_sections.matched.as_deref(),
             })
             .await?;
 
@@ -204,6 +238,13 @@ impl EngineManager {
         let now = now_timestamp_ms();
         let draft_id = format!("draft-{}", self.store.list_story_drafts().await?.len());
         let story_id_tag = format!("draft:{draft_id}");
+        self.validate_story_common_variables_for_fields(
+            &resource,
+            &init.world_state_schema.fields,
+            &init.player_state_schema.fields,
+            &common_variables,
+        )
+        .await?;
         let world_schema = self
             .create_generated_schema(
                 format!(
@@ -250,6 +291,7 @@ impl EngineManager {
             world_schema_id: world_schema.schema_id,
             player_schema_id: player_schema.schema_id,
             introduction: init.introduction,
+            common_variables,
             section_summaries: vec![init.section_summary],
             section_node_ids: vec![init.nodes.into_iter().map(|node| node.id).collect()],
             status: StoryDraftStatus::Building,
@@ -306,6 +348,22 @@ impl EngineManager {
                 ManagerError::InvalidDraft("story draft has no remaining section".to_owned())
             })?
             .clone();
+        let section_summary_refs = draft
+            .section_summaries
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let recent_node_texts = recent_nodes
+            .iter()
+            .flat_map(|node| [node.title.as_str(), node.scene.as_str(), node.goal.as_str()])
+            .collect::<Vec<_>>();
+        let mut lorebook_match_inputs =
+            Vec::with_capacity(1 + section_summary_refs.len() + recent_node_texts.len());
+        lorebook_match_inputs.push(current_section.as_str());
+        lorebook_match_inputs.extend(section_summary_refs.iter().copied());
+        lorebook_match_inputs.extend(recent_node_texts.iter().copied());
+        let lorebook_sections =
+            Self::story_generation_lorebook_sections(&story_resources, &lorebook_match_inputs);
 
         let chunk = architect
             .continue_draft(ArchitectDraftContinueRequest {
@@ -320,6 +378,8 @@ impl EngineManager {
                 world_state_schema: &world_schema,
                 player_state_schema: &player_schema,
                 available_characters: story_resources.character_cards(),
+                lorebook_base: lorebook_sections.base.as_deref(),
+                lorebook_matched: lorebook_sections.matched.as_deref(),
             })
             .await?;
 
@@ -421,6 +481,7 @@ impl EngineManager {
             world_schema_id: draft.world_schema_id.clone(),
             player_schema_id: draft.player_schema_id.clone(),
             introduction: draft.introduction.clone(),
+            common_variables: draft.common_variables.clone(),
             created_at_ms: Some(now),
             updated_at_ms: Some(now),
         };
@@ -539,11 +600,15 @@ impl EngineManager {
             replyer_config.temperature,
             replyer_config.max_tokens,
         )?;
+        let lorebook_sections =
+            Self::reply_lorebook_sections(&runtime_state, current_node, &history);
         let response = replyer
             .suggest(ReplyerRequest {
                 current_node,
                 character_cards: runtime_state.character_cards(),
                 current_cast_ids: runtime_state.world_state().active_characters(),
+                lorebook_base: lorebook_sections.base.as_deref(),
+                lorebook_matched: lorebook_sections.matched.as_deref(),
                 player_name: runtime_state.player_name(),
                 player_description: runtime_state.player_description(),
                 player_state_schema: runtime_state.player_state_schema(),
@@ -910,13 +975,16 @@ impl EngineManager {
                 .get_character(character_id)
                 .await?
                 .ok_or_else(|| ManagerError::MissingCharacter(character_id.clone()))?;
-            cards.push(self.resolve_character_card(&character, None).await?);
+            cards.push(self.resolve_character_card(&character).await?);
         }
 
         let player_state_schema_seed = match &resource.player_schema_id_seed {
             Some(schema_id) => Some(self.resolve_player_schema(schema_id).await?),
             None => None,
         };
+        let lorebook_entries = self
+            .resolve_story_resource_lorebook_entries(resource)
+            .await?;
 
         let mut story_resources = StoryResources::new(
             resource.resource_id.clone(),
@@ -924,6 +992,7 @@ impl EngineManager {
             cards,
             player_state_schema_seed,
         )?;
+        story_resources = story_resources.with_lorebook_entries(lorebook_entries);
 
         if let Some(planned_story) = non_empty_planned_story(resource.planned_story.as_deref()) {
             story_resources = story_resources.with_planned_story(planned_story.clone());
@@ -943,13 +1012,18 @@ impl EngineManager {
         player_name: Option<String>,
         player_description: String,
     ) -> Result<RuntimeState, ManagerError> {
+        let resource = self
+            .store
+            .get_story_resources(&story.resource_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryResources(story.resource_id.clone()))?;
+        let lorebook_entries = self
+            .resolve_story_resource_lorebook_entries(&resource)
+            .await?;
         let characters = self.load_story_characters(&story.resource_id).await?;
         let mut resolved_characters = Vec::with_capacity(characters.len());
         for character in &characters {
-            resolved_characters.push(
-                self.resolve_character_card(character, player_name.as_deref())
-                    .await?,
-            );
+            resolved_characters.push(self.resolve_character_card(character).await?);
         }
 
         let mut runtime_state = RuntimeState::from_story_graph(
@@ -959,7 +1033,8 @@ impl EngineManager {
             player_description,
             self.resolve_player_schema(&story.player_schema_id).await?,
         )
-        .map_err(ManagerError::from)?;
+        .map_err(ManagerError::from)?
+        .with_lorebook_entries(lorebook_entries);
         runtime_state.set_player_name(player_name);
         Ok(runtime_state)
     }
@@ -972,6 +1047,14 @@ impl EngineManager {
         let (player_name, _player_description) = self
             .resolve_player_identity(session.player_profile_id.as_deref())
             .await?;
+        let resource = self
+            .store
+            .get_story_resources(&story.resource_id)
+            .await?
+            .ok_or_else(|| ManagerError::MissingStoryResources(story.resource_id.clone()))?;
+        let lorebook_entries = self
+            .resolve_story_resource_lorebook_entries(&resource)
+            .await?;
         let characters = self.load_story_characters(&story.resource_id).await?;
         let session_characters = self
             .store
@@ -980,15 +1063,10 @@ impl EngineManager {
         let mut resolved_characters =
             Vec::with_capacity(characters.len().saturating_add(session_characters.len()));
         for character in &characters {
-            resolved_characters.push(
-                self.resolve_character_card(character, player_name.as_deref())
-                    .await?,
-            );
+            resolved_characters.push(self.resolve_character_card(character).await?);
         }
         for character in &session_characters {
-            resolved_characters.push(
-                self.resolve_session_character_card(character, player_name.as_deref()),
-            );
+            resolved_characters.push(self.resolve_session_character_card(character));
         }
 
         let mut runtime_state = RuntimeState::from_snapshot(
@@ -1000,7 +1078,8 @@ impl EngineManager {
                 .await?,
             session.snapshot.clone(),
         )
-        .map_err(ManagerError::from)?;
+        .map_err(ManagerError::from)?
+        .with_lorebook_entries(lorebook_entries);
         for character in &session_characters {
             runtime_state.register_existing_session_character(&character.session_character_id)?;
         }
@@ -1048,6 +1127,94 @@ impl EngineManager {
         Ok(characters)
     }
 
+    async fn resolve_story_resource_lorebook_entries(
+        &self,
+        resource: &StoryResourcesRecord,
+    ) -> Result<Vec<LorebookEntryRecord>, ManagerError> {
+        let mut entries = Vec::new();
+        for lorebook_id in &resource.lorebook_ids {
+            let lorebook = self
+                .store
+                .get_lorebook(lorebook_id)
+                .await?
+                .ok_or_else(|| ManagerError::MissingLorebook(lorebook_id.clone()))?;
+            entries.extend(lorebook.entries);
+        }
+        Ok(entries)
+    }
+
+    fn story_generation_lorebook_sections<'a>(
+        resources: &'a StoryResources,
+        extra_inputs: &[&'a str],
+    ) -> LorebookPromptSections {
+        let mut match_inputs = Vec::with_capacity(extra_inputs.len().saturating_add(2));
+        match_inputs.push(resources.story_concept());
+        if let Some(planned_story) = resources.planned_story() {
+            match_inputs.push(planned_story);
+        }
+        match_inputs.extend(
+            extra_inputs
+                .iter()
+                .copied()
+                .filter(|text| !text.trim().is_empty()),
+        );
+
+        build_lorebook_prompt_sections(resources.lorebook_entries(), &match_inputs)
+    }
+
+    fn reply_lorebook_sections<'a>(
+        runtime_state: &'a RuntimeState,
+        current_node: &'a NarrativeNode,
+        history: &'a [ReplyHistoryMessage],
+    ) -> LorebookPromptSections {
+        let mut match_inputs = vec![
+            current_node.title.as_str(),
+            current_node.scene.as_str(),
+            current_node.goal.as_str(),
+        ];
+        match_inputs.extend(
+            history
+                .iter()
+                .map(|message| message.text.as_str())
+                .filter(|text| !text.trim().is_empty()),
+        );
+
+        build_lorebook_prompt_sections(runtime_state.lorebook_entries(), &match_inputs)
+    }
+
+    async fn validate_story_common_variables_for_fields(
+        &self,
+        resource: &StoryResourcesRecord,
+        world_fields: &HashMap<String, StateFieldSchema>,
+        player_fields: &HashMap<String, StateFieldSchema>,
+        common_variables: &[CommonVariableDefinition],
+    ) -> Result<(), ManagerError> {
+        let mut character_fields = HashMap::new();
+
+        for character_id in &resource.character_ids {
+            let character = self
+                .store
+                .get_character(character_id)
+                .await?
+                .ok_or_else(|| ManagerError::MissingCharacter(character_id.clone()))?;
+            let schema = self
+                .store
+                .get_schema(&character.content.schema_id)
+                .await?
+                .ok_or_else(|| ManagerError::MissingSchema(character.content.schema_id.clone()))?;
+            character_fields.insert(character_id.clone(), schema.fields);
+        }
+
+        validate_common_variables(
+            common_variables,
+            &resource.character_ids,
+            world_fields,
+            player_fields,
+            &character_fields,
+        )
+        .map_err(ManagerError::InvalidCommonVariable)
+    }
+
     async fn resolve_schema_record(&self, schema_id: &str) -> Result<SchemaRecord, ManagerError> {
         self.store
             .get_schema(schema_id)
@@ -1078,7 +1245,6 @@ impl EngineManager {
     async fn resolve_character_card(
         &self,
         record: &CharacterCardRecord,
-        player_name: Option<&str>,
     ) -> Result<CharacterCard, ManagerError> {
         let schema = self
             .resolve_schema_record(&record.content.schema_id)
@@ -1090,15 +1256,10 @@ impl EngineManager {
             style: record.content.style.clone(),
             state_schema: schema.fields,
             system_prompt: record.content.system_prompt.clone(),
-        }
-        .rendered_with_player_name(player_name))
+        })
     }
 
-    fn resolve_session_character_card(
-        &self,
-        record: &SessionCharacterRecord,
-        player_name: Option<&str>,
-    ) -> CharacterCard {
+    fn resolve_session_character_card(&self, record: &SessionCharacterRecord) -> CharacterCard {
         CharacterCard {
             id: record.session_character_id.clone(),
             name: record.display_name.clone(),
@@ -1107,7 +1268,6 @@ impl EngineManager {
             state_schema: Default::default(),
             system_prompt: record.system_prompt.clone(),
         }
-        .rendered_with_player_name(player_name)
     }
 
     async fn load_reply_history(
@@ -1281,6 +1441,7 @@ impl EngineManager {
         tags: Vec<String>,
         fields: std::collections::HashMap<String, StateFieldSchema>,
     ) -> Result<SchemaRecord, ManagerError> {
+        validate_schema_fields(&fields)?;
         let mut next_index = self.store.list_schemas().await?.len();
         loop {
             let schema_id = format!("schema-generated-{next_index}");
@@ -1620,6 +1781,8 @@ pub enum ManagerError {
     MissingPreset(String),
     #[error("schema '{0}' not found")]
     MissingSchema(String),
+    #[error("lorebook '{0}' not found")]
+    MissingLorebook(String),
     #[error("character '{0}' not found")]
     MissingCharacter(String),
     #[error("player profile '{0}' not found")]
@@ -1636,6 +1799,10 @@ pub enum ManagerError {
     MissingSessionCharacter(String),
     #[error("character_ids cannot be empty")]
     EmptyCharacterIds,
+    #[error("invalid generated schema: {0}")]
+    InvalidGeneratedSchema(String),
+    #[error("invalid common variable: {0}")]
+    InvalidCommonVariable(String),
     #[error("invalid story draft: {0}")]
     InvalidDraft(String),
     #[error(transparent)]
@@ -1650,4 +1817,16 @@ pub enum ManagerError {
     Registry(#[from] RegistryError),
     #[error(transparent)]
     Store(#[from] StoreError),
+}
+
+fn validate_schema_fields(
+    fields: &std::collections::HashMap<String, StateFieldSchema>,
+) -> Result<(), ManagerError> {
+    for (key, field) in fields {
+        field.validate().map_err(|error| {
+            ManagerError::InvalidGeneratedSchema(format!("field '{key}' {error}"))
+        })?;
+    }
+
+    Ok(())
 }

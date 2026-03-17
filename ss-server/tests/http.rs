@@ -108,6 +108,7 @@ async fn rpc_unary_request_returns_json_rpc_response() {
         RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec![],
+            lorebook_ids: vec![],
             player_schema_id_seed: None,
             world_schema_id_seed: None,
             planned_story: None,
@@ -359,6 +360,7 @@ async fn rpc_session_suggest_replies_returns_json_rpc_response() {
             resource_id: "resource-1".to_owned(),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
+            lorebook_ids: vec![],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
             world_schema_id_seed: Some("schema-world-default".to_owned()),
             planned_story: None,
@@ -374,6 +376,7 @@ async fn rpc_session_suggest_replies_returns_json_rpc_response() {
             world_schema_id: "schema-world-story-1".to_owned(),
             player_schema_id: "schema-player-story-1".to_owned(),
             introduction: "The courier reaches a flooded dock.".to_owned(),
+            common_variables: vec![],
             created_at_ms: Some(1_000),
             updated_at_ms: Some(1_000),
         })
@@ -571,6 +574,7 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
             RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
                 story_concept: "A flooded harbor story.".to_owned(),
                 character_ids: vec![character_id],
+                lorebook_ids: vec![],
                 player_schema_id_seed: Some("schema-player-default".to_owned()),
                 world_schema_id_seed: Some("schema-world-default".to_owned()),
                 planned_story: Some(
@@ -596,6 +600,7 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
                 display_name: Some("Flooded Harbor".to_owned()),
                 api_group_id: None,
                 preset_id: None,
+                common_variables: None,
             }),
         ),
     )

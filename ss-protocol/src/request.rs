@@ -1,10 +1,18 @@
-use crate::api::{ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiListParams, ApiUpdateParams};
+use crate::api::{
+    ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiListModelsParams, ApiListParams,
+    ApiUpdateParams,
+};
 use crate::api_group::{
     ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
     ApiGroupUpdateParams,
 };
 use crate::character::{CharacterCardContent, CharacterCoverMimeType};
 use crate::config::{ConfigGetGlobalParams, SessionGetConfigParams, SessionUpdateConfigParams};
+use crate::lorebook::{
+    LorebookCreateParams, LorebookDeleteParams, LorebookEntryCreateParams,
+    LorebookEntryDeleteParams, LorebookEntryGetParams, LorebookEntryListParams,
+    LorebookEntryUpdateParams, LorebookGetParams, LorebookListParams, LorebookUpdateParams,
+};
 use crate::player_profile::{
     PlayerProfileCreateParams, PlayerProfileDeleteParams, PlayerProfileGetParams,
     PlayerProfileListParams, PlayerProfileUpdateParams,
@@ -27,7 +35,7 @@ use crate::session_message::{
 use crate::session_variable::{GetSessionVariablesParams, UpdateSessionVariablesParams};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use story::StoryGraph;
+use story::{CommonVariableDefinition, StoryGraph};
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
@@ -43,6 +51,8 @@ pub enum RequestMethod {
     ApiGet,
     #[serde(rename = "api.list")]
     ApiList,
+    #[serde(rename = "api.list_models")]
+    ApiListModels,
     #[serde(rename = "api.update")]
     ApiUpdate,
     #[serde(rename = "api.delete")]
@@ -77,6 +87,26 @@ pub enum RequestMethod {
     SchemaUpdate,
     #[serde(rename = "schema.delete")]
     SchemaDelete,
+    #[serde(rename = "lorebook.create")]
+    LorebookCreate,
+    #[serde(rename = "lorebook.get")]
+    LorebookGet,
+    #[serde(rename = "lorebook.list")]
+    LorebookList,
+    #[serde(rename = "lorebook.update")]
+    LorebookUpdate,
+    #[serde(rename = "lorebook.delete")]
+    LorebookDelete,
+    #[serde(rename = "lorebook_entry.create")]
+    LorebookEntryCreate,
+    #[serde(rename = "lorebook_entry.get")]
+    LorebookEntryGet,
+    #[serde(rename = "lorebook_entry.list")]
+    LorebookEntryList,
+    #[serde(rename = "lorebook_entry.update")]
+    LorebookEntryUpdate,
+    #[serde(rename = "lorebook_entry.delete")]
+    LorebookEntryDelete,
     #[serde(rename = "player_profile.create")]
     PlayerProfileCreate,
     #[serde(rename = "player_profile.get")]
@@ -205,6 +235,7 @@ pub enum RequestParams {
     ApiCreate(ApiCreateParams),
     ApiGet(ApiGetParams),
     ApiList(ApiListParams),
+    ApiListModels(ApiListModelsParams),
     ApiUpdate(ApiUpdateParams),
     ApiDelete(ApiDeleteParams),
     ApiGroupCreate(ApiGroupCreateParams),
@@ -222,6 +253,16 @@ pub enum RequestParams {
     SchemaList(SchemaListParams),
     SchemaUpdate(SchemaUpdateParams),
     SchemaDelete(SchemaDeleteParams),
+    LorebookCreate(LorebookCreateParams),
+    LorebookGet(LorebookGetParams),
+    LorebookList(LorebookListParams),
+    LorebookUpdate(LorebookUpdateParams),
+    LorebookDelete(LorebookDeleteParams),
+    LorebookEntryCreate(LorebookEntryCreateParams),
+    LorebookEntryGet(LorebookEntryGetParams),
+    LorebookEntryList(LorebookEntryListParams),
+    LorebookEntryUpdate(LorebookEntryUpdateParams),
+    LorebookEntryDelete(LorebookEntryDeleteParams),
     PlayerProfileCreate(PlayerProfileCreateParams),
     PlayerProfileGet(PlayerProfileGetParams),
     PlayerProfileList(PlayerProfileListParams),
@@ -292,6 +333,7 @@ impl RequestParams {
             Self::ApiCreate(_) => RequestMethod::ApiCreate,
             Self::ApiGet(_) => RequestMethod::ApiGet,
             Self::ApiList(_) => RequestMethod::ApiList,
+            Self::ApiListModels(_) => RequestMethod::ApiListModels,
             Self::ApiUpdate(_) => RequestMethod::ApiUpdate,
             Self::ApiDelete(_) => RequestMethod::ApiDelete,
             Self::ApiGroupCreate(_) => RequestMethod::ApiGroupCreate,
@@ -309,6 +351,16 @@ impl RequestParams {
             Self::SchemaList(_) => RequestMethod::SchemaList,
             Self::SchemaUpdate(_) => RequestMethod::SchemaUpdate,
             Self::SchemaDelete(_) => RequestMethod::SchemaDelete,
+            Self::LorebookCreate(_) => RequestMethod::LorebookCreate,
+            Self::LorebookGet(_) => RequestMethod::LorebookGet,
+            Self::LorebookList(_) => RequestMethod::LorebookList,
+            Self::LorebookUpdate(_) => RequestMethod::LorebookUpdate,
+            Self::LorebookDelete(_) => RequestMethod::LorebookDelete,
+            Self::LorebookEntryCreate(_) => RequestMethod::LorebookEntryCreate,
+            Self::LorebookEntryGet(_) => RequestMethod::LorebookEntryGet,
+            Self::LorebookEntryList(_) => RequestMethod::LorebookEntryList,
+            Self::LorebookEntryUpdate(_) => RequestMethod::LorebookEntryUpdate,
+            Self::LorebookEntryDelete(_) => RequestMethod::LorebookEntryDelete,
             Self::PlayerProfileCreate(_) => RequestMethod::PlayerProfileCreate,
             Self::PlayerProfileGet(_) => RequestMethod::PlayerProfileGet,
             Self::PlayerProfileList(_) => RequestMethod::PlayerProfileList,
@@ -381,6 +433,7 @@ impl RequestParams {
             Self::ApiCreate(params) => serde_json::to_value(params),
             Self::ApiGet(params) => serde_json::to_value(params),
             Self::ApiList(params) => serde_json::to_value(params),
+            Self::ApiListModels(params) => serde_json::to_value(params),
             Self::ApiUpdate(params) => serde_json::to_value(params),
             Self::ApiDelete(params) => serde_json::to_value(params),
             Self::ApiGroupCreate(params) => serde_json::to_value(params),
@@ -398,6 +451,16 @@ impl RequestParams {
             Self::SchemaList(params) => serde_json::to_value(params),
             Self::SchemaUpdate(params) => serde_json::to_value(params),
             Self::SchemaDelete(params) => serde_json::to_value(params),
+            Self::LorebookCreate(params) => serde_json::to_value(params),
+            Self::LorebookGet(params) => serde_json::to_value(params),
+            Self::LorebookList(params) => serde_json::to_value(params),
+            Self::LorebookUpdate(params) => serde_json::to_value(params),
+            Self::LorebookDelete(params) => serde_json::to_value(params),
+            Self::LorebookEntryCreate(params) => serde_json::to_value(params),
+            Self::LorebookEntryGet(params) => serde_json::to_value(params),
+            Self::LorebookEntryList(params) => serde_json::to_value(params),
+            Self::LorebookEntryUpdate(params) => serde_json::to_value(params),
+            Self::LorebookEntryDelete(params) => serde_json::to_value(params),
             Self::PlayerProfileCreate(params) => serde_json::to_value(params),
             Self::PlayerProfileGet(params) => serde_json::to_value(params),
             Self::PlayerProfileList(params) => serde_json::to_value(params),
@@ -473,6 +536,7 @@ impl RequestParams {
             RequestMethod::ApiCreate => serde_json::from_value(value).map(Self::ApiCreate),
             RequestMethod::ApiGet => serde_json::from_value(value).map(Self::ApiGet),
             RequestMethod::ApiList => serde_json::from_value(value).map(Self::ApiList),
+            RequestMethod::ApiListModels => serde_json::from_value(value).map(Self::ApiListModels),
             RequestMethod::ApiUpdate => serde_json::from_value(value).map(Self::ApiUpdate),
             RequestMethod::ApiDelete => serde_json::from_value(value).map(Self::ApiDelete),
             RequestMethod::ApiGroupCreate => {
@@ -496,6 +560,32 @@ impl RequestParams {
             RequestMethod::SchemaList => serde_json::from_value(value).map(Self::SchemaList),
             RequestMethod::SchemaUpdate => serde_json::from_value(value).map(Self::SchemaUpdate),
             RequestMethod::SchemaDelete => serde_json::from_value(value).map(Self::SchemaDelete),
+            RequestMethod::LorebookCreate => {
+                serde_json::from_value(value).map(Self::LorebookCreate)
+            }
+            RequestMethod::LorebookGet => serde_json::from_value(value).map(Self::LorebookGet),
+            RequestMethod::LorebookList => serde_json::from_value(value).map(Self::LorebookList),
+            RequestMethod::LorebookUpdate => {
+                serde_json::from_value(value).map(Self::LorebookUpdate)
+            }
+            RequestMethod::LorebookDelete => {
+                serde_json::from_value(value).map(Self::LorebookDelete)
+            }
+            RequestMethod::LorebookEntryCreate => {
+                serde_json::from_value(value).map(Self::LorebookEntryCreate)
+            }
+            RequestMethod::LorebookEntryGet => {
+                serde_json::from_value(value).map(Self::LorebookEntryGet)
+            }
+            RequestMethod::LorebookEntryList => {
+                serde_json::from_value(value).map(Self::LorebookEntryList)
+            }
+            RequestMethod::LorebookEntryUpdate => {
+                serde_json::from_value(value).map(Self::LorebookEntryUpdate)
+            }
+            RequestMethod::LorebookEntryDelete => {
+                serde_json::from_value(value).map(Self::LorebookEntryDelete)
+            }
             RequestMethod::PlayerProfileCreate => {
                 serde_json::from_value(value).map(Self::PlayerProfileCreate)
             }
@@ -745,6 +835,8 @@ pub struct CreateStoryResourcesParams {
     pub player_schema_id_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub world_schema_id_seed: Option<String>,
+    #[serde(default)]
+    pub lorebook_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_story: Option<String>,
 }
@@ -771,6 +863,8 @@ pub struct UpdateStoryResourcesParams {
     pub player_schema_id_seed: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub world_schema_id_seed: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lorebook_ids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub planned_story: Option<String>,
 }
@@ -801,6 +895,8 @@ pub struct GenerateStoryParams {
     pub api_group_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_variables: Option<Vec<CommonVariableDefinition>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -813,7 +909,10 @@ pub struct GetStoryParams {
 #[serde(deny_unknown_fields)]
 pub struct UpdateStoryParams {
     pub story_id: String,
-    pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_variables: Option<Vec<CommonVariableDefinition>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -843,6 +942,8 @@ pub struct StartStoryDraftParams {
     pub api_group_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_variables: Option<Vec<CommonVariableDefinition>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

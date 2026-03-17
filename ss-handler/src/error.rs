@@ -1,4 +1,5 @@
 use engine::{EngineError, ManagerError, RegistryError, RuntimeError};
+use llm::LlmError;
 use protocol::{ErrorCode, ErrorPayload};
 use store::StoreError;
 
@@ -16,6 +17,8 @@ pub enum HandlerError {
     MissingPreset(String),
     #[error("schema '{0}' not found")]
     MissingSchema(String),
+    #[error("lorebook '{0}' not found")]
+    MissingLorebook(String),
     #[error("player profile '{0}' not found")]
     MissingPlayerProfile(String),
     #[error("upload '{0}' not found")]
@@ -44,10 +47,26 @@ pub enum HandlerError {
     DuplicateCharacter(String),
     #[error("schema '{0}' already exists")]
     DuplicateSchema(String),
+    #[error("lorebook '{0}' already exists")]
+    DuplicateLorebook(String),
     #[error("player profile '{0}' already exists")]
     DuplicatePlayerProfile(String),
     #[error("schema_id must not be empty")]
     EmptySchemaId,
+    #[error("lorebook_id must not be empty")]
+    EmptyLorebookId,
+    #[error("entry_id must not be empty")]
+    EmptyLorebookEntryId,
+    #[error("lorebook '{lorebook_id}' already contains entry '{entry_id}'")]
+    DuplicateLorebookEntry {
+        lorebook_id: String,
+        entry_id: String,
+    },
+    #[error("lorebook '{lorebook_id}' does not contain entry '{entry_id}'")]
+    MissingLorebookEntry {
+        lorebook_id: String,
+        entry_id: String,
+    },
     #[error("player_profile_id must not be empty")]
     EmptyPlayerProfileId,
     #[error("character_id must not be empty")]
@@ -64,6 +83,8 @@ pub enum HandlerError {
     MissingCharacterCover(String),
     #[error("schema '{0}' is still referenced")]
     SchemaInUse(String),
+    #[error("lorebook '{0}' is still referenced by story resources")]
+    LorebookInUse(String),
     #[error("player profile '{0}' is still referenced by a session")]
     PlayerProfileInUse(String),
     #[error("character '{0}' is still referenced by story resources")]
@@ -98,10 +119,16 @@ pub enum HandlerError {
     InvalidStoryDraft(String),
     #[error("invalid story graph: {0}")]
     InvalidStoryGraph(String),
+    #[error("invalid schema: {0}")]
+    InvalidSchemaDefinition(String),
+    #[error("invalid common variable: {0}")]
+    InvalidCommonVariable(String),
     #[error("invalid session variable update: {0}")]
     InvalidSessionVariableUpdate(String),
     #[error("{0}")]
     Manager(String),
+    #[error(transparent)]
+    Llm(#[from] LlmError),
     #[error(transparent)]
     Archive(#[from] protocol::CharacterArchiveError),
     #[error(transparent)]
@@ -124,6 +151,8 @@ impl HandlerError {
             | Self::UploadSizeMismatch { .. }
             | Self::InvalidUploadChunkPayload(_)
             | Self::EmptySchemaId
+            | Self::EmptyLorebookId
+            | Self::EmptyLorebookEntryId
             | Self::EmptyPlayerProfileId
             | Self::EmptyCharacterId
             | Self::CharacterIdMismatch { .. }
@@ -133,10 +162,17 @@ impl HandlerError {
             | Self::InvalidCharacterCoverPayload(_)
             | Self::InvalidSuggestedReplyLimit(_)
             | Self::InvalidStoryGraph(_)
+            | Self::InvalidSchemaDefinition(_)
+            | Self::InvalidCommonVariable(_)
             | Self::InvalidSessionVariableUpdate(_)
+            | Self::Llm(LlmError::InvalidConfig(_))
+            | Self::Llm(LlmError::InvalidRequest(_))
+            | Self::Llm(LlmError::UnsupportedCapability(_))
             | Self::Archive(_) => ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string()),
             Self::MissingUpload(_)
             | Self::MissingSchema(_)
+            | Self::MissingLorebook(_)
+            | Self::MissingLorebookEntry { .. }
             | Self::MissingPlayerProfile(_)
             | Self::MissingCharacter(_)
             | Self::MissingStoryResources(_)
@@ -151,11 +187,14 @@ impl HandlerError {
             Self::DuplicateApi(_)
             | Self::DuplicateCharacter(_)
             | Self::DuplicateSchema(_)
+            | Self::DuplicateLorebook(_)
+            | Self::DuplicateLorebookEntry { .. }
             | Self::DuplicatePlayerProfile(_)
             | Self::DuplicateApiGroup(_)
             | Self::DuplicatePreset(_)
             | Self::MissingCharacterCover(_)
             | Self::SchemaInUse(_)
+            | Self::LorebookInUse(_)
             | Self::PlayerProfileInUse(_)
             | Self::CharacterInUse(_)
             | Self::ApiInUse(_)
@@ -178,6 +217,7 @@ impl HandlerError {
                     ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
                 }
             },
+            Self::Llm(_) => ErrorPayload::new(ErrorCode::BackendError, self.to_string()),
             Self::Manager(_) | Self::Engine(_) | Self::Runtime(_) | Self::Store(_) => {
                 ErrorPayload::new(ErrorCode::BackendError, self.to_string())
             }
@@ -193,6 +233,7 @@ impl From<ManagerError> for HandlerError {
             ManagerError::MissingApiGroup(id) => Self::MissingApiGroup(id),
             ManagerError::MissingPreset(id) => Self::MissingPreset(id),
             ManagerError::MissingSchema(id) => Self::MissingSchema(id),
+            ManagerError::MissingLorebook(id) => Self::MissingLorebook(id),
             ManagerError::MissingCharacter(id) => Self::MissingCharacter(id),
             ManagerError::MissingPlayerProfile(id) => Self::MissingPlayerProfile(id),
             ManagerError::MissingStoryResources(id) => Self::MissingStoryResources(id),
@@ -201,6 +242,8 @@ impl From<ManagerError> for HandlerError {
             ManagerError::MissingSession(id) => Self::MissingSession(id),
             ManagerError::MissingSessionCharacter(id) => Self::MissingSessionCharacter(id),
             ManagerError::EmptyCharacterIds => Self::EmptyCharacterIds,
+            ManagerError::InvalidGeneratedSchema(message) => Self::InvalidSchemaDefinition(message),
+            ManagerError::InvalidCommonVariable(message) => Self::InvalidCommonVariable(message),
             ManagerError::InvalidDraft(message) => Self::InvalidStoryDraft(message),
             ManagerError::Architect(error) => Self::Manager(error.to_string()),
             ManagerError::Replyer(error) => Self::Manager(error.to_string()),

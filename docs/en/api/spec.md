@@ -119,6 +119,12 @@ Read APIs never return the raw `api_key`. They return:
 - `has_api_key`
 - `api_key_masked`
 
+Helper method:
+
+- `api.list_models` accepts `provider`, `base_url`, and `api_key`
+- It returns `provider`, normalized `base_url`, and `models: string[]`
+- It does not create or update a stored `api`
+
 ### 2.2 `api_group`
 
 `api_group` is the persistent per-agent API binding bundle.
@@ -176,8 +182,38 @@ Notes:
 - A schema does not have a built-in `kind`.
 - `tags` are user-facing labels such as `player`, `world`, or `character`.
 - `fields` follow the `StateFieldSchema` structure.
+- `StateFieldSchema` supports `value_type`, optional `default`, optional `description`, and optional `enum_values`.
+- `enum_values` is currently only valid for scalar types: `bool`, `int`, `float`, `string`.
+- If `enum_values` is present, `default` must also match the field type and be one of the allowed values.
 
-### 2.4 `player_profile`
+### 2.5 `lorebook`
+
+`lorebook` is a persistent reusable lore bundle.
+
+Fields:
+
+- `lorebook_id`
+- `display_name`
+- `entries`
+
+Each `entry` contains:
+
+- `entry_id`
+- `title`
+- `content`
+- `keywords: string[]`
+- `enabled`
+- `always_include`
+
+Notes:
+
+- `lorebook.update` updates base metadata such as `display_name`
+- `lorebook_entry.*` methods operate on entries inside one `lorebook`
+- `keywords` defaults to `[]`
+- `enabled` defaults to `true`
+- `always_include` defaults to `false`
+
+### 2.6 `player_profile`
 
 `player_profile` is an independent switchable player setup resource.
 
@@ -193,7 +229,7 @@ Notes:
 - A session activates at most one `player_profile_id` at a time.
 - Switching player profiles does not switch `player_state`.
 
-### 2.5 `character`
+### 2.7 `character`
 
 Character content is represented by `CharacterCardContent`:
 
@@ -210,7 +246,7 @@ Notes:
 - Character-private schema is referenced through `schema_id`.
 - Cover retrieval and `.chr` export remain separate APIs.
 
-### 2.6 `story_resources`
+### 2.8 `story_resources`
 
 `story_resources` is the editable input bundle used before story generation.
 
@@ -221,15 +257,17 @@ Fields:
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
+- `lorebook_ids`
 - `planned_story`
 
 Notes:
 
 - `character_ids` only reference existing character objects.
 - Both schema seeds are optional ids.
+- `lorebook_ids` only reference existing lorebooks and may be empty.
 - `planned_story` is optional planner output text.
 
-### 2.7 `story`
+### 2.9 `story`
 
 A generated `story` record contains:
 
@@ -246,7 +284,7 @@ Notes:
 - After `Architect` generates world/player schema content, the engine manager stores them as `schema` resources first.
 - The story itself stores only schema ids.
 
-### 2.7 `session`
+### 2.10 `session`
 
 A session binds a story to a runtime snapshot.
 
@@ -300,6 +338,8 @@ Current protocol families:
 - `api_group.*`
 - `preset.*`
 - `schema.*`
+- `lorebook.*`
+- `lorebook_entry.*`
 - `player_profile.*`
 - `character.*`
 - `story_resources.*`
@@ -326,10 +366,38 @@ Current protocol families:
 If either binding id is omitted and the backend has at least one `api_group` and one `preset`,
 it uses the first available id from each list after sorting.
 
+`story.generate` accepts the same creation inputs as draft start:
+
+- `resource_id`
+- optional `display_name`
+- optional `api_group_id`
+- optional `preset_id`
+- optional `common_variables`
+
 `story.update` only updates story metadata. For now it supports:
 
 - `story_id`
+- optional `display_name`
+- optional `common_variables`
+
+Each `common_variables` entry contains:
+
+- `scope`: `world | player | character`
+- `key`
 - `display_name`
+- optional `character_id`
+- optional `pinned` (defaults to `true`)
+
+Validation rules:
+
+- `world` and `player` entries must not set `character_id`
+- `character` entries must set `character_id`
+- `character_id` must belong to one of the story's bound characters
+- `key` must exist in the schema bound to that scope
+- duplicate entries for the same bound variable are rejected
+
+Clients can combine `story.common_variables` with `session.get_variables` or the runtime snapshot to
+render a pinned variable panel without hardcoding schema keys.
 
 `story.update_graph` replaces the full `graph` field of an existing story, including each node's
 `on_enter_updates`.
@@ -344,12 +412,15 @@ The backend validates the graph before saving and returns `invalid_request` if:
 `story_draft.*` is the preferred generation flow when a story is large enough that a single Architect call would become too expensive.
 
 - `story_draft.start` creates a server-side draft and generates the first section
+- `story_draft.start` may also persist caller-supplied `common_variables`
 - `story_draft.update_graph` replaces the draft's current `partial_graph`, including node
   `on_enter_updates`
 - `story_draft.continue` appends one more outline section to the partial graph
 - `story_draft.finalize` validates the merged graph and creates the final `story`
 - `story.generate` remains available as a compatibility wrapper around the full draft flow
 - `story_draft.start` persists the chosen `api_group_id` and `preset_id` in the draft
+- draft detail responses also include the persisted `common_variables`
+- `story_draft.finalize` copies draft `common_variables` into the final `story`
 
 `story_draft.update_graph` uses the same graph validation as `story.update_graph`, and rejects finalized drafts.
 

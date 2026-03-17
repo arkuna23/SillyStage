@@ -3,6 +3,7 @@ pub mod api_group;
 pub mod character;
 pub mod config;
 pub mod error;
+pub mod lorebook;
 pub mod message;
 pub mod player_profile;
 pub mod preset;
@@ -16,8 +17,8 @@ pub mod session_variable;
 pub mod stream_event;
 
 pub use api::{
-    ApiCreateParams, ApiDeleteParams, ApiDeletedPayload, ApiGetParams, ApiListParams, ApiPayload,
-    ApiUpdateParams, ApisListedPayload,
+    ApiCreateParams, ApiDeleteParams, ApiDeletedPayload, ApiGetParams, ApiListModelsParams,
+    ApiListParams, ApiModelsListedPayload, ApiPayload, ApiUpdateParams, ApisListedPayload,
 };
 pub use api_group::{
     ApiGroupBindingsInput, ApiGroupBindingsPayload, ApiGroupCreateParams, ApiGroupDeleteParams,
@@ -35,6 +36,13 @@ pub use config::{
     SessionUpdateConfigParams,
 };
 pub use error::{ErrorCode, ErrorPayload};
+pub use lorebook::{
+    LorebookCreateParams, LorebookDeleteParams, LorebookDeletedPayload,
+    LorebookEntriesListedPayload, LorebookEntryCreateParams, LorebookEntryDeleteParams,
+    LorebookEntryDeletedPayload, LorebookEntryGetParams, LorebookEntryListParams,
+    LorebookEntryPayload, LorebookEntryUpdateParams, LorebookGetParams, LorebookListParams,
+    LorebookPayload, LorebookUpdateParams, LorebooksListedPayload,
+};
 pub use message::{
     JsonRpcOutcome, JsonRpcRequestMessage, JsonRpcResponseMessage, RequestId, ServerEventMessage,
     ServerMessageType, SessionId, StreamFrame,
@@ -95,4 +103,5 @@ pub use session_message::{
 pub use session_variable::{
     GetSessionVariablesParams, SessionVariablesPayload, UpdateSessionVariablesParams,
 };
+pub use story::{CommonVariableDefinition, CommonVariableScope};
 pub use stream_event::StreamEventBody;

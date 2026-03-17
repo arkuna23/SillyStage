@@ -24,6 +24,14 @@ pub struct ApiListParams {}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct ApiListModelsParams {
+    pub provider: LlmProvider,
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct ApiUpdateParams {
     pub api_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -59,6 +67,13 @@ pub struct ApiPayload {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ApisListedPayload {
     pub apis: Vec<ApiPayload>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ApiModelsListedPayload {
+    pub provider: LlmProvider,
+    pub base_url: String,
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

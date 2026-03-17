@@ -70,6 +70,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let input_request = KeeperRequest {
         phase: KeeperPhase::AfterPlayerInput,
         player_input: "I tell Yuki that I will take the canal route and keep moving.",
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier carrying medicine through the flooded district.",
         previous_node: None,
@@ -85,6 +87,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
     let output_request = KeeperRequest {
         phase: KeeperPhase::AfterTurnOutputs,
         player_input: "I tell Yuki that I will take the canal route and keep moving.",
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier carrying medicine through the flooded district.",
         previous_node: Some(&market),

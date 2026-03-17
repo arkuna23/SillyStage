@@ -1,14 +1,21 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::Serialize;
 use serde_json::Value;
 use state::schema::StateFieldSchema;
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
-use story::{Condition, ConditionScope, NarrativeNode, Transition};
+use story::{Condition, ConditionOperator, ConditionScope, NarrativeNode, Transition};
 
 use crate::actor::CharacterCardSummaryRef;
 
 const DEFAULT_USER_NAME: &str = "User";
+
+pub(crate) struct CharacterTemplateContext<'a> {
+    pub(crate) character_name: &'a str,
+    pub(crate) player_name: Option<&'a str>,
+    pub(crate) state_schema: &'a HashMap<String, StateFieldSchema>,
+    pub(crate) state_values: Option<&'a HashMap<String, Value>>,
+}
 
 pub(crate) fn compact_json<T: Serialize>(value: &T) -> Result<String, serde_json::Error> {
     serde_json::to_string(value)
@@ -34,13 +41,33 @@ pub(crate) fn render_list_lines(lines: &[String]) -> String {
         .join("\n")
 }
 
-pub(crate) fn render_character_text(
-    text: &str,
-    character_name: &str,
-    player_name: Option<&str>,
-) -> String {
-    text.replace("{{char}}", character_name)
-        .replace("{{user}}", player_name.unwrap_or(DEFAULT_USER_NAME))
+pub(crate) fn render_character_text(text: &str, context: &CharacterTemplateContext<'_>) -> String {
+    let mut rendered = String::with_capacity(text.len());
+    let mut remaining = text;
+
+    while let Some(start_index) = remaining.find("{{") {
+        rendered.push_str(&remaining[..start_index]);
+        let after_start = &remaining[start_index + 2..];
+
+        let Some(end_index) = after_start.find("}}") else {
+            rendered.push_str(&remaining[start_index..]);
+            return rendered;
+        };
+
+        let placeholder = &remaining[start_index..start_index + 2 + end_index + 2];
+        let key = after_start[..end_index].trim();
+
+        if let Some(value) = resolve_character_template_value(key, context) {
+            rendered.push_str(&value);
+        } else {
+            rendered.push_str(placeholder);
+        }
+
+        remaining = &after_start[end_index + 2..];
+    }
+
+    rendered.push_str(remaining);
+    rendered
 }
 
 pub(crate) fn render_character_summaries(
@@ -51,25 +78,34 @@ pub(crate) fn render_character_summaries(
         &summaries
             .iter()
             .map(|summary| {
+                let template_context = CharacterTemplateContext {
+                    character_name: summary.name,
+                    player_name,
+                    state_schema: summary.state_schema,
+                    state_values: summary.state_values,
+                };
+
                 format!(
                     "{} | {} | personality={} | style={} | state_schema={}",
                     summary.id,
                     summary.name,
                     normalize_inline_text(&render_character_text(
                         summary.personality,
-                        summary.name,
-                        player_name,
+                        &template_context
                     )),
-                    normalize_inline_text(&render_character_text(
-                        summary.style,
-                        summary.name,
-                        player_name,
-                    )),
+                    normalize_inline_text(&render_character_text(summary.style, &template_context)),
                     render_state_schema_fields(summary.state_schema),
                 )
             })
             .collect::<Vec<_>>(),
     )
+}
+
+pub(crate) fn render_player(name: Option<&str>, description: &str) -> String {
+    render_sections(&[
+        ("name", name.unwrap_or(DEFAULT_USER_NAME).to_owned()),
+        ("description", description.to_owned()),
+    ])
 }
 
 pub(crate) fn render_state_schema_fields(
@@ -94,6 +130,12 @@ pub(crate) fn render_state_schema_fields(
             if let Some(default) = &field.default {
                 line.push_str(&format!(" default={}", compact_value(default)));
             }
+            if let Some(enum_values) = &field.enum_values {
+                line.push_str(&format!(
+                    " enum={}",
+                    compact_json(enum_values).unwrap_or_default()
+                ));
+            }
             if let Some(description) = &field.description {
                 line.push_str(&format!(" desc={}", normalize_inline_text(description)));
             }
@@ -104,24 +146,13 @@ pub(crate) fn render_state_schema_fields(
 }
 
 pub(crate) fn render_node(node: &NarrativeNode) -> String {
-    let transition_lines = if node.transitions.is_empty() {
-        "none".to_owned()
-    } else {
-        node.transitions
+    let transition_lines = render_list_lines(
+        &node
+            .transitions
             .iter()
             .map(render_transition)
-            .collect::<Vec<_>>()
-            .join("; ")
-    };
-    let on_enter_updates = if node.on_enter_updates.is_empty() {
-        "none".to_owned()
-    } else {
-        node.on_enter_updates
-            .iter()
-            .map(|op| compact_json(op).unwrap_or_else(|_| "<invalid>".to_owned()))
-            .collect::<Vec<_>>()
-            .join("; ")
-    };
+            .collect::<Vec<_>>(),
+    );
 
     render_sections(&[
         ("id", node.id.clone()),
@@ -130,12 +161,33 @@ pub(crate) fn render_node(node: &NarrativeNode) -> String {
         ("goal", node.goal.clone()),
         ("characters", node.characters.join(", ")),
         ("transitions", transition_lines),
-        ("on_enter_updates", on_enter_updates),
     ])
 }
 
 pub(crate) fn render_optional_node(node: Option<&NarrativeNode>) -> String {
     node.map(render_node).unwrap_or_else(|| "null".to_owned())
+}
+
+pub(crate) fn render_keeper_node(node: &NarrativeNode) -> String {
+    let transition_lines = if node.transitions.is_empty() {
+        "- none".to_owned()
+    } else {
+        node.transitions
+            .iter()
+            .map(render_keeper_transition)
+            .map(|line| format!("- {line}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+
+    render_sections(&[
+        ("id", node.id.clone()),
+        ("title", node.title.clone()),
+        ("scene", node.scene.clone()),
+        ("goal", node.goal.clone()),
+        ("characters", node.characters.join(", ")),
+        ("candidate_transitions", transition_lines),
+    ])
 }
 
 pub(crate) fn render_actor_history(entries: &[ActorMemoryEntry]) -> String {
@@ -211,32 +263,89 @@ pub(crate) fn normalize_inline_text(text: &str) -> String {
 
 fn render_transition(transition: &Transition) -> String {
     match &transition.condition {
-        Some(condition) => format!("{} if {}", transition.to, render_condition(condition)),
-        None => format!("{} if always", transition.to),
+        Some(condition) => format!(
+            "to node={} when {}",
+            transition.to,
+            render_condition(condition)
+        ),
+        None => format!("to node={} when always", transition.to),
     }
 }
 
 fn render_condition(condition: &Condition) -> String {
     match condition.scope {
         ConditionScope::Global => format!(
-            "world:{} {} {}",
+            "global.{} {} {}",
             condition.key,
-            compact_json(&condition.op).unwrap_or_default(),
+            render_condition_operator(&condition.op),
             compact_value(&condition.value)
         ),
         ConditionScope::Player => format!(
-            "player:{} {} {}",
+            "player.{} {} {}",
             condition.key,
-            compact_json(&condition.op).unwrap_or_default(),
+            render_condition_operator(&condition.op),
             compact_value(&condition.value)
         ),
         ConditionScope::Character => format!(
-            "character:{}:{} {} {}",
+            "character[{}].{} {} {}",
             condition.character.as_deref().unwrap_or("?"),
             condition.key,
-            compact_json(&condition.op).unwrap_or_default(),
+            render_condition_operator(&condition.op),
             compact_value(&condition.value)
         ),
+    }
+}
+
+fn render_keeper_transition(transition: &Transition) -> String {
+    match &transition.condition {
+        Some(condition) => format!(
+            "to node={} when {}",
+            transition.to,
+            render_keeper_condition(condition)
+        ),
+        None => format!("to node={} when always", transition.to),
+    }
+}
+
+fn render_keeper_condition(condition: &Condition) -> String {
+    let left = match condition.scope {
+        ConditionScope::Global => format!("global.{}", condition.key),
+        ConditionScope::Player => format!("player.{}", condition.key),
+        ConditionScope::Character => format!(
+            "character[{}].{}",
+            condition.character.as_deref().unwrap_or("?"),
+            condition.key
+        ),
+    };
+
+    format!(
+        "{left} {} {}",
+        keeper_operator_symbol(&condition.op),
+        compact_value(&condition.value)
+    )
+}
+
+fn keeper_operator_symbol(operator: &ConditionOperator) -> &'static str {
+    match operator {
+        ConditionOperator::Eq => "==",
+        ConditionOperator::Ne => "!=",
+        ConditionOperator::Gt => ">",
+        ConditionOperator::Gte => ">=",
+        ConditionOperator::Lt => "<",
+        ConditionOperator::Lte => "<=",
+        ConditionOperator::Contains => "contains",
+    }
+}
+
+fn render_condition_operator(operator: &story::ConditionOperator) -> &'static str {
+    match operator {
+        story::ConditionOperator::Eq => "==",
+        story::ConditionOperator::Ne => "!=",
+        story::ConditionOperator::Gt => ">",
+        story::ConditionOperator::Gte => ">=",
+        story::ConditionOperator::Lt => "<",
+        story::ConditionOperator::Lte => "<=",
+        story::ConditionOperator::Contains => "contains",
     }
 }
 
@@ -314,4 +423,37 @@ fn render_character_state(
 
 fn compact_value(value: &Value) -> String {
     compact_json(value).unwrap_or_else(|_| "null".to_owned())
+}
+
+fn resolve_character_template_value(
+    key: &str,
+    context: &CharacterTemplateContext<'_>,
+) -> Option<String> {
+    if key.is_empty() {
+        return None;
+    }
+
+    match key {
+        "char" => Some(context.character_name.to_owned()),
+        "user" => Some(context.player_name.unwrap_or(DEFAULT_USER_NAME).to_owned()),
+        _ => context
+            .state_values
+            .and_then(|state_values| state_values.get(key))
+            .or_else(|| {
+                context
+                    .state_schema
+                    .get(key)
+                    .and_then(|field| field.default.as_ref())
+            })
+            .map(format_template_value),
+    }
+}
+
+fn format_template_value(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Number(number) => number.to_string(),
+        Value::Bool(boolean) => boolean.to_string(),
+        Value::Array(_) | Value::Object(_) | Value::Null => compact_value(value),
+    }
 }

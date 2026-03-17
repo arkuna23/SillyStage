@@ -1,3 +1,4 @@
+pub mod common_variable;
 pub mod condition;
 pub mod graph;
 pub mod node;
@@ -6,6 +7,9 @@ pub mod storage;
 pub mod transition;
 pub mod validator;
 
+pub use common_variable::{
+    CommonVariableDefinition, CommonVariableScope, validate_common_variables,
+};
 pub use condition::{Condition, ConditionOperator, ConditionScope};
 pub use graph::StoryGraph;
 pub use node::NarrativeNode;

@@ -72,7 +72,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
-        personality: "greedy but friendly trader".to_owned(),
+        personality: "greedy but friendly trader trust={{trust}}".to_owned(),
         style: "talkative".to_owned(),
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
@@ -85,6 +85,8 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             world_state_schema: Some(&schema),
             player_state_schema: Some(&player_state_schema),
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("graph generation should succeed");
@@ -108,6 +110,7 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     assert!(user_message.contains("PLAYER_STATE_SCHEMA_SEED"));
     assert!(user_message.contains("merchant | Old Merchant"));
     assert!(user_message.contains("state_schema"));
+    assert!(user_message.contains("trust=0"));
     assert!(user_message.contains("role="));
     assert!(user_message.contains("coins:"));
     assert!(!user_message.contains("Stay in character."));
@@ -193,6 +196,8 @@ async fn architect_can_generate_schema_without_seed() {
             world_state_schema: None,
             player_state_schema: None,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("graph generation should succeed without seed");
@@ -247,6 +252,8 @@ async fn architect_prefers_planned_story_when_provided() {
             world_state_schema: None,
             player_state_schema: None,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("graph generation should succeed with planned story");
@@ -327,6 +334,8 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
             world_state_schema: &world_schema,
             player_state_schema: &player_state_schema,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("draft continue should succeed");
@@ -431,6 +440,8 @@ async fn architect_draft_init_prompt_requires_value_type_in_schema_fields() {
             world_state_schema: None,
             player_state_schema: None,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("draft init should succeed");
@@ -492,6 +503,8 @@ async fn architect_attempts_repair_after_invalid_json_output() {
             world_state_schema: None,
             player_state_schema: None,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("graph generation should be repaired");
@@ -606,6 +619,8 @@ async fn architect_draft_continue_repairs_missing_future_transition_targets() {
             world_state_schema: &world_schema,
             player_state_schema: &player_state_schema,
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("draft continue should be repaired");

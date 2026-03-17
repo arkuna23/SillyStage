@@ -30,12 +30,23 @@
 
 - `{{char}}`：运行时替换为角色展示名
 - `{{user}}`：运行时替换为当前玩家名；如果当前没有玩家名，则回退为 `User`
+- `{{field_name}}`：运行时替换为当前角色自己的该 schema 字段值
 
 替换范围：
 
 - `personality`
 - `style`
 - `system_prompt`
+
+Schema 变量规则：
+
+- 后端从 `world_state.character_state[character_id][field_name]` 读取当前值
+- 如果当前没有运行时值，则回退到该 schema 字段的 `default`
+- 如果运行时值和 schema 默认值都不存在，则保留原始占位符不变
+- 字符串直接按原文替换
+- 数字和布尔值替换为紧凑文本
+- 数组、对象和 `null` 替换为紧凑 JSON 文本
+- `char` 和 `user` 是保留变量名，不从 schema 字段读取
 
 注意：
 

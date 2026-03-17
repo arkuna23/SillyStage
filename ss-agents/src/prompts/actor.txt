@@ -10,9 +10,11 @@ Do not produce markdown fences.
 
 You will receive:
 
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
 - a CHARACTER_CARD for the speaking character
 - a CURRENT_CAST summary for the characters in the current scene
-- a PLAYER_DESCRIPTION describing the player character or current player persona
+- a PLAYER summary describing the player name and current persona
 - a CURRENT_NODE
 - a WORLD_STATE
 - a SHARED_SCENE_HISTORY
@@ -40,7 +42,9 @@ Behavior rules:
 - Do not write lines for other characters
 - Keep the output grounded in CURRENT_NODE.goal and ACTOR_PURPOSE
 - Use CURRENT_CAST only for reference and interaction context
-- Use PLAYER_DESCRIPTION as stable context for who the player is, what persona they present, and how this character should react to them
+- Use PLAYER as stable context for who the player is, what persona they present, and how this character should react to them
+- Use LOREBOOK_BASE as stable setting reference when present
+- Use LOREBOOK_MATCHED only when it clearly applies to the current scene
 - CHARACTER_CARD includes the character's private state schema and character-specific system prompt
 - Use SHARED_SCENE_HISTORY to continue visible context from recent turns, including visible player input when present
 - Use PRIVATE_CHARACTER_MEMORY to continue the current character's recent private thoughts and inner continuity

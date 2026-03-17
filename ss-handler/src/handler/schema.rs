@@ -22,6 +22,7 @@ impl Handler {
         if self.store.get_schema(&schema_id).await?.is_some() {
             return Err(HandlerError::DuplicateSchema(schema_id));
         }
+        validate_schema_fields(&params.fields)?;
 
         let record = SchemaRecord {
             schema_id,
@@ -93,6 +94,7 @@ impl Handler {
             record.tags = tags;
         }
         if let Some(fields) = params.fields {
+            validate_schema_fields(&fields)?;
             record.fields = fields;
         }
 
@@ -177,4 +179,16 @@ fn schema_payload_from_record(record: &SchemaRecord) -> SchemaPayload {
         tags: record.tags.clone(),
         fields: record.fields.clone(),
     }
+}
+
+fn validate_schema_fields(
+    fields: &std::collections::HashMap<String, state::StateFieldSchema>,
+) -> Result<(), HandlerError> {
+    for (key, field) in fields {
+        field.validate().map_err(|error| {
+            HandlerError::InvalidSchemaDefinition(format!("field '{key}' {error}"))
+        })?;
+    }
+
+    Ok(())
 }

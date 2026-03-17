@@ -31,6 +31,7 @@ use crate::logging::{
     summarize_director_result, summarize_keeper_response, summarize_narrator_response,
     summarize_planner_response,
 };
+use crate::lorebook::{LorebookPromptSections, build_lorebook_prompt_sections};
 use crate::runtime::{RuntimeError, RuntimeState, StoryResources};
 
 const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
@@ -226,12 +227,17 @@ impl Engine {
             };
 
             let director_result = {
+                let current_node_id = self.runtime_state.world_state().current_node().to_owned();
+                let lorebook_sections =
+                    self.runtime_lorebook_sections(&current_node_id, &player_input);
                 let parts = self.runtime_state.engine_parts();
                 self.director
                     .decide_strict(
                         parts.runtime_graph,
                         parts.world_state,
                         parts.character_cards,
+                        lorebook_sections.base.as_deref(),
+                        lorebook_sections.matched.as_deref(),
                         parts.player_name,
                         parts.player_description,
                         parts.player_state_schema,
@@ -304,7 +310,7 @@ impl Engine {
                         let purpose = purpose.clone();
                         yield EngineEvent::NarratorStarted { beat_index, purpose: purpose.clone() };
 
-                        let narrator_request = match self.build_narrator_request(&director_result, purpose.clone()) {
+                        let narrator_request = match self.build_narrator_request(&director_result, purpose.clone(), &player_input) {
                             Ok(request) => request,
                             Err(error) => {
                                 yield self.turn_failed_event(EngineStage::Narrator, error);
@@ -386,6 +392,10 @@ impl Engine {
                         };
 
                         let mut actor_stream = {
+                            let current_node_id =
+                                self.runtime_state.world_state().current_node().to_owned();
+                            let lorebook_sections =
+                                self.runtime_lorebook_sections(&current_node_id, &player_input);
                             let actor_stream_result = {
                                 let actor = &self.actor;
                                 let parts = self.runtime_state.engine_parts();
@@ -412,7 +422,6 @@ impl Engine {
                                                     ),
                                                 )
                                             });
-
                                         match current_node {
                                             Ok(current_node) => {
                                                 let current_cast_ids =
@@ -439,6 +448,8 @@ impl Engine {
                                                                     character,
                                                                     cast: parts.character_cards,
                                                                     current_cast_ids: &current_cast_ids,
+                                                                    lorebook_base: lorebook_sections.base.clone(),
+                                                                    lorebook_matched: lorebook_sections.matched.clone(),
                                                                     player_name: parts.player_name,
                                                                     player_description: parts.player_description,
                                                                     purpose: purpose.clone(),
@@ -618,6 +629,7 @@ impl Engine {
 
     async fn run_first_keeper(&self, player_input: &str) -> Result<KeeperResponse, EngineError> {
         let current_node = self.runtime_state.current_node()?;
+        let lorebook_sections = self.runtime_lorebook_sections(&current_node.id, player_input);
 
         self.keeper
             .keep(KeeperRequest {
@@ -627,6 +639,8 @@ impl Engine {
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
                 current_cast_ids: self.runtime_state.world_state().active_characters(),
+                lorebook_base: lorebook_sections.base.clone(),
+                lorebook_matched: lorebook_sections.matched.clone(),
                 player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
@@ -644,6 +658,7 @@ impl Engine {
         completed_beats: &[ExecutedBeat],
     ) -> Result<KeeperResponse, EngineError> {
         let current_node = self.runtime_state.current_node()?;
+        let lorebook_sections = self.runtime_lorebook_sections(&current_node.id, player_input);
         let previous_node_index = self
             .runtime_state
             .runtime_graph()
@@ -672,6 +687,8 @@ impl Engine {
                 current_node,
                 character_cards: self.runtime_state.character_cards(),
                 current_cast_ids: self.runtime_state.world_state().active_characters(),
+                lorebook_base: lorebook_sections.base.clone(),
+                lorebook_matched: lorebook_sections.matched.clone(),
                 player_name: self.runtime_state.player_name(),
                 player_description: self.runtime_state.player_description(),
                 player_state_schema: self.runtime_state.player_state_schema(),
@@ -686,6 +703,7 @@ impl Engine {
         &self,
         director_result: &DirectorResult,
         purpose: NarratorPurpose,
+        player_input: &str,
     ) -> Result<NarratorRequest<'_>, EngineError> {
         let previous_node = if matches!(purpose, NarratorPurpose::DescribeTransition) {
             let previous_node_index = self
@@ -707,18 +725,51 @@ impl Engine {
         } else {
             None
         };
+        let current_node = self.runtime_state.current_node()?;
+        let lorebook_sections = self.runtime_lorebook_sections(&current_node.id, player_input);
 
         Ok(NarratorRequest {
             purpose,
             previous_node,
-            current_node: self.runtime_state.current_node()?,
+            current_node,
             character_cards: self.runtime_state.character_cards(),
             current_cast_ids: self.runtime_state.world_state().active_characters(),
+            lorebook_base: lorebook_sections.base,
+            lorebook_matched: lorebook_sections.matched,
             player_name: self.runtime_state.player_name(),
             player_description: self.runtime_state.player_description(),
             player_state_schema: self.runtime_state.player_state_schema(),
             world_state: self.runtime_state.world_state(),
         })
+    }
+
+    fn runtime_lorebook_sections(
+        &self,
+        current_node_id: &str,
+        player_input: &str,
+    ) -> LorebookPromptSections {
+        let node_texts = self
+            .runtime_state
+            .runtime_graph()
+            .get_node_index(current_node_id)
+            .and_then(|index| self.runtime_state.runtime_graph().graph.node_weight(index))
+            .map(|node| vec![node.title.as_str(), node.scene.as_str(), node.goal.as_str()])
+            .unwrap_or_default();
+        let history_texts = self
+            .runtime_state
+            .world_state()
+            .actor_shared_history()
+            .iter()
+            .rev()
+            .take(DEFAULT_SHARED_MEMORY_LIMIT)
+            .map(|entry| entry.text.as_str())
+            .collect::<Vec<_>>();
+        let mut match_inputs = Vec::with_capacity(node_texts.len() + history_texts.len() + 1);
+        match_inputs.extend(node_texts);
+        match_inputs.extend(history_texts);
+        match_inputs.push(player_input);
+
+        build_lorebook_prompt_sections(self.runtime_state.lorebook_entries(), &match_inputs)
     }
 
     fn turn_failed_event(&self, stage: EngineStage, error: impl Into<EngineError>) -> EngineEvent {
@@ -758,10 +809,7 @@ impl Engine {
                     updated_at_ms: now,
                 };
                 self.runtime_state.upsert_session_character(
-                    session_character_record_to_character_card(
-                        &record,
-                        self.runtime_state.player_name(),
-                    ),
+                    session_character_record_to_character_card(&record),
                 )?;
                 self.runtime_state
                     .world_state_mut()
@@ -879,10 +927,7 @@ fn action_session_character_id(action: &SessionCharacterAction) -> &str {
     }
 }
 
-fn session_character_record_to_character_card(
-    character: &SessionCharacterRecord,
-    player_name: Option<&str>,
-) -> CharacterCard {
+fn session_character_record_to_character_card(character: &SessionCharacterRecord) -> CharacterCard {
     CharacterCard {
         id: character.session_character_id.clone(),
         name: character.display_name.clone(),
@@ -891,7 +936,6 @@ fn session_character_record_to_character_card(
         state_schema: Default::default(),
         system_prompt: character.system_prompt.clone(),
     }
-    .rendered_with_player_name(player_name)
 }
 
 fn now_timestamp_ms() -> u64 {
@@ -912,10 +956,19 @@ pub async fn generate_story_plan(
         agent_configs.planner.temperature,
         agent_configs.planner.max_tokens,
     )?;
+    let lorebook_sections = build_lorebook_prompt_sections(
+        resources.lorebook_entries(),
+        &[
+            resources.story_concept(),
+            resources.planned_story().unwrap_or(""),
+        ],
+    );
     planner
         .plan(PlannerRequest {
             story_concept: resources.story_concept(),
             available_characters: resources.character_cards(),
+            lorebook_base: lorebook_sections.base,
+            lorebook_matched: lorebook_sections.matched,
         })
         .await
         .inspect(|response| {
@@ -953,6 +1006,13 @@ pub async fn generate_story_graph(
                 .unwrap_or(DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS),
         ),
     );
+    let lorebook_sections = build_lorebook_prompt_sections(
+        resources.lorebook_entries(),
+        &[
+            resources.story_concept(),
+            resources.planned_story().unwrap_or(""),
+        ],
+    );
     architect
         .generate_graph(ArchitectRequest {
             story_concept: resources.story_concept(),
@@ -960,6 +1020,8 @@ pub async fn generate_story_graph(
             world_state_schema: resources.world_state_schema_seed(),
             player_state_schema: resources.player_state_schema_seed(),
             available_characters: resources.character_cards(),
+            lorebook_base: lorebook_sections.base.as_deref(),
+            lorebook_matched: lorebook_sections.matched.as_deref(),
         })
         .await
         .inspect(|response| {

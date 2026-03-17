@@ -30,12 +30,23 @@ Template variables:
 
 - `{{char}}`: replaced at runtime with the character display name
 - `{{user}}`: replaced at runtime with the current player name; falls back to `User` if no player name is set
+- `{{field_name}}`: replaced at runtime with the current character's own state value for that schema field
 
 Replacement applies to:
 
 - `personality`
 - `style`
 - `system_prompt`
+
+Schema variable rules:
+
+- The backend reads values from `world_state.character_state[character_id][field_name]`
+- If no runtime value exists, the backend falls back to the schema field `default`
+- If neither a runtime value nor a schema default exists, the placeholder is left unchanged
+- Strings render as plain text
+- Numbers and booleans render as compact plain text
+- Arrays, objects, and `null` render as compact JSON text
+- `char` and `user` are reserved names and do not come from schema fields
 
 Important:
 

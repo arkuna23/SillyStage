@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::sync::Arc;
 
 use crate::actor::CharacterCard;
-use crate::prompt::{compact_json, render_sections};
+use crate::prompt::{
+    CharacterTemplateContext, compact_json, render_character_text, render_sections,
+};
 use llm::{ChatRequest, LlmApi};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -13,13 +15,15 @@ use story::{NarrativeNode, StoryGraph, Transition};
 use tracing::{error, warn};
 
 /// Architect 的输入
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ArchitectRequest<'a> {
     pub story_concept: &'a str,
     pub planned_story: Option<&'a str>,
     pub world_state_schema: Option<&'a WorldStateSchema>,
     pub player_state_schema: Option<&'a PlayerStateSchema>,
     pub available_characters: &'a [CharacterCard],
+    pub lorebook_base: Option<&'a str>,
+    pub lorebook_matched: Option<&'a str>,
 }
 
 /// Architect 的输出
@@ -32,7 +36,7 @@ pub struct ArchitectResponse {
     pub output: llm::ChatResponse,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ArchitectDraftInitRequest<'a> {
     pub story_concept: &'a str,
     pub planned_story: &'a str,
@@ -45,9 +49,11 @@ pub struct ArchitectDraftInitRequest<'a> {
     pub world_state_schema: Option<&'a WorldStateSchema>,
     pub player_state_schema: Option<&'a PlayerStateSchema>,
     pub available_characters: &'a [CharacterCard],
+    pub lorebook_base: Option<&'a str>,
+    pub lorebook_matched: Option<&'a str>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct ArchitectDraftContinueRequest<'a> {
     pub story_concept: &'a str,
     pub current_section: &'a str,
@@ -60,6 +66,8 @@ pub struct ArchitectDraftContinueRequest<'a> {
     pub world_state_schema: &'a WorldStateSchema,
     pub player_state_schema: &'a PlayerStateSchema,
     pub available_characters: &'a [CharacterCard],
+    pub lorebook_base: Option<&'a str>,
+    pub lorebook_matched: Option<&'a str>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -139,6 +147,8 @@ struct CompactStateField {
     value_type: state::StateValueType,
     #[serde(skip_serializing_if = "Option::is_none")]
     default: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    enum_values: Option<Vec<Value>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -227,6 +237,8 @@ impl Architect {
                 world_state_schema: req.world_state_schema,
                 player_state_schema: req.player_state_schema,
                 available_characters: req.available_characters,
+                lorebook_base: req.lorebook_base,
+                lorebook_matched: req.lorebook_matched,
             },
         )?;
         let (bundle, output) = self
@@ -286,6 +298,8 @@ impl Architect {
                 world_state_schema: Some(req.world_state_schema),
                 player_state_schema: Some(req.player_state_schema),
                 available_characters: req.available_characters,
+                lorebook_base: req.lorebook_base,
+                lorebook_matched: req.lorebook_matched,
             },
         )?;
         let (bundle, output) = self
@@ -327,18 +341,19 @@ impl Architect {
             .iter()
             .map(compact_character_summary)
             .collect();
-        let stable = render_sections(&[
-            ("STORY_CONCEPT", req.story_concept.to_owned()),
-            (
-                "PLANNED_STORY",
-                req.planned_story.unwrap_or("null").to_owned(),
-            ),
-            (
-                "AVAILABLE_CHARACTERS",
-                render_architect_character_summaries(&character_summaries),
-            ),
-        ]);
-        let dynamic = render_sections(&[
+        let mut stable_sections = vec![("STORY_CONCEPT", req.story_concept.to_owned())];
+        if let Some(lorebook_base) = req.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLANNED_STORY",
+            req.planned_story.unwrap_or("null").to_owned(),
+        ));
+        stable_sections.push((
+            "AVAILABLE_CHARACTERS",
+            render_architect_character_summaries(&character_summaries),
+        ));
+        let mut dynamic_sections = vec![
             (
                 "WORLD_STATE_SCHEMA_SEED",
                 render_compact_schema_text(req.world_state_schema.map(|schema| &schema.fields)),
@@ -347,7 +362,13 @@ impl Architect {
                 "PLAYER_STATE_SCHEMA_SEED",
                 render_compact_schema_text(req.player_state_schema.map(|schema| &schema.fields)),
             ),
-        ]);
+        ];
+        if let Some(lorebook_matched) = req.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable = render_sections(&stable_sections);
+        let dynamic = render_sections(&dynamic_sections);
 
         Ok(vec![stable, dynamic])
     }
@@ -364,31 +385,33 @@ impl Architect {
             .collect();
 
         match kind {
-            DraftPromptKind::Init => Ok(vec![
-                render_sections(&[
-                    ("STORY_CONCEPT", input.story_concept.to_owned()),
-                    (
-                        "PLANNED_STORY",
-                        input.planned_story.unwrap_or("null").to_owned(),
+            DraftPromptKind::Init => {
+                let mut stable_sections = vec![("STORY_CONCEPT", input.story_concept.to_owned())];
+                if let Some(lorebook_base) = input.lorebook_base.as_deref() {
+                    stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+                }
+                stable_sections.push((
+                    "PLANNED_STORY",
+                    input.planned_story.unwrap_or("null").to_owned(),
+                ));
+                stable_sections.push((
+                    "AVAILABLE_CHARACTERS",
+                    render_architect_character_summaries(&character_summaries),
+                ));
+                stable_sections.push((
+                    "WORLD_STATE_SCHEMA_SEED",
+                    render_compact_schema_text(
+                        input.world_state_schema.map(|schema| &schema.fields),
                     ),
-                    (
-                        "AVAILABLE_CHARACTERS",
-                        render_architect_character_summaries(&character_summaries),
+                ));
+                stable_sections.push((
+                    "PLAYER_STATE_SCHEMA_SEED",
+                    render_compact_schema_text(
+                        input.player_state_schema.map(|schema| &schema.fields),
                     ),
-                    (
-                        "WORLD_STATE_SCHEMA_SEED",
-                        render_compact_schema_text(
-                            input.world_state_schema.map(|schema| &schema.fields),
-                        ),
-                    ),
-                    (
-                        "PLAYER_STATE_SCHEMA_SEED",
-                        render_compact_schema_text(
-                            input.player_state_schema.map(|schema| &schema.fields),
-                        ),
-                    ),
-                ]),
-                render_sections(&[
+                ));
+
+                let mut dynamic_sections = vec![
                     ("CURRENT_SECTION", input.current_section.to_owned()),
                     ("SECTION_INDEX", input.section_index.to_string()),
                     ("TOTAL_SECTIONS", input.total_sections.to_string()),
@@ -409,33 +432,43 @@ impl Architect {
                         )
                         .map_err(ArchitectError::SerializeRecentNodes)?,
                     ),
-                ]),
-            ]),
-            DraftPromptKind::Continue => Ok(vec![
-                render_sections(&[
-                    ("STORY_CONCEPT", input.story_concept.to_owned()),
-                    (
-                        "AVAILABLE_CHARACTERS",
-                        render_architect_character_summaries(&character_summaries),
+                ];
+                if let Some(lorebook_matched) = input.lorebook_matched.as_deref() {
+                    dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+                }
+
+                Ok(vec![
+                    render_sections(&stable_sections),
+                    render_sections(&dynamic_sections),
+                ])
+            }
+            DraftPromptKind::Continue => {
+                let mut stable_sections = vec![("STORY_CONCEPT", input.story_concept.to_owned())];
+                if let Some(lorebook_base) = input.lorebook_base.as_deref() {
+                    stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+                }
+                stable_sections.push((
+                    "AVAILABLE_CHARACTERS",
+                    render_architect_character_summaries(&character_summaries),
+                ));
+                stable_sections.push((
+                    "WORLD_STATE_SCHEMA",
+                    render_compact_schema_text(
+                        input.world_state_schema.map(|schema| &schema.fields),
                     ),
-                    (
-                        "WORLD_STATE_SCHEMA",
-                        render_compact_schema_text(
-                            input.world_state_schema.map(|schema| &schema.fields),
-                        ),
+                ));
+                stable_sections.push((
+                    "PLAYER_STATE_SCHEMA",
+                    render_compact_schema_text(
+                        input.player_state_schema.map(|schema| &schema.fields),
                     ),
-                    (
-                        "PLAYER_STATE_SCHEMA",
-                        render_compact_schema_text(
-                            input.player_state_schema.map(|schema| &schema.fields),
-                        ),
-                    ),
-                    (
-                        "SECTION_SUMMARIES",
-                        render_section_summaries(input.section_summaries),
-                    ),
-                ]),
-                render_sections(&[
+                ));
+                stable_sections.push((
+                    "SECTION_SUMMARIES",
+                    render_section_summaries(input.section_summaries),
+                ));
+
+                let mut dynamic_sections = vec![
                     ("CURRENT_SECTION", input.current_section.to_owned()),
                     ("SECTION_INDEX", input.section_index.to_string()),
                     ("TOTAL_SECTIONS", input.total_sections.to_string()),
@@ -456,8 +489,16 @@ impl Architect {
                         )
                         .map_err(ArchitectError::SerializeRecentNodes)?,
                     ),
-                ]),
-            ]),
+                ];
+                if let Some(lorebook_matched) = input.lorebook_matched.as_deref() {
+                    dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+                }
+
+                Ok(vec![
+                    render_sections(&stable_sections),
+                    render_sections(&dynamic_sections),
+                ])
+            }
         }
     }
 
@@ -591,7 +632,7 @@ enum DraftPromptKind {
     Continue,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 struct DraftPromptInput<'a> {
     story_concept: &'a str,
     planned_story: Option<&'a str>,
@@ -605,6 +646,8 @@ struct DraftPromptInput<'a> {
     world_state_schema: Option<&'a WorldStateSchema>,
     player_state_schema: Option<&'a PlayerStateSchema>,
     available_characters: &'a [CharacterCard],
+    lorebook_base: Option<&'a str>,
+    lorebook_matched: Option<&'a str>,
 }
 
 /// Architect 错误类型
@@ -713,9 +756,15 @@ impl ArchitectRepairTarget {
 }
 
 fn compact_character_summary(character: &CharacterCard) -> ArchitectCharacterSummary {
+    let template_context = CharacterTemplateContext {
+        character_name: &character.name,
+        player_name: None,
+        state_schema: &character.state_schema,
+        state_values: None,
+    };
     let role_summary_parts = vec![
-        render_character_text(&character.personality, &character.name, None),
-        render_character_text(&character.style, &character.name, None),
+        render_character_text(&character.personality, &template_context),
+        render_character_text(&character.style, &template_context),
     ];
 
     ArchitectCharacterSummary {
@@ -738,6 +787,7 @@ fn compact_schema_map(
                     CompactStateField {
                         value_type: value.value_type.clone(),
                         default: value.default.clone(),
+                        enum_values: value.enum_values.clone(),
                     },
                 )
             })
@@ -789,6 +839,12 @@ fn render_state_schema_fields_from_compact(fields: &BTreeMap<String, CompactStat
                 line.push_str(&format!(
                     " default={}",
                     compact_json(default).unwrap_or_default()
+                ));
+            }
+            if let Some(enum_values) = &field.enum_values {
+                line.push_str(&format!(
+                    " enum={}",
+                    compact_json(enum_values).unwrap_or_default()
                 ));
             }
             line
@@ -1027,4 +1083,3 @@ fn truncate_text(text: &str, max_chars: usize) -> String {
     }
     output
 }
-use crate::prompt::render_character_text;

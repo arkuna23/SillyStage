@@ -108,7 +108,10 @@ fn sample_scene_node() -> NarrativeNode {
         "Decide whether to trust the guide.",
         vec!["merchant".to_owned(), "guide".to_owned()],
         vec![],
-        vec![],
+        vec![state::StateOp::SetState {
+            key: "entered_dock".to_owned(),
+            value: json!(true),
+        }],
     )
 }
 
@@ -125,6 +128,8 @@ fn scene_request<'a>(
         current_node,
         character_cards,
         current_cast_ids: &current_node.characters,
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema,
@@ -262,7 +267,10 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         "Reach the dock.",
         vec!["merchant".to_owned()],
         vec![],
-        vec![],
+        vec![state::StateOp::SetState {
+            key: "entered_market".to_owned(),
+            value: json!(true),
+        }],
     );
     let current_node = sample_scene_node();
 
@@ -272,6 +280,8 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         current_node: &current_node,
         character_cards: &character_cards,
         current_cast_ids: &current_node.characters,
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier trying to get medicine through the flooded district.",
         player_state_schema: &player_state_schema,
@@ -291,8 +301,11 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("PREVIOUS_NODE"));
     assert!(user_message.contains("shared_history"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(!user_message.contains("on_enter_updates"));
+    assert!(!user_message.contains("entered_market"));
+    assert!(!user_message.contains("entered_dock"));
     assert!(!user_message.contains("PLAYER_NAME"));
-    assert!(user_message.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("PLAYER:"));
     assert!(
         user_message
             .contains("A cautious courier trying to get medicine through the flooded district.")

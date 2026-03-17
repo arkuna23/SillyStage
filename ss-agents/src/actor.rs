@@ -8,13 +8,15 @@ use futures_core::Stream;
 use futures_util::{StreamExt, stream};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use state::schema::StateFieldSchema;
 use tracing::error;
 
 use crate::director::ActorPurpose;
 use crate::prompt::{
-    compact_json, render_actor_history, render_actor_world_state, render_character_summaries,
-    render_character_text, render_node, render_sections, render_state_schema_fields,
+    CharacterTemplateContext, compact_json, render_actor_history, render_actor_world_state,
+    render_character_summaries, render_character_text, render_node, render_player, render_sections,
+    render_state_schema_fields,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
@@ -36,34 +38,71 @@ pub struct CharacterCard {
 }
 
 impl CharacterCard {
-    pub fn rendered_with_player_name(&self, player_name: Option<&str>) -> Self {
+    pub fn rendered_with_template_values(
+        &self,
+        player_name: Option<&str>,
+        state_values: Option<&HashMap<String, Value>>,
+    ) -> Self {
+        let template_context = self.template_context(player_name, state_values);
+
         Self {
             id: self.id.clone(),
             name: self.name.clone(),
-            personality: render_character_text(&self.personality, &self.name, player_name),
-            style: render_character_text(&self.style, &self.name, player_name),
+            personality: render_character_text(&self.personality, &template_context),
+            style: render_character_text(&self.style, &template_context),
             state_schema: self.state_schema.clone(),
-            system_prompt: render_character_text(&self.system_prompt, &self.name, player_name),
+            system_prompt: render_character_text(&self.system_prompt, &template_context),
         }
+    }
+
+    pub fn rendered_with_player_name(&self, player_name: Option<&str>) -> Self {
+        self.rendered_with_template_values(player_name, None)
     }
 
     pub fn summary(&self) -> CharacterCardSummary {
+        self.summary_with_template_values(None, None)
+    }
+
+    pub fn summary_with_template_values(
+        &self,
+        player_name: Option<&str>,
+        state_values: Option<&HashMap<String, Value>>,
+    ) -> CharacterCardSummary {
+        let template_context = self.template_context(player_name, state_values);
+
         CharacterCardSummary {
             id: self.id.clone(),
             name: self.name.clone(),
-            personality: self.personality.clone(),
-            style: self.style.clone(),
+            personality: render_character_text(&self.personality, &template_context),
+            style: render_character_text(&self.style, &template_context),
             state_schema: self.state_schema.clone(),
         }
     }
 
-    pub(crate) fn summary_ref(&self) -> CharacterCardSummaryRef<'_> {
+    pub(crate) fn summary_ref<'a>(
+        &'a self,
+        state_values: Option<&'a HashMap<String, Value>>,
+    ) -> CharacterCardSummaryRef<'a> {
         CharacterCardSummaryRef {
             id: &self.id,
             name: &self.name,
             personality: &self.personality,
             style: &self.style,
             state_schema: &self.state_schema,
+            state_values,
+        }
+    }
+
+    fn template_context<'a>(
+        &'a self,
+        player_name: Option<&'a str>,
+        state_values: Option<&'a HashMap<String, Value>>,
+    ) -> CharacterTemplateContext<'a> {
+        CharacterTemplateContext {
+            character_name: &self.name,
+            player_name,
+            state_schema: &self.state_schema,
+            state_values,
         }
     }
 }
@@ -85,6 +124,7 @@ pub(crate) struct CharacterCardSummaryRef<'a> {
     pub(crate) personality: &'a str,
     pub(crate) style: &'a str,
     pub(crate) state_schema: &'a HashMap<String, StateFieldSchema>,
+    pub(crate) state_values: Option<&'a HashMap<String, Value>>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,6 +132,8 @@ pub struct ActorRequest<'a> {
     pub character: &'a CharacterCard,
     pub cast: &'a [CharacterCard],
     pub current_cast_ids: &'a [String],
+    pub lorebook_base: Option<String>,
+    pub lorebook_matched: Option<String>,
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub purpose: ActorPurpose,
@@ -199,7 +241,8 @@ impl Actor {
     ) -> Result<ActorEventStream<'b>, ActorError> {
         Self::validate_request(&request)?;
 
-        let character_prompt = self.build_character_prompt(request.character, request.player_name)?;
+        let character_prompt =
+            self.build_character_prompt(request.character, request.player_name, world_state)?;
         let stream = self
             .llm
             .chat_stream({
@@ -322,17 +365,21 @@ impl Actor {
         &self,
         character: &CharacterCard,
         player_name: Option<&str>,
+        world_state: &WorldState,
     ) -> Result<String, ActorError> {
+        let template_context =
+            character.template_context(player_name, world_state.character_states(&character.id));
+
         Ok(render_sections(&[
             ("CHARACTER_ID", character.id.clone()),
             ("CHARACTER_NAME", character.name.clone()),
             (
                 "CHARACTER_PERSONALITY",
-                render_character_text(&character.personality, &character.name, player_name),
+                render_character_text(&character.personality, &template_context),
             ),
             (
                 "CHARACTER_STYLE",
-                render_character_text(&character.style, &character.name, player_name),
+                render_character_text(&character.style, &template_context),
             ),
             (
                 "CHARACTER_STATE_SCHEMA",
@@ -340,7 +387,7 @@ impl Actor {
             ),
             (
                 "CHARACTER_SYSTEM_PROMPT",
-                render_character_text(&character.system_prompt, &character.name, player_name),
+                render_character_text(&character.system_prompt, &template_context),
             ),
         ]))
     }
@@ -352,19 +399,25 @@ impl Actor {
     ) -> Result<(String, String), ActorError> {
         let purpose = compact_json(&request.purpose).map_err(ActorError::SerializePromptData)?;
         let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
-        let stable_prompt = render_sections(&[
-            ("ACTOR_PURPOSE", purpose),
-            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
-            (
-                "CURRENT_CAST",
-                render_character_summaries(
-                    &self.current_cast_summaries(request)?,
-                    request.player_name,
-                ),
+        let mut stable_sections = Vec::new();
+        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLAYER",
+            render_player(request.player_name, request.player_description),
+        ));
+        stable_sections.push(("ACTOR_PURPOSE", purpose));
+        stable_sections.push((
+            "CURRENT_CAST",
+            render_character_summaries(
+                &self.current_cast_summaries(request, world_state)?,
+                request.player_name,
             ),
-            ("CURRENT_NODE", render_node(request.node)),
-        ]);
-        let dynamic_prompt = render_sections(&[
+        ));
+        stable_sections.push(("CURRENT_NODE", render_node(request.node)));
+
+        let mut dynamic_sections = vec![
             ("WORLD_STATE", render_actor_world_state(world_state)),
             (
                 "SHARED_SCENE_HISTORY",
@@ -376,7 +429,13 @@ impl Actor {
                     &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
                 ),
             ),
-        ]);
+        ];
+        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -384,6 +443,7 @@ impl Actor {
     fn current_cast_summaries<'b>(
         &self,
         request: &ActorRequest<'b>,
+        world_state: &'b WorldState,
     ) -> Result<Vec<CharacterCardSummaryRef<'b>>, ActorError> {
         let cast_by_id: HashMap<&str, &CharacterCard> = request
             .cast
@@ -397,7 +457,7 @@ impl Actor {
             .map(|character_id| {
                 cast_by_id
                     .get(character_id.as_str())
-                    .map(|card| card.summary_ref())
+                    .map(|card| card.summary_ref(world_state.character_states(character_id)))
                     .ok_or_else(|| {
                         ActorError::InvalidRequest(format!(
                             "missing character card for current cast id '{character_id}'"

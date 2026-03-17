@@ -76,6 +76,9 @@
 - `tags`
 - `fields`
 
+`fields` 现在还可以通过 `enum_values` 约束标量字段的允许值，这样既方便后端校验，也能让
+LLM 更新变量时更稳定地落在预期取值集合内。
+
 ## 2. 准备玩家设定
 
 玩家设定现在是独立资源 `player_profile`，可以有多个。
@@ -174,11 +177,11 @@
 1. `story_draft.start` 先读取 `story_resources`
 2. 如果缺少 `planned_story`，服务端会先内部执行一次 `story.generate_plan`
 3. `Architect` 只生成第一段大纲对应的节点，以及初始 schema 和 introduction
-4. 服务端把 partial graph 和进度保存到 `story_draft`
+4. 服务端把 partial graph、进度，以及调用方传入的 `common_variables` 一起保存到 `story_draft`
 5. 每次 `story_draft.continue` 再生成下一段 section，并合并进同一个 draft
-6. `story_draft.finalize` 对合并后的图做校验，再创建最终 `story`
+6. `story_draft.finalize` 对合并后的图做校验，再创建最终 `story`，并继承 draft 中的 `common_variables`
 
-`story.generate` 仍然保留，作为一次性封装，内部就是跑完整个 draft 流程。
+`story.generate` 仍然保留，作为一次性封装，内部就是跑完整个 draft 流程。它同样支持可选的 `common_variables` 输入，并会写入最终 story。
 
 这一阶段会：
 
@@ -201,6 +204,7 @@
 - `world_schema_id`
 - `player_schema_id`
 - `introduction`
+- `common_variables`
 
 ## 7. 启动 session
 
@@ -230,6 +234,9 @@
 
 - `session.get_variables`
 - `session.update_variables`
+
+如果前端还想固定展示一部分常用变量，应额外读取 `story.common_variables`，再把这些定义
+映射到 `session.get_variables` 或 runtime snapshot 返回的实时值上。
 
 ## 8. session 内部状态
 

@@ -43,7 +43,10 @@ fn sample_node() -> NarrativeNode {
         "Convince the traveler to consider a deal.",
         vec!["merchant".to_owned()],
         vec![],
-        vec![],
+        vec![state::StateOp::SetState {
+            key: "entered_intro".to_owned(),
+            value: json!(true),
+        }],
     )
 }
 
@@ -56,6 +59,8 @@ fn sample_request<'a>(
         character,
         cast,
         current_cast_ids: &node.characters,
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier carrying a sealed satchel and speaking plainly.",
         purpose: ActorPurpose::AdvanceGoal,
@@ -315,11 +320,25 @@ async fn perform_stream_sends_character_specific_system_prompt() {
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
     assert_eq!(request.messages.len(), 4);
-    assert!(request.messages[1].content.contains("Old Merchant keeps a careful eye on Courier."));
-    assert!(request.messages[1].content.contains("Measured when speaking to Courier."));
-    assert!(request.messages[1].content.contains("Address Courier directly as Old Merchant."));
+    assert!(
+        request.messages[1]
+            .content
+            .contains("Old Merchant keeps a careful eye on Courier.")
+    );
+    assert!(
+        request.messages[1]
+            .content
+            .contains("Measured when speaking to Courier.")
+    );
+    assert!(
+        request.messages[1]
+            .content
+            .contains("Address Courier directly as Old Merchant.")
+    );
     assert!(!request.messages[2].content.contains("PLAYER_NAME"));
     assert!(request.messages[2].content.contains("CURRENT_NODE"));
+    assert!(!request.messages[2].content.contains("on_enter_updates"));
+    assert!(!request.messages[2].content.contains("entered_intro"));
     assert!(
         request.messages[2]
             .content
@@ -395,7 +414,78 @@ async fn perform_stream_uses_user_fallback_for_character_templates() {
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
 
-    assert!(request.messages[1].content.contains("Speak to User as Old Merchant."));
+    assert!(
+        request.messages[1]
+            .content
+            .contains("Speak to User as Old Merchant.")
+    );
+}
+
+#[tokio::test]
+async fn perform_stream_renders_character_schema_templates_from_runtime_state() {
+    let llm = Arc::new(MockLlm::with_stream_chunks(vec![
+        Ok(ChatChunk {
+            delta: "<dialogue>Understood.</dialogue>".to_owned(),
+            model: Some("test-model".to_owned()),
+            finish_reason: None,
+            done: false,
+            usage: None,
+        }),
+        Ok(ChatChunk {
+            delta: String::new(),
+            model: Some("test-model".to_owned()),
+            finish_reason: Some("stop".to_owned()),
+            done: true,
+            usage: None,
+        }),
+    ]));
+    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let mut world_state = sample_world_state();
+    world_state.set_character_state("merchant", "trust", json!(3));
+    world_state.set_character_state("merchant", "inventory", json!(["lantern", "rope"]));
+    world_state.set_character_state("merchant", "profile", json!({"mood": "alert"}));
+
+    let mut character = sample_card();
+    character.state_schema = HashMap::from([
+        (
+            "trust".to_owned(),
+            StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+        ),
+        (
+            "inventory".to_owned(),
+            StateFieldSchema::new(StateValueType::Array).with_default(json!(["ledger"])),
+        ),
+        (
+            "profile".to_owned(),
+            StateFieldSchema::new(StateValueType::Object).with_default(json!({"mood": "wary"})),
+        ),
+    ]);
+    character.system_prompt =
+        "trust={{trust}} inventory={{inventory}} profile={{profile}} missing={{missing}}"
+            .to_owned();
+    let cast = vec![character.clone()];
+    let node = sample_node();
+
+    let _ = actor
+        .perform(sample_request(&character, &cast, &node), &mut world_state)
+        .await
+        .expect("perform should work");
+
+    let requests = llm.recorded_requests();
+    let request = requests.first().expect("request should be recorded");
+
+    assert!(request.messages[1].content.contains("trust=3"));
+    assert!(
+        request.messages[1]
+            .content
+            .contains("inventory=[\"lantern\",\"rope\"]")
+    );
+    assert!(
+        request.messages[1]
+            .content
+            .contains("profile={\"mood\":\"alert\"}")
+    );
+    assert!(request.messages[1].content.contains("missing={{missing}}"));
 }
 
 #[tokio::test]

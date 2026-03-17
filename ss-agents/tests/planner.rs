@@ -37,7 +37,7 @@ async fn planner_returns_editable_story_script_and_character_summary() {
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Haru".to_owned(),
-        personality: "greedy but friendly trader".to_owned(),
+        personality: "trust={{trust}}".to_owned(),
         style: "talkative".to_owned(),
         state_schema: sample_state_schema(),
         system_prompt: "Stay in character.".to_owned(),
@@ -47,6 +47,8 @@ async fn planner_returns_editable_story_script_and_character_summary() {
         .plan(PlannerRequest {
             story_concept: "A courier negotiates passage through a flooded dock.",
             available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
         })
         .await
         .expect("planner should succeed");
@@ -60,5 +62,6 @@ async fn planner_returns_editable_story_script_and_character_summary() {
 
     assert!(user_message.contains("STORY_CONCEPT"));
     assert!(user_message.contains("merchant | Haru"));
+    assert!(user_message.contains("trust=0"));
     assert!(!user_message.contains("Stay in character."));
 }

@@ -76,6 +76,9 @@ Each schema stores:
 - `tags`
 - `fields`
 
+`fields` can optionally constrain scalar values with `enum_values`, which helps both validation and
+LLM-side state updates stay inside a known set of values.
+
 ## 2. Prepare Player Profiles
 
 Player setup is now a standalone `player_profile` resource, and multiple profiles can coexist.
@@ -174,11 +177,11 @@ The recommended draft flow works like this:
 1. `story_draft.start` reads `story_resources`
 2. if `planned_story` is missing, the server first runs `story.generate_plan`
 3. `Architect` generates only the first outline section plus the initial schemas and introduction
-4. the server stores the partial graph and progress in a `story_draft`
+4. the server stores the partial graph, progress, and any caller-supplied `common_variables` in a `story_draft`
 5. each `story_draft.continue` call generates one more section and merges it into the same draft
-6. `story_draft.finalize` validates the merged graph and creates the final `story`
+6. `story_draft.finalize` validates the merged graph and creates the final `story`, carrying over the draft's `common_variables`
 
-`story.generate` still exists as a wrapper that internally runs the full draft flow for clients that want a one-shot call.
+`story.generate` still exists as a wrapper that internally runs the full draft flow for clients that want a one-shot call. It accepts the same optional `common_variables` input and writes it into the created story.
 
 During generation, the server:
 
@@ -201,6 +204,7 @@ The resulting `story` stores:
 - `world_schema_id`
 - `player_schema_id`
 - `introduction`
+- `common_variables`
 
 ## 7. Start a Session
 
@@ -231,6 +235,10 @@ entire snapshot, it can call:
 
 - `session.get_variables`
 - `session.update_variables`
+
+If the frontend also wants a stable list of variables to keep visible, it should read
+`story.common_variables` and then map those definitions onto the live values returned by
+`session.get_variables` or the runtime snapshot.
 
 ## 8. Session State
 

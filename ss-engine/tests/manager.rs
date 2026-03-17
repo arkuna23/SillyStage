@@ -183,6 +183,46 @@ fn sample_story_graph() -> StoryGraph {
     )
 }
 
+fn sample_story_graph_with_start_on_enter_updates() -> StoryGraph {
+    StoryGraph::new(
+        "dock",
+        vec![
+            NarrativeNode::new(
+                "dock",
+                "Flooded Dock",
+                "A flooded dock at dusk.",
+                "Decide whether to trust the merchant.",
+                vec!["merchant".to_owned()],
+                vec![],
+                vec![
+                    state::StateOp::SetState {
+                        key: "gate_open".to_owned(),
+                        value: json!(true),
+                    },
+                    state::StateOp::SetPlayerState {
+                        key: "coins".to_owned(),
+                        value: json!(3),
+                    },
+                    state::StateOp::SetCharacterState {
+                        character: "merchant".to_owned(),
+                        key: "trust".to_owned(),
+                        value: json!(1),
+                    },
+                ],
+            ),
+            NarrativeNode::new(
+                "gate",
+                "Canal Gate",
+                "A narrow ledge beside the gate.",
+                "Open the route.",
+                vec!["merchant".to_owned()],
+                vec![],
+                vec![],
+            ),
+        ],
+    )
+}
+
 async fn seed_story(store: &InMemoryStore) {
     for (api_id, model) in [
         ("api-planner", "planner-model"),
@@ -260,6 +300,7 @@ async fn seed_story(store: &InMemoryStore) {
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
             world_schema_id_seed: Some("schema-world-default".to_owned()),
+            lorebook_ids: vec![],
             planned_story: None,
         })
         .await
@@ -273,6 +314,7 @@ async fn seed_story(store: &InMemoryStore) {
             world_schema_id: "schema-world-story-1".to_owned(),
             player_schema_id: "schema-player-story-1".to_owned(),
             introduction: "The courier reaches a flooded dock.".to_owned(),
+            common_variables: vec![],
             created_at_ms: Some(1_000),
             updated_at_ms: Some(1_000),
         })
@@ -311,6 +353,60 @@ async fn manager_starts_session_from_story_and_exposes_snapshot() {
     assert_eq!(snapshot.world_state.current_node(), "dock");
     assert!(session.created_at_ms.is_some());
     assert!(session.updated_at_ms.is_some());
+}
+
+#[tokio::test]
+async fn manager_applies_start_node_on_enter_updates_when_starting_session() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story(&store).await;
+    store
+        .save_story(StoryRecord {
+            story_id: "story-start-on-enter".to_owned(),
+            display_name: "Flooded Harbor Opening".to_owned(),
+            resource_id: "resource-1".to_owned(),
+            graph: sample_story_graph_with_start_on_enter_updates(),
+            world_schema_id: "schema-world-story-1".to_owned(),
+            player_schema_id: "schema-player-story-1".to_owned(),
+            introduction: "The courier reaches a flooded dock.".to_owned(),
+            common_variables: vec![],
+            created_at_ms: Some(2_000),
+            updated_at_ms: Some(2_000),
+        })
+        .await
+        .expect("save story with start updates");
+
+    let manager = EngineManager::new(store.clone(), registry(llm.clone()))
+        .await
+        .expect("manager should build");
+
+    let session = manager
+        .start_session_from_story(
+            "story-start-on-enter",
+            Some("Courier Run".to_owned()),
+            Some("profile-courier-a".to_owned()),
+            None,
+            None,
+        )
+        .await
+        .expect("session should start");
+
+    assert_eq!(
+        session.snapshot.world_state.state("gate_open"),
+        Some(&json!(true))
+    );
+    assert_eq!(
+        session.snapshot.world_state.player_state("coins"),
+        Some(&json!(3))
+    );
+    assert_eq!(
+        session
+            .snapshot
+            .world_state
+            .character_states("merchant")
+            .and_then(|state| state.get("trust")),
+        Some(&json!(1))
+    );
 }
 
 #[tokio::test]
@@ -433,7 +529,7 @@ async fn manager_uses_story_concept_when_planned_story_is_blank_for_draft_start(
         .await
         .expect("manager should build");
     let draft = manager
-        .start_story_draft("resource-1", None, None, None)
+        .start_story_draft("resource-1", None, None, None, vec![])
         .await
         .expect("draft should start");
 

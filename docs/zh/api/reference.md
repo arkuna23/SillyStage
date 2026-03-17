@@ -17,6 +17,7 @@
 | `api.create` | 否 | `api` | 创建一个可复用 API 定义 |
 | `api.get` | 否 | `api` | 获取单个 API 定义 |
 | `api.list` | 否 | `apis_listed` | 列出 API 定义 |
+| `api.list_models` | 否 | `api_models_listed` | 用一组连接参数探测可用模型 |
 | `api.update` | 否 | `api` | 更新 API 定义 |
 | `api.delete` | 否 | `api_deleted` | 删除 API 定义 |
 
@@ -30,6 +31,7 @@
 说明：
 
 - 读取接口不返回明文 `api_key`
+- `api.list_models` 直接接收 `provider`、`base_url`、`api_key`，不会持久化 `api`
 - 如果 API 仍被 `api_group` 引用，删除返回 `conflict`
 
 ## 3. api_group
@@ -89,9 +91,60 @@
 说明：
 
 - `schema` 没有固定 kind，分类由 `tags` 负责
+- schema 字段遵循 `StateFieldSchema`：
+  - `value_type`
+  - 可选 `default`
+  - 可选 `description`
+  - 标量字段可选 `enum_values`，支持 `bool`、`int`、`float`、`string`
 - 若 schema 仍被角色卡、resources、story 或 session 引用，删除返回 `conflict`
 
-## 6. player_profile
+## 6. lorebook
+
+| 方法 | session_id | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `lorebook.create` | 否 | `lorebook` | 创建 lorebook |
+| `lorebook.get` | 否 | `lorebook` | 获取单个 lorebook |
+| `lorebook.list` | 否 | `lorebooks_listed` | 列出 lorebook |
+| `lorebook.update` | 否 | `lorebook` | 更新 lorebook 基础元数据 |
+| `lorebook.delete` | 否 | `lorebook_deleted` | 删除 lorebook |
+
+`lorebook` 保存：
+
+- `lorebook_id`
+- `display_name`
+- `entries`
+
+说明：
+
+- `lorebook.create` 可直接带初始 `entries`
+- `lorebook.update` 当前只更新基础元数据，例如 `display_name`
+- 若 lorebook 仍被 `story_resources` 引用，`lorebook.delete` 返回 `conflict`
+
+## 7. lorebook_entry
+
+| 方法 | session_id | 返回 | 说明 |
+| --- | --- | --- | --- |
+| `lorebook_entry.create` | 否 | `lorebook_entry` | 创建 lorebook 条目 |
+| `lorebook_entry.get` | 否 | `lorebook_entry` | 获取单个 lorebook 条目 |
+| `lorebook_entry.list` | 否 | `lorebook_entries_listed` | 列出某个 lorebook 的条目 |
+| `lorebook_entry.update` | 否 | `lorebook_entry` | 更新 lorebook 条目 |
+| `lorebook_entry.delete` | 否 | `lorebook_entry_deleted` | 删除 lorebook 条目 |
+
+条目字段：
+
+- `entry_id`
+- `title`
+- `content`
+- `keywords`
+- `enabled`
+- `always_include`
+
+说明：
+
+- `lorebook_entry.*` 都通过 `lorebook_id` 作用于某个 lorebook
+- 创建时 `enabled` 默认为 `true`
+
+## 8. player_profile
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -106,7 +159,7 @@
 - 玩家设定字段为 `player_profile_id`、`display_name`、`description`
 - 删除时若仍被 session 引用，返回 `conflict`
 
-## 7. character
+## 9. character
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -134,14 +187,14 @@
 - 封面是独立更新接口
 - `.chr` 导出要求角色卡已具备封面
 
-## 7. story_resources
+## 10. story_resources
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
-| `story_resources.create` | 否 | `story_resources` | 创建 story resources |
+| `story_resources.create` | 否 | `story_resources_created` | 创建 story resources |
 | `story_resources.get` | 否 | `story_resources` | 获取单个 resources |
 | `story_resources.list` | 否 | `story_resources_listed` | 列出 resources |
-| `story_resources.update` | 否 | `story_resources` | 更新 resources |
+| `story_resources.update` | 否 | `story_resources_updated` | 更新 resources |
 | `story_resources.delete` | 否 | `story_resources_deleted` | 删除 resources |
 
 字段：
@@ -150,9 +203,14 @@
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
+- `lorebook_ids`
 - `planned_story`
 
-## 8. story
+说明：
+
+- `lorebook_ids` 引用生成时使用的 lorebook，可以为空
+
+## 11. story
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -173,6 +231,15 @@
 - `world_schema_id`
 - `player_schema_id`
 - `introduction`
+- `common_variables`
+
+`story.generate` 输入：
+
+- `resource_id`
+- 可选 `display_name`
+- 可选 `api_group_id`
+- 可选 `preset_id`
+- 可选 `common_variables`
 
 `story.start_session` 输入：
 
@@ -188,14 +255,25 @@
 `story.update` 输入：
 
 - `story_id`
+- 可选 `display_name`
+- 可选 `common_variables`
+
+每个 `common_variables` 条目包含：
+
+- `scope`
+- `key`
 - `display_name`
+- 可选 `character_id`
+- 可选 `pinned`，默认是 `true`
+
+`story`、`stories_listed`、`story_generated` 返回都会带 `common_variables`。
 
 `story.update_graph` 输入：
 
 - `story_id`
 - `graph`
 
-## 9. story_draft
+## 12. story_draft
 
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
@@ -211,12 +289,15 @@
 
 - draft 生成按大纲 section 推进，而不是固定节点数切片。
 - partial graph 始终保存在服务端 `story_draft` 对象中，客户端不需要回传已生成节点。
+- `story_draft.start` 支持可选 `common_variables`。
+- `story_draft` 详情响应会返回 `common_variables`。
+- `story_draft.finalize` 会把 draft 中的 `common_variables` 复制到最终 `story`。
 - `story_draft.update_graph` 会替换未 finalized draft 的 `partial_graph`，其中也包含节点的 `on_enter_updates`。
 - `story.generate` 仍保留给旧调用方；新的调用方应优先使用 `story_draft.*`。
 - `story.generate_plan`、`story.generate`、`story_draft.start` 都支持可选
   `api_group_id` / `preset_id`；省略时会自动选择首个可用资源。
 
-## 10. session
+## 13. session
 
 | 方法 | session_id | 返回 | 流式 |
 | --- | --- | --- | --- |

@@ -6,6 +6,8 @@ pub enum LlmError {
     InvalidConfig(String),
     #[error("invalid request: {0}")]
     InvalidRequest(String),
+    #[error("unsupported capability: {0}")]
+    UnsupportedCapability(String),
     #[error("transport error: {0}")]
     Http(#[from] reqwest::Error),
     #[error("serialization error: {0}")]

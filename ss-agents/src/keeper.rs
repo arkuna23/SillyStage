@@ -12,9 +12,8 @@ use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCard
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
 use crate::prompt::{
-    compact_json, normalize_inline_text, render_character_summaries, render_node,
-    render_observable_world_state, render_optional_node, render_sections,
-    render_state_schema_fields,
+    compact_json, normalize_inline_text, render_character_summaries, render_keeper_node,
+    render_observable_world_state, render_player, render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
 use story::NarrativeNode;
@@ -26,7 +25,7 @@ pub enum KeeperPhase {
     AfterTurnOutputs,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct KeeperRequest<'a> {
     pub phase: KeeperPhase,
     pub player_input: &'a str,
@@ -34,6 +33,8 @@ pub struct KeeperRequest<'a> {
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
     pub current_cast_ids: &'a [String],
+    pub lorebook_base: Option<String>,
+    pub lorebook_matched: Option<String>,
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -248,33 +249,42 @@ impl Keeper {
         &self,
         request: &KeeperRequest<'_>,
     ) -> Result<(String, String), KeeperError> {
-        let stable_prompt = render_sections(&[
-            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
-            (
-                "KEEPER_PHASE",
-                compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?,
-            ),
-            ("PREVIOUS_NODE", render_optional_node(request.previous_node)),
-            (
-                "PREVIOUS_CAST",
-                self.previous_cast_summaries(request)?
-                    .map(|summaries| render_character_summaries(&summaries, request.player_name))
-                    .unwrap_or_else(|| "null".to_owned()),
-            ),
-            ("CURRENT_NODE", render_node(request.current_node)),
-            (
-                "CURRENT_CAST",
-                render_character_summaries(
-                    &self.current_cast_summaries(request)?,
-                    request.player_name,
-                ),
-            ),
-            (
-                "PLAYER_STATE_SCHEMA",
-                render_state_schema_fields(&request.player_state_schema.fields),
-            ),
-        ]);
-        let dynamic_prompt = render_sections(&[
+        let mut stable_sections = Vec::new();
+        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLAYER",
+            render_player(request.player_name, request.player_description),
+        ));
+        stable_sections.push((
+            "KEEPER_PHASE",
+            compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?,
+        ));
+        stable_sections.push((
+            "PREVIOUS_NODE",
+            request
+                .previous_node
+                .map(render_keeper_node)
+                .unwrap_or_else(|| "null".to_owned()),
+        ));
+        stable_sections.push((
+            "PREVIOUS_CAST",
+            self.previous_cast_summaries(request)?
+                .map(|summaries| render_character_summaries(&summaries, request.player_name))
+                .unwrap_or_else(|| "null".to_owned()),
+        ));
+        stable_sections.push(("CURRENT_NODE", render_keeper_node(request.current_node)));
+        stable_sections.push((
+            "CURRENT_CAST",
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
+        ));
+        stable_sections.push((
+            "PLAYER_STATE_SCHEMA",
+            render_state_schema_fields(&request.player_state_schema.fields),
+        ));
+
+        let mut dynamic_sections = vec![
             ("PLAYER_INPUT", request.player_input.to_owned()),
             (
                 "WORLD_STATE",
@@ -284,7 +294,13 @@ impl Keeper {
                 "COMPLETED_BEATS",
                 render_keeper_beats(request.completed_beats),
             ),
-        ]);
+        ];
+        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -293,7 +309,11 @@ impl Keeper {
         &self,
         request: &KeeperRequest<'b>,
     ) -> Result<Vec<CharacterCardSummaryRef<'b>>, KeeperError> {
-        cast_summaries(request.current_cast_ids, request.character_cards)
+        cast_summaries(
+            request.current_cast_ids,
+            request.character_cards,
+            request.world_state,
+        )
     }
 
     fn previous_cast_summaries<'b>(
@@ -302,7 +322,13 @@ impl Keeper {
     ) -> Result<Option<Vec<CharacterCardSummaryRef<'b>>>, KeeperError> {
         request
             .previous_node
-            .map(|node| cast_summaries(&node.characters, request.character_cards))
+            .map(|node| {
+                cast_summaries(
+                    &node.characters,
+                    request.character_cards,
+                    request.world_state,
+                )
+            })
             .transpose()
     }
 }
@@ -344,6 +370,7 @@ pub enum KeeperError {
 fn cast_summaries<'a>(
     character_ids: &[String],
     character_cards: &'a [CharacterCard],
+    world_state: &'a WorldState,
 ) -> Result<Vec<CharacterCardSummaryRef<'a>>, KeeperError> {
     let cards_by_id: HashMap<&str, &CharacterCard> = character_cards
         .iter()
@@ -355,7 +382,7 @@ fn cast_summaries<'a>(
         .map(|character_id| {
             cards_by_id
                 .get(character_id.as_str())
-                .map(|card| card.summary_ref())
+                .map(|card| card.summary_ref(world_state.character_states(character_id)))
                 .ok_or_else(|| {
                     KeeperError::InvalidRequest(format!(
                         "missing character card for cast id '{character_id}'"

@@ -83,6 +83,9 @@ pub struct StateFieldSchema {
     pub default: Option<Value>,
 
     pub description: Option<String>,
+
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub enum_values: Option<Vec<Value>>,
 }
 
 impl StateFieldSchema {
@@ -91,6 +94,7 @@ impl StateFieldSchema {
             value_type,
             default: None,
             description: None,
+            enum_values: None,
         }
     }
 
@@ -102,6 +106,45 @@ impl StateFieldSchema {
     pub fn with_description(mut self, description: impl Into<String>) -> Self {
         self.description = Some(description.into());
         self
+    }
+
+    pub fn with_enum_values(mut self, enum_values: Vec<Value>) -> Self {
+        self.enum_values = Some(enum_values);
+        self
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if let Some(default) = &self.default {
+            self.value_type
+                .validate_value(default)
+                .map_err(|error| format!("default {error}"))?;
+        }
+
+        if let Some(enum_values) = &self.enum_values {
+            if !self.value_type.supports_enum_values() {
+                return Err(format!(
+                    "enum_values are only supported for scalar types, got {}",
+                    self.value_type.as_str()
+                ));
+            }
+
+            for value in enum_values {
+                self.value_type
+                    .validate_value(value)
+                    .map_err(|error| format!("enum_values item {error}"))?;
+            }
+
+            if let Some(default) = &self.default {
+                if !enum_values.iter().any(|value| value == default) {
+                    return Err(
+                        "default must be one of enum_values when enum_values are configured"
+                            .to_owned(),
+                    );
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -115,4 +158,44 @@ pub enum StateValueType {
     Array,
     Object,
     Null,
+}
+
+impl StateValueType {
+    pub fn validate_value(&self, value: &Value) -> Result<(), String> {
+        let matches = match self {
+            Self::Bool => value.is_boolean(),
+            Self::Int => value.as_i64().is_some() || value.as_u64().is_some(),
+            Self::Float => value.is_number(),
+            Self::String => value.is_string(),
+            Self::Array => value.is_array(),
+            Self::Object => value.is_object(),
+            Self::Null => value.is_null(),
+        };
+
+        if matches {
+            Ok(())
+        } else {
+            Err(format!(
+                "must match value_type '{}', got {}",
+                self.as_str(),
+                value
+            ))
+        }
+    }
+
+    pub const fn supports_enum_values(&self) -> bool {
+        matches!(self, Self::Bool | Self::Int | Self::Float | Self::String)
+    }
+
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Bool => "bool",
+            Self::Int => "int",
+            Self::Float => "float",
+            Self::String => "string",
+            Self::Array => "array",
+            Self::Object => "object",
+            Self::Null => "null",
+        }
+    }
 }

@@ -10,24 +10,26 @@ use protocol::{
     ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
     ApiGroupUpdateParams, CharacterArchive, CharacterCardContent, CharacterCoverMimeType,
     CharacterCreateParams, CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams,
-    CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
-    CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams,
-    DeleteSessionCharacterParams, DeleteSessionMessageParams, DeleteSessionParams,
-    EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams, GetSessionCharacterParams,
-    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryResourcesParams,
-    JsonRpcOutcome, JsonRpcRequestMessage, LeaveSessionCharacterSceneParams,
-    ListSessionCharactersParams, ListSessionMessagesParams, PresetCreateParams, PresetDeleteParams,
-    PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams, ResponseResult,
-    RunTurnParams, SessionMessageKind, SessionUpdateConfigParams, StartSessionFromStoryParams,
-    StreamEventBody, StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams,
-    UpdateSessionCharacterParams, UpdateSessionMessageParams, UpdateSessionParams,
-    UpdateSessionVariablesParams, UpdateStoryDraftGraphParams, UpdateStoryGraphParams,
-    UpdateStoryParams, UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams,
-    UploadInitParams, UploadTargetKind,
+    CharacterSetCoverParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
+    ConfigGetGlobalParams, CreateSessionMessageParams, CreateStoryResourcesParams,
+    DashboardGetParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
+    DeleteSessionParams, EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams,
+    GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
+    GetSessionVariablesParams, GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
+    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
+    LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetCreateParams,
+    PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams,
+    ResponseResult, RunTurnParams, SchemaCreateParams, SessionMessageKind,
+    SessionUpdateConfigParams, StartSessionFromStoryParams, StartStoryDraftParams, StreamEventBody,
+    StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionCharacterParams,
+    UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
+    UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
+    UpdateStoryResourcesParams, UploadChunkParams, UploadCompleteParams, UploadInitParams,
+    UploadTargetKind,
 };
 use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
-use state::{StateOp, StateUpdate};
+use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::{
     InMemoryStore, SessionBindingConfig, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus,
     StoryRecord, StoryResourcesRecord,
@@ -92,6 +94,32 @@ fn joined_user_messages(request: &llm::ChatRequest) -> String {
         .map(|message| message.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn sample_common_variables() -> Vec<CommonVariableDefinition> {
+    vec![
+        CommonVariableDefinition {
+            scope: CommonVariableScope::World,
+            key: "gate_open".to_owned(),
+            display_name: "Gate Open".to_owned(),
+            character_id: None,
+            pinned: true,
+        },
+        CommonVariableDefinition {
+            scope: CommonVariableScope::Player,
+            key: "coins".to_owned(),
+            display_name: "Coins".to_owned(),
+            character_id: None,
+            pinned: true,
+        },
+        CommonVariableDefinition {
+            scope: CommonVariableScope::Character,
+            key: "trust".to_owned(),
+            display_name: "Merchant Trust".to_owned(),
+            character_id: Some("merchant".to_owned()),
+            pinned: false,
+        },
+    ]
 }
 
 async fn build_handler(llm: Arc<QueuedMockLlm>) -> (Arc<InMemoryStore>, Handler) {
@@ -216,6 +244,7 @@ async fn seed_story_records(store: &InMemoryStore) {
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
             world_schema_id_seed: Some("schema-world-default".to_owned()),
+            lorebook_ids: vec![],
             planned_story: None,
         })
         .await
@@ -371,6 +400,7 @@ async fn upload_character_card_and_create_resources_via_character_id() {
                     character_ids: vec![character_id.clone()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
                     world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    lorebook_ids: vec![],
                     planned_story: Some(
                         "Opening Situation:\nA courier arrives at dusk.".to_owned(),
                     ),
@@ -573,6 +603,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
                     character_ids: vec!["merchant".to_owned()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
                     world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    lorebook_ids: vec![],
                     planned_story: Some("   \n\t".to_owned()),
                 }),
             ))
@@ -605,6 +636,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
                     character_ids: None,
                     player_schema_id_seed: None,
                     world_schema_id_seed: None,
+                    lorebook_ids: None,
                     planned_story: Some(" \n ".to_owned()),
                 }),
             ))
@@ -788,6 +820,7 @@ async fn story_and_session_crud_follow_store_objects() {
                     character_ids: vec!["merchant".to_owned()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
                     world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    lorebook_ids: vec![],
                     planned_story: Some(
                         "Title:\nFlooded Harbor\n\nOpening Situation:\nA courier arrives at a flooded dock.\n\nCore Conflict:\nTrade routes are collapsing.\n\nCharacter Roles:\nHaru (merchant) watches the tide.\n\nSuggested Beats:\n- The courier arrives at the dock.\n\nState Hints:\nTrack the flood level."
                             .to_owned(),
@@ -811,6 +844,7 @@ async fn story_and_session_crud_follow_store_objects() {
                     display_name: Some("Flooded Harbor".to_owned()),
                     api_group_id: None,
                     preset_id: None,
+                    common_variables: None,
                 }),
             ))
             .await,
@@ -907,7 +941,8 @@ async fn story_update_changes_display_name() {
                 None::<String>,
                 RequestParams::StoryUpdate(UpdateStoryParams {
                     story_id: "story-1".to_owned(),
-                    display_name: "Updated Flooded Harbor".to_owned(),
+                    display_name: Some("Updated Flooded Harbor".to_owned()),
+                    common_variables: None,
                 }),
             ))
             .await,
@@ -920,6 +955,397 @@ async fn story_update_changes_display_name() {
         }
         other => panic!("unexpected response: {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn story_generate_persists_common_variables() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{\"nodes\":[],\"start_node\":\"dock\",\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\",\"section_summary\":\"Opening dock scene.\"}",
+            Some(json!({
+                "nodes": sample_story_graph().nodes,
+                "transition_patches": [],
+                "start_node": "dock",
+                "world_state_schema": sample_world_state_schema(),
+                "player_state_schema": sample_player_state_schema(),
+                "introduction": "At the dock.",
+                "section_summary": "Opening dock scene."
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_api_groups_and_presets(&store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-1".to_owned(),
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned()],
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
+            lorebook_ids: vec![],
+            planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
+        })
+        .await
+        .expect("save resources");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+    let common_variables = sample_common_variables();
+
+    let generated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-generate-common-variables",
+                None::<String>,
+                RequestParams::StoryGenerate(GenerateStoryParams {
+                    resource_id: "resource-1".to_owned(),
+                    display_name: Some("Flooded Harbor".to_owned()),
+                    api_group_id: None,
+                    preset_id: None,
+                    common_variables: Some(common_variables.clone()),
+                }),
+            ))
+            .await,
+    );
+
+    let story_id = match generated {
+        ResponseResult::StoryGenerated(payload) => {
+            assert_eq!(payload.common_variables, common_variables);
+            payload.story_id
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let stored = store
+        .get_story(&story_id)
+        .await
+        .expect("story lookup should succeed")
+        .expect("story should exist");
+    assert_eq!(stored.common_variables, common_variables);
+}
+
+#[tokio::test]
+async fn story_generate_rejects_invalid_common_variables() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{\"nodes\":[],\"start_node\":\"dock\",\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\",\"section_summary\":\"Opening dock scene.\"}",
+            Some(json!({
+                "nodes": sample_story_graph().nodes,
+                "transition_patches": [],
+                "start_node": "dock",
+                "world_state_schema": sample_world_state_schema(),
+                "player_state_schema": sample_player_state_schema(),
+                "introduction": "At the dock.",
+                "section_summary": "Opening dock scene."
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_api_groups_and_presets(&store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-1".to_owned(),
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned()],
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
+            lorebook_ids: vec![],
+            planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
+        })
+        .await
+        .expect("save resources");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-generate-invalid-common-variables",
+            None::<String>,
+            RequestParams::StoryGenerate(GenerateStoryParams {
+                resource_id: "resource-1".to_owned(),
+                display_name: Some("Flooded Harbor".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+                common_variables: Some(vec![CommonVariableDefinition {
+                    scope: CommonVariableScope::World,
+                    key: "storm_level".to_owned(),
+                    display_name: "Storm Level".to_owned(),
+                    character_id: None,
+                    pinned: true,
+                }]),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("does not exist in the bound schema")
+    ));
+    assert!(
+        store
+            .list_stories()
+            .await
+            .expect("stories should list")
+            .is_empty(),
+        "invalid common variables should not create a story"
+    );
+    assert!(
+        store
+            .list_story_drafts()
+            .await
+            .expect("drafts should list")
+            .is_empty(),
+        "invalid common variables should not create a draft"
+    );
+}
+
+#[tokio::test]
+async fn story_draft_start_persists_common_variables() {
+    let llm = Arc::new(QueuedMockLlm::new(
+        vec![Ok(assistant_response(
+            "{\"nodes\":[],\"start_node\":\"dock\",\"world_state_schema\":{\"fields\":{}},\"player_state_schema\":{\"fields\":{}},\"introduction\":\"At the dock.\",\"section_summary\":\"Opening dock scene.\"}",
+            Some(json!({
+                "nodes": sample_story_graph().nodes,
+                "transition_patches": [],
+                "start_node": "dock",
+                "world_state_schema": sample_world_state_schema(),
+                "player_state_schema": sample_player_state_schema(),
+                "introduction": "At the dock.",
+                "section_summary": "Opening dock scene."
+            })),
+        ))],
+        vec![],
+    ));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_api_groups_and_presets(&store).await;
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-1".to_owned(),
+            story_concept: "A flooded harbor story.".to_owned(),
+            character_ids: vec!["merchant".to_owned()],
+            player_schema_id_seed: Some("schema-player-default".to_owned()),
+            world_schema_id_seed: Some("schema-world-default".to_owned()),
+            lorebook_ids: vec![],
+            planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
+        })
+        .await
+        .expect("save resources");
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+    let common_variables = sample_common_variables();
+
+    let started = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-draft-start-common-variables",
+                None::<String>,
+                RequestParams::StoryDraftStart(StartStoryDraftParams {
+                    resource_id: "resource-1".to_owned(),
+                    display_name: Some("Flooded Harbor Draft".to_owned()),
+                    api_group_id: None,
+                    preset_id: None,
+                    common_variables: Some(common_variables.clone()),
+                }),
+            ))
+            .await,
+    );
+
+    let draft_id = match started {
+        ResponseResult::StoryDraft(payload) => {
+            assert_eq!(payload.common_variables, common_variables);
+            payload.draft_id
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let stored = store
+        .get_story_draft(&draft_id)
+        .await
+        .expect("draft lookup should succeed")
+        .expect("draft should exist");
+    assert_eq!(stored.common_variables, common_variables);
+}
+
+#[tokio::test]
+async fn story_update_persists_common_variables() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+    let common_variables = sample_common_variables();
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-update-common-variables",
+                None::<String>,
+                RequestParams::StoryUpdate(UpdateStoryParams {
+                    story_id: "story-1".to_owned(),
+                    display_name: None,
+                    common_variables: Some(common_variables.clone()),
+                }),
+            ))
+            .await,
+    );
+
+    match updated {
+        ResponseResult::Story(payload) => {
+            assert_eq!(payload.story_id, "story-1");
+            assert_eq!(payload.display_name, "Flooded Harbor");
+            assert_eq!(payload.common_variables, common_variables);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let stored = store
+        .get_story("story-1")
+        .await
+        .expect("story lookup should succeed")
+        .expect("story should exist");
+    assert_eq!(stored.common_variables, common_variables);
+}
+
+#[tokio::test]
+async fn story_update_rejects_character_common_variable_without_character_id() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-update-invalid-common-variable-character",
+            None::<String>,
+            RequestParams::StoryUpdate(UpdateStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: None,
+                common_variables: Some(vec![CommonVariableDefinition {
+                    scope: CommonVariableScope::Character,
+                    key: "trust".to_owned(),
+                    display_name: "Merchant Trust".to_owned(),
+                    character_id: None,
+                    pinned: true,
+                }]),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("must set character_id")
+    ));
+}
+
+#[tokio::test]
+async fn story_update_rejects_common_variable_for_missing_schema_key() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-update-invalid-common-variable-key",
+            None::<String>,
+            RequestParams::StoryUpdate(UpdateStoryParams {
+                story_id: "story-1".to_owned(),
+                display_name: None,
+                common_variables: Some(vec![CommonVariableDefinition {
+                    scope: CommonVariableScope::World,
+                    key: "storm_level".to_owned(),
+                    display_name: "Storm Level".to_owned(),
+                    character_id: None,
+                    pinned: true,
+                }]),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("does not exist in the bound schema")
+    ));
+}
+
+#[tokio::test]
+async fn schema_create_rejects_invalid_enum_values_definition() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let (store, handler) = build_handler(llm).await;
+    seed_story_records(&store).await;
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "schema-create-invalid-enum",
+            None::<String>,
+            RequestParams::SchemaCreate(SchemaCreateParams {
+                schema_id: "schema-invalid-enum".to_owned(),
+                display_name: "Invalid Enum".to_owned(),
+                tags: vec!["player".to_owned()],
+                fields: [(
+                    "route".to_owned(),
+                    StateFieldSchema::new(StateValueType::Array)
+                        .with_enum_values(vec![json!(["dock"]), json!(["tower"])]),
+                )]
+                .into_iter()
+                .collect(),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.code == ErrorCode::InvalidRequest.rpc_code()
+                && error.message.contains("enum_values")
+                && error.message.contains("scalar")
+    ));
 }
 
 #[tokio::test]
@@ -1078,6 +1504,7 @@ async fn story_draft_update_graph_replaces_partial_graph() {
             world_schema_id: "schema-world-default".to_owned(),
             player_schema_id: "schema-player-default".to_owned(),
             introduction: "Draft intro".to_owned(),
+            common_variables: vec![],
             section_summaries: vec![],
             section_node_ids: vec![],
             status: StoryDraftStatus::Building,
@@ -1164,6 +1591,7 @@ async fn story_draft_update_graph_rejects_finalized_draft() {
             world_schema_id: "schema-world-default".to_owned(),
             player_schema_id: "schema-player-default".to_owned(),
             introduction: "Draft intro".to_owned(),
+            common_variables: vec![],
             section_summaries: vec!["Opening done".to_owned()],
             section_node_ids: vec![vec!["dock".to_owned()]],
             status: StoryDraftStatus::Finalized,
@@ -1860,6 +2288,7 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                 character_ids: vec!["merchant".to_owned()],
                 player_schema_id_seed: Some("schema-player-default".to_owned()),
                 world_schema_id_seed: Some("schema-world-default".to_owned()),
+                lorebook_ids: vec![],
                 planned_story: None,
             })
             .await
@@ -1874,6 +2303,7 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
                 world_schema_id: "schema-world-story-1".to_owned(),
                 player_schema_id: "schema-player-story-1".to_owned(),
                 introduction: format!("Intro {index}"),
+                common_variables: vec![],
                 created_at_ms: Some(index),
                 updated_at_ms: if index == 0 { None } else { Some(index * 100) },
             })
@@ -2549,6 +2979,75 @@ async fn session_variable_update_rejects_non_variable_ops() {
             if error.code == ErrorCode::InvalidRequest.rpc_code()
                 && error.message.contains("SetCurrentNode")
     ));
+}
+
+#[tokio::test]
+async fn lorebook_update_changes_base_info_and_preserves_entries() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let created = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "lorebook-create",
+                None::<String>,
+                RequestParams::LorebookCreate(LorebookCreateParams {
+                    lorebook_id: "harbor".to_owned(),
+                    display_name: "Harbor Notes".to_owned(),
+                    entries: vec![LorebookEntryPayload {
+                        entry_id: "fog".to_owned(),
+                        title: "Fog".to_owned(),
+                        content: "The harbor is covered by cold fog.".to_owned(),
+                        keywords: vec!["fog".to_owned(), "harbor".to_owned()],
+                        enabled: true,
+                        always_include: false,
+                    }],
+                }),
+            ))
+            .await,
+    );
+    match created {
+        ResponseResult::Lorebook(payload) => {
+            assert_eq!(payload.lorebook_id, "harbor");
+            assert_eq!(payload.display_name, "Harbor Notes");
+            assert_eq!(payload.entries.len(), 1);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "lorebook-update",
+                None::<String>,
+                RequestParams::LorebookUpdate(LorebookUpdateParams {
+                    lorebook_id: "harbor".to_owned(),
+                    display_name: Some("Updated Harbor Notes".to_owned()),
+                }),
+            ))
+            .await,
+    );
+    match updated {
+        ResponseResult::Lorebook(payload) => {
+            assert_eq!(payload.lorebook_id, "harbor");
+            assert_eq!(payload.display_name, "Updated Harbor Notes");
+            assert_eq!(payload.entries.len(), 1);
+            assert_eq!(payload.entries[0].entry_id, "fog");
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let stored = store
+        .get_lorebook("harbor")
+        .await
+        .expect("lorebook should load")
+        .expect("lorebook should exist");
+    assert_eq!(stored.display_name, "Updated Harbor Notes");
+    assert_eq!(stored.entries.len(), 1);
+    assert_eq!(stored.entries[0].entry_id, "fog");
 }
 
 #[tokio::test]

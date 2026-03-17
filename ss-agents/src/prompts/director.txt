@@ -9,8 +9,10 @@ Return JSON only, with no markdown fences and no extra prose.
 
 You will receive:
 
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
+- a PLAYER summary describing the player name and current persona
 - a CURRENT_CAST summary for the characters currently active in the scene
-- a PLAYER_DESCRIPTION describing the current player persona
 - a CURRENT_NODE
 - a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
@@ -62,8 +64,10 @@ Planning rules:
 
 - CURRENT_CAST lists every character currently available to participate in this turn
 - CURRENT_CAST provides compact character card summaries for those ids
+- PLAYER includes the player name and current persona
+- LOREBOOK_BASE contains stable world facts that should stay consistent when present
+- LOREBOOK_MATCHED contains situation-specific setting facts that may matter for this turn
 - WORLD_STATE.player_state contains player-facing runtime state such as coins, inventory, or reputation
-- PLAYER_DESCRIPTION describes who the player is or how they currently present themself
 - PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
 - You may use player_state to choose pacing, scene emphasis, and speaker order
 - You must not modify world state or player_state directly

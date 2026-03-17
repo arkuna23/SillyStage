@@ -13,7 +13,7 @@ use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
 use crate::prompt::{
     compact_json, render_character_summaries, render_observable_world_state, render_optional_node,
-    render_sections, render_state_schema_fields,
+    render_player, render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -28,6 +28,8 @@ pub struct NarratorRequest<'a> {
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
     pub current_cast_ids: &'a [String],
+    pub lorebook_base: Option<String>,
+    pub lorebook_matched: Option<String>,
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -242,39 +244,48 @@ impl Narrator {
         &self,
         request: &NarratorRequest<'_>,
     ) -> Result<(String, String), NarratorError> {
-        let stable_prompt = render_sections(&[
-            (
-                "NARRATOR_PURPOSE",
-                compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?,
-            ),
-            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
-            ("PREVIOUS_NODE", render_optional_node(request.previous_node)),
-            (
-                "PREVIOUS_CAST",
-                self.previous_cast_summaries(request)?
-                    .map(|summaries| render_character_summaries(&summaries, request.player_name))
-                    .unwrap_or_else(|| "null".to_owned()),
-            ),
-            (
-                "CURRENT_NODE",
-                crate::prompt::render_node(request.current_node),
-            ),
-            (
-                "CURRENT_CAST",
-                render_character_summaries(
-                    &self.current_cast_summaries(request)?,
-                    request.player_name,
-                ),
-            ),
-            (
-                "PLAYER_STATE_SCHEMA",
-                render_state_schema_fields(&request.player_state_schema.fields),
-            ),
-        ]);
-        let dynamic_prompt = render_sections(&[(
+        let mut stable_sections = Vec::new();
+        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLAYER",
+            render_player(request.player_name, request.player_description),
+        ));
+        stable_sections.push((
+            "NARRATOR_PURPOSE",
+            compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?,
+        ));
+        stable_sections.push(("PREVIOUS_NODE", render_optional_node(request.previous_node)));
+        stable_sections.push((
+            "PREVIOUS_CAST",
+            self.previous_cast_summaries(request)?
+                .map(|summaries| render_character_summaries(&summaries, request.player_name))
+                .unwrap_or_else(|| "null".to_owned()),
+        ));
+        stable_sections.push((
+            "CURRENT_NODE",
+            crate::prompt::render_node(request.current_node),
+        ));
+        stable_sections.push((
+            "CURRENT_CAST",
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
+        ));
+        stable_sections.push((
+            "PLAYER_STATE_SCHEMA",
+            render_state_schema_fields(&request.player_state_schema.fields),
+        ));
+
+        let mut dynamic_sections = vec![(
             "WORLD_STATE",
             render_observable_world_state(&filtered_narrator_world_state(request.world_state)?),
-        )]);
+        )];
+        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -283,7 +294,11 @@ impl Narrator {
         &self,
         request: &NarratorRequest<'b>,
     ) -> Result<Vec<CharacterCardSummaryRef<'b>>, NarratorError> {
-        cast_summaries(request.current_cast_ids, request.character_cards)
+        cast_summaries(
+            request.current_cast_ids,
+            request.character_cards,
+            request.world_state,
+        )
     }
 
     fn previous_cast_summaries<'b>(
@@ -292,7 +307,13 @@ impl Narrator {
     ) -> Result<Option<Vec<CharacterCardSummaryRef<'b>>>, NarratorError> {
         request
             .previous_node
-            .map(|node| cast_summaries(&node.characters, request.character_cards))
+            .map(|node| {
+                cast_summaries(
+                    &node.characters,
+                    request.character_cards,
+                    request.world_state,
+                )
+            })
             .transpose()
     }
 }
@@ -323,6 +344,7 @@ struct NarratorEventStreamState {
 fn cast_summaries<'a>(
     character_ids: &[String],
     character_cards: &'a [CharacterCard],
+    world_state: &'a WorldState,
 ) -> Result<Vec<CharacterCardSummaryRef<'a>>, NarratorError> {
     let cards_by_id: HashMap<&str, &CharacterCard> = character_cards
         .iter()
@@ -334,7 +356,7 @@ fn cast_summaries<'a>(
         .map(|character_id| {
             cards_by_id
                 .get(character_id.as_str())
-                .map(|card| card.summary_ref())
+                .map(|card| card.summary_ref(world_state.character_states(character_id)))
                 .ok_or_else(|| {
                     NarratorError::InvalidRequest(format!(
                         "missing character card for cast id '{character_id}'"

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use agents::actor::CharacterCard;
 use serde_json::json;
 use ss_engine::{RuntimeSnapshot, RuntimeState, StoryResources};
-use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
+use state::{PlayerStateSchema, StateFieldSchema, StateOp, StateValueType, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
 
 fn sample_character_cards() -> Vec<CharacterCard> {
@@ -39,6 +39,46 @@ fn sample_story_graph() -> StoryGraph {
                 vec!["merchant".to_owned(), "guide".to_owned()],
                 vec![],
                 vec![],
+            ),
+            NarrativeNode::new(
+                "canal_gate",
+                "Canal Gate",
+                "A narrow ledge beside the gate.",
+                "Open the route.",
+                vec!["guide".to_owned()],
+                vec![],
+                vec![],
+            ),
+        ],
+    )
+}
+
+fn sample_story_graph_with_start_on_enter_updates() -> StoryGraph {
+    StoryGraph::new(
+        "dock",
+        vec![
+            NarrativeNode::new(
+                "dock",
+                "Flooded Dock",
+                "A flooded dock at dusk.",
+                "Decide whether to trust the guide.",
+                vec!["merchant".to_owned(), "guide".to_owned()],
+                vec![],
+                vec![
+                    StateOp::SetState {
+                        key: "entered_dock".to_owned(),
+                        value: json!(true),
+                    },
+                    StateOp::SetPlayerState {
+                        key: "coins".to_owned(),
+                        value: json!(3),
+                    },
+                    StateOp::SetCharacterState {
+                        character: "merchant".to_owned(),
+                        key: "trust".to_owned(),
+                        value: json!(1),
+                    },
+                ],
             ),
             NarrativeNode::new(
                 "canal_gate",
@@ -204,6 +244,34 @@ fn new_initializes_from_start_node() {
             .expect("current node should exist")
             .title(),
         "Flooded Dock"
+    );
+}
+
+#[test]
+fn new_applies_start_node_on_enter_updates() {
+    let runtime_state = RuntimeState::from_story_graph(
+        "flooded_city_demo",
+        sample_story_graph_with_start_on_enter_updates(),
+        sample_character_cards(),
+        sample_player_description(),
+        sample_player_state_schema(),
+    )
+    .expect("runtime state should build");
+
+    assert_eq!(
+        runtime_state.world_state().state("entered_dock"),
+        Some(&json!(true))
+    );
+    assert_eq!(
+        runtime_state.world_state().player_state("coins"),
+        Some(&json!(3))
+    );
+    assert_eq!(
+        runtime_state
+            .world_state()
+            .character_states("merchant")
+            .and_then(|state| state.get("trust")),
+        Some(&json!(1))
     );
 }
 

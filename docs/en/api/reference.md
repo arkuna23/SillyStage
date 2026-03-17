@@ -17,6 +17,7 @@ This document lists the currently implemented JSON-RPC methods.
 | `api.create` | No | `api` | Create one reusable API definition |
 | `api.get` | No | `api` | Get one API definition |
 | `api.list` | No | `apis_listed` | List API definitions |
+| `api.list_models` | No | `api_models_listed` | Probe one provider endpoint and list models |
 | `api.update` | No | `api` | Update one API definition |
 | `api.delete` | No | `api_deleted` | Delete one API definition |
 
@@ -30,6 +31,7 @@ An `api` stores one reusable connection definition:
 Notes:
 
 - Read APIs never return the raw `api_key`
+- `api.list_models` takes `provider`, `base_url`, and `api_key`; it does not persist an `api`
 - `api.delete` returns `conflict` if the API is still referenced by an `api_group`
 
 ## 3. api_group
@@ -91,9 +93,60 @@ Notes:
 Notes:
 
 - A schema has no fixed kind; classification is expressed through `tags`
+- Schema fields follow `StateFieldSchema`:
+  - `value_type`
+  - optional `default`
+  - optional `description`
+  - optional `enum_values` for scalar fields (`bool`, `int`, `float`, `string`)
 - Delete returns `conflict` if the schema is still referenced by characters, resources, stories, or sessions
 
-## 6. player_profile
+## 6. lorebook
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `lorebook.create` | No | `lorebook` | Create a lorebook |
+| `lorebook.get` | No | `lorebook` | Get one lorebook |
+| `lorebook.list` | No | `lorebooks_listed` | List lorebooks |
+| `lorebook.update` | No | `lorebook` | Update lorebook base metadata |
+| `lorebook.delete` | No | `lorebook_deleted` | Delete a lorebook |
+
+A `lorebook` stores:
+
+- `lorebook_id`
+- `display_name`
+- `entries`
+
+Notes:
+
+- `lorebook.create` can include initial `entries`
+- `lorebook.update` currently updates base metadata only, such as `display_name`
+- `lorebook.delete` returns `conflict` if the lorebook is still referenced by `story_resources`
+
+## 7. lorebook_entry
+
+| Method | session_id | Result | Notes |
+| --- | --- | --- | --- |
+| `lorebook_entry.create` | No | `lorebook_entry` | Create one lorebook entry |
+| `lorebook_entry.get` | No | `lorebook_entry` | Get one lorebook entry |
+| `lorebook_entry.list` | No | `lorebook_entries_listed` | List one lorebook's entries |
+| `lorebook_entry.update` | No | `lorebook_entry` | Update one lorebook entry |
+| `lorebook_entry.delete` | No | `lorebook_entry_deleted` | Delete one lorebook entry |
+
+Entry fields:
+
+- `entry_id`
+- `title`
+- `content`
+- `keywords`
+- `enabled`
+- `always_include`
+
+Notes:
+
+- All `lorebook_entry.*` methods are scoped by `lorebook_id`
+- `enabled` defaults to `true` on create
+
+## 8. player_profile
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -108,7 +161,7 @@ Notes:
 - A player profile contains `player_profile_id`, `display_name`, and `description`
 - Delete returns `conflict` if any session still references it
 
-## 7. character
+## 9. character
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -136,14 +189,14 @@ Notes:
 - Cover upload is a separate update step
 - `.chr` export requires the character to have a cover
 
-## 7. story_resources
+## 10. story_resources
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
-| `story_resources.create` | No | `story_resources` | Create story resources |
+| `story_resources.create` | No | `story_resources_created` | Create story resources |
 | `story_resources.get` | No | `story_resources` | Get one resource bundle |
 | `story_resources.list` | No | `story_resources_listed` | List resource bundles |
-| `story_resources.update` | No | `story_resources` | Update a resource bundle |
+| `story_resources.update` | No | `story_resources_updated` | Update a resource bundle |
 | `story_resources.delete` | No | `story_resources_deleted` | Delete a resource bundle |
 
 Fields:
@@ -152,9 +205,14 @@ Fields:
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
+- `lorebook_ids`
 - `planned_story`
 
-## 8. story
+Notes:
+
+- `lorebook_ids` references lorebooks used during generation and may be empty
+
+## 11. story
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -175,6 +233,15 @@ Important `story_generated` fields:
 - `world_schema_id`
 - `player_schema_id`
 - `introduction`
+- `common_variables`
+
+`story.generate` input:
+
+- `resource_id`
+- optional `display_name`
+- optional `api_group_id`
+- optional `preset_id`
+- optional `common_variables`
 
 `story.start_session` input:
 
@@ -190,14 +257,25 @@ the available ids and uses the first one.
 `story.update` input:
 
 - `story_id`
+- optional `display_name`
+- optional `common_variables`
+
+Each `common_variables` item contains:
+
+- `scope`
+- `key`
 - `display_name`
+- optional `character_id`
+- optional `pinned` (defaults to `true`)
+
+`story`, `stories_listed`, and `story_generated` responses all include `common_variables`.
 
 `story.update_graph` input:
 
 - `story_id`
 - `graph`
 
-## 9. story_draft
+## 12. story_draft
 
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
@@ -213,12 +291,15 @@ Notes:
 
 - Draft generation is section-based, not fixed-node-count based.
 - The server keeps the partial graph in a `story_draft` object. Clients do not need to send generated nodes back.
+- `story_draft.start` accepts optional `common_variables`.
+- `story_draft` detail responses include `common_variables`.
+- `story_draft.finalize` copies the draft's `common_variables` into the final `story`.
 - `story_draft.update_graph` replaces `partial_graph` for a non-finalized draft, including node `on_enter_updates`.
 - `story.generate` remains available for clients that still want a one-shot call, but new clients should prefer `story_draft.*`.
 - `story.generate_plan`, `story.generate`, and `story_draft.start` all accept optional
   `api_group_id` and `preset_id`; if omitted, the backend auto-selects the first available pair.
 
-## 10. session
+## 13. session
 
 | Method | session_id | Result | Streaming |
 | --- | --- | --- | --- |

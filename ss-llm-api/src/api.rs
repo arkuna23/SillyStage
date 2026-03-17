@@ -162,6 +162,12 @@ pub trait LlmApi: Send + Sync {
     async fn chat(&self, request: ChatRequest) -> Result<ChatResponse, LlmError>;
 
     async fn chat_stream(&self, request: ChatRequest) -> Result<ChatStream, LlmError>;
+
+    async fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        Err(LlmError::UnsupportedCapability(
+            "listing models is not supported by this provider".to_owned(),
+        ))
+    }
 }
 
 #[cfg(test)]

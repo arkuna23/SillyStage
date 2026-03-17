@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    render_character_summaries, render_node, render_observable_world_state, render_sections,
-    render_state_schema_fields,
+    render_character_summaries, render_node, render_observable_world_state, render_player,
+    render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -37,6 +37,8 @@ pub struct ReplyerRequest<'a> {
     pub current_node: &'a NarrativeNode,
     pub character_cards: &'a [CharacterCard],
     pub current_cast_ids: &'a [String],
+    pub lorebook_base: Option<&'a str>,
+    pub lorebook_matched: Option<&'a str>,
     pub player_name: Option<&'a str>,
     pub player_description: &'a str,
     pub player_state_schema: &'a PlayerStateSchema,
@@ -170,29 +172,38 @@ impl Replyer {
         &self,
         request: &ReplyerRequest<'_>,
     ) -> Result<(String, String), ReplyerError> {
-        let stable_prompt = render_sections(&[
-            ("REPLY_LIMIT", request.limit.to_string()),
-            ("PLAYER_DESCRIPTION", request.player_description.to_owned()),
-            (
-                "CURRENT_CAST",
-                render_character_summaries(
-                    &self.current_cast_summaries(request)?,
-                    request.player_name,
-                ),
-            ),
-            ("CURRENT_NODE", render_node(request.current_node)),
-            (
-                "PLAYER_STATE_SCHEMA",
-                render_state_schema_fields(&request.player_state_schema.fields),
-            ),
-        ]);
-        let dynamic_prompt = render_sections(&[
+        let mut stable_sections = Vec::new();
+        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLAYER",
+            render_player(request.player_name, request.player_description),
+        ));
+        stable_sections.push(("REPLY_LIMIT", request.limit.to_string()));
+        stable_sections.push((
+            "CURRENT_CAST",
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
+        ));
+        stable_sections.push(("CURRENT_NODE", render_node(request.current_node)));
+        stable_sections.push((
+            "PLAYER_STATE_SCHEMA",
+            render_state_schema_fields(&request.player_state_schema.fields),
+        ));
+
+        let mut dynamic_sections = vec![
             (
                 "WORLD_STATE",
                 render_observable_world_state(request.world_state),
             ),
             ("SESSION_HISTORY", render_reply_history(request.history)),
-        ]);
+        ];
+        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -213,7 +224,9 @@ impl Replyer {
             .map(|character_id| {
                 cast_by_id
                     .get(character_id.as_str())
-                    .map(|card| card.summary_ref())
+                    .map(|card| {
+                        card.summary_ref(request.world_state.character_states(character_id))
+                    })
                     .ok_or_else(|| {
                         ReplyerError::InvalidRequest(format!(
                             "missing character card for current cast id '{character_id}'"

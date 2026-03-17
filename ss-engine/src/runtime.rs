@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use agents::actor::CharacterCard;
 use serde::{Deserialize, Serialize};
 use state::{PlayerStateSchema, WorldState, WorldStateSchema};
-use store::RuntimeSnapshot;
+use store::{LorebookEntryRecord, RuntimeSnapshot};
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
 use story::{NarrativeNode, StoryGraph};
 
@@ -22,6 +22,7 @@ pub struct StoryResources {
     story_concept: String,
     planned_story: Option<String>,
     character_cards: Vec<CharacterCard>,
+    lorebook_entries: Vec<LorebookEntryRecord>,
     player_state_schema_seed: Option<PlayerStateSchema>,
     world_state_schema_seed: Option<WorldStateSchema>,
 }
@@ -36,6 +37,7 @@ pub struct RuntimeState {
     player_name: Option<String>,
     player_description: String,
     player_state_schema: PlayerStateSchema,
+    lorebook_entries: Vec<LorebookEntryRecord>,
     world_state: WorldState,
     turn_index: u64,
 }
@@ -58,6 +60,7 @@ impl StoryResources {
             story_concept,
             planned_story: None,
             character_cards,
+            lorebook_entries: Vec::new(),
             player_state_schema_seed,
             world_state_schema_seed: None,
         })
@@ -73,6 +76,11 @@ impl StoryResources {
         self
     }
 
+    pub fn with_lorebook_entries(mut self, lorebook_entries: Vec<LorebookEntryRecord>) -> Self {
+        self.lorebook_entries = lorebook_entries;
+        self
+    }
+
     pub fn story_id(&self) -> &str {
         &self.story_id
     }
@@ -83,6 +91,10 @@ impl StoryResources {
 
     pub fn character_cards(&self) -> &[CharacterCard] {
         &self.character_cards
+    }
+
+    pub fn lorebook_entries(&self) -> &[LorebookEntryRecord] {
+        &self.lorebook_entries
     }
 
     pub fn planned_story(&self) -> Option<&str> {
@@ -110,8 +122,11 @@ impl RuntimeState {
             .graph
             .node_weight(runtime_graph.start_node)
             .expect("runtime graph start node should always exist");
-        let world_state = WorldState::new(start_node.id.clone())
+        let mut world_state = WorldState::new(start_node.id.clone())
             .with_active_characters(start_node.characters.clone());
+        for op in start_node.on_enter_updates() {
+            world_state.apply_op(op.clone());
+        }
 
         Self::from_parts(
             story_id.into(),
@@ -155,6 +170,9 @@ impl RuntimeState {
             player_description,
             player_state_schema,
         )
+        .map(|runtime_state| {
+            runtime_state.with_lorebook_entries(resources.lorebook_entries.clone())
+        })
     }
 
     pub fn from_snapshot(
@@ -222,6 +240,15 @@ impl RuntimeState {
 
     pub fn player_state_schema(&self) -> &PlayerStateSchema {
         &self.player_state_schema
+    }
+
+    pub fn lorebook_entries(&self) -> &[LorebookEntryRecord] {
+        &self.lorebook_entries
+    }
+
+    pub fn with_lorebook_entries(mut self, lorebook_entries: Vec<LorebookEntryRecord>) -> Self {
+        self.lorebook_entries = lorebook_entries;
+        self
     }
 
     pub fn world_state_mut(&mut self) -> &mut WorldState {
@@ -348,6 +375,7 @@ impl RuntimeState {
             player_name: None,
             player_description,
             player_state_schema,
+            lorebook_entries: Vec::new(),
             world_state,
             turn_index,
         })

@@ -143,6 +143,7 @@ fn sample_story_resources() -> StoryResourcesRecord {
         character_ids: vec!["merchant".to_owned()],
         player_schema_id_seed: Some("schema-player-default".to_owned()),
         world_schema_id_seed: Some("schema-world-default".to_owned()),
+        lorebook_ids: vec![],
         planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
     }
 }
@@ -156,6 +157,7 @@ fn sample_story() -> StoryRecord {
         world_schema_id: "schema-world-story-1".to_owned(),
         player_schema_id: "schema-player-story-1".to_owned(),
         introduction: "The courier reaches a flooded dock.".to_owned(),
+        common_variables: vec![],
         created_at_ms: Some(1_000),
         updated_at_ms: Some(2_000),
     }

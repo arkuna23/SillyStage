@@ -10,12 +10,15 @@ use protocol::{
     StorySummaryPayload, UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
     UpdateStoryResourcesParams,
 };
+use std::collections::HashMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{
     CharacterCardRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use story::runtime_graph::{GraphBuildError, RuntimeStoryGraph};
-use story::validate_graph_state_conventions;
+use story::{
+    CommonVariableDefinition, validate_common_variables, validate_graph_state_conventions,
+};
 
 use crate::error::HandlerError;
 
@@ -40,6 +43,7 @@ impl Handler {
         if let Some(world_schema_id_seed) = &params.world_schema_id_seed {
             self.ensure_schema_exists(world_schema_id_seed).await?;
         }
+        self.ensure_lorebooks_exist(&params.lorebook_ids).await?;
 
         let record = StoryResourcesRecord {
             resource_id: self.id_generator.next("resource"),
@@ -47,6 +51,7 @@ impl Handler {
             character_ids: params.character_ids,
             player_schema_id_seed: params.player_schema_id_seed,
             world_schema_id_seed: params.world_schema_id_seed,
+            lorebook_ids: params.lorebook_ids,
             planned_story: normalize_planned_story(params.planned_story),
         };
 
@@ -126,6 +131,10 @@ impl Handler {
         if let Some(world_schema_id_seed) = params.world_schema_id_seed {
             self.ensure_schema_exists(&world_schema_id_seed).await?;
             record.world_schema_id_seed = Some(world_schema_id_seed);
+        }
+        if let Some(lorebook_ids) = params.lorebook_ids {
+            self.ensure_lorebooks_exist(&lorebook_ids).await?;
+            record.lorebook_ids = lorebook_ids;
         }
         if let Some(planned_story) = params.planned_story {
             record.planned_story = normalize_planned_story(Some(planned_story));
@@ -212,6 +221,7 @@ impl Handler {
                 params.display_name,
                 params.api_group_id,
                 params.preset_id,
+                params.common_variables.unwrap_or_default(),
             )
             .await?;
 
@@ -270,7 +280,14 @@ impl Handler {
             .await?
             .ok_or_else(|| HandlerError::MissingStory(params.story_id.clone()))?;
 
-        story.display_name = params.display_name;
+        if let Some(display_name) = params.display_name {
+            story.display_name = display_name;
+        }
+        if let Some(common_variables) = params.common_variables {
+            self.validate_story_common_variables(&story, &common_variables)
+                .await?;
+            story.common_variables = common_variables;
+        }
         story.updated_at_ms = Some(now_timestamp_ms());
         self.store.save_story(story.clone()).await?;
 
@@ -391,6 +408,7 @@ impl Handler {
                 params.display_name,
                 params.api_group_id,
                 params.preset_id,
+                params.common_variables.unwrap_or_default(),
             )
             .await?;
 
@@ -515,6 +533,64 @@ impl Handler {
         Ok(())
     }
 
+    pub(crate) async fn ensure_lorebooks_exist(
+        &self,
+        lorebook_ids: &[String],
+    ) -> Result<(), HandlerError> {
+        for lorebook_id in lorebook_ids {
+            if self.store.get_lorebook(lorebook_id).await?.is_none() {
+                return Err(HandlerError::MissingLorebook(lorebook_id.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    async fn validate_story_common_variables(
+        &self,
+        story: &StoryRecord,
+        common_variables: &[CommonVariableDefinition],
+    ) -> Result<(), HandlerError> {
+        let resource = self
+            .store
+            .get_story_resources(&story.resource_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStoryResources(story.resource_id.clone()))?;
+        let world_schema = self
+            .store
+            .get_schema(&story.world_schema_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSchema(story.world_schema_id.clone()))?;
+        let player_schema = self
+            .store
+            .get_schema(&story.player_schema_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingSchema(story.player_schema_id.clone()))?;
+        let mut character_fields = HashMap::new();
+
+        for character_id in &resource.character_ids {
+            let character = self
+                .store
+                .get_character(character_id)
+                .await?
+                .ok_or_else(|| HandlerError::MissingCharacter(character_id.clone()))?;
+            let schema = self
+                .store
+                .get_schema(&character.content.schema_id)
+                .await?
+                .ok_or_else(|| HandlerError::MissingSchema(character.content.schema_id.clone()))?;
+            character_fields.insert(character_id.clone(), schema.fields);
+        }
+
+        validate_common_variables(
+            common_variables,
+            &resource.character_ids,
+            &world_schema.fields,
+            &player_schema.fields,
+            &character_fields,
+        )
+        .map_err(HandlerError::InvalidCommonVariable)
+    }
+
     pub(crate) async fn load_story_character_cards(
         &self,
         resource_id: &str,
@@ -562,6 +638,7 @@ fn story_resources_payload_from_record(record: &StoryResourcesRecord) -> StoryRe
         character_ids: record.character_ids.clone(),
         player_schema_id_seed: record.player_schema_id_seed.clone(),
         world_schema_id_seed: record.world_schema_id_seed.clone(),
+        lorebook_ids: record.lorebook_ids.clone(),
         planned_story: record.planned_story.clone(),
     }
 }
@@ -575,6 +652,7 @@ fn story_generated_payload_from_record(record: &StoryRecord) -> StoryGeneratedPa
         world_schema_id: record.world_schema_id.clone(),
         player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
+        common_variables: record.common_variables.clone(),
     }
 }
 
@@ -586,6 +664,7 @@ fn story_summary_payload_from_record(record: &StoryRecord) -> StorySummaryPayloa
         world_schema_id: record.world_schema_id.clone(),
         player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
+        common_variables: record.common_variables.clone(),
     }
 }
 
@@ -598,6 +677,7 @@ fn story_detail_payload_from_record(record: &StoryRecord) -> StoryDetailPayload 
         world_schema_id: record.world_schema_id.clone(),
         player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
+        common_variables: record.common_variables.clone(),
     }
 }
 
@@ -640,6 +720,7 @@ fn story_draft_detail_payload_from_record(record: &StoryDraftRecord) -> StoryDra
         world_schema_id: record.world_schema_id.clone(),
         player_schema_id: record.player_schema_id.clone(),
         introduction: record.introduction.clone(),
+        common_variables: record.common_variables.clone(),
         section_summaries: record.section_summaries.clone(),
         status: story_draft_status_payload(record.status),
         final_story_id: record.final_story_id.clone(),

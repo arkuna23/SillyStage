@@ -5,6 +5,8 @@ Return one JSON object only. No markdown. No commentary.
 
 INPUTS
 - STORY_CONCEPT
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
 - PLANNED_STORY
 - CURRENT_SECTION
 - SECTION_INDEX
@@ -20,6 +22,8 @@ RULES
 - Generate only the opening chunk, not the full story
 - TARGET_NODE_COUNT is a soft planning hint, not a hard cap
 - It is acceptable to return fewer or more nodes when needed, but keep the chunk compact and do not generate too many new nodes
+- Use LOREBOOK_BASE as stable setting reference when present
+- Use LOREBOOK_MATCHED only when it clearly helps the current section
 - start_node must be one of the new node ids
 - Also generate world_state_schema, optional player_state_schema, and introduction
 - Every transition target in returned nodes and transition_patches must point to a node id included in this same response

@@ -184,6 +184,8 @@ fn sample_request<'a>(
         character,
         cast,
         current_cast_ids: &node.characters,
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A stubborn courier carrying medicine and trying to judge who is worth trusting.",
         purpose: ActorPurpose::AdvanceGoal,

@@ -1,7 +1,10 @@
+use llm::{LlmApi, OpenAiClient, OpenAiConfig};
 use protocol::{
-    ApiCreateParams, ApiDeleteParams, ApiDeletedPayload, ApiGetParams, ApiPayload, ApiUpdateParams,
-    ApisListedPayload, JsonRpcResponseMessage, ResponseResult,
+    ApiCreateParams, ApiDeleteParams, ApiDeletedPayload, ApiGetParams, ApiListModelsParams,
+    ApiModelsListedPayload, ApiPayload, ApiUpdateParams, ApisListedPayload, JsonRpcResponseMessage,
+    ResponseResult,
 };
+use store::LlmProvider;
 use store::{ApiRecord, Store};
 
 use crate::error::HandlerError;
@@ -72,6 +75,27 @@ impl Handler {
             request_id,
             None::<String>,
             ResponseResult::ApisListed(ApisListedPayload { apis }),
+        ))
+    }
+
+    pub(crate) async fn handle_api_list_models(
+        &self,
+        request_id: &str,
+        params: ApiListModelsParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let base_url = normalize_base_url(&params.base_url)?;
+        let models = build_model_listing_client(params.provider, &base_url, &params.api_key)?
+            .list_models()
+            .await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::ApiModelsListed(ApiModelsListedPayload {
+                provider: params.provider,
+                base_url,
+                models,
+            }),
         ))
     }
 
@@ -158,6 +182,33 @@ fn normalize_api_id(api_id: &str) -> Result<String, HandlerError> {
         return Err(HandlerError::EmptyApiId);
     }
     Ok(trimmed.to_owned())
+}
+
+fn normalize_base_url(base_url: &str) -> Result<String, HandlerError> {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        return Err(HandlerError::Llm(llm::LlmError::InvalidConfig(
+            "base URL cannot be empty".to_owned(),
+        )));
+    }
+    Ok(trimmed.to_owned())
+}
+
+fn build_model_listing_client(
+    provider: LlmProvider,
+    base_url: &str,
+    api_key: &str,
+) -> Result<Box<dyn LlmApi>, HandlerError> {
+    match provider {
+        LlmProvider::OpenAi => {
+            let config = OpenAiConfig::builder()
+                .api_key(api_key)
+                .base_url(base_url)
+                .default_model("model-list-placeholder")
+                .build()?;
+            Ok(Box::new(OpenAiClient::new(config)?))
+        }
+    }
 }
 
 pub(crate) fn api_payload_from_record(record: &ApiRecord) -> ApiPayload {

@@ -7,10 +7,12 @@ use crate::prompt::{render_character_summaries, render_sections};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct PlannerRequest<'a> {
     pub story_concept: &'a str,
     pub available_characters: &'a [CharacterCard],
+    pub lorebook_base: Option<String>,
+    pub lorebook_matched: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,14 +98,24 @@ impl Planner {
         let character_summaries: Vec<CharacterCardSummaryRef<'_>> = request
             .available_characters
             .iter()
-            .map(CharacterCard::summary_ref)
+            .map(|card| card.summary_ref(None))
             .collect();
-        let stable_prompt = render_sections(&[(
+        let mut stable_sections = vec![("STORY_CONCEPT", request.story_concept.to_owned())];
+        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
             "AVAILABLE_CHARACTERS",
             render_character_summaries(&character_summaries, None),
-        )]);
-        let dynamic_prompt =
-            render_sections(&[("STORY_CONCEPT", request.story_concept.to_owned())]);
+        ));
+
+        let mut dynamic_sections = Vec::new();
+        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }

@@ -120,6 +120,8 @@ fn sample_request<'a>(
         world_state_schema,
         player_state_schema,
         available_characters,
+        lorebook_base: None,
+        lorebook_matched: None,
     }
 }
 

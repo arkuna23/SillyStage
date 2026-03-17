@@ -5,9 +5,9 @@ use tokio::sync::RwLock;
 
 use crate::error::StoreError;
 use crate::record::{
-    ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
-    SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
-    StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, LorebookRecord, PlayerProfileRecord,
+    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
+    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
@@ -17,6 +17,7 @@ pub struct InMemoryStore {
     api_groups: RwLock<HashMap<String, ApiGroupRecord>>,
     presets: RwLock<HashMap<String, PresetRecord>>,
     schemas: RwLock<HashMap<String, SchemaRecord>>,
+    lorebooks: RwLock<HashMap<String, LorebookRecord>>,
     player_profiles: RwLock<HashMap<String, PlayerProfileRecord>>,
     characters: RwLock<HashMap<String, CharacterCardRecord>>,
     story_resources: RwLock<HashMap<String, StoryResourcesRecord>>,
@@ -119,6 +120,29 @@ impl Store for InMemoryStore {
 
     async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
         Ok(self.schemas.write().await.remove(schema_id))
+    }
+
+    async fn get_lorebook(&self, lorebook_id: &str) -> Result<Option<LorebookRecord>, StoreError> {
+        Ok(self.lorebooks.read().await.get(lorebook_id).cloned())
+    }
+
+    async fn list_lorebooks(&self) -> Result<Vec<LorebookRecord>, StoreError> {
+        Ok(self.lorebooks.read().await.values().cloned().collect())
+    }
+
+    async fn save_lorebook(&self, record: LorebookRecord) -> Result<(), StoreError> {
+        self.lorebooks
+            .write()
+            .await
+            .insert(record.lorebook_id.clone(), record);
+        Ok(())
+    }
+
+    async fn delete_lorebook(
+        &self,
+        lorebook_id: &str,
+    ) -> Result<Option<LorebookRecord>, StoreError> {
+        Ok(self.lorebooks.write().await.remove(lorebook_id))
     }
 
     async fn get_player_profile(

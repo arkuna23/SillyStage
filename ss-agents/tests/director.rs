@@ -7,8 +7,8 @@ use serde_json::json;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::{ActorPurpose, Director, NarratorPurpose, ResponseBeat};
 use state::{
-    ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateValueType,
-    WorldState,
+    ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateOp,
+    StateValueType, WorldState,
 };
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{NarrativeNode, StoryGraph};
@@ -68,7 +68,10 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
             "Decide whether to trust the guide.",
             vec!["merchant".to_owned()],
             vec![],
-            vec![],
+            vec![StateOp::SetState {
+                key: "entered_intro".to_owned(),
+                value: json!(true),
+            }],
         )],
     ))
     .expect("runtime graph should build");
@@ -76,6 +79,7 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     let mut world_state = WorldState::new("merchant_intro");
     world_state.set_state("flood_gate_open", json!(false));
     world_state.set_player_state("coins", json!(12));
+    world_state.set_character_state("merchant", "trust", json!(2));
     world_state.add_active_character("merchant");
     world_state.push_actor_shared_history(
         ActorMemoryEntry {
@@ -104,11 +108,16 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
             &[CharacterCard {
                 id: "merchant".to_owned(),
                 name: "Old Merchant".to_owned(),
-                personality: "greedy but friendly trader".to_owned(),
+                personality: "greedy but friendly trader trust={{trust}}".to_owned(),
                 style: "talkative".to_owned(),
-                state_schema: HashMap::new(),
+                state_schema: HashMap::from([(
+                    "trust".to_owned(),
+                    StateFieldSchema::new(StateValueType::Int).with_default(json!(0)),
+                )]),
                 system_prompt: "Stay in character.".to_owned(),
             }],
+            None,
+            None,
             Some("Courier"),
             "A stubborn courier trying to protect a sealed medical satchel.",
             &player_state_schema,
@@ -137,12 +146,15 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     );
     assert!(user_message.contains("CURRENT_CAST"));
     assert!(user_message.contains("merchant | Old Merchant"));
+    assert!(user_message.contains("trust=2"));
     assert!(!user_message.contains("ResponsePlan schema"));
     assert!(!user_message.contains("Stay in character."));
     assert!(!user_message.contains("Keep this between us."));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(!user_message.contains("on_enter_updates"));
+    assert!(!user_message.contains("entered_intro"));
     assert!(!user_message.contains("PLAYER_NAME"));
-    assert!(user_message.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("PLAYER:"));
     assert!(
         user_message.contains("A stubborn courier trying to protect a sealed medical satchel.")
     );

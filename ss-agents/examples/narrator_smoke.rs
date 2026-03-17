@@ -60,6 +60,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 current_node: &dock,
                 character_cards: &character_cards,
                 current_cast_ids: &dock.characters,
+                lorebook_base: None,
+                lorebook_matched: None,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
@@ -81,6 +83,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 current_node: &dock,
                 character_cards: &character_cards,
                 current_cast_ids: &dock.characters,
+                lorebook_base: None,
+                lorebook_matched: None,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",
@@ -102,6 +106,8 @@ async fn run() -> Result<(), Box<dyn Error>> {
                 current_node: &gate,
                 character_cards: &character_cards,
                 current_cast_ids: &gate.characters,
+                lorebook_base: None,
+                lorebook_matched: None,
                 player_name: Some("Courier"),
                 player_description:
                     "A cautious courier carrying medicine and looking for a safe route.",

@@ -8,9 +8,9 @@ use tokio::io::AsyncWriteExt;
 
 use crate::error::StoreError;
 use crate::record::{
-    ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, PlayerProfileRecord,
-    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
-    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardDefinition, CharacterCardRecord, LorebookRecord,
+    PlayerProfileRecord, PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord,
+    SessionRecord, StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 use crate::store::Store;
 
@@ -19,6 +19,7 @@ const APIS_DIR: &str = "apis";
 const API_GROUPS_DIR: &str = "api_groups";
 const PRESETS_DIR: &str = "presets";
 const SCHEMAS_DIR: &str = "schemas";
+const LOREBOOKS_DIR: &str = "lorebooks";
 const PLAYER_PROFILES_DIR: &str = "player_profiles";
 const CHARACTERS_DIR: &str = "characters";
 const CHARACTER_RECORD_FILE: &str = "record.json";
@@ -71,6 +72,7 @@ impl FileSystemStore {
         fs::create_dir_all(self.api_groups_dir()).await?;
         fs::create_dir_all(self.presets_dir()).await?;
         fs::create_dir_all(self.schemas_dir()).await?;
+        fs::create_dir_all(self.lorebooks_dir()).await?;
         fs::create_dir_all(self.player_profiles_dir()).await?;
         fs::create_dir_all(self.characters_dir()).await?;
         fs::create_dir_all(self.story_resources_dir()).await?;
@@ -128,6 +130,16 @@ impl FileSystemStore {
 
     fn player_profiles_dir(&self) -> PathBuf {
         self.root.join(PLAYER_PROFILES_DIR)
+    }
+
+    fn lorebooks_dir(&self) -> PathBuf {
+        self.root.join(LOREBOOKS_DIR)
+    }
+
+    fn lorebook_path(&self, lorebook_id: &str) -> Result<PathBuf, StoreError> {
+        Ok(self
+            .lorebooks_dir()
+            .join(format!("{}.json", validate_path_component(lorebook_id)?)))
     }
 
     fn player_profile_path(&self, player_profile_id: &str) -> Result<PathBuf, StoreError> {
@@ -289,6 +301,25 @@ impl Store for FileSystemStore {
 
     async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError> {
         delete_optional_json_file(&self.schema_path(schema_id)?).await
+    }
+
+    async fn get_lorebook(&self, lorebook_id: &str) -> Result<Option<LorebookRecord>, StoreError> {
+        read_optional_json_file(&self.lorebook_path(lorebook_id)?).await
+    }
+
+    async fn list_lorebooks(&self) -> Result<Vec<LorebookRecord>, StoreError> {
+        list_json_records(&self.lorebooks_dir()).await
+    }
+
+    async fn save_lorebook(&self, record: LorebookRecord) -> Result<(), StoreError> {
+        write_json_atomic(&self.lorebook_path(&record.lorebook_id)?, &record).await
+    }
+
+    async fn delete_lorebook(
+        &self,
+        lorebook_id: &str,
+    ) -> Result<Option<LorebookRecord>, StoreError> {
+        delete_optional_json_file(&self.lorebook_path(lorebook_id)?).await
     }
 
     async fn get_player_profile(

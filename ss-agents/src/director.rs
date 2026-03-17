@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
     compact_json, render_character_summaries, render_director_world_state, render_node,
-    render_sections, render_state_schema_fields,
+    render_player, render_sections, render_state_schema_fields,
 };
 use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
@@ -141,6 +141,8 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        lorebook_base: Option<&str>,
+        lorebook_matched: Option<&str>,
         player_name: Option<&str>,
         player_description: &str,
         player_state_schema: &PlayerStateSchema,
@@ -153,6 +155,8 @@ impl Director {
             runtime_graph,
             world_state,
             character_cards,
+            lorebook_base,
+            lorebook_matched,
             player_persona,
             player_state_schema,
             true,
@@ -165,6 +169,8 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        lorebook_base: Option<&str>,
+        lorebook_matched: Option<&str>,
         player_name: Option<&str>,
         player_description: &str,
         player_state_schema: &PlayerStateSchema,
@@ -177,6 +183,8 @@ impl Director {
             runtime_graph,
             world_state,
             character_cards,
+            lorebook_base,
+            lorebook_matched,
             player_persona,
             player_state_schema,
             false,
@@ -189,6 +197,8 @@ impl Director {
         runtime_graph: &RuntimeStoryGraph,
         world_state: &mut WorldState,
         character_cards: &[CharacterCard],
+        lorebook_base: Option<&str>,
+        lorebook_matched: Option<&str>,
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
         allow_fallback: bool,
@@ -233,6 +243,8 @@ impl Director {
                 current_node,
                 transitioned,
                 character_cards,
+                lorebook_base,
+                lorebook_matched,
                 player_persona,
                 player_state_schema,
             )
@@ -244,6 +256,8 @@ impl Director {
                 current_node,
                 transitioned,
                 character_cards,
+                lorebook_base,
+                lorebook_matched,
                 player_persona,
                 player_state_schema,
             )
@@ -264,6 +278,8 @@ impl Director {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        lorebook_base: Option<&str>,
+        lorebook_matched: Option<&str>,
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
@@ -272,6 +288,8 @@ impl Director {
             node,
             transitioned,
             character_cards,
+            lorebook_base,
+            lorebook_matched,
             player_persona,
             player_state_schema,
         )?;
@@ -305,30 +323,47 @@ impl Director {
         node: &NarrativeNode,
         transitioned: bool,
         character_cards: &[CharacterCard],
+        lorebook_base: Option<&str>,
+        lorebook_matched: Option<&str>,
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<(String, String), DirectorError> {
-        let stable_prompt = render_sections(&[
-            ("PLAYER_DESCRIPTION", player_persona.description.to_owned()),
-            (
-                "CURRENT_CAST",
-                render_character_summaries(&current_cast_summaries(
+        let mut stable_sections = Vec::new();
+        if let Some(lorebook_base) = lorebook_base {
+            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
+        }
+        stable_sections.push((
+            "PLAYER",
+            render_player(player_persona.name, player_persona.description),
+        ));
+        stable_sections.push((
+            "CURRENT_CAST",
+            render_character_summaries(
+                &current_cast_summaries(
                     world_state.active_characters(),
                     character_cards,
-                )?, player_persona.name),
+                    world_state,
+                )?,
+                player_persona.name,
             ),
-            ("CURRENT_NODE", render_node(node)),
-            (
-                "PLAYER_STATE_SCHEMA",
-                render_state_schema_fields(&player_state_schema.fields),
-            ),
-            (
-                "TRANSITIONED_THIS_TURN",
-                compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?,
-            ),
-        ]);
-        let dynamic_prompt =
-            render_sections(&[("WORLD_STATE", render_director_world_state(world_state))]);
+        ));
+        stable_sections.push(("CURRENT_NODE", render_node(node)));
+        stable_sections.push((
+            "PLAYER_STATE_SCHEMA",
+            render_state_schema_fields(&player_state_schema.fields),
+        ));
+        stable_sections.push((
+            "TRANSITIONED_THIS_TURN",
+            compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?,
+        ));
+
+        let mut dynamic_sections = vec![("WORLD_STATE", render_director_world_state(world_state))];
+        if let Some(lorebook_matched) = lorebook_matched {
+            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
+        }
+
+        let stable_prompt = render_sections(&stable_sections);
+        let dynamic_prompt = render_sections(&dynamic_sections);
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -400,6 +435,7 @@ pub enum DirectorError {
 fn current_cast_summaries<'a>(
     current_character_ids: &[String],
     character_cards: &'a [CharacterCard],
+    world_state: &'a WorldState,
 ) -> Result<Vec<CharacterCardSummaryRef<'a>>, DirectorError> {
     let cards_by_id: std::collections::HashMap<&str, &CharacterCard> = character_cards
         .iter()
@@ -411,7 +447,7 @@ fn current_cast_summaries<'a>(
         .map(|character_id| {
             cards_by_id
                 .get(character_id.as_str())
-                .map(|card| card.summary_ref())
+                .map(|card| card.summary_ref(world_state.character_states(character_id)))
                 .ok_or_else(|| {
                     DirectorError::MissingCharacterCard(format!(
                         "missing character card for current cast id '{character_id}'"

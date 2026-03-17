@@ -1,6 +1,7 @@
 pub mod engine;
 pub mod event;
 mod logging;
+mod lorebook;
 pub mod manager;
 pub mod registry;
 pub mod runtime;

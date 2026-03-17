@@ -196,6 +196,7 @@ pub fn sample_resources_payload(resource_id: impl Into<String>) -> StoryResource
         character_ids: vec!["merchant".to_owned()],
         player_schema_id_seed: Some("schema-player-default".to_owned()),
         world_schema_id_seed: Some("schema-world-default".to_owned()),
+        lorebook_ids: vec![],
         planned_story: None,
     }
 }
@@ -212,6 +213,7 @@ pub fn sample_story_payload(
         world_schema_id: "schema-world-story-1".to_owned(),
         player_schema_id: "schema-player-story-1".to_owned(),
         introduction: "The courier reaches a flooded dock at dusk.".to_owned(),
+        common_variables: vec![],
     }
 }
 
@@ -229,6 +231,7 @@ pub fn sample_story_record(
         world_schema_id: "schema-world-story-1".to_owned(),
         player_schema_id: "schema-player-story-1".to_owned(),
         introduction: sample_story_payload("resource-1", story_id).introduction,
+        common_variables: vec![],
         created_at_ms: Some(1_000),
         updated_at_ms: Some(2_000),
     }

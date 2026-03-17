@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use state::{StateFieldSchema, WorldState};
-use story::StoryGraph;
+use story::{CommonVariableDefinition, StoryGraph};
 
 use crate::config::{ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, SessionBindingConfig};
 
@@ -54,6 +54,27 @@ pub struct SchemaRecord {
     pub display_name: String,
     pub tags: Vec<String>,
     pub fields: std::collections::HashMap<String, StateFieldSchema>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LorebookEntryRecord {
+    pub entry_id: String,
+    pub title: String,
+    pub content: String,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub always_include: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LorebookRecord {
+    pub lorebook_id: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub entries: Vec<LorebookEntryRecord>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -113,6 +134,8 @@ pub struct StoryResourcesRecord {
     pub character_ids: Vec<String>,
     pub player_schema_id_seed: Option<String>,
     pub world_schema_id_seed: Option<String>,
+    #[serde(default)]
+    pub lorebook_ids: Vec<String>,
     pub planned_story: Option<String>,
 }
 
@@ -125,6 +148,8 @@ pub struct StoryRecord {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -154,6 +179,8 @@ pub struct StoryDraftRecord {
     pub player_schema_id: String,
     pub introduction: String,
     #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
+    #[serde(default)]
     pub section_summaries: Vec<String>,
     #[serde(default)]
     pub section_node_ids: Vec<Vec<String>>,
@@ -179,4 +206,8 @@ pub struct SessionRecord {
     pub created_at_ms: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at_ms: Option<u64>,
+}
+
+fn default_enabled() -> bool {
+    true
 }

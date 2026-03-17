@@ -2,9 +2,9 @@ use async_trait::async_trait;
 
 use crate::error::StoreError;
 use crate::record::{
-    ApiGroupRecord, ApiRecord, CharacterCardRecord, PlayerProfileRecord, PresetRecord,
-    SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord, StoryDraftRecord,
-    StoryRecord, StoryResourcesRecord,
+    ApiGroupRecord, ApiRecord, CharacterCardRecord, LorebookRecord, PlayerProfileRecord,
+    PresetRecord, SchemaRecord, SessionCharacterRecord, SessionMessageRecord, SessionRecord,
+    StoryDraftRecord, StoryRecord, StoryResourcesRecord,
 };
 
 #[async_trait]
@@ -32,6 +32,14 @@ pub trait Store: Send + Sync {
     async fn list_schemas(&self) -> Result<Vec<SchemaRecord>, StoreError>;
     async fn save_schema(&self, record: SchemaRecord) -> Result<(), StoreError>;
     async fn delete_schema(&self, schema_id: &str) -> Result<Option<SchemaRecord>, StoreError>;
+
+    async fn get_lorebook(&self, lorebook_id: &str) -> Result<Option<LorebookRecord>, StoreError>;
+    async fn list_lorebooks(&self) -> Result<Vec<LorebookRecord>, StoreError>;
+    async fn save_lorebook(&self, record: LorebookRecord) -> Result<(), StoreError>;
+    async fn delete_lorebook(
+        &self,
+        lorebook_id: &str,
+    ) -> Result<Option<LorebookRecord>, StoreError>;
 
     async fn get_player_profile(
         &self,

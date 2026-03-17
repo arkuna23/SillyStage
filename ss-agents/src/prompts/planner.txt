@@ -6,6 +6,8 @@ that a human can revise and the Architect can read directly.
 You will receive:
 
 - a STORY_CONCEPT
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
 - a list of AVAILABLE_CHARACTERS
 
 AVAILABLE_CHARACTERS are compact character card summaries.
@@ -34,6 +36,8 @@ Rules:
 - Keep it concise and easy to hand-edit
 - Only use characters from AVAILABLE_CHARACTERS
 - Do not invent extra characters
+- Use LOREBOOK_BASE as stable world reference when present
+- Use LOREBOOK_MATCHED only when it clearly fits the current concept
 - Character Roles should reference both character names and ids when useful
 - Suggested Beats should outline a few likely scene turns or developments, not a full script
 - State Hints should mention useful global or character state ideas in prose, not schema form

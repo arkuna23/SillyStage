@@ -4,16 +4,18 @@ use ss_protocol::{
     ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams, ApiListParams, ApiUpdateParams,
     CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterDeleteParams,
     CharacterExportChrParams, CharacterGetCoverParams, CharacterGetParams, CharacterListParams,
-    CharacterSetCoverParams, CharacterUpdateParams, ConfigGetGlobalParams,
-    ContinueStoryDraftParams, CreateSessionMessageParams, CreateStoryResourcesParams,
-    DashboardGetParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
-    DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
-    EnterSessionCharacterSceneParams, FinalizeStoryDraftParams, GenerateStoryParams,
-    GetRuntimeSnapshotParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
-    GetSessionVariablesParams, GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams,
-    JsonRpcRequestMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
-    ListSessionMessagesParams, ListSessionsParams, ListStoriesParams, ListStoryDraftsParams,
-    ListStoryResourcesParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
+    CharacterSetCoverParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
+    ConfigGetGlobalParams, ContinueStoryDraftParams, CreateSessionMessageParams,
+    CreateStoryResourcesParams, DashboardGetParams, DeleteSessionCharacterParams,
+    DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, EnterSessionCharacterSceneParams, FinalizeStoryDraftParams,
+    GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionCharacterParams,
+    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryDraftParams,
+    GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
+    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
+    ListSessionsParams, ListStoriesParams, ListStoryDraftsParams, ListStoryResourcesParams,
+    LorebookCreateParams, LorebookDeleteParams, LorebookGetParams, LorebookListParams,
+    LorebookUpdateParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
     PlayerProfileGetParams, PlayerProfileListParams, PlayerProfileUpdateParams, PresetCreateParams,
     PresetDeleteParams, PresetGetParams, PresetListParams, RequestParams, RunTurnParams,
     SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
@@ -67,6 +69,25 @@ fn sample_preset_agents() -> ss_protocol::PresetAgentPayloads {
         keeper: config(512),
         replyer: config(256),
     }
+}
+
+fn sample_common_variables() -> Vec<CommonVariableDefinition> {
+    vec![
+        CommonVariableDefinition {
+            scope: CommonVariableScope::World,
+            key: "gate_open".to_owned(),
+            display_name: "Gate Open".to_owned(),
+            character_id: None,
+            pinned: true,
+        },
+        CommonVariableDefinition {
+            scope: CommonVariableScope::Character,
+            key: "trust".to_owned(),
+            display_name: "Merchant Trust".to_owned(),
+            character_id: Some("merchant".to_owned()),
+            pinned: false,
+        },
+    ]
 }
 
 #[test]
@@ -128,6 +149,7 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
             display_name: Some("Flooded Harbor".to_owned()),
             api_group_id: Some("group-default".to_owned()),
             preset_id: Some("preset-default".to_owned()),
+            common_variables: Some(sample_common_variables()),
         }),
     );
     assert!(
@@ -161,6 +183,7 @@ fn upload_and_story_requests_round_trip_with_stable_methods() {
             display_name: Some("Draft Harbor".to_owned()),
             api_group_id: Some("group-default".to_owned()),
             preset_id: Some("preset-default".to_owned()),
+            common_variables: Some(sample_common_variables()),
         }),
     );
     assert!(
@@ -461,6 +484,7 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
                 character_ids: vec!["merchant".to_owned(), "guard".to_owned()],
                 player_schema_id_seed: Some("schema-player-default".to_owned()),
                 world_schema_id_seed: Some("schema-world-default".to_owned()),
+                lorebook_ids: vec![],
                 planned_story: Some("Opening Situation:\nA courier arrives at dusk.".to_owned()),
             }),
         ),
@@ -485,6 +509,7 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
                 character_ids: None,
                 player_schema_id_seed: None,
                 world_schema_id_seed: None,
+                lorebook_ids: None,
                 planned_story: None,
             }),
         ),
@@ -493,6 +518,42 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             None::<String>,
             RequestParams::StoryResourcesDelete(DeleteStoryResourcesParams {
                 resource_id: "resource-1".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "lorebook-create",
+            None::<String>,
+            RequestParams::LorebookCreate(LorebookCreateParams {
+                lorebook_id: "lorebook-1".to_owned(),
+                display_name: "Harbor Lore".to_owned(),
+                entries: vec![],
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "lorebook-get",
+            None::<String>,
+            RequestParams::LorebookGet(LorebookGetParams {
+                lorebook_id: "lorebook-1".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "lorebook-list",
+            None::<String>,
+            RequestParams::LorebookList(LorebookListParams::default()),
+        ),
+        JsonRpcRequestMessage::new(
+            "lorebook-update",
+            None::<String>,
+            RequestParams::LorebookUpdate(LorebookUpdateParams {
+                lorebook_id: "lorebook-1".to_owned(),
+                display_name: Some("Updated Harbor Lore".to_owned()),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "lorebook-delete",
+            None::<String>,
+            RequestParams::LorebookDelete(LorebookDeleteParams {
+                lorebook_id: "lorebook-1".to_owned(),
             }),
         ),
         JsonRpcRequestMessage::new(
@@ -507,7 +568,8 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             None::<String>,
             RequestParams::StoryUpdate(UpdateStoryParams {
                 story_id: "story-1".to_owned(),
-                display_name: "Renamed Story".to_owned(),
+                display_name: Some("Renamed Story".to_owned()),
+                common_variables: None,
             }),
         ),
         JsonRpcRequestMessage::new(
@@ -791,5 +853,118 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
         let json = serde_json::to_string_pretty(&request).expect("serialize");
         let round_trip: JsonRpcRequestMessage = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(request.method(), round_trip.method());
+    }
+}
+
+#[test]
+fn story_update_and_schema_enum_requests_preserve_new_fields() {
+    let common_variables = sample_common_variables();
+    let story_generate = JsonRpcRequestMessage::new(
+        "story-generate-common-variables",
+        None::<String>,
+        RequestParams::StoryGenerate(GenerateStoryParams {
+            resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor".to_owned()),
+            api_group_id: Some("group-default".to_owned()),
+            preset_id: Some("preset-default".to_owned()),
+            common_variables: Some(common_variables.clone()),
+        }),
+    );
+    let story_generate_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&story_generate).expect("serialize"))
+            .expect("deserialize");
+    match story_generate_round_trip.params {
+        RequestParams::StoryGenerate(GenerateStoryParams {
+            resource_id,
+            common_variables: Some(round_tripped),
+            ..
+        }) => {
+            assert_eq!(resource_id, "resource-1");
+            assert_eq!(round_tripped, common_variables);
+        }
+        other => panic!("unexpected params: {other:?}"),
+    }
+
+    let draft_start = JsonRpcRequestMessage::new(
+        "story-draft-start-common-variables",
+        None::<String>,
+        RequestParams::StoryDraftStart(StartStoryDraftParams {
+            resource_id: "resource-1".to_owned(),
+            display_name: Some("Draft Harbor".to_owned()),
+            api_group_id: Some("group-default".to_owned()),
+            preset_id: Some("preset-default".to_owned()),
+            common_variables: Some(common_variables.clone()),
+        }),
+    );
+    let draft_start_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&draft_start).expect("serialize"))
+            .expect("deserialize");
+    match draft_start_round_trip.params {
+        RequestParams::StoryDraftStart(StartStoryDraftParams {
+            resource_id,
+            common_variables: Some(round_tripped),
+            ..
+        }) => {
+            assert_eq!(resource_id, "resource-1");
+            assert_eq!(round_tripped, common_variables);
+        }
+        other => panic!("unexpected params: {other:?}"),
+    }
+
+    let story_update = JsonRpcRequestMessage::new(
+        "story-update-common-variables",
+        None::<String>,
+        RequestParams::StoryUpdate(UpdateStoryParams {
+            story_id: "story-1".to_owned(),
+            display_name: None,
+            common_variables: Some(common_variables.clone()),
+        }),
+    );
+    let story_update_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&story_update).expect("serialize"))
+            .expect("deserialize");
+    match story_update_round_trip.params {
+        RequestParams::StoryUpdate(UpdateStoryParams {
+            story_id,
+            display_name,
+            common_variables: Some(round_tripped),
+        }) => {
+            assert_eq!(story_id, "story-1");
+            assert_eq!(display_name, None);
+            assert_eq!(round_tripped, common_variables);
+        }
+        other => panic!("unexpected params: {other:?}"),
+    }
+
+    let schema_create = JsonRpcRequestMessage::new(
+        "schema-create-enum",
+        None::<String>,
+        RequestParams::SchemaCreate(SchemaCreateParams {
+            schema_id: "schema-zone".to_owned(),
+            display_name: "Zone Schema".to_owned(),
+            tags: vec!["world".to_owned()],
+            fields: [(
+                "zone".to_owned(),
+                StateFieldSchema::new(StateValueType::String)
+                    .with_default(json!("dock"))
+                    .with_enum_values(vec![json!("dock"), json!("tower")]),
+            )]
+            .into_iter()
+            .collect(),
+        }),
+    );
+    let schema_create_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&schema_create).expect("serialize"))
+            .expect("deserialize");
+    match schema_create_round_trip.params {
+        RequestParams::SchemaCreate(SchemaCreateParams { fields, .. }) => {
+            let field = fields.get("zone").expect("field should exist");
+            assert_eq!(
+                field.enum_values.as_ref(),
+                Some(&vec![json!("dock"), json!("tower")])
+            );
+            assert_eq!(field.default.as_ref(), Some(&json!("dock")));
+        }
+        other => panic!("unexpected params: {other:?}"),
     }
 }

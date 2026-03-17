@@ -1,11 +1,15 @@
 use engine::{EngineTurnResult, RuntimeSnapshot};
 use serde::{Deserialize, Serialize};
-use story::StoryGraph;
+use story::{CommonVariableDefinition, StoryGraph};
 
-use crate::api::{ApiDeletedPayload, ApiPayload, ApisListedPayload};
+use crate::api::{ApiDeletedPayload, ApiModelsListedPayload, ApiPayload, ApisListedPayload};
 use crate::api_group::{ApiGroupDeletedPayload, ApiGroupPayload, ApiGroupsListedPayload};
 use crate::character::{CharacterCardContent, CharacterCardSummaryPayload, CharacterCoverMimeType};
 use crate::config::{GlobalConfigPayload, SessionConfigPayload};
+use crate::lorebook::{
+    LorebookDeletedPayload, LorebookEntriesListedPayload, LorebookEntryDeletedPayload,
+    LorebookEntryPayload, LorebookPayload, LorebooksListedPayload,
+};
 use crate::player_profile::{
     PlayerProfileDeletedPayload, PlayerProfilePayload, PlayerProfilesListedPayload,
 };
@@ -28,6 +32,7 @@ pub enum ResponseResult {
     CharacterCardUploaded(CharacterCardUploadedPayload),
     Api(Box<ApiPayload>),
     ApisListed(ApisListedPayload),
+    ApiModelsListed(ApiModelsListedPayload),
     ApiDeleted(ApiDeletedPayload),
     ApiGroup(Box<ApiGroupPayload>),
     ApiGroupsListed(ApiGroupsListedPayload),
@@ -38,6 +43,12 @@ pub enum ResponseResult {
     Schema(Box<SchemaPayload>),
     SchemasListed(SchemasListedPayload),
     SchemaDeleted(SchemaDeletedPayload),
+    Lorebook(Box<LorebookPayload>),
+    LorebooksListed(LorebooksListedPayload),
+    LorebookDeleted(LorebookDeletedPayload),
+    LorebookEntry(Box<LorebookEntryPayload>),
+    LorebookEntriesListed(LorebookEntriesListedPayload),
+    LorebookEntryDeleted(LorebookEntryDeletedPayload),
     PlayerProfile(Box<PlayerProfilePayload>),
     PlayerProfilesListed(PlayerProfilesListedPayload),
     PlayerProfileDeleted(PlayerProfileDeletedPayload),
@@ -155,6 +166,7 @@ pub struct StoryResourcesPayload {
     pub character_ids: Vec<String>,
     pub player_schema_id_seed: Option<String>,
     pub world_schema_id_seed: Option<String>,
+    pub lorebook_ids: Vec<String>,
     pub planned_story: Option<String>,
 }
 
@@ -183,6 +195,8 @@ pub struct StoryGeneratedPayload {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -193,6 +207,8 @@ pub struct StorySummaryPayload {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -204,6 +220,8 @@ pub struct StoryDetailPayload {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +272,8 @@ pub struct StoryDraftDetailPayload {
     pub world_schema_id: String,
     pub player_schema_id: String,
     pub introduction: String,
+    #[serde(default)]
+    pub common_variables: Vec<CommonVariableDefinition>,
     pub section_summaries: Vec<String>,
     pub status: StoryDraftStatusPayload,
     pub final_story_id: Option<String>,

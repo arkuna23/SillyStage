@@ -5,6 +5,8 @@ No markdown. No commentary. No duplicate keys.
 
 INPUTS
 - STORY_CONCEPT
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
 - optional PLANNED_STORY
 - optional WORLD_STATE_SCHEMA_SEED
 - optional PLAYER_STATE_SCHEMA_SEED
@@ -19,6 +21,8 @@ AVAILABLE_CHARACTERS items contain:
 RULES
 - Produce a StoryGraph, world_state_schema, optional player_state_schema, and a short introduction
 - Follow PLANNED_STORY when present
+- Use LOREBOOK_BASE as stable setting reference when present
+- Use LOREBOOK_MATCHED only when it clearly fits the current concept or planned story
 - Reuse schema seeds when they fit
 - Use only character ids from AVAILABLE_CHARACTERS in structural fields
 - Identifier-like state keys such as "current_event", "current_route", "route", "current_phase", and "travel_phase" must use canonical snake_case ids as values

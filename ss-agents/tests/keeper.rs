@@ -107,7 +107,10 @@ fn previous_node() -> NarrativeNode {
         "Reach the dock.",
         vec!["merchant".to_owned()],
         vec![],
-        vec![],
+        vec![StateOp::SetState {
+            key: "entered_market".to_owned(),
+            value: json!(true),
+        }],
     )
 }
 
@@ -119,7 +122,10 @@ fn current_node() -> NarrativeNode {
         "Decide whether to trust the guide.",
         vec!["merchant".to_owned(), "guide".to_owned()],
         vec![],
-        vec![],
+        vec![StateOp::SetState {
+            key: "entered_dock".to_owned(),
+            value: json!(true),
+        }],
     )
 }
 
@@ -158,6 +164,8 @@ fn sample_request<'a>(
     KeeperRequest {
         phase: KeeperPhase::AfterTurnOutputs,
         player_input: "I agree to follow the guide toward the canal gate.",
+        lorebook_base: None,
+        lorebook_matched: None,
         player_name: Some("Courier"),
         player_description: "A cautious courier escorting medicine through the flooded district.",
         previous_node,
@@ -275,10 +283,13 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("KEEPER_PHASE"));
     assert!(user_message.contains("PLAYER_INPUT"));
     assert!(!user_message.contains("PLAYER_NAME"));
-    assert!(user_message.contains("PLAYER_DESCRIPTION"));
+    assert!(user_message.contains("PLAYER:"));
     assert!(user_message.contains("COMPLETED_BEATS"));
     assert!(user_message.contains("shared_history"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
+    assert!(!user_message.contains("on_enter_updates"));
+    assert!(!user_message.contains("entered_market"));
+    assert!(!user_message.contains("entered_dock"));
     assert!(user_message.contains("player_state"));
     assert!(user_message.contains("coins=12"));
     assert!(user_message.contains("coins:"));

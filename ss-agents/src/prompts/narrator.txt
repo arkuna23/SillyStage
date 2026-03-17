@@ -9,12 +9,14 @@ Do not produce markdown fences.
 
 You will receive:
 
+- optional LOREBOOK_BASE
+- optional LOREBOOK_MATCHED
 - a NARRATOR_PURPOSE
 - a PREVIOUS_NODE
 - a PREVIOUS_CAST
 - a CURRENT_NODE
 - a CURRENT_CAST
-- a PLAYER_DESCRIPTION
+- a PLAYER summary describing the player name and current persona
 - a PLAYER_STATE_SCHEMA
 - a WORLD_STATE
 
@@ -24,8 +26,10 @@ Narration rules:
 - Prefer one short paragraph unless the transition or result clearly needs two
 - Do not invent hidden thoughts or secret motives
 - Do not use actor private memory
+- Use LOREBOOK_BASE as stable setting reference when present
+- Use LOREBOOK_MATCHED only when it clearly applies to the current scene
 - CURRENT_CAST contains compact character card summaries, including each character's private state schema
-- PLAYER_DESCRIPTION describes the player persona currently present in the scene
+- PLAYER describes the player name and persona currently present in the scene
 - WORLD_STATE.player_state contains visible player-facing runtime state
 - PLAYER_STATE_SCHEMA describes the allowed player_state keys and their meanings
 - Use WORLD_STATE.actor_shared_history only as visible recent context, including visible player input when present

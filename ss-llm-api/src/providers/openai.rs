@@ -127,6 +127,10 @@ impl OpenAiClient {
         format!("{}/chat/completions", self.config.base_url)
     }
 
+    fn models_url(&self) -> String {
+        format!("{}/models", self.config.base_url)
+    }
+
     fn build_request_body(&self, request: &ChatRequest, stream: bool) -> OpenAiChatRequest {
         OpenAiChatRequest {
             model: self.resolved_model(request).to_owned(),
@@ -171,6 +175,33 @@ impl OpenAiClient {
                     error = %error,
                     error_chain = %error_chain_for_log(&error),
                     "failed to send llm request"
+                );
+                LlmError::from(error)
+            })?;
+
+        Self::handle_error_status(response).await
+    }
+
+    async fn send_models_request(&self) -> Result<reqwest::Response, LlmError> {
+        info!(
+            provider = "openai",
+            url = %self.models_url(),
+            "sending llm models request"
+        );
+
+        let response = self
+            .http
+            .get(self.models_url())
+            .header(AUTHORIZATION, format!("Bearer {}", self.config.api_key))
+            .send()
+            .await
+            .map_err(|error| {
+                error!(
+                    provider = "openai",
+                    url = %self.models_url(),
+                    error = %error,
+                    error_chain = %error_chain_for_log(&error),
+                    "failed to send llm models request"
                 );
                 LlmError::from(error)
             })?;
@@ -254,6 +285,36 @@ impl LlmApi for OpenAiClient {
             });
 
         Ok(Box::pin(stream))
+    }
+
+    async fn list_models(&self) -> Result<Vec<String>, LlmError> {
+        let response = self.send_models_request().await?;
+        let body = read_response_body(response, "success").await?;
+        info!(
+            provider = "openai",
+            body = %body,
+            "received llm models response body"
+        );
+        let payload: OpenAiModelsResponse = serde_json::from_str(&body).map_err(|error| {
+            error!(
+                provider = "openai",
+                error = %error,
+                body = %truncate_response_for_log(&body),
+                "llm provider returned an invalid models response body"
+            );
+            LlmError::from(error)
+        })?;
+        let models = payload
+            .data
+            .into_iter()
+            .map(|model| model.id)
+            .collect::<Vec<_>>();
+        info!(
+            provider = "openai",
+            model_count = models.len(),
+            "parsed llm models response"
+        );
+        Ok(models)
     }
 }
 
@@ -703,6 +764,16 @@ struct OpenAiErrorEnvelope {
 #[derive(Debug, Deserialize)]
 struct OpenAiErrorBody {
     message: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModelsResponse {
+    data: Vec<OpenAiModel>,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAiModel {
+    id: String,
 }
 
 fn role_from_openai(role: &str) -> Role {

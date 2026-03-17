@@ -107,7 +107,10 @@ fn sample_node() -> NarrativeNode {
         "Negotiate passage through the market gate.",
         vec!["merchant".to_owned()],
         vec![],
-        vec![],
+        vec![state::StateOp::SetState {
+            key: "entered_dock".to_owned(),
+            value: json!(true),
+        }],
     )
 }
 
@@ -137,6 +140,8 @@ async fn suggest_returns_sanitized_replies() {
             current_node: &node,
             character_cards: &character_cards,
             current_cast_ids: &node.characters,
+            lorebook_base: None,
+            lorebook_matched: None,
             player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
@@ -188,6 +193,8 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
             current_node: &node,
             character_cards: &character_cards,
             current_cast_ids: &node.characters,
+            lorebook_base: None,
+            lorebook_matched: None,
             player_name: Some("Courier"),
             player_description: "A cautious courier who negotiates directly.",
             player_state_schema: &player_state_schema,
@@ -202,6 +209,8 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
     let user_message = joined_user_messages(&requests[0]);
 
     assert!(user_message.contains("SESSION_HISTORY"));
+    assert!(!user_message.contains("on_enter_updates"));
+    assert!(!user_message.contains("entered_dock"));
     assert!(!user_message.contains("PLAYER_NAME"));
     assert!(user_message.contains("Can you lower the price?"));
     assert!(user_message.contains("coins=12"));

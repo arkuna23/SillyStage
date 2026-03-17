@@ -2,6 +2,7 @@ mod api;
 mod api_group;
 mod config;
 mod dashboard;
+mod lorebook;
 mod player_profile;
 mod preset;
 mod schema;
@@ -72,6 +73,9 @@ impl Handler {
             RequestParams::ApiCreate(params) => self.handle_api_create(&request_id, params).await,
             RequestParams::ApiGet(params) => self.handle_api_get(&request_id, params).await,
             RequestParams::ApiList(_) => self.handle_api_list(&request_id).await,
+            RequestParams::ApiListModels(params) => {
+                self.handle_api_list_models(&request_id, params).await
+            }
             RequestParams::ApiUpdate(params) => self.handle_api_update(&request_id, params).await,
             RequestParams::ApiDelete(params) => self.handle_api_delete(&request_id, params).await,
             RequestParams::ApiGroupCreate(params) => {
@@ -108,6 +112,34 @@ impl Handler {
             }
             RequestParams::SchemaDelete(params) => {
                 self.handle_schema_delete(&request_id, params).await
+            }
+            RequestParams::LorebookCreate(params) => {
+                self.handle_lorebook_create(&request_id, params).await
+            }
+            RequestParams::LorebookGet(params) => {
+                self.handle_lorebook_get(&request_id, params).await
+            }
+            RequestParams::LorebookList(_) => self.handle_lorebook_list(&request_id).await,
+            RequestParams::LorebookUpdate(params) => {
+                self.handle_lorebook_update(&request_id, params).await
+            }
+            RequestParams::LorebookDelete(params) => {
+                self.handle_lorebook_delete(&request_id, params).await
+            }
+            RequestParams::LorebookEntryCreate(params) => {
+                self.handle_lorebook_entry_create(&request_id, params).await
+            }
+            RequestParams::LorebookEntryGet(params) => {
+                self.handle_lorebook_entry_get(&request_id, params).await
+            }
+            RequestParams::LorebookEntryList(params) => {
+                self.handle_lorebook_entry_list(&request_id, params).await
+            }
+            RequestParams::LorebookEntryUpdate(params) => {
+                self.handle_lorebook_entry_update(&request_id, params).await
+            }
+            RequestParams::LorebookEntryDelete(params) => {
+                self.handle_lorebook_entry_delete(&request_id, params).await
             }
             RequestParams::PlayerProfileCreate(params) => {
                 self.handle_player_profile_create(&request_id, params).await

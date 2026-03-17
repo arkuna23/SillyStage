@@ -94,6 +94,26 @@ impl LlmApiRegistry {
         self.build_agent_model_config(api, preset)
     }
 
+    pub async fn list_models(
+        &self,
+        provider: LlmProvider,
+        base_url: &str,
+        api_key: &str,
+    ) -> Result<Vec<String>, RegistryError> {
+        let client: Arc<dyn LlmApi> = match provider {
+            LlmProvider::OpenAi => {
+                let config = OpenAiConfig::builder()
+                    .api_key(api_key)
+                    .base_url(base_url)
+                    .default_model("model-probe")
+                    .build()?;
+                Arc::new(OpenAiClient::new(config)?)
+            }
+        };
+
+        client.list_models().await.map_err(RegistryError::Llm)
+    }
+
     fn build_agent_model_config(
         &self,
         api: &ApiRecord,
