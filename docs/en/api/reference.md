@@ -73,32 +73,65 @@ Notes:
 | `preset.list` | No | `presets_listed` | List presets |
 | `preset.update` | No | `preset` | Update a preset |
 | `preset.delete` | No | `preset_deleted` | Delete a preset |
+| `preset_entry.create` | No | `preset_entry` | Add one custom prompt entry under one agent module |
+| `preset_entry.update` | No | `preset_entry` | Update one prompt entry inside one module |
+| `preset_entry.delete` | No | `preset_entry_deleted` | Delete one custom prompt entry inside one module |
 
-A `preset` stores per-agent generation parameters and agent-level prompt entries.
+A `preset` stores per-agent generation parameters and modular prompt configuration.
 
 The currently implemented fields are:
 
 - `temperature`
 - `max_tokens`
 - optional `extra`
-- `prompt_entries`
+- `modules`
 
-Each `prompt_entries` item contains:
+Each `module` contains:
+
+- `module_id`
+- `entries`
+
+The current `module_id` values are:
+
+- `role`
+- `task`
+- `static_context`
+- `dynamic_context`
+- `output`
+
+Each `entries` item contains:
 
 - `entry_id`
-- `title`
-- `content`
+- `display_name`
+- `kind`
 - `enabled`
+- `order`
+- `required`
+- optional `text`
+- optional `context_key`
+
+The current `kind` values are:
+
+- `built_in_text`
+- `built_in_context_ref`
+- `custom_text`
 
 Behavior notes:
 
-- `preset.create`, `preset.get`, and `preset.update` use the full prompt-entry shape
-- `preset.update` replaces each submitted agent `prompt_entries` list as a whole; clients should
-  send the final ordered array after any add/remove/reorder/toggle operation
-- `preset.list` returns preset summaries; per-agent prompt entries are metadata-only in that
-  response and do not include `content`
-- enabled prompt entries are appended to the end of the built-in agent system prompt inside a
-  dedicated `PRESET_PROMPT_ENTRIES` section
+- `preset.create`, `preset.get`, and `preset.update` use the full module shape
+- `preset.list` returns summaries; each agent reports `module_count`, `entry_count`, and module
+  metadata without `text/context_key`
+- Clients may submit only the modules or entries they want to override; the backend normalizes
+  the result against built-in agent templates and fills in missing built-in items
+- `built_in_text` and `built_in_context_ref` come from backend defaults; they cannot be created
+  through `preset_entry.create` and cannot be removed through `preset_entry.delete`
+- `preset_entry.create` creates `custom_text` entries under one `agent + module_id`
+- `preset_entry.update` can change `display_name`, `text`, `enabled`, and `order` for
+  `custom_text`; for built-in entries it only allows `enabled` and `order`
+- Enabled entries are compiled by module into the final prompt: `role/task/output` become part of
+  the system prompt, while `static_context/dynamic_context` become stable and dynamic user-prompt
+  segments
+- `context_key` is only used by `built_in_context_ref`; `custom_text` uses `text`
 
 Notes:
 

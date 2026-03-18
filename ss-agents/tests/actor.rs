@@ -12,7 +12,7 @@ use state::schema::{StateFieldSchema, StateValueType};
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
 
-use common::MockLlm;
+use common::{MockLlm, context_entry, prompt_profile};
 
 fn sample_state_schema() -> HashMap<String, StateFieldSchema> {
     HashMap::from([(
@@ -109,7 +109,23 @@ async fn perform_streams_thought_then_action_then_dialogue() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nYou are the Actor agent of a multi-agent narrative system.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+            ],
+            vec![
+                context_entry("shared-history", "SHARED_SCENE_HISTORY", "shared_history"),
+                context_entry(
+                    "private-memory",
+                    "PRIVATE_CHARACTER_MEMORY",
+                    "private_memory",
+                ),
+            ],
+        ));
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -184,7 +200,23 @@ async fn perform_stream_rejects_text_outside_tags() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nYou are the Actor agent of a multi-agent narrative system.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+            ],
+            vec![
+                context_entry("shared-history", "SHARED_SCENE_HISTORY", "shared_history"),
+                context_entry(
+                    "private-memory",
+                    "PRIVATE_CHARACTER_MEMORY",
+                    "private_memory",
+                ),
+            ],
+        ));
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -222,7 +254,23 @@ async fn perform_stream_accepts_out_of_order_segments() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nYou are the Actor agent of a multi-agent narrative system.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+            ],
+            vec![
+                context_entry("shared-history", "SHARED_SCENE_HISTORY", "shared_history"),
+                context_entry(
+                    "private-memory",
+                    "PRIVATE_CHARACTER_MEMORY",
+                    "private_memory",
+                ),
+            ],
+        ));
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -283,7 +331,23 @@ async fn perform_stream_sends_character_specific_system_prompt() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nYou are the Actor agent of a multi-agent narrative system.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+            ],
+            vec![
+                context_entry("shared-history", "SHARED_SCENE_HISTORY", "shared_history"),
+                context_entry(
+                    "private-memory",
+                    "PRIVATE_CHARACTER_MEMORY",
+                    "private_memory",
+                ),
+            ],
+        ));
     let mut world_state = sample_world_state();
     let mut character = sample_card();
     character.personality = "{{char}} keeps a careful eye on {{user}}.".to_owned();

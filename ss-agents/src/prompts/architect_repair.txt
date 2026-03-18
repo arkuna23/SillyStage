@@ -11,4 +11,11 @@ If the raw output is almost valid JSON, fix only the formatting and missing deli
 If the raw output is missing optional fields, omit them instead of fabricating long text.
 Every schema field object must include "value_type".
 Allowed value_type values: "bool", "int", "float", "string", "array", "object", "null".
+If a schema field has enum_values, keep enum_values only for scalar types (bool, int, float, string).
+If a schema field has enum_values, omit default or make default exactly match one enum_values item.
+Use only these StateOp type names: SetCurrentNode, SetActiveCharacters, AddActiveCharacter, RemoveActiveCharacter, SetState, RemoveState, SetPlayerState, RemovePlayerState, SetCharacterState, RemoveCharacterState.
+If the raw output uses aliases such as SetGlobalState or SetWorldState, rewrite them to SetState.
+If the raw output uses aliases such as RemoveGlobalState or RemoveWorldState, rewrite them to RemoveState.
+Keep every returned node id unique.
+For draft_continue repairs, do not return any node whose id already exists in GRAPH_SUMMARY. Existing nodes may only be referenced in transition_patches or transition targets.
 For draft outputs, never leave transition targets pointing to unknown future nodes.

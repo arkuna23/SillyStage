@@ -1,11 +1,7 @@
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
-use crate::prompt::{
-    SystemPromptEntry, append_system_prompt_entries, render_character_summaries, render_sections,
-};
+use crate::prompt::{PromptProfile, render_character_summaries, render_prompt_entries};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +22,7 @@ pub struct PlannerResponse {
 pub struct Planner {
     client: Arc<dyn LlmApi>,
     model: String,
-    system_prompt: String,
+    prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -45,30 +41,14 @@ impl Planner {
         Ok(Self {
             client,
             model: model.into(),
-            system_prompt: include_str!("./prompts/planner.txt").to_owned(),
+            prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
         })
     }
 
-    pub fn from_prompt_file(
-        client: Arc<dyn LlmApi>,
-        model: impl Into<String>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, PlannerError> {
-        let system_prompt = fs::read_to_string(path).map_err(PlannerError::ReadPrompt)?;
-
-        Ok(Self {
-            client,
-            model: model.into(),
-            system_prompt,
-            temperature: None,
-            max_tokens: None,
-        })
-    }
-
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
         self
     }
 
@@ -79,7 +59,7 @@ impl Planner {
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(self.model.clone())
-                    .system_message(self.system_prompt.clone())
+                    .system_message(self.prompt_profile.system_prompt.clone())
                     .user_message(stable_prompt)
                     .user_message(dynamic_prompt);
                 if let Some(temperature) = self.temperature {
@@ -107,22 +87,20 @@ impl Planner {
             .iter()
             .map(|card| card.summary_ref(None))
             .collect();
-        let mut stable_sections = vec![("STORY_CONCEPT", request.story_concept.to_owned())];
-        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "AVAILABLE_CHARACTERS",
-            render_character_summaries(&character_summaries, None),
-        ));
-
-        let mut dynamic_sections = Vec::new();
-        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
-
-        let stable_prompt = render_sections(&stable_sections);
-        let dynamic_prompt = render_sections(&dynamic_sections);
+        let stable_prompt =
+            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+                "story_concept" => Some(request.story_concept.to_owned()),
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "available_characters" => {
+                    Some(render_character_summaries(&character_summaries, None))
+                }
+                _ => None,
+            });
+        let dynamic_prompt =
+            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
+                _ => None,
+            });
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -134,6 +112,4 @@ pub enum PlannerError {
     Llm(#[from] llm::LlmError),
     #[error(transparent)]
     SerializeCharacters(serde_json::Error),
-    #[error(transparent)]
-    ReadPrompt(std::io::Error),
 }

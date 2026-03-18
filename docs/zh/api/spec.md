@@ -177,18 +177,54 @@ JSON-RPC envelope。
 - `temperature`
 - `max_tokens`
 - 可选 `extra`
-- `prompt_entries`
+- `modules`
 
-每个提示词条目包含：
+每个 `module` 包含：
+
+- `module_id`
+- `entries`
+
+`module_id` 当前固定为：
+
+- `role`
+- `task`
+- `static_context`
+- `dynamic_context`
+- `output`
+
+每个 `entries` 条目包含：
 
 - `entry_id`
-- `title`
-- `content`
+- `display_name`
+- `kind`
 - `enabled`
+- `order`
+- `required`
+- 可选 `text`
+- 可选 `context_key`
 
-`preset.create` / `preset.get` / `preset.update` 使用完整条目结构。
+`kind` 当前支持：
 
-`preset.list` 返回摘要形态：每个 agent 的 prompt entries 只带元信息，不带 `content`。
+- `built_in_text`
+- `built_in_context_ref`
+- `custom_text`
+
+`preset.create` / `preset.get` / `preset.update` 使用完整模块结构。允许只提交需要覆盖的模块或条目，后端会按 agent 默认模板补齐并规范化。
+
+`preset.list` 返回摘要形态：每个 agent 会额外提供 `module_count`、`entry_count`，以及不带 `text/context_key` 的模块摘要。
+
+新增单条目接口：
+
+- `preset_entry.create`
+- `preset_entry.update`
+- `preset_entry.delete`
+
+说明：
+
+- `preset_entry.create` 仅创建 `custom_text`
+- `preset_entry.delete` 仅删除 `custom_text`
+- `preset_entry.update` 对 built-in 条目仅允许修改 `enabled` 和 `order`
+- 启用条目会按模块编译为 system prompt 或 user prompt 片段，而不是再使用旧的整段追加模式
 
 运行时绑定模型现在是 `api_group_id + preset_id`。
 

@@ -6,7 +6,6 @@ use std::sync::Arc;
 use futures_util::StreamExt;
 use llm::ChatChunk;
 use serde_json::json;
-use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::NarratorPurpose;
 use ss_agents::narrator::{Narrator, NarratorRequest, NarratorStreamEvent};
@@ -16,7 +15,7 @@ use state::{
 };
 use story::NarrativeNode;
 
-use common::MockLlm;
+use common::{MockLlm, context_entry, prompt_profile};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -165,11 +164,26 @@ async fn narrate_stream_emits_text_deltas_and_done() {
     ]));
     let narrator = Narrator::new(llm.clone(), "test-model")
         .expect("narrator should build")
-        .with_system_prompt_entries(&[SystemPromptEntry {
-            entry_id: "narrator-tone".to_owned(),
-            title: "Narrator Tone".to_owned(),
-            content: "Keep narration tactile and concrete.".to_owned(),
-        }]);
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nNarrator Tone\nKeep narration tactile and concrete.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("purpose", "NARRATOR_PURPOSE", "narrator_purpose"),
+                context_entry("previous-node", "PREVIOUS_NODE", "previous_node"),
+                context_entry("previous-cast", "PREVIOUS_CAST", "previous_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("shared-history", "SHARED_HISTORY", "shared_history"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -214,11 +228,26 @@ async fn describe_transition_requires_previous_node() {
     let llm = Arc::new(MockLlm::with_stream_chunks(vec![]));
     let narrator = Narrator::new(llm.clone(), "test-model")
         .expect("narrator should build")
-        .with_system_prompt_entries(&[SystemPromptEntry {
-            entry_id: "narrator-tone".to_owned(),
-            title: "Narrator Tone".to_owned(),
-            content: "Keep narration tactile and concrete.".to_owned(),
-        }]);
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nNarrator Tone\nKeep narration tactile and concrete.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("purpose", "NARRATOR_PURPOSE", "narrator_purpose"),
+                context_entry("previous-node", "PREVIOUS_NODE", "previous_node"),
+                context_entry("previous-cast", "PREVIOUS_CAST", "previous_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("shared-history", "SHARED_HISTORY", "shared_history"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -261,11 +290,26 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     ]));
     let narrator = Narrator::new(llm.clone(), "test-model")
         .expect("narrator should build")
-        .with_system_prompt_entries(&[SystemPromptEntry {
-            entry_id: "narrator-tone".to_owned(),
-            title: "Narrator Tone".to_owned(),
-            content: "Keep narration tactile and concrete.".to_owned(),
-        }]);
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nNarrator Tone\nKeep narration tactile and concrete.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("purpose", "NARRATOR_PURPOSE", "narrator_purpose"),
+                context_entry("previous-node", "PREVIOUS_NODE", "previous_node"),
+                context_entry("previous-cast", "PREVIOUS_CAST", "previous_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("shared-history", "SHARED_HISTORY", "shared_history"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -321,17 +365,13 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
         .expect("system message should exist");
     let user_message = joined_user_messages(request);
 
-    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
-    assert!(
-        system_message
-            .content
-            .contains("[narrator-tone] Narrator Tone")
-    );
+    assert!(system_message.content.contains("Narrator Tone"));
     assert!(
         system_message
             .content
             .contains("Keep narration tactile and concrete.")
     );
+    assert!(!system_message.content.contains("PRESET_PROMPT_ENTRIES"));
     assert!(user_message.contains("CURRENT_NODE"));
     assert!(user_message.contains("PREVIOUS_NODE"));
     assert!(user_message.contains("shared_history"));

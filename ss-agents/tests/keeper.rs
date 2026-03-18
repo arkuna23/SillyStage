@@ -13,7 +13,7 @@ use state::{
 };
 use story::{Condition, ConditionOperator, NarrativeNode, Transition};
 
-use common::{MockLlm, assistant_response};
+use common::{MockLlm, assistant_response, context_entry, prompt_profile};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -224,7 +224,35 @@ async fn keep_parses_json_state_update() {
             ]
         })),
     )));
-    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
+    let keeper = Keeper::new(llm.clone(), "test-model")
+        .expect("keeper should build")
+        .with_prompt_profile(prompt_profile(
+            "OUTPUT:\n{\"type\": \"SetCharacterState\", \"character\": \"merchant\"}\n{\"type\": \"RemoveCharacterState\"}\nScene progression can be relevant context.\nIf NODE_CHANGE says `transitioned=true`, consider progression carefully.",
+            vec![
+                context_entry("keeper-phase", "KEEPER_PHASE", "keeper_phase"),
+                context_entry("player", "PLAYER", "player"),
+                context_entry("previous-node", "PREVIOUS_NODE", "previous_node"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry("previous-cast", "PREVIOUS_CAST", "previous_cast"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+                context_entry("node-change", "NODE_CHANGE", "node_change"),
+                context_entry(
+                    "progression-hints",
+                    "PROGRESSION_HINTS",
+                    "progression_hints",
+                ),
+            ],
+            vec![
+                context_entry("player-input", "PLAYER_INPUT", "player_input"),
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("completed-beats", "COMPLETED_BEATS", "completed_beats"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -268,7 +296,35 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             "ops": []
         })),
     )));
-    let keeper = Keeper::new(llm.clone(), "test-model").expect("keeper should build");
+    let keeper = Keeper::new(llm.clone(), "test-model")
+        .expect("keeper should build")
+        .with_prompt_profile(prompt_profile(
+            "OUTPUT:\n{\"type\": \"SetCharacterState\", \"character\": \"merchant\"}\n{\"type\": \"RemoveCharacterState\"}\nScene progression can be relevant context.\nIf NODE_CHANGE says `transitioned=true`, consider progression carefully.",
+            vec![
+                context_entry("keeper-phase", "KEEPER_PHASE", "keeper_phase"),
+                context_entry("player", "PLAYER", "player"),
+                context_entry("previous-node", "PREVIOUS_NODE", "previous_node"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry("previous-cast", "PREVIOUS_CAST", "previous_cast"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+                context_entry("node-change", "NODE_CHANGE", "node_change"),
+                context_entry(
+                    "progression-hints",
+                    "PROGRESSION_HINTS",
+                    "progression_hints",
+                ),
+            ],
+            vec![
+                context_entry("player-input", "PLAYER_INPUT", "player_input"),
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("completed-beats", "COMPLETED_BEATS", "completed_beats"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();

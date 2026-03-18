@@ -12,9 +12,9 @@ use state::{
     ActorMemoryEntry, ActorMemoryKind, PlayerStateSchema, StateFieldSchema, StateValueType,
     WorldState,
 };
-use story::NarrativeNode;
+use story::{Condition, ConditionOperator, NarrativeNode, Transition};
 
-use common::{MockLlm, assistant_response};
+use common::{MockLlm, assistant_response, context_entry, prompt_profile};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -106,7 +106,16 @@ fn sample_node() -> NarrativeNode {
         "A flooded dock at dusk.",
         "Negotiate passage through the market gate.",
         vec!["merchant".to_owned()],
-        vec![],
+        vec![
+            Transition::new(
+                "market_gate",
+                Condition::for_player("coins", ConditionOperator::Gte, json!(10)),
+            ),
+            Transition::new(
+                "safe_route",
+                Condition::new("route_committed", ConditionOperator::Eq, json!(true)),
+            ),
+        ],
         vec![state::StateOp::SetState {
             key: "entered_dock".to_owned(),
             value: json!(true),
@@ -128,7 +137,25 @@ async fn suggest_returns_sanitized_replies() {
             ]
         })),
     )));
-    let replyer = Replyer::new(llm.clone(), "test-model").expect("replyer should build");
+    let replyer = Replyer::new(llm.clone(), "test-model")
+        .expect("replyer should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nReplyer",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("session-history", "SESSION_HISTORY", "session_history"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -181,7 +208,25 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
             ]
         })),
     )));
-    let replyer = Replyer::new(llm.clone(), "test-model").expect("replyer should build");
+    let replyer = Replyer::new(llm.clone(), "test-model")
+        .expect("replyer should build")
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nReplyer",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("session-history", "SESSION_HISTORY", "session_history"),
+            ],
+        ));
     let character_cards = sample_character_cards();
     let player_state_schema = sample_player_state_schema();
     let world_state = sample_world_state();
@@ -209,6 +254,8 @@ async fn prompt_includes_history_and_world_state_without_private_memory() {
     let user_message = joined_user_messages(&requests[0]);
 
     assert!(user_message.contains("SESSION_HISTORY"));
+    assert!(user_message.contains("to node=market_gate when player.coins >= 10"));
+    assert!(user_message.contains("to node=safe_route when global.route_committed == true"));
     assert!(!user_message.contains("on_enter_updates"));
     assert!(!user_message.contains("entered_dock"));
     assert!(!user_message.contains("PLAYER_NAME"));

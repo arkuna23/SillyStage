@@ -2,7 +2,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use agents::SystemPromptEntry;
 use agents::actor::{
     Actor, ActorError, ActorRequest, ActorResponse, ActorStreamEvent, CharacterCard,
 };
@@ -16,6 +15,7 @@ use agents::narrator::{
     Narrator, NarratorError, NarratorRequest, NarratorResponse, NarratorStreamEvent,
 };
 use agents::planner::{Planner, PlannerError, PlannerRequest, PlannerResponse};
+use agents::{ArchitectPromptProfiles, PromptProfile};
 use async_stream::stream;
 use futures_core::Stream;
 use futures_util::StreamExt;
@@ -49,7 +49,7 @@ pub struct AgentModelConfig {
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
-    pub system_prompt_entries: Vec<SystemPromptEntry>,
+    pub prompt_profile: PromptProfile,
 }
 
 impl AgentModelConfig {
@@ -59,7 +59,7 @@ impl AgentModelConfig {
             model: model.into(),
             temperature: None,
             max_tokens: None,
-            system_prompt_entries: Vec::new(),
+            prompt_profile: PromptProfile::default(),
         }
     }
 
@@ -73,11 +73,49 @@ impl AgentModelConfig {
         self
     }
 
-    pub fn with_system_prompt_entries(
-        mut self,
-        system_prompt_entries: Vec<SystemPromptEntry>,
-    ) -> Self {
-        self.system_prompt_entries = system_prompt_entries;
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
+        self
+    }
+}
+
+#[derive(Clone)]
+pub struct ArchitectModelConfig {
+    pub client: Arc<dyn LlmApi>,
+    pub model: String,
+    pub temperature: Option<f32>,
+    pub max_tokens: Option<u32>,
+    pub prompt_profiles: ArchitectPromptProfiles,
+}
+
+impl ArchitectModelConfig {
+    pub fn new(client: Arc<dyn LlmApi>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            temperature: None,
+            max_tokens: None,
+            prompt_profiles: ArchitectPromptProfiles {
+                graph: PromptProfile::default(),
+                draft_init: PromptProfile::default(),
+                draft_continue: PromptProfile::default(),
+                repair_system_prompt: String::new(),
+            },
+        }
+    }
+
+    pub fn with_temperature(mut self, temperature: Option<f32>) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
+        self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn with_prompt_profiles(mut self, prompt_profiles: ArchitectPromptProfiles) -> Self {
+        self.prompt_profiles = prompt_profiles;
         self
     }
 }
@@ -85,7 +123,7 @@ impl AgentModelConfig {
 #[derive(Clone)]
 pub struct StoryGenerationAgentConfigs {
     pub planner: AgentModelConfig,
-    pub architect: AgentModelConfig,
+    pub architect: ArchitectModelConfig,
 }
 
 impl StoryGenerationAgentConfigs {
@@ -94,7 +132,7 @@ impl StoryGenerationAgentConfigs {
 
         Self {
             planner: AgentModelConfig::new(Arc::clone(&client), model.clone()),
-            architect: AgentModelConfig::new(client, model).with_max_tokens(Some(8_192)),
+            architect: ArchitectModelConfig::new(client, model).with_max_tokens(Some(8_192)),
         }
     }
 }
@@ -141,28 +179,28 @@ impl Engine {
                 agent_configs.director.temperature,
                 agent_configs.director.max_tokens,
             )?
-            .with_system_prompt_entries(&agent_configs.director.system_prompt_entries),
+            .with_prompt_profile(agent_configs.director.prompt_profile.clone()),
             actor: Actor::new_with_options(
                 agent_configs.actor.client,
                 agent_configs.actor.model,
                 agent_configs.actor.temperature,
                 agent_configs.actor.max_tokens,
             )?
-            .with_system_prompt_entries(&agent_configs.actor.system_prompt_entries),
+            .with_prompt_profile(agent_configs.actor.prompt_profile.clone()),
             narrator: Narrator::new_with_options(
                 agent_configs.narrator.client,
                 agent_configs.narrator.model,
                 agent_configs.narrator.temperature,
                 agent_configs.narrator.max_tokens,
             )?
-            .with_system_prompt_entries(&agent_configs.narrator.system_prompt_entries),
+            .with_prompt_profile(agent_configs.narrator.prompt_profile.clone()),
             keeper: Keeper::new_with_options(
                 agent_configs.keeper.client,
                 agent_configs.keeper.model,
                 agent_configs.keeper.temperature,
                 agent_configs.keeper.max_tokens,
             )?
-            .with_system_prompt_entries(&agent_configs.keeper.system_prompt_entries),
+            .with_prompt_profile(agent_configs.keeper.prompt_profile.clone()),
         })
     }
 
@@ -1068,7 +1106,7 @@ pub async fn generate_story_plan(
         agent_configs.planner.temperature,
         agent_configs.planner.max_tokens,
     )?
-    .with_system_prompt_entries(&agent_configs.planner.system_prompt_entries);
+    .with_prompt_profile(agent_configs.planner.prompt_profile.clone());
     let lorebook_sections = build_lorebook_prompt_sections(
         resources.lorebook_entries(),
         &[
@@ -1119,7 +1157,7 @@ pub async fn generate_story_graph(
                 .unwrap_or(DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS),
         ),
     )
-    .with_system_prompt_entries(&agent_configs.architect.system_prompt_entries);
+    .with_prompt_profiles(agent_configs.architect.prompt_profiles.clone());
     let lorebook_sections = build_lorebook_prompt_sections(
         resources.lorebook_entries(),
         &[

@@ -29,6 +29,9 @@ RULES
 - Do not return player_state_schema
 - Do not return introduction
 - transition_patches may only patch existing node ids from GRAPH_SUMMARY
+- Returned nodes must all have new ids that do not already exist in GRAPH_SUMMARY
+- If you need to extend an existing node from GRAPH_SUMMARY, keep that node out of "nodes" and use transition_patches instead
+- Returned node ids must also be unique within this response
 - Every transition target in returned nodes and transition_patches must point to either:
   - an existing node id from GRAPH_SUMMARY
   - or a node id returned in this same response
@@ -113,6 +116,9 @@ StateOp examples
   "key": "character_state_key"
 }
 
+Use only the exact StateOp type names shown above.
+Never invent aliases or new names such as SetGlobalState, SetWorldState, RemoveGlobalState, or RemoveWorldState.
+
 Identifier-like value examples
 Correct:
 { "type": "SetState", "key": "current_event", "value": "approaching_swamp" }
@@ -120,3 +126,9 @@ Correct:
 
 Wrong:
 { "type": "SetState", "key": "current_event", "value": "接近沼泽" }
+
+To clear an identifier-like key:
+{ "type": "RemoveState", "key": "current_event" }
+
+If you define enum_values in any schema field, keep enum_values only for scalar types (bool, int, float, string).
+If you define enum_values in any schema field, omit default or make default exactly match one enum_values item.

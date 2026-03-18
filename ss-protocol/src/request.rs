@@ -21,7 +21,8 @@ use crate::player_profile::{
     PlayerProfileListParams, PlayerProfileUpdateParams,
 };
 use crate::preset::{
-    PresetCreateParams, PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams,
+    PresetCreateParams, PresetDeleteParams, PresetEntryCreateParams, PresetEntryDeleteParams,
+    PresetEntryUpdateParams, PresetGetParams, PresetListParams, PresetUpdateParams,
 };
 use crate::reply_suggestion::SuggestRepliesParams;
 use crate::schema::{
@@ -74,6 +75,12 @@ pub enum RequestMethod {
     PresetUpdate,
     #[serde(rename = "preset.delete")]
     PresetDelete,
+    #[serde(rename = "preset_entry.create")]
+    PresetEntryCreate,
+    #[serde(rename = "preset_entry.update")]
+    PresetEntryUpdate,
+    #[serde(rename = "preset_entry.delete")]
+    PresetEntryDelete,
     #[serde(rename = "schema.create")]
     SchemaCreate,
     #[serde(rename = "schema.get")]
@@ -242,6 +249,9 @@ pub enum RequestParams {
     PresetList(PresetListParams),
     PresetUpdate(PresetUpdateParams),
     PresetDelete(PresetDeleteParams),
+    PresetEntryCreate(PresetEntryCreateParams),
+    PresetEntryUpdate(PresetEntryUpdateParams),
+    PresetEntryDelete(PresetEntryDeleteParams),
     SchemaCreate(SchemaCreateParams),
     SchemaGet(SchemaGetParams),
     SchemaList(SchemaListParams),
@@ -337,6 +347,9 @@ impl RequestParams {
             Self::PresetList(_) => RequestMethod::PresetList,
             Self::PresetUpdate(_) => RequestMethod::PresetUpdate,
             Self::PresetDelete(_) => RequestMethod::PresetDelete,
+            Self::PresetEntryCreate(_) => RequestMethod::PresetEntryCreate,
+            Self::PresetEntryUpdate(_) => RequestMethod::PresetEntryUpdate,
+            Self::PresetEntryDelete(_) => RequestMethod::PresetEntryDelete,
             Self::SchemaCreate(_) => RequestMethod::SchemaCreate,
             Self::SchemaGet(_) => RequestMethod::SchemaGet,
             Self::SchemaList(_) => RequestMethod::SchemaList,
@@ -434,6 +447,9 @@ impl RequestParams {
             Self::PresetList(params) => serde_json::to_value(params),
             Self::PresetUpdate(params) => serde_json::to_value(params),
             Self::PresetDelete(params) => serde_json::to_value(params),
+            Self::PresetEntryCreate(params) => serde_json::to_value(params),
+            Self::PresetEntryUpdate(params) => serde_json::to_value(params),
+            Self::PresetEntryDelete(params) => serde_json::to_value(params),
             Self::SchemaCreate(params) => serde_json::to_value(params),
             Self::SchemaGet(params) => serde_json::to_value(params),
             Self::SchemaList(params) => serde_json::to_value(params),
@@ -538,6 +554,15 @@ impl RequestParams {
             RequestMethod::PresetList => serde_json::from_value(value).map(Self::PresetList),
             RequestMethod::PresetUpdate => serde_json::from_value(value).map(Self::PresetUpdate),
             RequestMethod::PresetDelete => serde_json::from_value(value).map(Self::PresetDelete),
+            RequestMethod::PresetEntryCreate => {
+                serde_json::from_value(value).map(Self::PresetEntryCreate)
+            }
+            RequestMethod::PresetEntryUpdate => {
+                serde_json::from_value(value).map(Self::PresetEntryUpdate)
+            }
+            RequestMethod::PresetEntryDelete => {
+                serde_json::from_value(value).map(Self::PresetEntryDelete)
+            }
             RequestMethod::SchemaCreate => serde_json::from_value(value).map(Self::SchemaCreate),
             RequestMethod::SchemaGet => serde_json::from_value(value).map(Self::SchemaGet),
             RequestMethod::SchemaList => serde_json::from_value(value).map(Self::SchemaList),

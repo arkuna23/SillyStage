@@ -14,7 +14,7 @@ fn sample_agent_config(max_tokens: u32) -> AgentPresetConfig {
         temperature: Some(0.2),
         max_tokens: Some(max_tokens),
         extra: None,
-        prompt_entries: Vec::new(),
+        modules: Vec::new(),
     }
 }
 

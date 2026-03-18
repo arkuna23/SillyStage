@@ -25,6 +25,7 @@ RULES
 - Use LOREBOOK_MATCHED only when it clearly fits the current concept or planned story
 - Reuse schema seeds when they fit
 - Use only character ids from AVAILABLE_CHARACTERS in structural fields
+- Every returned node id must be unique within the graph
 - Identifier-like state keys such as "current_event", "current_route", "route", "current_phase", and "travel_phase" must use canonical snake_case ids as values
 - Never use player-facing text like "接近沼泽" as a state value for those keys; use ids like "approaching_swamp" instead
 - Use world_state_schema keys for global conditions and global state ops
@@ -62,6 +63,8 @@ Schema example
 
 Every schema field object must include "value_type".
 Allowed value_type values: "bool", "int", "float", "string", "array", "object", "null".
+"enum_values" is only valid for scalar value_type values: "bool", "int", "float", "string".
+If "enum_values" is present, omit "default" or make "default" exactly equal to one item from "enum_values".
 "default" and "description" are optional but recommended when useful.
 
 NarrativeNode
@@ -122,6 +125,9 @@ StateOp examples
   "character": "character_id",
   "key": "character_state_key"
 }
+
+Use only the exact StateOp type names shown above.
+Never invent aliases or new names such as SetGlobalState, SetWorldState, RemoveGlobalState, or RemoveWorldState.
 
 Identifier-like value examples
 Correct:

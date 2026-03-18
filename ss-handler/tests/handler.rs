@@ -5,20 +5,22 @@ use std::sync::Arc;
 use engine::LlmApiRegistry;
 use futures_util::StreamExt;
 use protocol::{
-    ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams,
-    ApiGroupUpdateParams, CharacterArchive, CharacterCardContent, CharacterCoverMimeType,
-    CharacterCreateParams, CharacterGetParams, CharacterUpdateParams, CommonVariableDefinition,
-    CommonVariableScope, ConfigGetGlobalParams, CreateSessionMessageParams,
-    CreateStoryResourcesParams, DashboardGetParams, DataPackageArchive,
+    AgentPresetConfigPayload, ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams,
+    ApiGroupListParams, ApiGroupUpdateParams, CharacterArchive, CharacterCardContent,
+    CharacterCoverMimeType, CharacterCreateParams, CharacterGetParams, CharacterUpdateParams,
+    CommonVariableDefinition, CommonVariableScope, ConfigGetGlobalParams,
+    CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams, DataPackageArchive,
     DataPackageExportPrepareParams, DataPackageImportCommitParams, DataPackageImportPrepareParams,
     DeleteSessionCharacterParams, DeleteSessionMessageParams, DeleteSessionParams,
     EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams, GetSessionCharacterParams,
     GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryParams,
     GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
     LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
-    LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetCreateParams,
-    PresetDeleteParams, PresetGetParams, PresetListParams, PresetUpdateParams, RequestParams,
-    ResponseResult, RunTurnParams, SchemaCreateParams, SessionMessageKind,
+    LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetAgentIdPayload,
+    PresetCreateParams, PresetDeleteParams, PresetEntryCreateParams, PresetEntryDeleteParams,
+    PresetEntryUpdateParams, PresetGetParams, PresetListParams, PresetModuleEntryPayload,
+    PresetPromptModulePayload, PresetUpdateParams, PromptEntryKindPayload, PromptModuleIdPayload,
+    RequestParams, ResponseResult, RunTurnParams, SchemaCreateParams, SessionMessageKind,
     SessionUpdateConfigParams, StartSessionFromStoryParams, StartStoryDraftParams, StreamEventBody,
     StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionCharacterParams,
     UpdateSessionMessageParams, UpdateSessionParams, UpdateSessionVariablesParams,
@@ -92,6 +94,70 @@ fn joined_user_messages(request: &llm::ChatRequest) -> String {
         .map(|message| message.content.as_str())
         .collect::<Vec<_>>()
         .join("\n\n")
+}
+
+fn custom_preset_module(
+    module_id: PromptModuleIdPayload,
+    entry_id: &str,
+    display_name: &str,
+    text: &str,
+    enabled: bool,
+    order: i32,
+) -> PresetPromptModulePayload {
+    PresetPromptModulePayload {
+        module_id,
+        entries: vec![PresetModuleEntryPayload {
+            entry_id: entry_id.to_owned(),
+            display_name: display_name.to_owned(),
+            kind: PromptEntryKindPayload::CustomText,
+            enabled,
+            order,
+            required: false,
+            text: Some(text.to_owned()),
+            context_key: None,
+        }],
+    }
+}
+
+fn find_module<'a>(
+    config: &'a AgentPresetConfigPayload,
+    module_id: PromptModuleIdPayload,
+) -> &'a PresetPromptModulePayload {
+    config
+        .modules
+        .iter()
+        .find(|module| module.module_id == module_id)
+        .expect("preset module should exist")
+}
+
+fn find_entry<'a>(
+    config: &'a AgentPresetConfigPayload,
+    module_id: PromptModuleIdPayload,
+    entry_id: &str,
+) -> &'a PresetModuleEntryPayload {
+    find_module(config, module_id)
+        .entries
+        .iter()
+        .find(|entry| entry.entry_id == entry_id)
+        .expect("preset entry should exist")
+}
+
+fn summary_has_entry(
+    config: &protocol::AgentPresetConfigSummaryPayload,
+    module_id: PromptModuleIdPayload,
+    entry_id: &str,
+) -> bool {
+    config
+        .modules
+        .iter()
+        .find(|module| module.module_id == module_id)
+        .map(|module| {
+            module
+                .entries
+                .iter()
+                .any(|entry| entry.entry_id == entry_id)
+        })
+        .unwrap_or(false)
 }
 
 fn sample_common_variables() -> Vec<CommonVariableDefinition> {
@@ -3501,57 +3567,61 @@ async fn preset_crud_round_trips_and_preserves_values() {
                     preset_id: "managed".to_owned(),
                     display_name: "Managed Preset".to_owned(),
                     agents: protocol::PresetAgentPayloads {
-                        planner: protocol::AgentPresetConfigPayload {
+                        planner: AgentPresetConfigPayload {
                             temperature: Some(0.1),
                             max_tokens: Some(256),
                             extra: None,
-                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
-                                entry_id: "planner-tone".to_owned(),
-                                title: "Planner Tone".to_owned(),
-                                content: "Favor concise story plans.".to_owned(),
-                                enabled: true,
-                            }],
+                            modules: vec![custom_preset_module(
+                                PromptModuleIdPayload::Task,
+                                "planner-tone",
+                                "Planner Tone",
+                                "Favor concise story plans.",
+                                true,
+                                20,
+                            )],
                         },
-                        architect: protocol::AgentPresetConfigPayload {
+                        architect: AgentPresetConfigPayload {
                             temperature: Some(0.2),
                             max_tokens: Some(1024),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        director: protocol::AgentPresetConfigPayload {
+                        director: AgentPresetConfigPayload {
                             temperature: Some(0.3),
                             max_tokens: Some(384),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        actor: protocol::AgentPresetConfigPayload {
+                        actor: AgentPresetConfigPayload {
                             temperature: Some(0.4),
                             max_tokens: Some(512),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        narrator: protocol::AgentPresetConfigPayload {
+                        narrator: AgentPresetConfigPayload {
                             temperature: Some(0.5),
                             max_tokens: Some(640),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        keeper: protocol::AgentPresetConfigPayload {
+                        keeper: AgentPresetConfigPayload {
                             temperature: Some(0.6),
                             max_tokens: Some(768),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        replyer: protocol::AgentPresetConfigPayload {
+                        replyer: AgentPresetConfigPayload {
                             temperature: Some(0.7),
                             max_tokens: Some(128),
                             extra: None,
-                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
-                                entry_id: "replyer-style".to_owned(),
-                                title: "Replyer Style".to_owned(),
-                                content: "Prefer short candidate replies.".to_owned(),
-                                enabled: true,
-                            }],
+                            modules: vec![custom_preset_module(
+                                PromptModuleIdPayload::Output,
+                                "replyer-style",
+                                "Replyer Style",
+                                "Prefer short candidate replies.",
+                                true,
+                                30,
+                            )],
                         },
                     },
                 }),
@@ -3562,10 +3632,15 @@ async fn preset_crud_round_trips_and_preserves_values() {
         ResponseResult::Preset(payload) => {
             assert_eq!(payload.preset_id, "managed");
             assert_eq!(payload.agents.actor.max_tokens, Some(512));
-            assert_eq!(payload.agents.planner.prompt_entries.len(), 1);
             assert_eq!(
-                payload.agents.planner.prompt_entries[0].entry_id,
-                "planner-tone"
+                find_entry(
+                    &payload.agents.planner,
+                    PromptModuleIdPayload::Task,
+                    "planner-tone"
+                )
+                .text
+                .as_deref(),
+                Some("Favor concise story plans.")
             );
         }
         other => panic!("unexpected response: {other:?}"),
@@ -3586,10 +3661,15 @@ async fn preset_crud_round_trips_and_preserves_values() {
         ResponseResult::Preset(payload) => {
             assert_eq!(payload.display_name, "Managed Preset");
             assert_eq!(payload.agents.architect.max_tokens, Some(1024));
-            assert_eq!(payload.agents.replyer.prompt_entries.len(), 1);
             assert_eq!(
-                payload.agents.replyer.prompt_entries[0].content,
-                "Prefer short candidate replies."
+                find_entry(
+                    &payload.agents.replyer,
+                    PromptModuleIdPayload::Output,
+                    "replyer-style"
+                )
+                .text
+                .as_deref(),
+                Some("Prefer short candidate replies.")
             );
         }
         other => panic!("unexpected response: {other:?}"),
@@ -3604,65 +3684,78 @@ async fn preset_crud_round_trips_and_preserves_values() {
                     preset_id: "managed".to_owned(),
                     display_name: Some("Updated Preset".to_owned()),
                     agents: Some(protocol::PresetAgentPayloads {
-                        planner: protocol::AgentPresetConfigPayload {
+                        planner: AgentPresetConfigPayload {
                             temperature: Some(0.2),
                             max_tokens: Some(300),
                             extra: None,
-                            prompt_entries: vec![
-                                protocol::PresetPromptEntryPayload {
-                                    entry_id: "planner-voice".to_owned(),
-                                    title: "Planner Voice".to_owned(),
-                                    content: "Keep outline sections punchy.".to_owned(),
-                                    enabled: true,
-                                },
-                                protocol::PresetPromptEntryPayload {
-                                    entry_id: "planner-disabled".to_owned(),
-                                    title: "Disabled".to_owned(),
-                                    content: "Do not use.".to_owned(),
-                                    enabled: false,
-                                },
-                            ],
+                            modules: vec![PresetPromptModulePayload {
+                                module_id: PromptModuleIdPayload::Task,
+                                entries: vec![
+                                    PresetModuleEntryPayload {
+                                        entry_id: "planner-voice".to_owned(),
+                                        display_name: "Planner Voice".to_owned(),
+                                        kind: PromptEntryKindPayload::CustomText,
+                                        enabled: true,
+                                        order: 20,
+                                        required: false,
+                                        text: Some("Keep outline sections punchy.".to_owned()),
+                                        context_key: None,
+                                    },
+                                    PresetModuleEntryPayload {
+                                        entry_id: "planner-disabled".to_owned(),
+                                        display_name: "Disabled".to_owned(),
+                                        kind: PromptEntryKindPayload::CustomText,
+                                        enabled: false,
+                                        order: 30,
+                                        required: false,
+                                        text: Some("Do not use.".to_owned()),
+                                        context_key: None,
+                                    },
+                                ],
+                            }],
                         },
-                        architect: protocol::AgentPresetConfigPayload {
+                        architect: AgentPresetConfigPayload {
                             temperature: Some(0.25),
                             max_tokens: Some(2048),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        director: protocol::AgentPresetConfigPayload {
+                        director: AgentPresetConfigPayload {
                             temperature: Some(0.3),
                             max_tokens: Some(400),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        actor: protocol::AgentPresetConfigPayload {
+                        actor: AgentPresetConfigPayload {
                             temperature: Some(0.35),
                             max_tokens: Some(500),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        narrator: protocol::AgentPresetConfigPayload {
+                        narrator: AgentPresetConfigPayload {
                             temperature: Some(0.4),
                             max_tokens: Some(600),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        keeper: protocol::AgentPresetConfigPayload {
+                        keeper: AgentPresetConfigPayload {
                             temperature: Some(0.45),
                             max_tokens: Some(700),
                             extra: None,
-                            prompt_entries: Vec::new(),
+                            modules: Vec::new(),
                         },
-                        replyer: protocol::AgentPresetConfigPayload {
+                        replyer: AgentPresetConfigPayload {
                             temperature: Some(0.5),
                             max_tokens: Some(200),
                             extra: Some(json!({"style":"short"})),
-                            prompt_entries: vec![protocol::PresetPromptEntryPayload {
-                                entry_id: "replyer-style".to_owned(),
-                                title: "Replyer Style".to_owned(),
-                                content: "Offer direct but varied replies.".to_owned(),
-                                enabled: true,
-                            }],
+                            modules: vec![custom_preset_module(
+                                PromptModuleIdPayload::Output,
+                                "replyer-style",
+                                "Replyer Style",
+                                "Offer direct but varied replies.",
+                                true,
+                                40,
+                            )],
                         },
                     }),
                 }),
@@ -3674,10 +3767,15 @@ async fn preset_crud_round_trips_and_preserves_values() {
             assert_eq!(payload.display_name, "Updated Preset");
             assert_eq!(payload.agents.architect.max_tokens, Some(2048));
             assert_eq!(payload.agents.replyer.extra, Some(json!({"style":"short"})));
-            assert_eq!(payload.agents.planner.prompt_entries.len(), 2);
             assert_eq!(
-                payload.agents.planner.prompt_entries[0].entry_id,
-                "planner-voice"
+                find_entry(
+                    &payload.agents.planner,
+                    PromptModuleIdPayload::Task,
+                    "planner-voice"
+                )
+                .text
+                .as_deref(),
+                Some("Keep outline sections punchy.")
             );
         }
         other => panic!("unexpected response: {other:?}"),
@@ -3698,12 +3796,98 @@ async fn preset_crud_round_trips_and_preserves_values() {
                 .iter()
                 .find(|preset| preset.preset_id == "managed")
                 .expect("managed preset should be listed");
-            assert_eq!(preset.agents.planner.prompt_entry_count, 2);
-            assert_eq!(preset.agents.planner.prompt_entries.len(), 2);
-            assert_eq!(
-                preset.agents.planner.prompt_entries[0].entry_id,
+            assert_eq!(preset.agents.planner.module_count, 5);
+            assert!(preset.agents.planner.entry_count >= 2);
+            assert!(summary_has_entry(
+                &preset.agents.planner,
+                PromptModuleIdPayload::Task,
                 "planner-voice"
+            ));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let created_entry = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-entry-create",
+                None::<String>,
+                RequestParams::PresetEntryCreate(PresetEntryCreateParams {
+                    preset_id: "managed".to_owned(),
+                    agent: PresetAgentIdPayload::Narrator,
+                    module_id: PromptModuleIdPayload::Task,
+                    entry_id: "narrator-tone".to_owned(),
+                    display_name: "Narrator Tone".to_owned(),
+                    text: "Keep the narration restrained.".to_owned(),
+                    enabled: true,
+                    order: Some(50),
+                }),
+            ))
+            .await,
+    );
+    match created_entry {
+        ResponseResult::PresetEntry(payload) => {
+            assert_eq!(payload.preset_id, "managed");
+            assert_eq!(payload.agent, PresetAgentIdPayload::Narrator);
+            assert_eq!(payload.module_id, PromptModuleIdPayload::Task);
+            assert_eq!(payload.entry.entry_id, "narrator-tone");
+            assert_eq!(
+                payload.entry.text.as_deref(),
+                Some("Keep the narration restrained.")
             );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let updated_entry = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-entry-update",
+                None::<String>,
+                RequestParams::PresetEntryUpdate(PresetEntryUpdateParams {
+                    preset_id: "managed".to_owned(),
+                    agent: PresetAgentIdPayload::Narrator,
+                    module_id: PromptModuleIdPayload::Task,
+                    entry_id: "narrator-tone".to_owned(),
+                    display_name: Some("Narrator Register".to_owned()),
+                    text: Some("Keep the narration crisp and observant.".to_owned()),
+                    enabled: Some(false),
+                    order: Some(60),
+                }),
+            ))
+            .await,
+    );
+    match updated_entry {
+        ResponseResult::PresetEntry(payload) => {
+            assert_eq!(payload.entry.display_name, "Narrator Register");
+            assert_eq!(
+                payload.entry.text.as_deref(),
+                Some("Keep the narration crisp and observant.")
+            );
+            assert!(!payload.entry.enabled);
+            assert_eq!(payload.entry.order, 60);
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+
+    let deleted_entry = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-entry-delete",
+                None::<String>,
+                RequestParams::PresetEntryDelete(PresetEntryDeleteParams {
+                    preset_id: "managed".to_owned(),
+                    agent: PresetAgentIdPayload::Narrator,
+                    module_id: PromptModuleIdPayload::Task,
+                    entry_id: "narrator-tone".to_owned(),
+                }),
+            ))
+            .await,
+    );
+    match deleted_entry {
+        ResponseResult::PresetEntryDeleted(payload) => {
+            assert_eq!(payload.preset_id, "managed");
+            assert_eq!(payload.entry_id, "narrator-tone");
         }
         other => panic!("unexpected response: {other:?}"),
     }

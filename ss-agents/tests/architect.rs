@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::json;
-use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::architect::{
     Architect, ArchitectDraftContinueRequest, ArchitectDraftInitRequest, ArchitectRequest,
@@ -13,7 +12,9 @@ use ss_agents::architect::{
 use state::schema::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::NarrativeNode;
 
-use common::{MockLlm, assistant_response};
+use common::{
+    MockLlm, architect_prompt_profiles, assistant_response, context_entry, prompt_profile,
+};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -41,6 +42,112 @@ fn sample_player_state_schema() -> PlayerStateSchema {
     schema
 }
 
+fn sample_architect_prompt_profiles() -> ss_agents::ArchitectPromptProfiles {
+    architect_prompt_profiles(
+        prompt_profile(
+            "ROLE:\nArchitect Tone\nFavor compact node descriptions.",
+            vec![
+                context_entry("story-concept", "STORY_CONCEPT", "story_concept"),
+                context_entry("planned-story", "PLANNED_STORY", "planned_story"),
+                context_entry(
+                    "available-characters",
+                    "AVAILABLE_CHARACTERS",
+                    "available_characters",
+                ),
+            ],
+            vec![
+                context_entry(
+                    "world-schema-seed",
+                    "WORLD_STATE_SCHEMA_SEED",
+                    "world_state_schema_seed",
+                ),
+                context_entry(
+                    "player-schema-seed",
+                    "PLAYER_STATE_SCHEMA_SEED",
+                    "player_state_schema_seed",
+                ),
+            ],
+        ),
+        prompt_profile(
+            "ROLE:\nArchitect Draft Init\nEvery schema field object must include \"value_type\".",
+            vec![
+                context_entry("story-concept", "STORY_CONCEPT", "story_concept"),
+                context_entry("planned-story", "PLANNED_STORY", "planned_story"),
+                context_entry(
+                    "available-characters",
+                    "AVAILABLE_CHARACTERS",
+                    "available_characters",
+                ),
+                context_entry(
+                    "world-schema-seed",
+                    "WORLD_STATE_SCHEMA_SEED",
+                    "world_state_schema_seed",
+                ),
+                context_entry(
+                    "player-schema-seed",
+                    "PLAYER_STATE_SCHEMA_SEED",
+                    "player_state_schema_seed",
+                ),
+            ],
+            vec![
+                context_entry("current-section", "CURRENT_SECTION", "current_section"),
+                context_entry("section-index", "SECTION_INDEX", "section_index"),
+                context_entry("total-sections", "TOTAL_SECTIONS", "total_sections"),
+                context_entry(
+                    "target-node-count",
+                    "TARGET_NODE_COUNT",
+                    "target_node_count",
+                ),
+                context_entry("graph-summary", "GRAPH_SUMMARY", "graph_summary"),
+                context_entry(
+                    "recent-section-detail",
+                    "RECENT_SECTION_DETAIL",
+                    "recent_section_detail",
+                ),
+            ],
+        ),
+        prompt_profile(
+            "ROLE:\nArchitect Draft Continue\nKeep transitions internally consistent.",
+            vec![
+                context_entry("story-concept", "STORY_CONCEPT", "story_concept"),
+                context_entry(
+                    "available-characters",
+                    "AVAILABLE_CHARACTERS",
+                    "available_characters",
+                ),
+                context_entry("world-schema", "WORLD_STATE_SCHEMA", "world_state_schema"),
+                context_entry(
+                    "player-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+                context_entry(
+                    "section-summaries",
+                    "SECTION_SUMMARIES",
+                    "section_summaries",
+                ),
+            ],
+            vec![
+                context_entry("current-section", "CURRENT_SECTION", "current_section"),
+                context_entry("section-index", "SECTION_INDEX", "section_index"),
+                context_entry("total-sections", "TOTAL_SECTIONS", "total_sections"),
+                context_entry(
+                    "target-node-count",
+                    "TARGET_NODE_COUNT",
+                    "target_node_count",
+                ),
+                context_entry("graph-summary", "GRAPH_SUMMARY", "graph_summary"),
+                context_entry(
+                    "recent-section-detail",
+                    "RECENT_SECTION_DETAIL",
+                    "recent_section_detail",
+                ),
+            ],
+        ),
+        "ROLE:\nArchitect Repair\nReturn valid JSON only.",
+    )
+}
+
 #[tokio::test]
 async fn architect_prompt_uses_character_summaries_and_ids() {
     let llm = Arc::new(MockLlm::with_chat_response(assistant_response(
@@ -62,13 +169,8 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
             "introduction": "The courier arrives at a flooded market gate where a merchant is waiting."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model").with_system_prompt_entries(&[
-        SystemPromptEntry {
-            entry_id: "architect-tone".to_owned(),
-            title: "Architect Tone".to_owned(),
-            content: "Favor compact node descriptions.".to_owned(),
-        },
-    ]);
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
 
     let mut schema = WorldStateSchema::new();
     schema.insert_field(
@@ -121,50 +223,13 @@ async fn architect_prompt_uses_character_summaries_and_ids() {
     assert!(user_message.contains("role="));
     assert!(user_message.contains("coins:"));
     assert!(!user_message.contains("Stay in character."));
-    assert!(system_message.content.contains("\"type\": \"SetState\""));
-    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
-    assert!(
-        system_message
-            .content
-            .contains("[architect-tone] Architect Tone")
-    );
+    assert!(system_message.content.contains("Architect Tone"));
     assert!(
         system_message
             .content
             .contains("Favor compact node descriptions.")
     );
-    assert!(
-        system_message
-            .content
-            .contains("\"scope\": \"global_or_player_or_character\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("Use player_state_schema keys for player-scoped conditions")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"type\": \"SetCharacterState\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"key\": \"current_event\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"value\": \"approaching_swamp\"")
-    );
-    assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
-    assert!(system_message.content.contains("\"value_type\": \"bool\""));
-    assert!(
-        system_message
-            .content
-            .contains("Every schema field object must include \"value_type\"")
-    );
+    assert!(!system_message.content.contains("PRESET_PROMPT_ENTRIES"));
 }
 
 #[tokio::test]
@@ -197,7 +262,8 @@ async fn architect_can_generate_schema_without_seed() {
             "introduction": "The courier reaches the flooded dock and must decide whether to trust the guide."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -252,7 +318,8 @@ async fn architect_prefers_planned_story_when_provided() {
             "introduction": "The courier arrives at the dock."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -306,7 +373,8 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
             "section_summary": "The courier faces the first real tradeoff at the dock."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -371,30 +439,9 @@ async fn architect_draft_continue_prompt_uses_section_summaries_and_omits_full_p
     assert!(user_message.contains("RECENT_SECTION_DETAIL"));
     assert!(!user_message.contains("PLANNED_STORY"));
     assert!(!user_message.contains("Suggested Beats:"));
+    assert!(system_message.content.contains("Architect Draft Continue"));
     assert!(!system_message.content.contains("PLANNED_STORY"));
-    assert!(!system_message.content.contains("also return introduction"));
     assert!(!system_message.content.contains("PLAYER_STATE_SCHEMA_SEED"));
-    assert!(
-        system_message
-            .content
-            .contains("\"scope\": \"global_or_player_or_character\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"type\": \"SetPlayerState\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"key\": \"current_event\"")
-    );
-    assert!(
-        system_message
-            .content
-            .contains("\"value\": \"approaching_swamp\"")
-    );
-    assert!(system_message.content.contains("\"value\": \"接近沼泽\""));
 }
 
 #[tokio::test]
@@ -435,7 +482,8 @@ async fn architect_draft_init_prompt_requires_value_type_in_schema_fields() {
             "introduction": "The courier arrives at the city gate as the merchant watches."
         })),
     )));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -472,7 +520,6 @@ async fn architect_draft_init_prompt_requires_value_type_in_schema_fields() {
         .find(|message| matches!(message.role, llm::Role::System))
         .expect("system message should exist");
 
-    assert!(system_message.content.contains("\"value_type\": \"bool\""));
     assert!(
         system_message
             .content
@@ -504,7 +551,8 @@ async fn architect_attempts_repair_after_invalid_json_output() {
             })),
         )),
     ]));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),
@@ -591,7 +639,8 @@ async fn architect_draft_continue_repairs_missing_future_transition_targets() {
             })),
         )),
     ]));
-    let architect = Architect::new(llm.clone(), "test-model");
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Old Merchant".to_owned(),

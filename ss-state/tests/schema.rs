@@ -32,3 +32,12 @@ fn accepts_scalar_enum_values_matching_type() {
         .validate()
         .expect("matching scalar enum should pass");
 }
+
+#[test]
+fn ignores_empty_enum_values_as_unset_constraint() {
+    StateFieldSchema::new(StateValueType::String)
+        .with_default(json!(""))
+        .with_enum_values(Vec::new())
+        .validate()
+        .expect("empty enum_values should be treated as unset");
+}

@@ -6,8 +6,10 @@ use futures_util::StreamExt;
 use llm::{ChatChunk, LlmError, Role};
 use serde_json::json;
 use ss_engine::{
-    Engine, EngineError, EngineEvent, EngineStage, RuntimeAgentConfigs, RuntimeState,
-    StoryGenerationAgentConfigs, StoryResources, generate_story_graph, generate_story_plan,
+    AgentModelConfig, ArchitectModelConfig, Engine, EngineError, EngineEvent, EngineStage,
+    PromptAgentKind, RuntimeAgentConfigs, RuntimeState, StoryGenerationAgentConfigs,
+    StoryResources, compile_architect_prompt_profiles, compile_prompt_profile,
+    default_agent_preset_config, generate_story_graph, generate_story_plan,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
@@ -204,6 +206,187 @@ fn user_message_content(request: &llm::ChatRequest) -> String {
         .join("\n\n")
 }
 
+fn runtime_agent_configs(llm: Arc<QueuedMockLlm>) -> RuntimeAgentConfigs {
+    let llm_api: Arc<dyn llm::LlmApi> = llm;
+    let profile = |agent| {
+        compile_prompt_profile(agent, &default_agent_preset_config(agent))
+            .expect("default prompt profile should compile")
+    };
+
+    RuntimeAgentConfigs {
+        director: AgentModelConfig::new(Arc::clone(&llm_api), "test-model")
+            .with_prompt_profile(profile(PromptAgentKind::Director)),
+        actor: AgentModelConfig::new(Arc::clone(&llm_api), "test-model")
+            .with_prompt_profile(profile(PromptAgentKind::Actor)),
+        narrator: AgentModelConfig::new(Arc::clone(&llm_api), "test-model")
+            .with_prompt_profile(profile(PromptAgentKind::Narrator)),
+        keeper: AgentModelConfig::new(llm_api, "test-model")
+            .with_prompt_profile(profile(PromptAgentKind::Keeper)),
+    }
+}
+
+fn story_generation_agent_configs(llm: Arc<QueuedMockLlm>) -> StoryGenerationAgentConfigs {
+    let llm_api: Arc<dyn llm::LlmApi> = llm;
+    let planner_profile = compile_prompt_profile(
+        PromptAgentKind::Planner,
+        &default_agent_preset_config(PromptAgentKind::Planner),
+    )
+    .expect("default planner prompt profile should compile");
+    let architect_profiles =
+        compile_architect_prompt_profiles(&default_agent_preset_config(PromptAgentKind::Architect))
+            .expect("default architect prompt profile should compile");
+
+    StoryGenerationAgentConfigs {
+        planner: AgentModelConfig::new(Arc::clone(&llm_api), "test-model")
+            .with_prompt_profile(planner_profile),
+        architect: ArchitectModelConfig::new(llm_api, "test-model")
+            .with_max_tokens(Some(8_192))
+            .with_prompt_profiles(architect_profiles),
+    }
+}
+
+#[test]
+fn default_runtime_prompt_profiles_include_output_contracts() {
+    let director = compile_prompt_profile(
+        PromptAgentKind::Director,
+        &default_agent_preset_config(PromptAgentKind::Director),
+    )
+    .expect("default director prompt profile should compile");
+    assert!(director.system_prompt.contains("ResponsePlan schema:"));
+    assert!(
+        director
+            .system_prompt
+            .contains("\"role_actions\": [SessionCharacterAction]")
+    );
+    assert!(director.system_prompt.contains("\"type\":\"Narrator\""));
+
+    let keeper = compile_prompt_profile(
+        PromptAgentKind::Keeper,
+        &default_agent_preset_config(PromptAgentKind::Keeper),
+    )
+    .expect("default keeper prompt profile should compile");
+    assert!(keeper.system_prompt.contains("StateUpdate schema:"));
+    assert!(
+        keeper
+            .system_prompt
+            .contains("\"type\":\"SetCharacterState\"")
+    );
+    assert!(keeper.system_prompt.contains("Always include \"ops\""));
+
+    let replyer = compile_prompt_profile(
+        PromptAgentKind::Replyer,
+        &default_agent_preset_config(PromptAgentKind::Replyer),
+    )
+    .expect("default replyer prompt profile should compile");
+    assert!(
+        replyer
+            .system_prompt
+            .contains("help move the story forward")
+    );
+    assert!(
+        replyer
+            .system_prompt
+            .contains("Use CURRENT_NODE.goal and CURRENT_NODE.transitions as progression hints")
+    );
+    assert!(
+        replyer
+            .system_prompt
+            .contains("Most options should help the player advance the scene")
+    );
+    assert!(replyer.system_prompt.contains("Reply suggestion schema:"));
+    assert!(replyer.system_prompt.contains("\"replies\": ["));
+
+    let actor = compile_prompt_profile(
+        PromptAgentKind::Actor,
+        &default_agent_preset_config(PromptAgentKind::Actor),
+    )
+    .expect("default actor prompt profile should compile");
+    assert!(actor.system_prompt.contains("Allowed tags:"));
+    assert!(actor.system_prompt.contains("<thought>...</thought>"));
+    assert!(actor.system_prompt.contains("Tags may appear in any order"));
+}
+
+#[test]
+fn default_architect_prompt_profiles_include_output_schemas() {
+    let profiles =
+        compile_architect_prompt_profiles(&default_agent_preset_config(PromptAgentKind::Architect))
+            .expect("default architect prompt profiles should compile");
+
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("Common nested schemas:")
+    );
+    assert!(profiles.graph.system_prompt.contains("\"graph\": {"));
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("\"introduction\": \"short player-facing opening paragraph\"")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("If \"enum_values\" is present, omit \"default\" or make \"default\" exactly equal to one item from \"enum_values\"")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("Use only the exact StateOp type names listed above")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("Every returned NarrativeNode id must be unique within the current response")
+    );
+
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("\"transition_patches\": [NodeTransitionPatch]")
+    );
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("\"start_node\": \"node_id\"")
+    );
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("Returned node ids must all be new and unique within this response")
+    );
+
+    assert!(
+        profiles
+            .draft_continue
+            .system_prompt
+            .contains("\"section_summary\": \"one short sentence\"")
+    );
+    assert!(
+        profiles
+            .draft_continue
+            .system_prompt
+            .contains("must not reuse node ids that already exist in GRAPH_SUMMARY")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("omit default or make default exactly match one enum_values item")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("do not return any node whose id already exists in GRAPH_SUMMARY")
+    );
+}
+
 fn keeper_update_for_phase(
     events: &[EngineEvent],
     phase: agents::keeper::KeeperPhase,
@@ -316,11 +499,8 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
             ]),
         ],
     ));
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        sample_runtime_state(),
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), sample_runtime_state()).expect("engine");
     let mut stream = engine
         .run_turn_stream("Open the canal gate.")
         .await
@@ -434,11 +614,8 @@ async fn run_turn_returns_result_and_records_completed_beats() {
             }),
         ])],
     ));
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        sample_runtime_state(),
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), sample_runtime_state()).expect("engine");
 
     let result = engine
         .run_turn("Stay close to the dock.")
@@ -476,11 +653,8 @@ async fn run_turn_transitions_using_player_state_conditions() {
         .world_state_mut()
         .set_player_state("coins", json!(12));
 
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        runtime_state,
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), runtime_state).expect("engine");
 
     let rich_result = engine
         .run_turn("Show the permit.")
@@ -512,11 +686,7 @@ async fn run_turn_transitions_using_player_state_conditions() {
         .world_state_mut()
         .set_player_state("coins", json!(3));
 
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm, "test-model"),
-        runtime_state,
-    )
-    .expect("engine");
+    let mut engine = Engine::new(runtime_agent_configs(llm), runtime_state).expect("engine");
 
     let poor_result = engine
         .run_turn("Show the permit.")
@@ -554,7 +724,7 @@ async fn second_keeper_fallback_restates_simple_eq_transition_fact() {
         Vec::new(),
     ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm, "test-model"),
+        runtime_agent_configs(llm),
         sample_runtime_state_with_story_graph(sample_eq_transition_story_graph()),
     )
     .expect("engine");
@@ -612,7 +782,7 @@ async fn second_keeper_fallback_skips_non_eq_transition_fact() {
         Vec::new(),
     ));
     let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm, "test-model"),
+        runtime_agent_configs(llm),
         sample_runtime_state_with_story_graph(sample_player_transition_story_graph()),
     )
     .expect("engine");
@@ -736,11 +906,8 @@ async fn run_turn_executes_mixed_beats_in_director_order() {
             ]),
         ],
     ));
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        sample_runtime_state(),
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), sample_runtime_state()).expect("engine");
 
     let result = engine
         .run_turn("Tell me what happens next.")
@@ -778,11 +945,8 @@ async fn first_keeper_failure_preserves_recorded_player_input_and_emits_failure(
         })],
         Vec::new(),
     ));
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        sample_runtime_state(),
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), sample_runtime_state()).expect("engine");
     let mut stream = engine
         .run_turn_stream("Count my coins.")
         .await
@@ -849,11 +1013,8 @@ async fn invalid_actor_speaker_fails_after_preserving_prior_state_changes() {
         ],
         Vec::new(),
     ));
-    let mut engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        sample_runtime_state(),
-    )
-    .expect("engine");
+    let mut engine =
+        Engine::new(runtime_agent_configs(llm.clone()), sample_runtime_state()).expect("engine");
 
     let error = engine
         .run_turn("Go to the gate.")
@@ -906,12 +1067,9 @@ async fn generate_story_graph_uses_architect_independently() {
     ));
     let resources = sample_story_resources();
 
-    let response = generate_story_graph(
-        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
-        &resources,
-    )
-    .await
-    .expect("architect wrapper should succeed");
+    let response = generate_story_graph(&story_generation_agent_configs(llm.clone()), &resources)
+        .await
+        .expect("architect wrapper should succeed");
 
     assert_eq!(response.graph.start_node, "dock");
     assert!(response.world_state_schema.has_field("entered_gate"));
@@ -927,11 +1085,8 @@ async fn generate_story_graph_uses_architect_independently() {
         response.player_state_schema.clone(),
     )
     .expect("runtime state should build from story resources");
-    let engine = Engine::new(
-        RuntimeAgentConfigs::shared(llm.clone(), "test-model"),
-        runtime_state,
-    )
-    .expect("engine should build");
+    let engine = Engine::new(runtime_agent_configs(llm.clone()), runtime_state)
+        .expect("engine should build");
     assert_eq!(engine.runtime_state().story_id(), "flooded_city_demo");
     assert_eq!(
         engine.runtime_state().player_description(),
@@ -956,12 +1111,9 @@ async fn generate_story_plan_uses_planner_independently() {
     ));
     let resources = sample_story_resources();
 
-    let response = generate_story_plan(
-        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
-        &resources,
-    )
-    .await
-    .expect("planner wrapper should succeed");
+    let response = generate_story_plan(&story_generation_agent_configs(llm.clone()), &resources)
+        .await
+        .expect("planner wrapper should succeed");
 
     assert!(response.story_script.contains("Title:"));
     let requests = llm.recorded_requests();
@@ -1003,12 +1155,9 @@ async fn generate_story_graph_passes_planned_story_when_present() {
         "Title:\nFlooded Dock Bargain\n\nOpening Situation:\nThe courier arrives at a flooded dock.",
     );
 
-    let response = generate_story_graph(
-        &StoryGenerationAgentConfigs::shared(llm.clone(), "test-model"),
-        &resources,
-    )
-    .await
-    .expect("architect wrapper should succeed");
+    let response = generate_story_graph(&story_generation_agent_configs(llm.clone()), &resources)
+        .await
+        .expect("architect wrapper should succeed");
 
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);

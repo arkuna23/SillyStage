@@ -120,7 +120,11 @@ impl StateFieldSchema {
                 .map_err(|error| format!("default {error}"))?;
         }
 
-        if let Some(enum_values) = &self.enum_values {
+        if let Some(enum_values) = self
+            .enum_values
+            .as_ref()
+            .filter(|enum_values| !enum_values.is_empty())
+        {
             if !self.value_type.supports_enum_values() {
                 return Err(format!(
                     "enum_values are only supported for scalar types, got {}",

@@ -1,11 +1,9 @@
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    SystemPromptEntry, append_system_prompt_entries, compact_json, render_character_summaries,
-    render_director_world_state, render_node, render_player, render_sections,
+    PromptProfile, compact_json, render_actor_history, render_character_summaries,
+    render_director_world_state, render_node, render_player, render_prompt_entries,
     render_state_schema_fields,
 };
 use llm::{ChatRequest, LlmApi};
@@ -97,7 +95,7 @@ pub enum ActorPurpose {
 pub struct Director {
     llm: Arc<dyn LlmApi>,
     model: String,
-    system_prompt: String,
+    prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -116,29 +114,14 @@ impl Director {
         Ok(Self {
             llm,
             model: model.into(),
-            system_prompt: include_str!("./prompts/director.txt").to_owned(),
+            prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
         })
     }
 
-    pub fn from_prompt_file(
-        llm: Arc<dyn LlmApi>,
-        model: impl Into<String>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, DirectorError> {
-        let system_prompt = fs::read_to_string(path).map_err(DirectorError::ReadPrompt)?;
-        Ok(Self {
-            llm,
-            model: model.into(),
-            system_prompt,
-            temperature: None,
-            max_tokens: None,
-        })
-    }
-
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
         self
     }
 
@@ -305,7 +288,7 @@ impl Director {
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.system_prompt)
+                    .system_message(&self.prompt_profile.system_prompt)
                     .user_message(stable_prompt)
                     .user_message(dynamic_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
@@ -334,42 +317,40 @@ impl Director {
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<(String, String), DirectorError> {
-        let mut stable_sections = Vec::new();
-        if let Some(lorebook_base) = lorebook_base {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "PLAYER",
-            render_player(player_persona.name, player_persona.description),
-        ));
-        stable_sections.push((
-            "CURRENT_CAST",
-            render_character_summaries(
-                &current_cast_summaries(
-                    world_state.active_characters(),
-                    character_cards,
-                    world_state,
-                )?,
-                player_persona.name,
-            ),
-        ));
-        stable_sections.push(("CURRENT_NODE", render_node(node)));
-        stable_sections.push((
-            "PLAYER_STATE_SCHEMA",
-            render_state_schema_fields(&player_state_schema.fields),
-        ));
-        stable_sections.push((
-            "TRANSITIONED_THIS_TURN",
-            compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?,
-        ));
+        let current_cast = render_character_summaries(
+            &current_cast_summaries(
+                world_state.active_characters(),
+                character_cards,
+                world_state,
+            )?,
+            player_persona.name,
+        );
+        let transitioned_this_turn =
+            compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?;
 
-        let mut dynamic_sections = vec![("WORLD_STATE", render_director_world_state(world_state))];
-        if let Some(lorebook_matched) = lorebook_matched {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
+        let stable_prompt =
+            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+                "lorebook_base" => lorebook_base.map(str::to_owned),
+                "player" => Some(render_player(
+                    player_persona.name,
+                    player_persona.description,
+                )),
+                "current_cast" => Some(current_cast.clone()),
+                "current_node" => Some(render_node(node)),
+                "player_state_schema" => {
+                    Some(render_state_schema_fields(&player_state_schema.fields))
+                }
+                "transitioned_this_turn" => Some(transitioned_this_turn.clone()),
+                _ => None,
+            });
 
-        let stable_prompt = render_sections(&stable_sections);
-        let dynamic_prompt = render_sections(&dynamic_sections);
+        let dynamic_prompt =
+            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+                "world_state" => Some(render_director_world_state(world_state)),
+                "lorebook_matched" => lorebook_matched.map(str::to_owned),
+                "shared_history" => Some(render_actor_history(world_state.actor_shared_history())),
+                _ => None,
+            });
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -426,8 +407,6 @@ pub enum DirectorError {
     NodeNotFound(String),
     #[error("{0}")]
     MissingCharacterCard(String),
-    #[error(transparent)]
-    ReadPrompt(std::io::Error),
     #[error(transparent)]
     SerializePromptData(serde_json::Error),
     #[error(transparent)]

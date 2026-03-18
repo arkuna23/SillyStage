@@ -15,6 +15,12 @@ pub enum HandlerError {
     MissingApiGroup(String),
     #[error("preset '{0}' not found")]
     MissingPreset(String),
+    #[error("preset '{preset_id}' does not contain entry '{entry_id}' for agent '{agent}'")]
+    MissingPresetEntry {
+        preset_id: String,
+        agent: String,
+        entry_id: String,
+    },
     #[error("schema '{0}' not found")]
     MissingSchema(String),
     #[error("lorebook '{0}' not found")]
@@ -47,6 +53,12 @@ pub enum HandlerError {
     DuplicateApiGroup(String),
     #[error("preset '{0}' already exists")]
     DuplicatePreset(String),
+    #[error("preset '{preset_id}' already contains entry '{entry_id}' for agent '{agent}'")]
+    DuplicatePresetEntry {
+        preset_id: String,
+        agent: String,
+        entry_id: String,
+    },
     #[error("character '{0}' already exists")]
     DuplicateCharacter(String),
     #[error("schema '{0}' already exists")]
@@ -87,6 +99,12 @@ pub enum HandlerError {
     EmptyApiGroupId,
     #[error("preset_id must not be empty")]
     EmptyPresetId,
+    #[error("entry_id must not be empty")]
+    EmptyPresetEntryId,
+    #[error("built-in preset entry '{0}' cannot be edited as custom text")]
+    BuiltInPresetEntryImmutable(String),
+    #[error("built-in preset entry '{0}' cannot be deleted")]
+    BuiltInPresetEntryDeleteForbidden(String),
     #[error("invalid resource file reference '{0}'")]
     InvalidFileReference(String),
     #[error("character '{0}' does not have a cover yet")]
@@ -123,6 +141,8 @@ pub enum HandlerError {
     InvalidStoryGraph(String),
     #[error("invalid schema: {0}")]
     InvalidSchemaDefinition(String),
+    #[error("invalid preset: {0}")]
+    InvalidPresetDefinition(String),
     #[error("invalid common variable: {0}")]
     InvalidCommonVariable(String),
     #[error("invalid session variable update: {0}")]
@@ -163,11 +183,15 @@ impl HandlerError {
             | Self::EmptyApiId
             | Self::EmptyApiGroupId
             | Self::EmptyPresetId
+            | Self::EmptyPresetEntryId
+            | Self::BuiltInPresetEntryImmutable(_)
+            | Self::BuiltInPresetEntryDeleteForbidden(_)
             | Self::InvalidFileReference(_)
             | Self::InvalidCharacterCoverPayload(_)
             | Self::InvalidSuggestedReplyLimit(_)
             | Self::InvalidStoryGraph(_)
             | Self::InvalidSchemaDefinition(_)
+            | Self::InvalidPresetDefinition(_)
             | Self::InvalidCommonVariable(_)
             | Self::InvalidSessionVariableUpdate(_)
             | Self::EmptyDataPackageSelection
@@ -195,7 +219,10 @@ impl HandlerError {
             | Self::MissingSessionMessage(_)
             | Self::MissingApi(_)
             | Self::MissingApiGroup(_)
-            | Self::MissingPreset(_) => ErrorPayload::new(ErrorCode::NotFound, self.to_string()),
+            | Self::MissingPreset(_)
+            | Self::MissingPresetEntry { .. } => {
+                ErrorPayload::new(ErrorCode::NotFound, self.to_string())
+            }
             Self::DuplicateApi(_)
             | Self::DuplicateCharacter(_)
             | Self::DuplicateSchema(_)
@@ -206,6 +233,7 @@ impl HandlerError {
             | Self::DuplicateStory(_)
             | Self::DuplicateApiGroup(_)
             | Self::DuplicatePreset(_)
+            | Self::DuplicatePresetEntry { .. }
             | Self::MissingCharacterCover(_)
             | Self::SchemaInUse(_)
             | Self::LorebookInUse(_)
@@ -226,6 +254,9 @@ impl HandlerError {
             Self::Registry(error) => match error {
                 RegistryError::UnknownApiId(_) => {
                     ErrorPayload::new(ErrorCode::NotFound, self.to_string())
+                }
+                RegistryError::PromptConfig(_) => {
+                    ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())
                 }
                 RegistryError::Llm(_) => {
                     ErrorPayload::new(ErrorCode::InvalidRequest, self.to_string())

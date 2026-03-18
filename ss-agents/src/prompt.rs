@@ -11,10 +11,31 @@ use crate::actor::CharacterCardSummaryRef;
 const DEFAULT_USER_NAME: &str = "User";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SystemPromptEntry {
+pub enum PromptEntryValue {
+    Text(String),
+    ContextRef(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PromptEntry {
     pub entry_id: String,
     pub title: String,
-    pub content: String,
+    pub value: PromptEntryValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PromptProfile {
+    pub system_prompt: String,
+    pub stable_entries: Vec<PromptEntry>,
+    pub dynamic_entries: Vec<PromptEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct ArchitectPromptProfiles {
+    pub graph: PromptProfile,
+    pub draft_init: PromptProfile,
+    pub draft_continue: PromptProfile,
+    pub repair_system_prompt: String,
 }
 
 pub(crate) struct CharacterTemplateContext<'a> {
@@ -36,20 +57,32 @@ pub(crate) fn render_sections(sections: &[(&str, String)]) -> String {
         .join("\n\n")
 }
 
-pub(crate) fn append_system_prompt_entries(
-    base_prompt: &str,
-    entries: &[SystemPromptEntry],
-) -> String {
-    let rendered_entries = render_system_prompt_entries(entries);
-    if rendered_entries.is_empty() {
-        return base_prompt.to_owned();
-    }
-
-    format!(
-        "{}\n\nPRESET_PROMPT_ENTRIES:\n{}",
-        base_prompt.trim_end(),
-        rendered_entries
-    )
+pub(crate) fn render_prompt_entries<F>(entries: &[PromptEntry], resolve: F) -> String
+where
+    F: Fn(&str) -> Option<String>,
+{
+    entries
+        .iter()
+        .filter_map(|entry| match &entry.value {
+            PromptEntryValue::Text(text) => {
+                let body = text.trim();
+                if body.is_empty() {
+                    None
+                } else {
+                    Some(format!("{}:\n{}", entry.title.trim(), body))
+                }
+            }
+            PromptEntryValue::ContextRef(key) => resolve(key).and_then(|body| {
+                let body = body.trim().to_owned();
+                if body.is_empty() {
+                    None
+                } else {
+                    Some(format!("{}:\n{}", entry.title.trim(), body))
+                }
+            }),
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 pub(crate) fn render_list_lines(lines: &[String]) -> String {
@@ -62,32 +95,6 @@ pub(crate) fn render_list_lines(lines: &[String]) -> String {
         .map(|line| format!("- {line}"))
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn render_system_prompt_entries(entries: &[SystemPromptEntry]) -> String {
-    entries
-        .iter()
-        .filter_map(|entry| {
-            let content = entry.content.trim();
-            if content.is_empty() {
-                return None;
-            }
-
-            let title = if entry.title.trim().is_empty() {
-                entry.entry_id.as_str()
-            } else {
-                entry.title.trim()
-            };
-
-            Some(format!(
-                "[{}] {}\n{}",
-                entry.entry_id.trim(),
-                title,
-                content
-            ))
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
 }
 
 pub(crate) fn render_character_text(text: &str, context: &CharacterTemplateContext<'_>) -> String {

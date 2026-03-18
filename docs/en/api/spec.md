@@ -177,19 +177,58 @@ Each agent entry currently supports:
 - `temperature`
 - `max_tokens`
 - optional `extra`
-- `prompt_entries`
+- `modules`
 
-Each prompt entry contains:
+Each `module` contains:
+
+- `module_id`
+- `entries`
+
+The current `module_id` values are:
+
+- `role`
+- `task`
+- `static_context`
+- `dynamic_context`
+- `output`
+
+Each `entries` item contains:
 
 - `entry_id`
-- `title`
-- `content`
+- `display_name`
+- `kind`
 - `enabled`
+- `order`
+- `required`
+- optional `text`
+- optional `context_key`
 
-`preset.create` / `preset.get` / `preset.update` use the full prompt-entry shape.
+The current `kind` values are:
 
-`preset.list` returns a summary form: per-agent prompt entries include metadata only and omit
-`content`.
+- `built_in_text`
+- `built_in_context_ref`
+- `custom_text`
+
+`preset.create` / `preset.get` / `preset.update` use the full module shape. Clients may submit
+only the modules or entries they want to override; the backend normalizes the result against the
+built-in agent templates and fills in missing built-in items.
+
+`preset.list` returns a summary form: each agent also reports `module_count`, `entry_count`, and
+module summaries without `text/context_key`.
+
+New single-entry methods:
+
+- `preset_entry.create`
+- `preset_entry.update`
+- `preset_entry.delete`
+
+Notes:
+
+- `preset_entry.create` only creates `custom_text`
+- `preset_entry.delete` only removes `custom_text`
+- `preset_entry.update` only allows `enabled` and `order` changes for built-in entries
+- Enabled entries are compiled by module into system-prompt or user-prompt segments, rather than
+  being appended as one legacy prompt-entry block
 
 The runtime binding model now uses `api_group_id + preset_id`.
 

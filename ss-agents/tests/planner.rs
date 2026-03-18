@@ -4,12 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::json;
-use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::planner::{Planner, PlannerRequest};
 use state::schema::{StateFieldSchema, StateValueType};
 
-use common::{MockLlm, assistant_response};
+use common::{MockLlm, assistant_response, context_entry, prompt_profile};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -36,11 +35,18 @@ async fn planner_returns_editable_story_script_and_character_summary() {
     )));
     let planner = Planner::new(llm.clone(), "test-model")
         .expect("planner should build")
-        .with_system_prompt_entries(&[SystemPromptEntry {
-            entry_id: "planner-tone".to_owned(),
-            title: "Planner Tone".to_owned(),
-            content: "Favor concise story plans.".to_owned(),
-        }]);
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nPlanner Tone\nFavor concise story plans.",
+            vec![
+                context_entry("story-concept", "STORY_CONCEPT", "story_concept"),
+                context_entry(
+                    "available-characters",
+                    "AVAILABLE_CHARACTERS",
+                    "available_characters",
+                ),
+            ],
+            Vec::new(),
+        ));
     let available_characters = vec![CharacterCard {
         id: "merchant".to_owned(),
         name: "Haru".to_owned(),
@@ -72,17 +78,13 @@ async fn planner_returns_editable_story_script_and_character_summary() {
         .expect("system message should exist");
     let user_message = joined_user_messages(request);
 
-    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
-    assert!(
-        system_message
-            .content
-            .contains("[planner-tone] Planner Tone")
-    );
+    assert!(system_message.content.contains("Planner Tone"));
     assert!(
         system_message
             .content
             .contains("Favor concise story plans.")
     );
+    assert!(!system_message.content.contains("PRESET_PROMPT_ENTRIES"));
     assert!(user_message.contains("STORY_CONCEPT"));
     assert!(user_message.contains("merchant | Haru"));
     assert!(user_message.contains("trust=0"));

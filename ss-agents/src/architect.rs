@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::actor::CharacterCard;
 use crate::prompt::{
-    CharacterTemplateContext, SystemPromptEntry, append_system_prompt_entries, compact_json,
-    render_character_text, render_sections,
+    ArchitectPromptProfiles, CharacterTemplateContext, compact_json, render_character_text,
+    render_prompt_entries,
 };
 use llm::{ChatRequest, LlmApi};
 use serde::de::DeserializeOwned;
@@ -168,9 +168,7 @@ struct RecentSectionDetailNode {
 pub struct Architect {
     client: Arc<dyn LlmApi>,
     model: String,
-    graph_system_prompt: String,
-    draft_init_system_prompt: String,
-    draft_continue_system_prompt: String,
+    prompt_profiles: ArchitectPromptProfiles,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -189,21 +187,14 @@ impl Architect {
         Self {
             client,
             model: model.into(),
-            graph_system_prompt: include_str!("./prompts/architect.txt").to_owned(),
-            draft_init_system_prompt: include_str!("./prompts/architect_draft_init.txt").to_owned(),
-            draft_continue_system_prompt: include_str!("./prompts/architect_draft_continue.txt")
-                .to_owned(),
+            prompt_profiles: ArchitectPromptProfiles::default(),
             temperature,
             max_tokens,
         }
     }
 
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.graph_system_prompt = append_system_prompt_entries(&self.graph_system_prompt, entries);
-        self.draft_init_system_prompt =
-            append_system_prompt_entries(&self.draft_init_system_prompt, entries);
-        self.draft_continue_system_prompt =
-            append_system_prompt_entries(&self.draft_continue_system_prompt, entries);
+    pub fn with_prompt_profiles(mut self, prompt_profiles: ArchitectPromptProfiles) -> Self {
+        self.prompt_profiles = prompt_profiles;
         self
     }
 
@@ -214,7 +205,7 @@ impl Architect {
         let user_messages = self.build_user_messages(&req)?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.graph_system_prompt,
+                &self.prompt_profiles.graph.system_prompt,
                 user_messages,
                 ArchitectRepairTarget::FullGraph,
                 Self::parse_json_output::<ArchitectOutputBundle>,
@@ -260,7 +251,7 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.draft_init_system_prompt,
+                &self.prompt_profiles.draft_init.system_prompt,
                 user_messages,
                 ArchitectRepairTarget::DraftInit,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
@@ -321,7 +312,7 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.draft_continue_system_prompt,
+                &self.prompt_profiles.draft_continue.system_prompt,
                 user_messages,
                 ArchitectRepairTarget::DraftContinue,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
@@ -353,41 +344,44 @@ impl Architect {
         &self,
         req: &ArchitectRequest<'_>,
     ) -> Result<Vec<String>, ArchitectError> {
-        let character_summaries: Vec<ArchitectCharacterSummary> = req
-            .available_characters
-            .iter()
-            .map(compact_character_summary)
-            .collect();
-        let mut stable_sections = vec![("STORY_CONCEPT", req.story_concept.to_owned())];
-        if let Some(lorebook_base) = req.lorebook_base.as_deref() {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "PLANNED_STORY",
-            req.planned_story.unwrap_or("null").to_owned(),
-        ));
-        stable_sections.push((
-            "AVAILABLE_CHARACTERS",
-            render_architect_character_summaries(&character_summaries),
-        ));
-        let mut dynamic_sections = vec![
-            (
-                "WORLD_STATE_SCHEMA_SEED",
-                render_compact_schema_text(req.world_state_schema.map(|schema| &schema.fields)),
-            ),
-            (
-                "PLAYER_STATE_SCHEMA_SEED",
-                render_compact_schema_text(req.player_state_schema.map(|schema| &schema.fields)),
-            ),
-        ];
-        if let Some(lorebook_matched) = req.lorebook_matched.as_deref() {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
+        let character_summaries = render_architect_character_summaries(
+            &req.available_characters
+                .iter()
+                .map(compact_character_summary)
+                .collect::<Vec<_>>(),
+        );
 
-        let stable = render_sections(&stable_sections);
-        let dynamic = render_sections(&dynamic_sections);
-
-        Ok(vec![stable, dynamic])
+        Ok(vec![
+            render_prompt_entries(
+                &self.prompt_profiles.graph.stable_entries,
+                |key| match key {
+                    "story_concept" => Some(req.story_concept.to_owned()),
+                    "lorebook_base" => req.lorebook_base.map(str::to_owned),
+                    "planned_story" => Some(req.planned_story.unwrap_or("null").to_owned()),
+                    "available_characters" => Some(character_summaries.clone()),
+                    "world_state_schema_seed" => Some(render_compact_schema_text(
+                        req.world_state_schema.map(|schema| &schema.fields),
+                    )),
+                    "player_state_schema_seed" => Some(render_compact_schema_text(
+                        req.player_state_schema.map(|schema| &schema.fields),
+                    )),
+                    _ => None,
+                },
+            ),
+            render_prompt_entries(
+                &self.prompt_profiles.graph.dynamic_entries,
+                |key| match key {
+                    "world_state_schema_seed" => Some(render_compact_schema_text(
+                        req.world_state_schema.map(|schema| &schema.fields),
+                    )),
+                    "player_state_schema_seed" => Some(render_compact_schema_text(
+                        req.player_state_schema.map(|schema| &schema.fields),
+                    )),
+                    "lorebook_matched" => req.lorebook_matched.map(str::to_owned),
+                    _ => None,
+                },
+            ),
+        ])
     }
 
     fn build_draft_user_messages(
@@ -395,125 +389,104 @@ impl Architect {
         kind: DraftPromptKind,
         input: DraftPromptInput<'_>,
     ) -> Result<Vec<String>, ArchitectError> {
-        let character_summaries: Vec<ArchitectCharacterSummary> = input
-            .available_characters
-            .iter()
-            .map(compact_character_summary)
-            .collect();
+        let character_summaries = render_architect_character_summaries(
+            &input
+                .available_characters
+                .iter()
+                .map(compact_character_summary)
+                .collect::<Vec<_>>(),
+        );
 
         match kind {
             DraftPromptKind::Init => {
-                let mut stable_sections = vec![("STORY_CONCEPT", input.story_concept.to_owned())];
-                if let Some(lorebook_base) = input.lorebook_base.as_deref() {
-                    stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-                }
-                stable_sections.push((
-                    "PLANNED_STORY",
-                    input.planned_story.unwrap_or("null").to_owned(),
-                ));
-                stable_sections.push((
-                    "AVAILABLE_CHARACTERS",
-                    render_architect_character_summaries(&character_summaries),
-                ));
-                stable_sections.push((
-                    "WORLD_STATE_SCHEMA_SEED",
-                    render_compact_schema_text(
-                        input.world_state_schema.map(|schema| &schema.fields),
-                    ),
-                ));
-                stable_sections.push((
-                    "PLAYER_STATE_SCHEMA_SEED",
-                    render_compact_schema_text(
-                        input.player_state_schema.map(|schema| &schema.fields),
-                    ),
-                ));
-
-                let mut dynamic_sections = vec![
-                    ("CURRENT_SECTION", input.current_section.to_owned()),
-                    ("SECTION_INDEX", input.section_index.to_string()),
-                    ("TOTAL_SECTIONS", input.total_sections.to_string()),
-                    ("TARGET_NODE_COUNT", input.target_node_count.to_string()),
-                    (
-                        "GRAPH_SUMMARY",
-                        compact_json(&input.graph_summary)
-                            .map_err(ArchitectError::SerializeGraphSummary)?,
-                    ),
-                    (
-                        "RECENT_SECTION_DETAIL",
-                        compact_json(
-                            &input
-                                .recent_nodes
-                                .iter()
-                                .map(compact_recent_section_node)
-                                .collect::<Vec<_>>(),
-                        )
-                        .map_err(ArchitectError::SerializeRecentNodes)?,
-                    ),
-                ];
-                if let Some(lorebook_matched) = input.lorebook_matched.as_deref() {
-                    dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-                }
+                let graph_summary = compact_json(&input.graph_summary)
+                    .map_err(ArchitectError::SerializeGraphSummary)?;
+                let recent_section_detail = compact_json(
+                    &input
+                        .recent_nodes
+                        .iter()
+                        .map(compact_recent_section_node)
+                        .collect::<Vec<_>>(),
+                )
+                .map_err(ArchitectError::SerializeRecentNodes)?;
 
                 Ok(vec![
-                    render_sections(&stable_sections),
-                    render_sections(&dynamic_sections),
+                    render_prompt_entries(&self.prompt_profiles.draft_init.stable_entries, |key| {
+                        match key {
+                            "story_concept" => Some(input.story_concept.to_owned()),
+                            "lorebook_base" => input.lorebook_base.map(str::to_owned),
+                            "planned_story" => {
+                                Some(input.planned_story.unwrap_or("null").to_owned())
+                            }
+                            "available_characters" => Some(character_summaries.clone()),
+                            "world_state_schema_seed" => Some(render_compact_schema_text(
+                                input.world_state_schema.map(|schema| &schema.fields),
+                            )),
+                            "player_state_schema_seed" => Some(render_compact_schema_text(
+                                input.player_state_schema.map(|schema| &schema.fields),
+                            )),
+                            _ => None,
+                        }
+                    }),
+                    render_prompt_entries(
+                        &self.prompt_profiles.draft_init.dynamic_entries,
+                        |key| match key {
+                            "current_section" => Some(input.current_section.to_owned()),
+                            "section_index" => Some(input.section_index.to_string()),
+                            "total_sections" => Some(input.total_sections.to_string()),
+                            "target_node_count" => Some(input.target_node_count.to_string()),
+                            "graph_summary" => Some(graph_summary.clone()),
+                            "recent_section_detail" => Some(recent_section_detail.clone()),
+                            "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
+                            _ => None,
+                        },
+                    ),
                 ])
             }
             DraftPromptKind::Continue => {
-                let mut stable_sections = vec![("STORY_CONCEPT", input.story_concept.to_owned())];
-                if let Some(lorebook_base) = input.lorebook_base.as_deref() {
-                    stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-                }
-                stable_sections.push((
-                    "AVAILABLE_CHARACTERS",
-                    render_architect_character_summaries(&character_summaries),
-                ));
-                stable_sections.push((
-                    "WORLD_STATE_SCHEMA",
-                    render_compact_schema_text(
-                        input.world_state_schema.map(|schema| &schema.fields),
-                    ),
-                ));
-                stable_sections.push((
-                    "PLAYER_STATE_SCHEMA",
-                    render_compact_schema_text(
-                        input.player_state_schema.map(|schema| &schema.fields),
-                    ),
-                ));
-                stable_sections.push((
-                    "SECTION_SUMMARIES",
-                    render_section_summaries(input.section_summaries),
-                ));
-
-                let mut dynamic_sections = vec![
-                    ("CURRENT_SECTION", input.current_section.to_owned()),
-                    ("SECTION_INDEX", input.section_index.to_string()),
-                    ("TOTAL_SECTIONS", input.total_sections.to_string()),
-                    ("TARGET_NODE_COUNT", input.target_node_count.to_string()),
-                    (
-                        "GRAPH_SUMMARY",
-                        compact_json(&input.graph_summary)
-                            .map_err(ArchitectError::SerializeGraphSummary)?,
-                    ),
-                    (
-                        "RECENT_SECTION_DETAIL",
-                        compact_json(
-                            &input
-                                .recent_nodes
-                                .iter()
-                                .map(compact_recent_section_node)
-                                .collect::<Vec<_>>(),
-                        )
-                        .map_err(ArchitectError::SerializeRecentNodes)?,
-                    ),
-                ];
-                if let Some(lorebook_matched) = input.lorebook_matched.as_deref() {
-                    dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-                }
+                let graph_summary = compact_json(&input.graph_summary)
+                    .map_err(ArchitectError::SerializeGraphSummary)?;
+                let recent_section_detail = compact_json(
+                    &input
+                        .recent_nodes
+                        .iter()
+                        .map(compact_recent_section_node)
+                        .collect::<Vec<_>>(),
+                )
+                .map_err(ArchitectError::SerializeRecentNodes)?;
 
                 Ok(vec![
-                    render_sections(&stable_sections),
-                    render_sections(&dynamic_sections),
+                    render_prompt_entries(
+                        &self.prompt_profiles.draft_continue.stable_entries,
+                        |key| match key {
+                            "story_concept" => Some(input.story_concept.to_owned()),
+                            "lorebook_base" => input.lorebook_base.map(str::to_owned),
+                            "available_characters" => Some(character_summaries.clone()),
+                            "world_state_schema" => Some(render_compact_schema_text(
+                                input.world_state_schema.map(|schema| &schema.fields),
+                            )),
+                            "player_state_schema" => Some(render_compact_schema_text(
+                                input.player_state_schema.map(|schema| &schema.fields),
+                            )),
+                            "section_summaries" => {
+                                Some(render_section_summaries(input.section_summaries))
+                            }
+                            _ => None,
+                        },
+                    ),
+                    render_prompt_entries(
+                        &self.prompt_profiles.draft_continue.dynamic_entries,
+                        |key| match key {
+                            "current_section" => Some(input.current_section.to_owned()),
+                            "section_index" => Some(input.section_index.to_string()),
+                            "total_sections" => Some(input.total_sections.to_string()),
+                            "target_node_count" => Some(input.target_node_count.to_string()),
+                            "graph_summary" => Some(graph_summary.clone()),
+                            "recent_section_detail" => Some(recent_section_detail.clone()),
+                            "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
+                            _ => None,
+                        },
+                    ),
                 ])
             }
         }
@@ -598,7 +571,7 @@ impl Architect {
         let repair_prompt = build_repair_prompt(repair_target, raw_output, original_error);
         let repaired = self
             .chat_json(
-                include_str!("./prompts/architect_repair.txt"),
+                &self.prompt_profiles.repair_system_prompt,
                 vec![repair_prompt],
             )
             .await?;

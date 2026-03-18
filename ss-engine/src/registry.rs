@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use agents::SystemPromptEntry;
 use llm::{LlmApi, LlmError, OpenAiClient, OpenAiConfig};
-use store::{AgentPresetConfig, AgentPromptEntryConfig, ApiRecord, LlmProvider, PresetRecord};
+use store::{AgentPresetConfig, ApiRecord, LlmProvider, PresetRecord};
 
-use crate::engine::{AgentModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs};
+use crate::engine::{
+    AgentModelConfig, ArchitectModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs,
+};
+use crate::prompt::{PromptAgentKind, compile_architect_prompt_profiles, compile_prompt_profile};
 
 #[derive(Clone)]
 pub struct RegisteredApi {
@@ -69,8 +71,12 @@ impl LlmApiRegistry {
         architect_preset: &AgentPresetConfig,
     ) -> Result<StoryGenerationAgentConfigs, RegistryError> {
         Ok(StoryGenerationAgentConfigs {
-            planner: self.build_agent_model_config(planner_api, planner_preset)?,
-            architect: self.build_agent_model_config(architect_api, architect_preset)?,
+            planner: self.build_agent_model_config(
+                planner_api,
+                planner_preset,
+                PromptAgentKind::Planner,
+            )?,
+            architect: self.build_architect_model_config(architect_api, architect_preset)?,
         })
     }
 
@@ -80,10 +86,26 @@ impl LlmApiRegistry {
         preset: &PresetRecord,
     ) -> Result<RuntimeAgentConfigs, RegistryError> {
         Ok(RuntimeAgentConfigs {
-            director: self.build_agent_model_config(apis.director, &preset.agents.director)?,
-            actor: self.build_agent_model_config(apis.actor, &preset.agents.actor)?,
-            narrator: self.build_agent_model_config(apis.narrator, &preset.agents.narrator)?,
-            keeper: self.build_agent_model_config(apis.keeper, &preset.agents.keeper)?,
+            director: self.build_agent_model_config(
+                apis.director,
+                &preset.agents.director,
+                PromptAgentKind::Director,
+            )?,
+            actor: self.build_agent_model_config(
+                apis.actor,
+                &preset.agents.actor,
+                PromptAgentKind::Actor,
+            )?,
+            narrator: self.build_agent_model_config(
+                apis.narrator,
+                &preset.agents.narrator,
+                PromptAgentKind::Narrator,
+            )?,
+            keeper: self.build_agent_model_config(
+                apis.keeper,
+                &preset.agents.keeper,
+                PromptAgentKind::Keeper,
+            )?,
         })
     }
 
@@ -92,7 +114,7 @@ impl LlmApiRegistry {
         api: &ApiRecord,
         preset: &AgentPresetConfig,
     ) -> Result<AgentModelConfig, RegistryError> {
-        self.build_agent_model_config(api, preset)
+        self.build_agent_model_config(api, preset, PromptAgentKind::Replyer)
     }
 
     pub async fn list_models(
@@ -119,12 +141,37 @@ impl LlmApiRegistry {
         &self,
         api: &ApiRecord,
         preset: &AgentPresetConfig,
+        agent: PromptAgentKind,
     ) -> Result<AgentModelConfig, RegistryError> {
+        let prompt_profile = compile_prompt_profile(agent, preset)
+            .map_err(|error| RegistryError::PromptConfig(error.to_string()))?;
+        let (client, model) = self.resolve_or_build_client(api)?;
+        Ok(AgentModelConfig::new(client, model)
+            .with_temperature(preset.temperature)
+            .with_max_tokens(preset.max_tokens)
+            .with_prompt_profile(prompt_profile))
+    }
+
+    fn build_architect_model_config(
+        &self,
+        api: &ApiRecord,
+        preset: &AgentPresetConfig,
+    ) -> Result<ArchitectModelConfig, RegistryError> {
+        let prompt_profiles = compile_architect_prompt_profiles(preset)
+            .map_err(|error| RegistryError::PromptConfig(error.to_string()))?;
+        let (client, model) = self.resolve_or_build_client(api)?;
+        Ok(ArchitectModelConfig::new(client, model)
+            .with_temperature(preset.temperature)
+            .with_max_tokens(preset.max_tokens)
+            .with_prompt_profiles(prompt_profiles))
+    }
+
+    fn resolve_or_build_client(
+        &self,
+        api: &ApiRecord,
+    ) -> Result<(Arc<dyn LlmApi>, String), RegistryError> {
         if let Ok(registered) = self.resolve(&api.api_id) {
-            return Ok(AgentModelConfig::new(registered.client, registered.model)
-                .with_temperature(preset.temperature)
-                .with_max_tokens(preset.max_tokens)
-                .with_system_prompt_entries(system_prompt_entries(preset)));
+            return Ok((registered.client, registered.model));
         }
 
         let client: Arc<dyn LlmApi> = match api.provider {
@@ -138,27 +185,7 @@ impl LlmApiRegistry {
             }
         };
 
-        Ok(AgentModelConfig::new(client, &api.model)
-            .with_temperature(preset.temperature)
-            .with_max_tokens(preset.max_tokens)
-            .with_system_prompt_entries(system_prompt_entries(preset)))
-    }
-}
-
-fn system_prompt_entries(preset: &AgentPresetConfig) -> Vec<SystemPromptEntry> {
-    preset
-        .prompt_entries
-        .iter()
-        .filter(|entry| entry.enabled && !entry.content.trim().is_empty())
-        .map(system_prompt_entry)
-        .collect()
-}
-
-fn system_prompt_entry(entry: &AgentPromptEntryConfig) -> SystemPromptEntry {
-    SystemPromptEntry {
-        entry_id: entry.entry_id.clone(),
-        title: entry.title.clone(),
-        content: entry.content.clone(),
+        Ok((client, api.model.clone()))
     }
 }
 
@@ -166,6 +193,8 @@ fn system_prompt_entry(entry: &AgentPromptEntryConfig) -> SystemPromptEntry {
 pub enum RegistryError {
     #[error("unknown llm api id: {0}")]
     UnknownApiId(String),
+    #[error("invalid prompt preset config: {0}")]
+    PromptConfig(String),
     #[error("failed to build llm api client: {0}")]
     Llm(#[from] LlmError),
 }

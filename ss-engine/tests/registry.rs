@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use ss_engine::{LlmApiRegistry, RegistryError, RuntimeApiRecords};
 use store::{
-    AgentPresetConfig, AgentPromptEntryConfig, ApiRecord, LlmProvider, PresetAgentConfigs,
-    PresetRecord,
+    AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig, ApiRecord,
+    LlmProvider, PresetAgentConfigs, PresetRecord, PromptEntryKind, PromptModuleId,
 };
 
 use common::QueuedMockLlm;
@@ -26,11 +26,20 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
-        prompt_entries: vec![AgentPromptEntryConfig {
-            entry_id: format!("entry-{max_tokens}"),
-            title: format!("Prompt {max_tokens}"),
-            content: format!("Keep replies under {max_tokens} tokens when practical."),
-            enabled: true,
+        modules: vec![AgentPromptModuleConfig {
+            module_id: PromptModuleId::Task,
+            entries: vec![AgentPromptModuleEntryConfig {
+                entry_id: format!("entry-{max_tokens}"),
+                display_name: format!("Prompt {max_tokens}"),
+                kind: PromptEntryKind::CustomText,
+                enabled: true,
+                order: 10,
+                required: false,
+                text: Some(format!(
+                    "Keep replies under {max_tokens} tokens when practical."
+                )),
+                context_key: None,
+            }],
         }],
     }
 }
@@ -116,18 +125,33 @@ fn registry_builds_story_generation_and_runtime_configs_for_group() {
     assert_eq!(generation.planner.temperature, Some(0.1));
     assert_eq!(generation.planner.max_tokens, Some(512));
     assert_eq!(generation.architect.max_tokens, Some(8_192));
-    assert_eq!(generation.planner.system_prompt_entries.len(), 1);
-    assert_eq!(
-        generation.planner.system_prompt_entries[0].entry_id,
-        "entry-512"
+    assert!(
+        generation
+            .planner
+            .prompt_profile
+            .system_prompt
+            .contains("Prompt 512")
+    );
+    assert!(
+        generation
+            .planner
+            .prompt_profile
+            .system_prompt
+            .contains("Keep replies under 512 tokens when practical.")
     );
     assert_eq!(runtime.director.model, "director-override-model");
     assert_eq!(runtime.actor.model, "actor-override-model");
     assert_eq!(runtime.narrator.model, "narrator-override-model");
     assert_eq!(runtime.keeper.model, "keeper-override-model");
-    assert_eq!(runtime.director.system_prompt_entries.len(), 1);
+    assert!(
+        runtime
+            .director
+            .prompt_profile
+            .system_prompt
+            .contains("Prompt 512")
+    );
     assert_eq!(replyer.model, "replyer-override-model");
-    assert_eq!(replyer.system_prompt_entries.len(), 1);
+    assert!(replyer.prompt_profile.system_prompt.contains("Prompt 256"));
 }
 
 #[test]
@@ -162,5 +186,11 @@ fn registry_falls_back_to_group_records_when_override_is_missing() {
     assert_eq!(generation.planner.model, "planner-model");
     assert_eq!(generation.planner.temperature, Some(0.1));
     assert_eq!(generation.planner.max_tokens, Some(512));
-    assert_eq!(generation.planner.system_prompt_entries.len(), 1);
+    assert!(
+        generation
+            .planner
+            .prompt_profile
+            .system_prompt
+            .contains("Prompt 512")
+    );
 }

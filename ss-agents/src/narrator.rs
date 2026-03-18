@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -12,8 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
 use crate::prompt::{
-    SystemPromptEntry, append_system_prompt_entries, compact_json, render_character_summaries,
-    render_observable_world_state, render_optional_node, render_player, render_sections,
+    PromptProfile, compact_json, render_actor_history, render_character_summaries,
+    render_observable_world_state, render_optional_node, render_player, render_prompt_entries,
     render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
@@ -53,7 +51,7 @@ pub enum NarratorStreamEvent {
 pub struct Narrator {
     llm: Arc<dyn LlmApi>,
     model: String,
-    system_prompt: String,
+    prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -72,29 +70,14 @@ impl Narrator {
         Ok(Self {
             llm,
             model: model.into(),
-            system_prompt: include_str!("./prompts/narrator.txt").to_owned(),
+            prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
         })
     }
 
-    pub fn from_prompt_file(
-        llm: Arc<dyn LlmApi>,
-        model: impl Into<String>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, NarratorError> {
-        let system_prompt = fs::read_to_string(path).map_err(NarratorError::ReadPrompt)?;
-        Ok(Self {
-            llm,
-            model: model.into(),
-            system_prompt,
-            temperature: None,
-            max_tokens: None,
-        })
-    }
-
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
         self
     }
 
@@ -130,7 +113,7 @@ impl Narrator {
             .chat_stream({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.system_prompt)
+                    .system_message(&self.prompt_profile.system_prompt)
                     .user_message(stable_prompt)
                     .user_message(dynamic_prompt);
                 if let Some(temperature) = self.temperature {
@@ -250,48 +233,42 @@ impl Narrator {
         &self,
         request: &NarratorRequest<'_>,
     ) -> Result<(String, String), NarratorError> {
-        let mut stable_sections = Vec::new();
-        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "PLAYER",
-            render_player(request.player_name, request.player_description),
-        ));
-        stable_sections.push((
-            "NARRATOR_PURPOSE",
-            compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?,
-        ));
-        stable_sections.push(("PREVIOUS_NODE", render_optional_node(request.previous_node)));
-        stable_sections.push((
-            "PREVIOUS_CAST",
-            self.previous_cast_summaries(request)?
-                .map(|summaries| render_character_summaries(&summaries, request.player_name))
-                .unwrap_or_else(|| "null".to_owned()),
-        ));
-        stable_sections.push((
-            "CURRENT_NODE",
-            crate::prompt::render_node(request.current_node),
-        ));
-        stable_sections.push((
-            "CURRENT_CAST",
-            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
-        ));
-        stable_sections.push((
-            "PLAYER_STATE_SCHEMA",
-            render_state_schema_fields(&request.player_state_schema.fields),
-        ));
+        let narrator_purpose =
+            compact_json(&request.purpose).map_err(NarratorError::SerializePromptData)?;
+        let previous_cast = self
+            .previous_cast_summaries(request)?
+            .map(|summaries| render_character_summaries(&summaries, request.player_name))
+            .unwrap_or_else(|| "null".to_owned());
+        let current_cast =
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
 
-        let mut dynamic_sections = vec![(
-            "WORLD_STATE",
-            render_observable_world_state(request.world_state),
-        )];
-        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
+        let stable_prompt =
+            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "narrator_purpose" => Some(narrator_purpose.clone()),
+                "previous_node" => Some(render_optional_node(request.previous_node)),
+                "previous_cast" => Some(previous_cast.clone()),
+                "current_node" => Some(crate::prompt::render_node(request.current_node)),
+                "current_cast" => Some(current_cast.clone()),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
+                _ => None,
+            });
 
-        let stable_prompt = render_sections(&stable_sections);
-        let dynamic_prompt = render_sections(&dynamic_sections);
+        let dynamic_prompt =
+            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "shared_history" => Some(render_actor_history(
+                    request.world_state.actor_shared_history(),
+                )),
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
+                _ => None,
+            });
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -328,8 +305,6 @@ impl Narrator {
 pub enum NarratorError {
     #[error("{0}")]
     InvalidRequest(String),
-    #[error(transparent)]
-    ReadPrompt(std::io::Error),
     #[error(transparent)]
     SerializePromptData(serde_json::Error),
     #[error(transparent)]

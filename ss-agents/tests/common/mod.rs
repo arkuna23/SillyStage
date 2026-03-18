@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use futures_util::stream;
 use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
+use ss_agents::{ArchitectPromptProfiles, PromptEntry, PromptEntryValue, PromptProfile};
 
 type RecordedRequests = Arc<Mutex<Vec<ChatRequest>>>;
 type ChatResults = Arc<Mutex<Vec<Result<ChatResponse, LlmError>>>>;
@@ -90,5 +91,55 @@ pub fn assistant_response(
         finish_reason: Some("stop".to_owned()),
         usage: None,
         structured_output,
+    }
+}
+
+pub fn context_entry(
+    entry_id: impl Into<String>,
+    title: impl Into<String>,
+    key: impl Into<String>,
+) -> PromptEntry {
+    PromptEntry {
+        entry_id: entry_id.into(),
+        title: title.into(),
+        value: PromptEntryValue::ContextRef(key.into()),
+    }
+}
+
+pub fn text_entry(
+    entry_id: impl Into<String>,
+    title: impl Into<String>,
+    text: impl Into<String>,
+) -> PromptEntry {
+    PromptEntry {
+        entry_id: entry_id.into(),
+        title: title.into(),
+        value: PromptEntryValue::Text(text.into()),
+    }
+}
+
+pub fn prompt_profile(
+    system_prompt: impl Into<String>,
+    stable_entries: Vec<PromptEntry>,
+    dynamic_entries: Vec<PromptEntry>,
+) -> PromptProfile {
+    PromptProfile {
+        system_prompt: system_prompt.into(),
+        stable_entries,
+        dynamic_entries,
+    }
+}
+
+pub fn architect_prompt_profiles(
+    graph: PromptProfile,
+    draft_init: PromptProfile,
+    draft_continue: PromptProfile,
+    repair_system_prompt: impl Into<String>,
+) -> ArchitectPromptProfiles {
+    ArchitectPromptProfiles {
+        graph,
+        draft_init,
+        draft_continue,
+        repair_system_prompt: repair_system_prompt.into(),
     }
 }

@@ -1,6 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 
 use llm::{ChatRequest, LlmApi, ResponseFormat};
@@ -8,8 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    SystemPromptEntry, append_system_prompt_entries, render_character_summaries, render_node,
-    render_observable_world_state, render_player, render_sections, render_state_schema_fields,
+    PromptProfile, render_character_summaries, render_node, render_observable_world_state,
+    render_player, render_prompt_entries, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -67,7 +65,7 @@ struct ReplyerOutput {
 pub struct Replyer {
     llm: Arc<dyn LlmApi>,
     model: String,
-    system_prompt: String,
+    prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -86,29 +84,14 @@ impl Replyer {
         Ok(Self {
             llm,
             model: model.into(),
-            system_prompt: include_str!("./prompts/replyer.txt").to_owned(),
+            prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
         })
     }
 
-    pub fn from_prompt_file(
-        llm: Arc<dyn LlmApi>,
-        model: impl Into<String>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, ReplyerError> {
-        let system_prompt = fs::read_to_string(path).map_err(ReplyerError::ReadPrompt)?;
-        Ok(Self {
-            llm,
-            model: model.into(),
-            system_prompt,
-            temperature: None,
-            max_tokens: None,
-        })
-    }
-
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
         self
     }
 
@@ -124,7 +107,7 @@ impl Replyer {
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.system_prompt)
+                    .system_message(&self.prompt_profile.system_prompt)
                     .user_message(stable_prompt)
                     .user_message(dynamic_prompt)
                     .response_format(ResponseFormat::JsonObject);
@@ -177,38 +160,31 @@ impl Replyer {
         &self,
         request: &ReplyerRequest<'_>,
     ) -> Result<(String, String), ReplyerError> {
-        let mut stable_sections = Vec::new();
-        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "PLAYER",
-            render_player(request.player_name, request.player_description),
-        ));
-        stable_sections.push(("REPLY_LIMIT", request.limit.to_string()));
-        stable_sections.push((
-            "CURRENT_CAST",
-            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
-        ));
-        stable_sections.push(("CURRENT_NODE", render_node(request.current_node)));
-        stable_sections.push((
-            "PLAYER_STATE_SCHEMA",
-            render_state_schema_fields(&request.player_state_schema.fields),
-        ));
+        let cast_summaries =
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
+        let stable_prompt =
+            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+                "lorebook_base" => request.lorebook_base.map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "reply_limit" => Some(request.limit.to_string()),
+                "current_cast" => Some(cast_summaries.clone()),
+                "current_node" => Some(render_node(request.current_node)),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
+                _ => None,
+            });
 
-        let mut dynamic_sections = vec![
-            (
-                "WORLD_STATE",
-                render_observable_world_state(request.world_state),
-            ),
-            ("SESSION_HISTORY", render_reply_history(request.history)),
-        ];
-        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
-
-        let stable_prompt = render_sections(&stable_sections);
-        let dynamic_prompt = render_sections(&dynamic_sections);
+        let dynamic_prompt =
+            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "session_history" => Some(render_reply_history(request.history)),
+                "lorebook_matched" => request.lorebook_matched.map(str::to_owned),
+                _ => None,
+            });
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -307,8 +283,6 @@ fn sanitize_replies(
 pub enum ReplyerError {
     #[error("{0}")]
     InvalidRequest(String),
-    #[error(transparent)]
-    ReadPrompt(std::io::Error),
     #[error(transparent)]
     SerializePromptData(serde_json::Error),
     #[error(transparent)]

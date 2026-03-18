@@ -68,7 +68,11 @@ fn validate_identifier_value(
     context: String,
 ) -> Result<(), GraphValidationError> {
     match value {
-        serde_json::Value::String(value) if is_ascii_snake_case_identifier(value) => Ok(()),
+        serde_json::Value::String(value)
+            if value.is_empty() || is_ascii_snake_case_identifier(value) =>
+        {
+            Ok(())
+        }
         _ => Err(GraphValidationError::NonCanonicalIdentifierValue {
             key: key.to_owned(),
             value_repr: value.to_string(),
@@ -169,5 +173,29 @@ mod tests {
                 .to_string()
                 .contains("canonical snake_case identifier")
         );
+    }
+
+    #[test]
+    fn accepts_empty_identifier_like_values() {
+        let graph = StoryGraph::new(
+            "start",
+            vec![NarrativeNode::new(
+                "start",
+                "Gate",
+                "The courier reaches the gate.",
+                "Open the story.",
+                vec![],
+                vec![Transition::new(
+                    "next",
+                    Condition::new("current_event", ConditionOperator::Eq, json!("")),
+                )],
+                vec![StateOp::SetState {
+                    key: "current_event".to_owned(),
+                    value: json!(""),
+                }],
+            )],
+        );
+
+        assert!(validate_graph_state_conventions(&graph).is_ok());
     }
 }

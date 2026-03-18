@@ -7,13 +7,46 @@ pub enum LlmProvider {
     OpenAi,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptModuleId {
+    Role,
+    Task,
+    StaticContext,
+    DynamicContext,
+    Output,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptEntryKind {
+    BuiltInText,
+    BuiltInContextRef,
+    CustomText,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct AgentPromptEntryConfig {
+pub struct AgentPromptModuleEntryConfig {
     pub entry_id: String,
-    pub title: String,
-    pub content: String,
+    pub display_name: String,
+    pub kind: PromptEntryKind,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    #[serde(default)]
+    pub order: i32,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct AgentPromptModuleConfig {
+    pub module_id: PromptModuleId,
+    #[serde(default)]
+    pub entries: Vec<AgentPromptModuleEntryConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -36,7 +69,7 @@ pub struct AgentPresetConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra: Option<Value>,
     #[serde(default)]
-    pub prompt_entries: Vec<AgentPromptEntryConfig>,
+    pub modules: Vec<AgentPromptModuleConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

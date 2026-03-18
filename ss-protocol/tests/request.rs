@@ -1,29 +1,30 @@
 use serde_json::json;
 use ss_protocol::{
-    ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiGroupBindingsInput, ApiGroupCreateParams,
-    ApiGroupDeleteParams, ApiGroupGetParams, ApiGroupListParams, ApiListParams, ApiUpdateParams,
-    CharacterCardContent, CharacterCreateParams, CharacterDeleteParams, CharacterGetParams,
-    CharacterListParams, CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope,
-    ConfigGetGlobalParams, ContinueStoryDraftParams, CreateSessionMessageParams,
-    CreateStoryResourcesParams, DashboardGetParams, DataPackageExportPrepareParams,
-    DataPackageImportCommitParams, DataPackageImportPrepareParams, DeleteSessionCharacterParams,
-    DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
-    DeleteStoryResourcesParams, EnterSessionCharacterSceneParams, FinalizeStoryDraftParams,
-    GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionCharacterParams,
-    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryDraftParams,
-    GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
-    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
-    ListSessionsParams, ListStoriesParams, ListStoryDraftsParams, ListStoryResourcesParams,
-    LorebookCreateParams, LorebookDeleteParams, LorebookGetParams, LorebookListParams,
-    LorebookUpdateParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
+    AgentPresetConfigPayload, ApiCreateParams, ApiDeleteParams, ApiGetParams,
+    ApiGroupBindingsInput, ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams,
+    ApiGroupListParams, ApiListParams, ApiUpdateParams, CharacterCardContent,
+    CharacterCreateParams, CharacterDeleteParams, CharacterGetParams, CharacterListParams,
+    CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope, ConfigGetGlobalParams,
+    ContinueStoryDraftParams, CreateSessionMessageParams, CreateStoryResourcesParams,
+    DashboardGetParams, DataPackageExportPrepareParams, DataPackageImportCommitParams,
+    DataPackageImportPrepareParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
+    DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
+    EnterSessionCharacterSceneParams, FinalizeStoryDraftParams, GenerateStoryParams,
+    GetRuntimeSnapshotParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
+    GetSessionVariablesParams, GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams,
+    JsonRpcRequestMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
+    ListSessionMessagesParams, ListSessionsParams, ListStoriesParams, ListStoryDraftsParams,
+    ListStoryResourcesParams, LorebookCreateParams, LorebookDeleteParams, LorebookGetParams,
+    LorebookListParams, LorebookUpdateParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
     PlayerProfileGetParams, PlayerProfileListParams, PlayerProfileUpdateParams, PresetCreateParams,
-    PresetDeleteParams, PresetGetParams, PresetListParams, RequestParams, RunTurnParams,
-    SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
-    SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams, SetPlayerProfileParams,
-    StartSessionFromStoryParams, StartStoryDraftParams, SuggestRepliesParams,
-    UpdateSessionCharacterParams, UpdateSessionMessageParams, UpdateSessionParams,
-    UpdateSessionVariablesParams, UpdateStoryDraftGraphParams, UpdateStoryGraphParams,
-    UpdateStoryParams, UpdateStoryResourcesParams,
+    PresetDeleteParams, PresetGetParams, PresetListParams, PresetModuleEntryPayload,
+    PresetPromptModulePayload, PromptEntryKindPayload, PromptModuleIdPayload, RequestParams,
+    RunTurnParams, SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams,
+    SchemaUpdateParams, SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams,
+    SetPlayerProfileParams, StartSessionFromStoryParams, StartStoryDraftParams,
+    SuggestRepliesParams, UpdateSessionCharacterParams, UpdateSessionMessageParams,
+    UpdateSessionParams, UpdateSessionVariablesParams, UpdateStoryDraftGraphParams,
+    UpdateStoryGraphParams, UpdateStoryParams, UpdateStoryResourcesParams,
 };
 use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::LlmProvider;
@@ -53,22 +54,27 @@ fn sample_api_group_bindings() -> ApiGroupBindingsInput {
 }
 
 fn sample_preset_agents() -> ss_protocol::PresetAgentPayloads {
-    let config = |max_tokens| ss_protocol::AgentPresetConfigPayload {
+    let config = |max_tokens| AgentPresetConfigPayload {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
-        prompt_entries: Vec::new(),
+        modules: Vec::new(),
     };
 
     let mut planner = config(512);
-    planner
-        .prompt_entries
-        .push(ss_protocol::PresetPromptEntryPayload {
+    planner.modules.push(PresetPromptModulePayload {
+        module_id: PromptModuleIdPayload::Task,
+        entries: vec![PresetModuleEntryPayload {
             entry_id: "planner-tone".to_owned(),
-            title: "Planner Tone".to_owned(),
-            content: "Favor concise story plans.".to_owned(),
+            display_name: "Planner Tone".to_owned(),
+            kind: PromptEntryKindPayload::CustomText,
             enabled: true,
-        });
+            order: 10,
+            required: false,
+            text: Some("Favor concise story plans.".to_owned()),
+            context_key: None,
+        }],
+    });
 
     ss_protocol::PresetAgentPayloads {
         planner,

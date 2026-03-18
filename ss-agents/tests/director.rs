@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use serde_json::json;
-use ss_agents::SystemPromptEntry;
 use ss_agents::actor::CharacterCard;
 use ss_agents::director::{ActorPurpose, Director, NarratorPurpose, ResponseBeat};
 use state::{
@@ -14,7 +13,7 @@ use state::{
 use story::runtime_graph::RuntimeStoryGraph;
 use story::{NarrativeNode, StoryGraph};
 
-use common::{MockLlm, assistant_response};
+use common::{MockLlm, assistant_response, context_entry, prompt_profile};
 
 fn joined_user_messages(request: &llm::ChatRequest) -> String {
     request
@@ -55,11 +54,28 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     )));
     let director = Director::new(llm.clone(), "test-model")
         .expect("director should build")
-        .with_system_prompt_entries(&[SystemPromptEntry {
-            entry_id: "director-mode".to_owned(),
-            title: "Director Mode".to_owned(),
-            content: "Prefer compact beat plans.".to_owned(),
-        }]);
+        .with_prompt_profile(prompt_profile(
+            "ROLE:\nDirector Mode\nPrefer compact beat plans.\n\nTASK:\nYou may output any number of beats.\nYou may interleave Narrator and Actor beats in any order.",
+            vec![
+                context_entry("player", "PLAYER", "player"),
+                context_entry("current-cast", "CURRENT_CAST", "current_cast"),
+                context_entry("current-node", "CURRENT_NODE", "current_node"),
+                context_entry(
+                    "player-state-schema",
+                    "PLAYER_STATE_SCHEMA",
+                    "player_state_schema",
+                ),
+                context_entry(
+                    "transitioned",
+                    "TRANSITIONED_THIS_TURN",
+                    "transitioned_this_turn",
+                ),
+            ],
+            vec![
+                context_entry("world-state", "WORLD_STATE", "world_state"),
+                context_entry("shared-history", "SHARED_HISTORY", "shared_history"),
+            ],
+        ));
     let mut player_state_schema = PlayerStateSchema::new();
     player_state_schema.insert_field(
         "coins",
@@ -151,23 +167,18 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
             .content
             .contains("You may interleave Narrator and Actor beats in any order")
     );
-    assert!(system_message.content.contains("PRESET_PROMPT_ENTRIES"));
-    assert!(
-        system_message
-            .content
-            .contains("[director-mode] Director Mode")
-    );
+    assert!(system_message.content.contains("Director Mode"));
     assert!(
         system_message
             .content
             .contains("Prefer compact beat plans.")
     );
+    assert!(!system_message.content.contains("PRESET_PROMPT_ENTRIES"));
     assert!(user_message.contains("CURRENT_CAST"));
     assert!(user_message.contains("merchant | Old Merchant"));
     assert!(user_message.contains("trust=2"));
     assert!(!user_message.contains("ResponsePlan schema"));
     assert!(!user_message.contains("Stay in character."));
-    assert!(!user_message.contains("Keep this between us."));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
     assert!(!user_message.contains("on_enter_updates"));
     assert!(!user_message.contains("entered_intro"));
@@ -178,8 +189,9 @@ async fn director_prompt_uses_current_cast_summary_and_speaker_ids() {
     );
     assert!(user_message.contains("player_state"));
     assert!(user_message.contains("coins=12"));
+    assert!(user_message.contains("SHARED_HISTORY"));
+    assert!(user_message.contains("Keep this between us."));
     assert!(!user_message.contains("This should stay hidden from the director."));
-    assert!(!user_message.contains("actor_shared_history"));
     assert!(!user_message.contains("actor_private_memory"));
     assert_eq!(result.response_plan.beats.len(), 4);
     assert!(matches!(

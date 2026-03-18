@@ -65,11 +65,13 @@ pub use player_profile::{
     PlayerProfileUpdateParams, PlayerProfilesListedPayload,
 };
 pub use preset::{
-    AgentPresetConfigPayload, AgentPresetConfigSummaryPayload, PresetAgentPayloads,
-    PresetAgentSummaryPayloads, PresetCreateParams, PresetDeleteParams, PresetDeletedPayload,
-    PresetGetParams, PresetListParams, PresetPayload, PresetPromptEntryPayload,
-    PresetPromptEntrySummaryPayload, PresetSummaryPayload, PresetUpdateParams,
-    PresetsListedPayload,
+    AgentPresetConfigPayload, AgentPresetConfigSummaryPayload, PresetAgentIdPayload,
+    PresetAgentPayloads, PresetAgentSummaryPayloads, PresetCreateParams, PresetDeleteParams,
+    PresetDeletedPayload, PresetEntryCreateParams, PresetEntryDeleteParams,
+    PresetEntryDeletedPayload, PresetEntryPayload, PresetEntryUpdateParams, PresetGetParams,
+    PresetListParams, PresetModuleEntryPayload, PresetModuleEntrySummaryPayload, PresetPayload,
+    PresetPromptModulePayload, PresetPromptModuleSummaryPayload, PresetSummaryPayload,
+    PresetUpdateParams, PresetsListedPayload, PromptEntryKindPayload, PromptModuleIdPayload,
 };
 pub use reply_suggestion::{ReplyOptionPayload, SuggestRepliesParams, SuggestedRepliesPayload};
 pub use request::{

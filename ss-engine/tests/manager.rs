@@ -8,9 +8,10 @@ use serde_json::json;
 use ss_engine::{EngineEvent, EngineManager, LlmApiRegistry};
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldStateSchema};
 use store::{
-    AgentPresetConfig, AgentPromptEntryConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord,
-    BlobRecord, CharacterCardDefinition, CharacterCardRecord, InMemoryStore, PlayerProfileRecord,
-    PresetAgentConfigs, PresetRecord, SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
+    AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig,
+    ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardDefinition,
+    CharacterCardRecord, InMemoryStore, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
+    PromptEntryKind, PromptModuleId, SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
 };
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
@@ -41,11 +42,20 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
-        prompt_entries: vec![AgentPromptEntryConfig {
-            entry_id: format!("entry-{max_tokens}"),
-            title: format!("Prompt {max_tokens}"),
-            content: format!("Keep replies under {max_tokens} tokens when practical."),
-            enabled: true,
+        modules: vec![AgentPromptModuleConfig {
+            module_id: PromptModuleId::Task,
+            entries: vec![AgentPromptModuleEntryConfig {
+                entry_id: format!("entry-{max_tokens}"),
+                display_name: format!("Prompt {max_tokens}"),
+                kind: PromptEntryKind::CustomText,
+                enabled: true,
+                order: 10,
+                required: false,
+                text: Some(format!(
+                    "Keep replies under {max_tokens} tokens when practical."
+                )),
+                context_key: None,
+            }],
         }],
     }
 }

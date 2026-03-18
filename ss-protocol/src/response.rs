@@ -17,7 +17,10 @@ use crate::lorebook::{
 use crate::player_profile::{
     PlayerProfileDeletedPayload, PlayerProfilePayload, PlayerProfilesListedPayload,
 };
-use crate::preset::{PresetDeletedPayload, PresetPayload, PresetsListedPayload};
+use crate::preset::{
+    PresetDeletedPayload, PresetEntryDeletedPayload, PresetEntryPayload, PresetPayload,
+    PresetsListedPayload,
+};
 use crate::reply_suggestion::SuggestedRepliesPayload;
 use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
 use crate::session_character::{
@@ -41,6 +44,8 @@ pub enum ResponseResult {
     Preset(Box<PresetPayload>),
     PresetsListed(PresetsListedPayload),
     PresetDeleted(PresetDeletedPayload),
+    PresetEntry(Box<PresetEntryPayload>),
+    PresetEntryDeleted(PresetEntryDeletedPayload),
     Schema(Box<SchemaPayload>),
     SchemasListed(SchemasListedPayload),
     SchemaDeleted(SchemaDeletedPayload),

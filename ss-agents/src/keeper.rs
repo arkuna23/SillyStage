@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
 
 use llm::{ChatRequest, LlmApi};
@@ -12,8 +10,8 @@ use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCard
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
 use crate::prompt::{
-    SystemPromptEntry, append_system_prompt_entries, compact_json, normalize_inline_text,
-    render_character_summaries, render_keeper_node, render_observable_world_state, render_player,
+    PromptProfile, compact_json, normalize_inline_text, render_character_summaries,
+    render_keeper_node, render_observable_world_state, render_player, render_prompt_entries,
     render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
@@ -112,7 +110,7 @@ pub struct KeeperResponse {
 pub struct Keeper {
     llm: Arc<dyn LlmApi>,
     model: String,
-    system_prompt: String,
+    prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 }
@@ -131,29 +129,14 @@ impl Keeper {
         Ok(Self {
             llm,
             model: model.into(),
-            system_prompt: include_str!("./prompts/keeper.txt").to_owned(),
+            prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
         })
     }
 
-    pub fn from_prompt_file(
-        llm: Arc<dyn LlmApi>,
-        model: impl Into<String>,
-        path: impl AsRef<Path>,
-    ) -> Result<Self, KeeperError> {
-        let system_prompt = fs::read_to_string(path).map_err(KeeperError::ReadPrompt)?;
-        Ok(Self {
-            llm,
-            model: model.into(),
-            system_prompt,
-            temperature: None,
-            max_tokens: None,
-        })
-    }
-
-    pub fn with_system_prompt_entries(mut self, entries: &[SystemPromptEntry]) -> Self {
-        self.system_prompt = append_system_prompt_entries(&self.system_prompt, entries);
+    pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
+        self.prompt_profile = prompt_profile;
         self
     }
 
@@ -166,7 +149,7 @@ impl Keeper {
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.system_prompt)
+                    .system_message(&self.prompt_profile.system_prompt)
                     .user_message(stable_prompt)
                     .user_message(dynamic_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
@@ -255,66 +238,51 @@ impl Keeper {
         &self,
         request: &KeeperRequest<'_>,
     ) -> Result<(String, String), KeeperError> {
-        let mut stable_sections = Vec::new();
-        if let Some(lorebook_base) = request.lorebook_base.as_deref() {
-            stable_sections.push(("LOREBOOK_BASE", lorebook_base.to_owned()));
-        }
-        stable_sections.push((
-            "PLAYER",
-            render_player(request.player_name, request.player_description),
-        ));
-        stable_sections.push((
-            "KEEPER_PHASE",
-            compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?,
-        ));
-        stable_sections.push((
-            "PREVIOUS_NODE",
-            request
-                .previous_node
-                .map(render_keeper_node)
-                .unwrap_or_else(|| "null".to_owned()),
-        ));
-        stable_sections.push((
-            "NODE_CHANGE",
-            render_keeper_node_change(request.previous_node, request.current_node),
-        ));
-        stable_sections.push((
-            "PREVIOUS_CAST",
-            self.previous_cast_summaries(request)?
-                .map(|summaries| render_character_summaries(&summaries, request.player_name))
-                .unwrap_or_else(|| "null".to_owned()),
-        ));
-        stable_sections.push(("CURRENT_NODE", render_keeper_node(request.current_node)));
-        stable_sections.push((
-            "PROGRESSION_HINTS",
-            render_keeper_progression_hints(request.current_node),
-        ));
-        stable_sections.push((
-            "CURRENT_CAST",
-            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name),
-        ));
-        stable_sections.push((
-            "PLAYER_STATE_SCHEMA",
-            render_state_schema_fields(&request.player_state_schema.fields),
-        ));
+        let keeper_phase =
+            compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?;
+        let previous_cast = self
+            .previous_cast_summaries(request)?
+            .map(|summaries| render_character_summaries(&summaries, request.player_name))
+            .unwrap_or_else(|| "null".to_owned());
+        let current_cast =
+            render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
 
-        let mut dynamic_sections = vec![
-            ("PLAYER_INPUT", request.player_input.to_owned()),
-            (
-                "WORLD_STATE",
-                render_observable_world_state(request.world_state),
-            ),
-            (
-                "COMPLETED_BEATS",
-                render_keeper_beats(request.completed_beats),
-            ),
-        ];
-        if let Some(lorebook_matched) = request.lorebook_matched.as_deref() {
-            dynamic_sections.push(("LOREBOOK_MATCHED", lorebook_matched.to_owned()));
-        }
+        let stable_prompt =
+            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "keeper_phase" => Some(keeper_phase.clone()),
+                "previous_node" => Some(
+                    request
+                        .previous_node
+                        .map(render_keeper_node)
+                        .unwrap_or_else(|| "null".to_owned()),
+                ),
+                "node_change" => Some(render_keeper_node_change(
+                    request.previous_node,
+                    request.current_node,
+                )),
+                "previous_cast" => Some(previous_cast.clone()),
+                "current_node" => Some(render_keeper_node(request.current_node)),
+                "progression_hints" => Some(render_keeper_progression_hints(request.current_node)),
+                "current_cast" => Some(current_cast.clone()),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
+                _ => None,
+            });
 
-        let stable_prompt = render_sections(&stable_sections);
-        let dynamic_prompt = render_sections(&dynamic_sections);
+        let dynamic_prompt =
+            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+                "player_input" => Some(request.player_input.to_owned()),
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "completed_beats" => Some(render_keeper_beats(request.completed_beats)),
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
+                _ => None,
+            });
 
         Ok((stable_prompt, dynamic_prompt))
     }
@@ -494,8 +462,6 @@ fn structured_output_for_log(value: &Value) -> String {
 pub enum KeeperError {
     #[error("{0}")]
     InvalidRequest(String),
-    #[error(transparent)]
-    ReadPrompt(std::io::Error),
     #[error(transparent)]
     SerializePromptData(serde_json::Error),
     #[error(transparent)]

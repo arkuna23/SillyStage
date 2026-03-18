@@ -4,9 +4,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde_json::json;
 use ss_store::{
-    AgentPresetConfig, AgentPromptEntryConfig, ApiGroupAgentBindings, ApiGroupRecord, ApiRecord,
-    BlobRecord, CharacterCardDefinition, CharacterCardRecord, FileSystemStore, LlmProvider,
-    PlayerProfileRecord, PresetAgentConfigs, PresetRecord, RuntimeSnapshot, SchemaRecord,
+    AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig,
+    ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardDefinition,
+    CharacterCardRecord, FileSystemStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
+    PresetRecord, PromptEntryKind, PromptModuleId, RuntimeSnapshot, SchemaRecord,
     SessionBindingConfig, SessionCharacterRecord, SessionMessageKind, SessionMessageRecord,
     SessionRecord, Store, StoryRecord, StoryResourcesRecord,
 };
@@ -77,11 +78,20 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
         extra: None,
-        prompt_entries: vec![AgentPromptEntryConfig {
-            entry_id: format!("entry-{max_tokens}"),
-            title: format!("Prompt {max_tokens}"),
-            content: format!("Keep replies under {max_tokens} tokens when practical."),
-            enabled: true,
+        modules: vec![AgentPromptModuleConfig {
+            module_id: PromptModuleId::Task,
+            entries: vec![AgentPromptModuleEntryConfig {
+                entry_id: format!("entry-{max_tokens}"),
+                display_name: format!("Prompt {max_tokens}"),
+                kind: PromptEntryKind::CustomText,
+                enabled: true,
+                order: 10,
+                required: false,
+                text: Some(format!(
+                    "Keep replies under {max_tokens} tokens when practical."
+                )),
+                context_key: None,
+            }],
         }],
     }
 }
@@ -393,9 +403,9 @@ async fn filesystem_store_round_trips_all_records() {
         .await
         .expect("load preset")
         .expect("preset should exist");
-    assert_eq!(preset.agents.planner.prompt_entries.len(), 1);
+    assert_eq!(preset.agents.planner.modules.len(), 1);
     assert_eq!(
-        preset.agents.planner.prompt_entries[0].entry_id,
+        preset.agents.planner.modules[0].entries[0].entry_id,
         "entry-512"
     );
     assert!(

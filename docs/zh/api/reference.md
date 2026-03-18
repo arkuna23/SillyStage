@@ -73,27 +73,57 @@
 | `preset.list` | 否 | `presets_listed` | 列出预设 |
 | `preset.update` | 否 | `preset` | 更新预设 |
 | `preset.delete` | 否 | `preset_deleted` | 删除预设 |
+| `preset_entry.create` | 否 | `preset_entry` | 给某个 agent 模块新增自定义提示词条目 |
+| `preset_entry.update` | 否 | `preset_entry` | 更新某个模块中的单条提示词条目 |
+| `preset_entry.delete` | 否 | `preset_entry_deleted` | 删除某个模块中的单条自定义提示词条目 |
 
-`preset` 当前支持每 agent 的常用生成参数，以及 agent 级提示词条目：
+`preset` 当前支持每个 agent 的常用生成参数，以及模块化提示词设定：
 
 - `temperature`
 - `max_tokens`
 - 可选 `extra`
-- `prompt_entries`
+- `modules`
 
-每个 `prompt_entries` 条目包含：
+每个 `module` 包含：
+
+- `module_id`
+- `entries`
+
+`module_id` 当前固定为：
+
+- `role`
+- `task`
+- `static_context`
+- `dynamic_context`
+- `output`
+
+每个 `entries` 条目包含：
 
 - `entry_id`
-- `title`
-- `content`
+- `display_name`
+- `kind`
 - `enabled`
+- `order`
+- `required`
+- 可选 `text`
+- 可选 `context_key`
+
+`kind` 当前支持：
+
+- `built_in_text`
+- `built_in_context_ref`
+- `custom_text`
 
 行为说明：
 
-- `preset.create`、`preset.get`、`preset.update` 使用完整条目结构
-- `preset.update` 对每个 agent 的 `prompt_entries` 采用整列表替换；前端应提交最终排序后的完整数组
-- `preset.list` 返回的是摘要；其中 prompt entries 只返回元信息，不返回 `content`
-- 启用中的 prompt entries 会追加到内置 agent system prompt 末尾，并放在专门的 `PRESET_PROMPT_ENTRIES` 区块中
+- `preset.create`、`preset.get`、`preset.update` 使用完整模块结构
+- `preset.list` 返回摘要；每个 agent 会给出 `module_count`、`entry_count`，以及不带 `text/context_key` 的模块摘要
+- 允许只提交需要覆盖的模块或条目；后端会按 agent 内置模板做规范化并补齐缺失的 built-in 项
+- `built_in_text` 和 `built_in_context_ref` 来自后端默认模板，不能通过 `preset_entry.create` 新增，也不能通过 `preset_entry.delete` 删除
+- `preset_entry.create` 仅创建 `custom_text` 条目，并落在指定的 `agent + module_id` 下
+- `preset_entry.update` 对 `custom_text` 可修改 `display_name`、`text`、`enabled`、`order`；对 built-in 条目仅允许改 `enabled`、`order`
+- 启用中的条目会按模块编译成最终 prompt：`role/task/output` 进入 system prompt，`static_context/dynamic_context` 进入 user prompt 的稳定段或动态段
+- `context_key` 只用于 `built_in_context_ref`；`custom_text` 使用 `text`
 
 说明：
 

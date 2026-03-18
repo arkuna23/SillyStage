@@ -97,6 +97,15 @@ impl Handler {
             RequestParams::PresetDelete(params) => {
                 self.handle_preset_delete(&request_id, params).await
             }
+            RequestParams::PresetEntryCreate(params) => {
+                self.handle_preset_entry_create(&request_id, params).await
+            }
+            RequestParams::PresetEntryUpdate(params) => {
+                self.handle_preset_entry_update(&request_id, params).await
+            }
+            RequestParams::PresetEntryDelete(params) => {
+                self.handle_preset_entry_delete(&request_id, params).await
+            }
             RequestParams::SchemaCreate(params) => {
                 self.handle_schema_create(&request_id, params).await
             }
