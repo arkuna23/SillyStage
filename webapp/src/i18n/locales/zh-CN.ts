@@ -1699,7 +1699,7 @@ const zhCN = {
       loadFailed: '角色库加载失败。',
       loadSchemasFailed: '加载状态结构列表失败。',
       folderActionFailed: '文件夹操作失败。',
-      folderDeleteConfirm: '文件夹 {{folder}} 里还有 {{count}} 个角色，删除后会把它们移回未分组。继续吗？',
+      folderDeleteFailed: '删除文件夹 {{folder}} 失败。',
       folderCreated: '已创建文件夹：{{folder}}。',
       folderDeleted: '已删除文件夹：{{folder}}。',
       folderExists: '文件夹 {{folder}} 已存在。',
@@ -1745,6 +1745,11 @@ const zhCN = {
       toggleCollapse: '收起资源管理器',
       toggleExpand: '展开资源管理器',
       title: '文件夹',
+    },
+    folderDeleteDialog: {
+      message: '确定要删除文件夹 {{folder}} 吗？其中的 {{count}} 个角色也会一起删除，这个操作不能撤回。',
+      more: '还有 {{count}} 个角色',
+      title: '删除文件夹',
     },
     views: {
       grid: '卡片',

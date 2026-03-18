@@ -316,7 +316,12 @@ export function CharacterFormDialog({
         setAvailableFolders(
           Array.from(
             new Set(
-              [...loadCharacterFolderRegistry(), ...characters.map((item) => item.folder.trim())]
+              [
+                ...loadCharacterFolderRegistry(),
+                ...characters.map((item) =>
+                  normalizeCharacterFolderRegistryName(item.folder),
+                ),
+              ]
                 .filter((folder) => folder.length > 0),
             ),
           ).sort((left, right) => left.localeCompare(right)),

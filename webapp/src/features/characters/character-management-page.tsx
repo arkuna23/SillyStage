@@ -131,7 +131,7 @@ function normalizeSummaryText(text: string) {
 }
 
 function normalizeCharacterFolder(folder: string) {
-	return folder.trim();
+	return normalizeCharacterFolderRegistryName(folder);
 }
 
 function getCharacterFolderLabel(folder: string, unfiledLabel: string) {
@@ -144,7 +144,7 @@ function buildCharacterSearchText(summary: CharacterSummary) {
 		summary.name,
 		summary.personality,
 		summary.style,
-		summary.folder,
+		normalizeCharacterFolder(summary.folder),
 		...summary.tags,
 	]
 		.join(" ")
@@ -564,7 +564,7 @@ function CharacterListRow({
 			<div className="grid gap-3.5 p-3 sm:grid-cols-[4.25rem_minmax(0,10.5rem)_minmax(0,1fr)_auto] sm:items-center">
 				<button
 					aria-pressed={selectionMode ? selected : undefined}
-					className="group contents text-left"
+					className="group grid min-w-0 gap-3.5 text-left sm:col-span-3 sm:grid-cols-[4.25rem_minmax(0,10.5rem)_minmax(0,1fr)] sm:items-center"
 					draggable={draggable}
 					onDragEnd={onDragEnd}
 					onDragStart={onDragStart}
@@ -788,9 +788,11 @@ export function CharacterManagementPage() {
 		null,
 	);
 	const [folderDialogValue, setFolderDialogValue] = useState("");
+	const [folderDeleteTarget, setFolderDeleteTarget] = useState<string | null>(null);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
 	const [isApplyingFolderChange, setIsApplyingFolderChange] = useState(false);
-	const [isExplorerOpen, setIsExplorerOpen] = useState(true);
+	const [isDeletingFolder, setIsDeletingFolder] = useState(false);
+	const [isExplorerOpen, setIsExplorerOpen] = useState(false);
 	const prefersReducedMotion = useReducedMotion();
 
 	const selectedCharacter =
@@ -838,6 +840,16 @@ export function CharacterManagementPage() {
 				)
 				.filter((character): character is CharacterSummary => character !== undefined),
 		[characters, deleteTargetIds],
+	);
+	const folderDeleteCharacters = useMemo(
+		() =>
+			folderDeleteTarget === null
+				? []
+				: characters.filter(
+						(character) =>
+							normalizeCharacterFolder(character.folder) === folderDeleteTarget,
+					),
+		[characters, folderDeleteTarget],
 	);
 
 	const refreshCharacters = useCallback(
@@ -1090,6 +1102,11 @@ export function CharacterManagementPage() {
 		setFolderDialogValue(folder);
 	}
 
+	function openFolderDeleteDialog(folder: string) {
+		setContextMenu(null);
+		setFolderDeleteTarget(folder);
+	}
+
 	async function moveCharactersToFolder(
 		characterIds: string[],
 		folder: string,
@@ -1226,39 +1243,94 @@ export function CharacterManagementPage() {
 		});
 	}
 
-	async function handleFolderDelete(folder: string) {
-		const affectedCharacters = characters
-			.filter((character) => normalizeCharacterFolder(character.folder) === folder)
-			.map((character) => character.character_id);
-
-		setContextMenu(null);
-
-		if (
-			affectedCharacters.length > 0 &&
-			!window.confirm(
-				t("characters.feedback.folderDeleteConfirm", {
-					count: affectedCharacters.length,
-					folder,
-				}),
-			)
-		) {
+	async function handleFolderDelete() {
+		if (folderDeleteTarget === null) {
 			return;
 		}
 
-		setFolderRegistry((current) => removeCharacterFolderRegistryEntry(current, folder));
-		if (activeFolder === folder) {
-			setActiveFolder("all");
-		}
+		const targetFolder = folderDeleteTarget;
+		const targets = folderDeleteCharacters;
+		setIsDeletingFolder(true);
 
-		await moveCharactersToFolder(affectedCharacters, "", {
-			silent: true,
-		});
-		setNotice({
-			message: t("characters.feedback.folderDeleted", {
-				folder,
-			}),
-			tone: "success",
-		});
+		const deletedIds: string[] = [];
+		let firstDeleteError: unknown = null;
+
+		try {
+			for (const target of targets) {
+				try {
+					await deleteCharacter(target.character_id);
+					deletedIds.push(target.character_id);
+				} catch (error) {
+					if (firstDeleteError === null) {
+						firstDeleteError = error;
+					}
+				}
+			}
+
+			if (deletedIds.length > 0) {
+				clearCoverEntries(deletedIds);
+				setSelectedCharacterIds((currentSelection) =>
+					currentSelection.filter(
+						(characterId) => !deletedIds.includes(characterId),
+					),
+				);
+
+				setDeleteTargetIds((currentSelection) =>
+					currentSelection.filter(
+						(characterId) => !deletedIds.includes(characterId),
+					),
+				);
+
+				if (
+					selectedCharacterId !== null &&
+					deletedIds.includes(selectedCharacterId)
+				) {
+					setSelectedCharacterId(null);
+				}
+			}
+
+			if (targets.length > 0 && deletedIds.length !== targets.length) {
+				setNotice({
+					message: getErrorMessage(
+						firstDeleteError,
+						t("characters.feedback.folderDeleteFailed", {
+							folder: targetFolder,
+						}),
+					),
+					tone: "error",
+				});
+				return;
+			}
+
+			setFolderRegistry((current) =>
+				removeCharacterFolderRegistryEntry(current, targetFolder),
+			);
+
+			if (activeFolder === targetFolder) {
+				setActiveFolder("all");
+			}
+
+			setNotice({
+				message: t("characters.feedback.folderDeleted", {
+					folder: targetFolder,
+				}),
+				tone: "success",
+			});
+			setFolderDeleteTarget(null);
+			await refreshCharacters();
+		} catch (error) {
+			setNotice({
+				message: getErrorMessage(
+					error,
+					t("characters.feedback.folderDeleteFailed", {
+						folder: targetFolder,
+					}),
+				),
+				tone: "error",
+			});
+		} finally {
+			setIsDeletingFolder(false);
+		}
 	}
 
 	async function ensureActorSchemaId() {
@@ -1776,6 +1848,71 @@ export function CharacterManagementPage() {
 			<Dialog
 				onOpenChange={(open) => {
 					if (!open) {
+						setFolderDeleteTarget(null);
+					}
+				}}
+				open={folderDeleteTarget !== null}
+			>
+				<DialogContent aria-describedby={undefined} className="w-[min(92vw,34rem)]">
+					<DialogHeader className="border-b border-[var(--color-border-subtle)]">
+						<DialogTitle>{t("characters.folderDeleteDialog.title")}</DialogTitle>
+					</DialogHeader>
+
+					<DialogBody className="space-y-5 pt-6">
+						<p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+							{t("characters.folderDeleteDialog.message", {
+								count: folderDeleteCharacters.length,
+								folder: folderDeleteTarget ?? "",
+							})}
+						</p>
+
+						{folderDeleteCharacters.length > 0 ? (
+							<div className="flex flex-wrap gap-2">
+								{folderDeleteCharacters.slice(0, 5).map((target) => (
+									<Badge
+										className="normal-case px-3 py-1.5"
+										key={target.character_id}
+										variant="subtle"
+									>
+										{target.name}
+									</Badge>
+								))}
+								{folderDeleteCharacters.length > 5 ? (
+									<Badge className="normal-case px-3 py-1.5" variant="subtle">
+										{t("characters.folderDeleteDialog.more", {
+											count: folderDeleteCharacters.length - 5,
+										})}
+									</Badge>
+								) : null}
+							</div>
+						) : null}
+					</DialogBody>
+
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button disabled={isDeletingFolder} variant="ghost">
+								{t("characters.actions.cancel")}
+							</Button>
+						</DialogClose>
+
+						<Button
+							disabled={isDeletingFolder}
+							onClick={() => {
+								void handleFolderDelete();
+							}}
+							variant="danger"
+						>
+							{isDeletingFolder
+								? t("characters.actions.deleting")
+								: t("characters.folders.menuDelete")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog
+				onOpenChange={(open) => {
+					if (!open) {
 						setFolderDialogState(null);
 						setFolderDialogValue("");
 					}
@@ -1879,7 +2016,7 @@ export function CharacterManagementPage() {
 									return;
 								}
 
-								void handleFolderDelete(contextMenu.folder);
+								openFolderDeleteDialog(contextMenu.folder);
 							}}
 							size="sm"
 							variant="ghost"
@@ -2130,7 +2267,7 @@ export function CharacterManagementPage() {
 										? t("characters.folders.toggleCollapse")
 										: t("characters.folders.toggleExpand")
 								}
-								className="absolute left-full top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-3 text-[var(--color-text-secondary)] shadow-[var(--shadow-floating)] transition hover:text-[var(--color-text-primary)]"
+								className="absolute left-full top-1/2 z-10 flex h-24 w-4 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel-strong)_92%,transparent)] text-[11px] text-[var(--color-text-muted)] shadow-[var(--shadow-floating)] transition hover:w-5 hover:text-[var(--color-text-primary)]"
 								onClick={() => {
 									setIsExplorerOpen((current) => !current);
 								}}

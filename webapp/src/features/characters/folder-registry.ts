@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'sillystage.character-folders'
 
 function normalizeFolderName(folder: string) {
-  return folder.trim().replace(/[\\/]+/g, ' ')
+  return folder.trim()
 }
 
 function sortFolders(folders: string[]) {

@@ -1728,8 +1728,7 @@ const en = {
       loadFailed: 'Failed to load the character library.',
       loadSchemasFailed: 'Failed to load available schemas.',
       folderActionFailed: 'Failed to update the folder layout.',
-      folderDeleteConfirm:
-        'Folder {{folder}} still contains {{count}} characters. Deleting it will move them back to unfiled. Continue?',
+      folderDeleteFailed: 'Failed to delete folder {{folder}}.',
       folderCreated: 'Folder created: {{folder}}.',
       folderDeleted: 'Folder deleted: {{folder}}.',
       folderExists: 'Folder {{folder}} already exists.',
@@ -1777,6 +1776,12 @@ const en = {
       toggleCollapse: 'Collapse explorer',
       toggleExpand: 'Expand explorer',
       title: 'Folders',
+    },
+    folderDeleteDialog: {
+      message:
+        'Delete folder {{folder}}? The {{count}} characters inside it will also be deleted. This action cannot be undone.',
+      more: '{{count}} more characters',
+      title: 'Delete Folder',
     },
     views: {
       grid: 'Cards',
