@@ -641,6 +641,8 @@ async fn character_update_replaces_content_and_preserves_cover() {
                         style: "measured, observant".to_owned(),
                         schema_id: "schema-character-merchant".to_owned(),
                         system_prompt: "Stay in character and watch the waterline.".to_owned(),
+                        tags: vec!["merchant".to_owned(), "storm".to_owned()],
+                        folder: "harbor".to_owned(),
                     },
                 }),
             ))
@@ -694,6 +696,8 @@ async fn character_update_rejects_mismatched_content_id() {
                     style: "talkative, casual".to_owned(),
                     schema_id: "schema-character-merchant".to_owned(),
                     system_prompt: "Stay in character.".to_owned(),
+                    tags: vec!["merchant".to_owned()],
+                    folder: "harbor".to_owned(),
                 },
             }),
         ))

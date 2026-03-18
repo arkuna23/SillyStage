@@ -1,6 +1,11 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { faCheckDouble } from "@fortawesome/free-solid-svg-icons/faCheckDouble";
+import { faChevronLeft } from "@fortawesome/free-solid-svg-icons/faChevronLeft";
+import { faChevronRight } from "@fortawesome/free-solid-svg-icons/faChevronRight";
+import { faFolder } from "@fortawesome/free-solid-svg-icons/faFolder";
+import { faFolderOpen } from "@fortawesome/free-solid-svg-icons/faFolderOpen";
 import { faList } from "@fortawesome/free-solid-svg-icons/faList";
+import { faMagnifyingGlass } from "@fortawesome/free-solid-svg-icons/faMagnifyingGlass";
 import { faPen } from "@fortawesome/free-solid-svg-icons/faPen";
 import { faPlus } from "@fortawesome/free-solid-svg-icons/faPlus";
 import { faSquareCheck } from "@fortawesome/free-solid-svg-icons/faSquareCheck";
@@ -16,9 +21,19 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "../../components/ui/button";
 import { IconButton } from "../../components/ui/icon-button";
+import { Input } from "../../components/ui/input";
 import { WorkspacePanelShell } from "../../components/layout/workspace-panel-shell";
 import { useWorkspaceLayoutContext } from "../../components/layout/workspace-context";
 import { Badge } from "../../components/ui/badge";
+import {
+	Dialog,
+	DialogBody,
+	DialogClose,
+	DialogContent,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "../../components/ui/dialog";
 import { InsertSampleDialog } from "../demo-content/insert-sample-dialog";
 import {
 	Card,
@@ -39,15 +54,25 @@ import {
 	createCharacter,
 	deleteCharacter,
 	downloadCharacterArchive,
+	getCharacter,
 	getCharacterCoverUrl,
 	hasCharacterCardExtension,
 	importCharacterArchive,
 	listCharacters,
 	setCharacterCover,
+	updateCharacter,
 } from "./api";
 import { CharacterFormDialog } from "./create-character-dialog";
 import { DeleteCharacterDialog } from "./delete-character-dialog";
 import { CharacterDetailsDialog } from "./character-details-dialog";
+import {
+	addCharacterFolderRegistryEntry,
+	loadCharacterFolderRegistry,
+	normalizeCharacterFolderRegistryName,
+	removeCharacterFolderRegistryEntry,
+	renameCharacterFolderRegistryEntry,
+	saveCharacterFolderRegistry,
+} from "./folder-registry";
 import type { CharacterSummary } from "./types";
 
 type NoticeTone = "error" | "success" | "warning";
@@ -57,6 +82,28 @@ type Notice = {
 	message: string;
 	tone: NoticeTone;
 };
+
+type FolderDialogState =
+	| {
+			mode: "create";
+	  }
+	| {
+			folder: string;
+			mode: "rename";
+	  };
+
+type ContextMenuState =
+	| {
+			target: "root";
+			x: number;
+			y: number;
+	  }
+	| {
+			folder: string;
+			target: "folder";
+			x: number;
+			y: number;
+	  };
 
 const COVER_OBJECT_POSITION = "center 26%";
 const CARD_EXCERPT_STYLE: CSSProperties = {
@@ -81,6 +128,80 @@ function getCharacterMonogram(name: string) {
 
 function normalizeSummaryText(text: string) {
 	return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeCharacterFolder(folder: string) {
+	return folder.trim();
+}
+
+function getCharacterFolderLabel(folder: string, unfiledLabel: string) {
+	return folder || unfiledLabel;
+}
+
+function buildCharacterSearchText(summary: CharacterSummary) {
+	return [
+		summary.character_id,
+		summary.name,
+		summary.personality,
+		summary.style,
+		summary.folder,
+		...summary.tags,
+	]
+		.join(" ")
+		.toLocaleLowerCase();
+}
+
+function FolderTreeItem({
+	active,
+	count,
+	dragActive,
+	icon,
+	label,
+	onClick,
+	onContextMenu,
+	onDragLeave,
+	onDragOver,
+	onDrop,
+}: {
+	active: boolean;
+	count?: number;
+	dragActive?: boolean;
+	icon: ReactNode;
+	label: string;
+	onClick: () => void;
+	onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+	onDragLeave?: () => void;
+	onDragOver?: (event: React.DragEvent<HTMLButtonElement>) => void;
+	onDrop?: (event: React.DragEvent<HTMLButtonElement>) => void;
+}) {
+	return (
+		<button
+			className={cn(
+				"flex w-full items-center justify-between gap-3 rounded-[1rem] border px-3 py-2.5 text-left text-sm transition",
+				active
+					? "border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]"
+					: "border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]",
+				dragActive &&
+					"border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]",
+			)}
+			onClick={onClick}
+			onContextMenu={onContextMenu}
+			onDragLeave={onDragLeave}
+			onDragOver={onDragOver}
+			onDrop={onDrop}
+			type="button"
+		>
+			<span className="flex min-w-0 items-center gap-2.5">
+				<span className="text-[var(--color-text-muted)]">{icon}</span>
+				<span className="truncate">{label}</span>
+			</span>
+			{typeof count === "number" ? (
+				<Badge className="shrink-0 normal-case px-2.5 py-1" variant="subtle">
+					{count}
+				</Badge>
+			) : null}
+		</button>
+	);
 }
 
 function truncateSummaryText(text: string, maxLength: number) {
@@ -285,7 +406,7 @@ function CharacterQuickActions({
 
 function LoadingGrid() {
 	return (
-		<div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+		<div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
 			{Array.from({ length: 6 }).map((_, index) => (
 				<div
 					className="overflow-hidden rounded-[1.75rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] shadow-[0_24px_80px_rgba(0,0,0,0.18)]"
@@ -329,6 +450,9 @@ function LoadingList() {
 
 function CharacterCard({
 	coverUrl,
+	draggable = false,
+	onDragEnd,
+	onDragStart,
 	onDelete,
 	onEdit,
 	onOpenDetails,
@@ -338,6 +462,9 @@ function CharacterCard({
 	summary,
 }: {
 	coverUrl?: string;
+	draggable?: boolean;
+	onDragEnd?: () => void;
+	onDragStart?: (event: React.DragEvent<HTMLButtonElement>) => void;
 	onDelete: () => void;
 	onEdit: () => void;
 	onOpenDetails: () => void;
@@ -346,6 +473,7 @@ function CharacterCard({
 	selectionMode: boolean;
 	summary: CharacterSummary;
 }) {
+	const { t } = useTranslation();
 	const personalitySummary = truncateSummaryText(summary.personality, 72);
 
 	return (
@@ -353,6 +481,9 @@ function CharacterCard({
 			<button
 				aria-pressed={selectionMode ? selected : undefined}
 				className="group flex w-full flex-1 flex-col text-left"
+				draggable={draggable}
+				onDragEnd={onDragEnd}
+				onDragStart={onDragStart}
 				onClick={selectionMode ? onToggleSelect : onOpenDetails}
 				type="button"
 			>
@@ -370,6 +501,16 @@ function CharacterCard({
 				</CardHeader>
 
 				<CardContent className="flex-1 px-4 pb-3 pt-0">
+					<div className="mb-3 flex flex-wrap items-center gap-2">
+						<Badge className="normal-case px-2.5 py-1" variant="subtle">
+							{summary.folder || t("characters.filters.unfiled")}
+						</Badge>
+						{summary.tags.slice(0, 3).map((tag) => (
+							<Badge className="normal-case px-2.5 py-1" key={tag} variant="subtle">
+								#{tag}
+							</Badge>
+						))}
+					</div>
 					<p
 						className="text-sm leading-6 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
 						style={CARD_EXCERPT_STYLE}
@@ -392,6 +533,9 @@ function CharacterCard({
 
 function CharacterListRow({
 	coverUrl,
+	draggable = false,
+	onDragEnd,
+	onDragStart,
 	onDelete,
 	onEdit,
 	onOpenDetails,
@@ -401,6 +545,9 @@ function CharacterListRow({
 	summary,
 }: {
 	coverUrl?: string;
+	draggable?: boolean;
+	onDragEnd?: () => void;
+	onDragStart?: (event: React.DragEvent<HTMLButtonElement>) => void;
 	onDelete: () => void;
 	onEdit: () => void;
 	onOpenDetails: () => void;
@@ -409,6 +556,7 @@ function CharacterListRow({
 	selectionMode: boolean;
 	summary: CharacterSummary;
 }) {
+	const { t } = useTranslation();
 	const personalitySummary = normalizeSummaryText(summary.personality);
 
 	return (
@@ -417,6 +565,9 @@ function CharacterListRow({
 				<button
 					aria-pressed={selectionMode ? selected : undefined}
 					className="group contents text-left"
+					draggable={draggable}
+					onDragEnd={onDragEnd}
+					onDragStart={onDragStart}
 					onClick={selectionMode ? onToggleSelect : onOpenDetails}
 					type="button"
 				>
@@ -443,6 +594,16 @@ function CharacterListRow({
 					</div>
 
 					<div className="min-w-0 pl-1 sm:pl-2">
+						<div className="mb-1.5 flex flex-wrap items-center gap-2">
+							<Badge className="normal-case px-2.5 py-1" variant="subtle">
+								{summary.folder || t("characters.filters.unfiled")}
+							</Badge>
+							{summary.tags.slice(0, 2).map((tag) => (
+								<Badge className="normal-case px-2.5 py-1" key={tag} variant="subtle">
+									#{tag}
+								</Badge>
+							))}
+						</div>
 						<p
 							className="text-[0.92rem] leading-5 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
 							style={LIST_EXCERPT_STYLE}
@@ -471,6 +632,8 @@ function CharacterResults({
 	coverUrls,
 	isLoading,
 	onDelete,
+	onDragEnd,
+	onDragStart,
 	onEdit,
 	onOpenDetails,
 	onToggleSelect,
@@ -482,6 +645,8 @@ function CharacterResults({
 	coverUrls: Record<string, string>;
 	isLoading: boolean;
 	onDelete: (characterId: string) => void;
+	onDragEnd: () => void;
+	onDragStart: (characterId: string, event: React.DragEvent<HTMLButtonElement>) => void;
 	onEdit: (characterId: string) => void;
 	onOpenDetails: (characterId: string) => void;
 	onToggleSelect: (characterId: string) => void;
@@ -504,6 +669,11 @@ function CharacterResults({
 					<div key={summary.character_id}>
 						<CharacterListRow
 							coverUrl={coverUrls[summary.character_id]}
+							draggable={!selectionMode}
+							onDragEnd={onDragEnd}
+							onDragStart={(event) => {
+								onDragStart(summary.character_id, event);
+							}}
 							onDelete={() => {
 								onDelete(summary.character_id);
 							}}
@@ -526,11 +696,16 @@ function CharacterResults({
 		);
 	} else {
 		content = (
-			<div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+			<div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-3">
 				{characters.map((summary) => (
 					<div key={summary.character_id}>
 						<CharacterCard
 							coverUrl={coverUrls[summary.character_id]}
+							draggable={!selectionMode}
+							onDragEnd={onDragEnd}
+							onDragStart={(event) => {
+								onDragStart(summary.character_id, event);
+							}}
 							onDelete={() => {
 								onDelete(summary.character_id);
 							}}
@@ -578,6 +753,9 @@ export function CharacterManagementPage() {
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const coverCacheRef = useRef<Map<string, string>>(new Map());
 	const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+	const [folderRegistry, setFolderRegistry] = useState<string[]>(() =>
+		loadCharacterFolderRegistry(),
+	);
 	const [coverUrls, setCoverUrls] = useState<Record<string, string>>({});
 	const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([]);
 	const [editingCharacterId, setEditingCharacterId] = useState<string | null>(
@@ -600,6 +778,20 @@ export function CharacterManagementPage() {
 	const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
 	const [selectionMode, setSelectionMode] = useState(false);
 	const [viewMode, setViewMode] = useState<CharacterViewMode>("grid");
+	const [searchQuery, setSearchQuery] = useState("");
+	const [activeFolder, setActiveFolder] = useState<string>("all");
+	const [draggedCharacterId, setDraggedCharacterId] = useState<string | null>(null);
+	const [folderDropTarget, setFolderDropTarget] = useState<string | "__unfiled__" | null>(
+		null,
+	);
+	const [folderDialogState, setFolderDialogState] = useState<FolderDialogState | null>(
+		null,
+	);
+	const [folderDialogValue, setFolderDialogValue] = useState("");
+	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+	const [isApplyingFolderChange, setIsApplyingFolderChange] = useState(false);
+	const [isExplorerOpen, setIsExplorerOpen] = useState(true);
+	const prefersReducedMotion = useReducedMotion();
 
 	const selectedCharacter =
 		selectedCharacterId !== null
@@ -611,6 +803,31 @@ export function CharacterManagementPage() {
 		() => new Set(selectedCharacterIds),
 		[selectedCharacterIds],
 	);
+	const availableFolders = useMemo(
+		() =>
+			Array.from(
+				new Set([
+					...folderRegistry,
+					...characters.map((character) => normalizeCharacterFolder(character.folder)),
+				]),
+			).sort((left, right) => left.localeCompare(right)),
+		[characters, folderRegistry],
+	);
+	const filteredCharacters = useMemo(() => {
+		const normalizedQuery = searchQuery.trim().toLocaleLowerCase();
+
+		return characters.filter((character) => {
+			const folder = normalizeCharacterFolder(character.folder);
+			const matchesFolder =
+				activeFolder === "all" ||
+				(activeFolder === "__unfiled__" ? folder.length === 0 : folder === activeFolder);
+			const matchesSearch =
+				normalizedQuery.length === 0 ||
+				buildCharacterSearchText(character).includes(normalizedQuery);
+
+			return matchesFolder && matchesSearch;
+		});
+	}, [activeFolder, characters, searchQuery]);
 	const deleteTargets = useMemo(
 		() =>
 			deleteTargetIds
@@ -752,6 +969,41 @@ export function CharacterManagementPage() {
 	}, []);
 
 	useEffect(() => {
+		saveCharacterFolderRegistry(folderRegistry);
+	}, [folderRegistry]);
+
+	useEffect(() => {
+		const foldersFromCharacters = Array.from(
+			new Set(
+				characters
+					.map((character) => normalizeCharacterFolder(character.folder))
+					.filter((folder) => folder.length > 0),
+			),
+		).sort((left, right) => left.localeCompare(right));
+
+		setFolderRegistry((current) => {
+			const merged = Array.from(
+				new Set([...current, ...foldersFromCharacters]),
+			).sort((left, right) => left.localeCompare(right));
+
+			if (
+				merged.length === current.length &&
+				merged.every((folder, index) => folder === current[index])
+			) {
+				return current;
+			}
+
+			return merged;
+		});
+	}, [characters]);
+
+	useEffect(() => {
+		if (!isExplorerOpen) {
+			setContextMenu(null);
+		}
+	}, [isExplorerOpen]);
+
+	useEffect(() => {
 		const availableIds = new Set(characters.map((character) => character.character_id));
 
 		setSelectedCharacterIds((currentSelection) =>
@@ -782,7 +1034,7 @@ export function CharacterManagementPage() {
 			stats: [
 				{
 					label: t("characters.metrics.total"),
-					value: characters.length,
+					value: filteredCharacters.length,
 				},
 			],
 			title: t("characters.title"),
@@ -791,7 +1043,7 @@ export function CharacterManagementPage() {
 		return () => {
 			setRailContent(null);
 		};
-	}, [characters.length, setRailContent, t]);
+	}, [filteredCharacters.length, setRailContent, t]);
 
 	function clearCoverEntries(characterIds: ReadonlyArray<string>) {
 		if (characterIds.length === 0) {
@@ -821,6 +1073,192 @@ export function CharacterManagementPage() {
 		setSelectedCharacterId(null);
 		setEditingCharacterId(characterId);
 		setIsCharacterFormOpen(true);
+	}
+
+	function openFolderCreateDialog() {
+		setContextMenu(null);
+		setFolderDialogState({ mode: "create" });
+		setFolderDialogValue("");
+	}
+
+	function openFolderRenameDialog(folder: string) {
+		setContextMenu(null);
+		setFolderDialogState({
+			folder,
+			mode: "rename",
+		});
+		setFolderDialogValue(folder);
+	}
+
+	async function moveCharactersToFolder(
+		characterIds: string[],
+		folder: string,
+		options?: {
+			silent?: boolean;
+		},
+	) {
+		if (characterIds.length === 0) {
+			return;
+		}
+
+		const normalizedFolder = normalizeCharacterFolderRegistryName(folder);
+		setIsApplyingFolderChange(true);
+
+		try {
+			for (const characterId of characterIds) {
+				const detail = await getCharacter(characterId);
+				await updateCharacter({
+					characterId,
+					content: {
+						...detail.content,
+						folder: normalizedFolder,
+					},
+				});
+			}
+
+			if (!options?.silent) {
+				setNotice({
+					message: normalizedFolder
+						? t("characters.feedback.movedToFolder", {
+								count: characterIds.length,
+								folder: normalizedFolder,
+							})
+						: t("characters.feedback.movedToUnfiled", {
+								count: characterIds.length,
+							}),
+					tone: "success",
+				});
+			}
+
+			await refreshCharacters();
+		} catch (error) {
+			setNotice({
+				message: getErrorMessage(error, t("characters.feedback.folderActionFailed")),
+				tone: "error",
+			});
+		} finally {
+			setDraggedCharacterId(null);
+			setFolderDropTarget(null);
+			setIsApplyingFolderChange(false);
+		}
+	}
+
+	async function handleFolderDialogSubmit() {
+		if (!folderDialogState) {
+			return;
+		}
+
+		const normalizedFolder = normalizeCharacterFolderRegistryName(folderDialogValue);
+		if (!normalizedFolder) {
+			setNotice({
+				message: t("characters.feedback.folderNameRequired"),
+				tone: "warning",
+			});
+			return;
+		}
+
+		if (
+			folderDialogState.mode === "create" &&
+			availableFolders.includes(normalizedFolder)
+		) {
+			setNotice({
+				message: t("characters.feedback.folderExists", {
+					folder: normalizedFolder,
+				}),
+				tone: "warning",
+			});
+			return;
+		}
+
+		if (
+			folderDialogState.mode === "rename" &&
+			normalizedFolder !== folderDialogState.folder &&
+			availableFolders.includes(normalizedFolder)
+		) {
+			setNotice({
+				message: t("characters.feedback.folderExists", {
+					folder: normalizedFolder,
+				}),
+				tone: "warning",
+			});
+			return;
+		}
+
+		if (folderDialogState.mode === "create") {
+			setFolderRegistry((current) =>
+				addCharacterFolderRegistryEntry(current, normalizedFolder),
+			);
+			setFolderDialogState(null);
+			setFolderDialogValue("");
+			setActiveFolder(normalizedFolder);
+			setNotice({
+				message: t("characters.feedback.folderCreated", {
+					folder: normalizedFolder,
+				}),
+				tone: "success",
+			});
+			return;
+		}
+
+		const currentFolder = folderDialogState.folder;
+		setFolderRegistry((current) =>
+			renameCharacterFolderRegistryEntry(current, currentFolder, normalizedFolder),
+		);
+		setFolderDialogState(null);
+		setFolderDialogValue("");
+		if (activeFolder === currentFolder) {
+			setActiveFolder(normalizedFolder);
+		}
+
+		const affectedCharacters = characters
+			.filter((character) => normalizeCharacterFolder(character.folder) === currentFolder)
+			.map((character) => character.character_id);
+
+		await moveCharactersToFolder(affectedCharacters, normalizedFolder, {
+			silent: true,
+		});
+		setNotice({
+			message: t("characters.feedback.folderRenamed", {
+				from: currentFolder,
+				to: normalizedFolder,
+			}),
+			tone: "success",
+		});
+	}
+
+	async function handleFolderDelete(folder: string) {
+		const affectedCharacters = characters
+			.filter((character) => normalizeCharacterFolder(character.folder) === folder)
+			.map((character) => character.character_id);
+
+		setContextMenu(null);
+
+		if (
+			affectedCharacters.length > 0 &&
+			!window.confirm(
+				t("characters.feedback.folderDeleteConfirm", {
+					count: affectedCharacters.length,
+					folder,
+				}),
+			)
+		) {
+			return;
+		}
+
+		setFolderRegistry((current) => removeCharacterFolderRegistryEntry(current, folder));
+		if (activeFolder === folder) {
+			setActiveFolder("all");
+		}
+
+		await moveCharactersToFolder(affectedCharacters, "", {
+			silent: true,
+		});
+		setNotice({
+			message: t("characters.feedback.folderDeleted", {
+				folder,
+			}),
+			tone: "success",
+		});
 	}
 
 	async function ensureActorSchemaId() {
@@ -996,6 +1434,79 @@ export function CharacterManagementPage() {
 		}
 
 		setDeleteTargetIds(characterIds);
+	}
+
+	function openRootContextMenu(event: React.MouseEvent<HTMLElement>) {
+		event.preventDefault();
+		event.stopPropagation();
+		setContextMenu({
+			target: "root",
+			x: event.clientX,
+			y: event.clientY,
+		});
+	}
+
+	function openFolderContextMenu(
+		event: React.MouseEvent<HTMLElement>,
+		folder: string,
+	) {
+		event.preventDefault();
+		event.stopPropagation();
+		setContextMenu({
+			folder,
+			target: "folder",
+			x: event.clientX,
+			y: event.clientY,
+		});
+	}
+
+	function handleCharacterDragStart(
+		characterId: string,
+		event: React.DragEvent<HTMLButtonElement>,
+	) {
+		event.dataTransfer.effectAllowed = "move";
+		event.dataTransfer.setData("text/plain", characterId);
+		setDraggedCharacterId(characterId);
+	}
+
+	function handleCharacterDragEnd() {
+		setDraggedCharacterId(null);
+		setFolderDropTarget(null);
+	}
+
+	function handleFolderDragOver(
+		event: React.DragEvent<HTMLElement>,
+		folder: string | "__unfiled__",
+	) {
+		if (!draggedCharacterId) {
+			return;
+		}
+
+		event.preventDefault();
+		if (folderDropTarget !== folder) {
+			setFolderDropTarget(folder);
+		}
+	}
+
+	function handleFolderDragLeave(folder: string | "__unfiled__") {
+		if (folderDropTarget === folder) {
+			setFolderDropTarget(null);
+		}
+	}
+
+	function handleFolderDrop(
+		event: React.DragEvent<HTMLElement>,
+		folder: string | "__unfiled__",
+	) {
+		if (!draggedCharacterId) {
+			return;
+		}
+
+		event.preventDefault();
+		void moveCharactersToFolder(
+			[draggedCharacterId],
+			folder === "__unfiled__" ? "" : folder,
+		);
 	}
 
 	async function handleImportSelection(event: ChangeEvent<HTMLInputElement>) {
@@ -1262,6 +1773,123 @@ export function CharacterManagementPage() {
 				targets={deleteTargets}
 			/>
 
+			<Dialog
+				onOpenChange={(open) => {
+					if (!open) {
+						setFolderDialogState(null);
+						setFolderDialogValue("");
+					}
+				}}
+				open={folderDialogState !== null}
+			>
+				<DialogContent aria-describedby={undefined} className="max-w-xl">
+					<DialogHeader className="border-b border-[var(--color-border-subtle)]">
+						<DialogTitle>
+							{folderDialogState?.mode === "rename"
+								? t("characters.folders.renameTitle")
+								: t("characters.folders.createTitle")}
+						</DialogTitle>
+					</DialogHeader>
+					<DialogBody className="pt-6">
+						<div className="space-y-3">
+							<label
+								className="text-sm font-medium text-[var(--color-text-primary)]"
+								htmlFor="character-folder-name"
+							>
+								{t("characters.folders.nameLabel")}
+							</label>
+							<Input
+								autoFocus
+								id="character-folder-name"
+								onChange={(event) => {
+									setFolderDialogValue(event.target.value);
+								}}
+								placeholder={t("characters.folders.namePlaceholder")}
+								value={folderDialogValue}
+							/>
+						</div>
+					</DialogBody>
+					<DialogFooter>
+						<DialogClose asChild>
+							<Button size="md" variant="ghost">
+								{t("characters.actions.cancel")}
+							</Button>
+						</DialogClose>
+						<Button
+							disabled={isApplyingFolderChange}
+							onClick={() => {
+								void handleFolderDialogSubmit();
+							}}
+							size="md"
+						>
+							{folderDialogState?.mode === "rename"
+								? t("characters.folders.renameAction")
+								: t("characters.folders.createAction")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{contextMenu && isExplorerOpen ? (
+				<div
+					className="fixed inset-0 z-50"
+					onClick={() => {
+						setContextMenu(null);
+					}}
+				>
+					<div
+						className="absolute w-52 rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-2 shadow-[var(--shadow-floating)] backdrop-blur-xl"
+						onClick={(event) => {
+							event.stopPropagation();
+						}}
+						onContextMenu={(event) => {
+							event.preventDefault();
+							event.stopPropagation();
+						}}
+						style={{ left: contextMenu.x, top: contextMenu.y }}
+					>
+						<Button
+							className="h-10 w-full justify-start rounded-[0.9rem]"
+							onClick={openFolderCreateDialog}
+							size="sm"
+							variant="ghost"
+						>
+							{t("characters.folders.menuCreate")}
+						</Button>
+						<Button
+							className="mt-1 h-10 w-full justify-start rounded-[0.9rem]"
+							disabled={contextMenu.target !== "folder"}
+							onClick={() => {
+								if (contextMenu.target !== "folder") {
+									return;
+								}
+
+								openFolderRenameDialog(contextMenu.folder);
+							}}
+							size="sm"
+							variant="ghost"
+						>
+							{t("characters.folders.menuRename")}
+						</Button>
+						<Button
+							className="mt-1 h-10 w-full justify-start rounded-[0.9rem]"
+							disabled={contextMenu.target !== "folder"}
+							onClick={() => {
+								if (contextMenu.target !== "folder") {
+									return;
+								}
+
+								void handleFolderDelete(contextMenu.folder);
+							}}
+							size="sm"
+							variant="ghost"
+						>
+							{t("characters.folders.menuDelete")}
+						</Button>
+					</div>
+				</div>
+			) : null}
+
 			<input
 				accept=".chr,application/octet-stream"
 				className="sr-only"
@@ -1289,12 +1917,12 @@ export function CharacterManagementPage() {
 										</Badge>
 
 										<IconButton
-											disabled={characters.length === 0}
+											disabled={filteredCharacters.length === 0}
 											icon={<FontAwesomeIcon icon={faCheckDouble} />}
 											label={t("characters.actions.selectAll")}
 											onClick={() => {
 												setSelectedCharacterIds(
-													characters.map(
+													filteredCharacters.map(
 														(character) => character.character_id,
 													),
 												);
@@ -1380,51 +2008,241 @@ export function CharacterManagementPage() {
 					/>
 				</CardHeader>
 
-				<CardContent className="min-h-0 flex-1 overflow-y-auto pt-6">
-					<div className="space-y-5">
-						{characters.length === 0 && !isLoading ? (
-							<div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
-								<h3 className="font-display text-3xl text-[var(--color-text-primary)]">
-									{t("characters.empty.title")}
-								</h3>
-
-								<div className="mt-7 flex flex-wrap justify-center gap-3">
-									<Button
-										onClick={() => {
-											openCreateDialog();
-										}}
-										size="md"
-									>
-										{t("characters.actions.create")}
-									</Button>
-									<Button
-										disabled={isImporting}
-										onClick={() => {
-											importInputRef.current?.click();
-										}}
-										size="md"
-										variant="secondary"
-									>
-										{t("characters.actions.import")}
-									</Button>
-								</div>
-							</div>
-						) : (
-							<CharacterResults
-								characters={characters}
-								coverUrls={coverUrls}
-								isLoading={isLoading}
-								onDelete={(characterId) => {
-									requestDelete([characterId]);
+				<CardContent className="min-h-0 flex-1 overflow-hidden pt-6">
+					<div className="flex h-full min-h-0 gap-5">
+						<div className="relative hidden min-h-0 shrink-0 lg:block">
+							<motion.aside
+								animate={{
+									opacity: isExplorerOpen ? 1 : 0.8,
+									width: isExplorerOpen ? 248 : 0,
 								}}
-								onEdit={openEditDialog}
-								onOpenDetails={setSelectedCharacterId}
-								onToggleSelect={toggleCharacterSelection}
-								selectedCharacterIds={selectedCharacterSet}
-								selectionMode={selectionMode}
-								viewMode={viewMode}
-							/>
-						)}
+								className="h-full overflow-hidden"
+								initial={false}
+								transition={
+									prefersReducedMotion
+										? { duration: 0 }
+										: { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+								}
+							>
+								<div
+									className="h-full rounded-[1.6rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4"
+									onContextMenu={isExplorerOpen ? openRootContextMenu : undefined}
+								>
+									<div className="flex h-full min-h-0 flex-col gap-4">
+										<div className="flex items-center justify-between gap-3">
+											<div>
+												<p className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+													{t("characters.folders.kicker")}
+												</p>
+												<h3 className="font-display text-2xl text-[var(--color-text-primary)]">
+													{t("characters.folders.title")}
+												</h3>
+											</div>
+											<IconButton
+												icon={<FontAwesomeIcon icon={faPlus} />}
+												label={t("characters.folders.menuCreate")}
+												onClick={openFolderCreateDialog}
+												size="sm"
+												variant="secondary"
+											/>
+										</div>
+
+										<div className="min-h-0 space-y-2 overflow-y-auto pr-1">
+											<FolderTreeItem
+												active={activeFolder === "all"}
+												count={characters.length}
+												icon={<FontAwesomeIcon icon={faFolderOpen} />}
+												label={t("characters.folders.all")}
+												onClick={() => {
+													setActiveFolder("all");
+												}}
+											/>
+											<FolderTreeItem
+												active={activeFolder === "__unfiled__"}
+												count={
+													characters.filter(
+														(character) =>
+															normalizeCharacterFolder(character.folder).length === 0,
+													).length
+												}
+												dragActive={folderDropTarget === "__unfiled__"}
+												icon={<FontAwesomeIcon icon={faFolder} />}
+												label={t("characters.filters.unfiled")}
+												onClick={() => {
+													setActiveFolder("__unfiled__");
+												}}
+												onDragLeave={() => {
+													handleFolderDragLeave("__unfiled__");
+												}}
+												onDragOver={(event) => {
+													handleFolderDragOver(event, "__unfiled__");
+												}}
+												onDrop={(event) => {
+													handleFolderDrop(event, "__unfiled__");
+												}}
+											/>
+											{availableFolders
+												.filter((folder) => folder.length > 0)
+												.map((folder) => (
+													<FolderTreeItem
+														active={activeFolder === folder}
+														count={
+															characters.filter(
+																(character) =>
+																	normalizeCharacterFolder(character.folder) === folder,
+															).length
+														}
+														dragActive={folderDropTarget === folder}
+														icon={
+															<FontAwesomeIcon
+																icon={
+																	activeFolder === folder ? faFolderOpen : faFolder
+																}
+															/>
+														}
+														key={folder}
+														label={folder}
+														onClick={() => {
+															setActiveFolder(folder);
+														}}
+														onContextMenu={(event) => {
+															openFolderContextMenu(event, folder);
+														}}
+														onDragLeave={() => {
+															handleFolderDragLeave(folder);
+														}}
+														onDragOver={(event) => {
+															handleFolderDragOver(event, folder);
+														}}
+														onDrop={(event) => {
+															handleFolderDrop(event, folder);
+														}}
+													/>
+												))}
+										</div>
+									</div>
+								</div>
+							</motion.aside>
+
+							<button
+								aria-label={
+									isExplorerOpen
+										? t("characters.folders.toggleCollapse")
+										: t("characters.folders.toggleExpand")
+								}
+								className="absolute left-full top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-3 text-[var(--color-text-secondary)] shadow-[var(--shadow-floating)] transition hover:text-[var(--color-text-primary)]"
+								onClick={() => {
+									setIsExplorerOpen((current) => !current);
+								}}
+								type="button"
+							>
+								<FontAwesomeIcon
+									icon={isExplorerOpen ? faChevronLeft : faChevronRight}
+								/>
+							</button>
+						</div>
+
+						<div className="min-h-0 flex-1 overflow-y-auto">
+							<div className="space-y-5">
+								<div className="space-y-4 rounded-[1.6rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
+									<div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+										<label className="relative block">
+											<span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]">
+												<FontAwesomeIcon icon={faMagnifyingGlass} />
+											</span>
+											<Input
+												className="pl-11"
+												onChange={(event) => {
+													setSearchQuery(event.target.value);
+												}}
+												placeholder={t("characters.filters.searchPlaceholder")}
+												value={searchQuery}
+											/>
+										</label>
+
+										<Badge
+											className="h-11 self-start px-4 py-3 normal-case"
+											variant="subtle"
+										>
+											{t("characters.filters.results", {
+												count: filteredCharacters.length,
+											})}
+										</Badge>
+									</div>
+								</div>
+
+								{characters.length === 0 && !isLoading ? (
+									<div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
+										<h3 className="font-display text-3xl text-[var(--color-text-primary)]">
+											{t("characters.empty.title")}
+										</h3>
+
+										<div className="mt-7 flex flex-wrap justify-center gap-3">
+											<Button
+												onClick={() => {
+													openCreateDialog();
+												}}
+												size="md"
+											>
+												{t("characters.actions.create")}
+											</Button>
+											<Button
+												disabled={isImporting}
+												onClick={() => {
+													importInputRef.current?.click();
+												}}
+												size="md"
+												variant="secondary"
+											>
+												{t("characters.actions.import")}
+											</Button>
+										</div>
+									</div>
+								) : filteredCharacters.length === 0 && !isLoading ? (
+									<div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
+										<h3 className="font-display text-3xl text-[var(--color-text-primary)]">
+											{t("characters.filters.emptyTitle")}
+										</h3>
+										<p className="mt-3 text-sm leading-7 text-[var(--color-text-secondary)]">
+											{t("characters.filters.emptyDescription")}
+										</p>
+									</div>
+								) : (
+									<>
+										{activeFolder !== "all" ? (
+											<div className="flex items-center gap-3">
+												<Badge className="normal-case px-3 py-1" variant="info">
+													{t("characters.filters.currentFolder")}
+												</Badge>
+												<p className="text-sm text-[var(--color-text-secondary)]">
+													{getCharacterFolderLabel(
+														activeFolder === "__unfiled__" ? "" : activeFolder,
+														t("characters.filters.unfiled"),
+													)}
+												</p>
+											</div>
+										) : null}
+
+										<CharacterResults
+											characters={filteredCharacters}
+											coverUrls={coverUrls}
+											isLoading={isLoading}
+											onDelete={(characterId) => {
+												requestDelete([characterId]);
+											}}
+											onDragEnd={handleCharacterDragEnd}
+											onDragStart={handleCharacterDragStart}
+											onEdit={openEditDialog}
+											onOpenDetails={setSelectedCharacterId}
+											onToggleSelect={toggleCharacterSelection}
+											selectedCharacterIds={selectedCharacterSet}
+											selectionMode={selectionMode}
+											viewMode={viewMode}
+										/>
+									</>
+								)}
+							</div>
+						</div>
 					</div>
 				</CardContent>
 				</Card>

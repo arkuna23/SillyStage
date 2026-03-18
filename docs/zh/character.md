@@ -13,7 +13,9 @@
   "personality": "greedy but friendly trader",
   "style": "talkative, casual, slightly cunning",
   "schema_id": "schema-character-merchant",
-  "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。"
+  "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。",
+  "tags": ["merchant", "shop"],
+  "folder": "harbor/npcs"
 }
 ```
 
@@ -25,6 +27,8 @@
 - `style`: 语言或表现风格
 - `schema_id`: 引用角色私有状态 schema 的 id
 - `system_prompt`: actor 使用的角色级 system prompt
+- `tags`: 角色卡标签列表
+- `folder`: 角色卡文件夹分组；空字符串表示未分组
 
 模板变量：
 
@@ -179,8 +183,12 @@ merchant.chr
     "personality": "greedy but friendly trader",
     "style": "talkative, casual, slightly cunning",
     "schema_id": "schema-character-merchant",
-    "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。"
+    "system_prompt": "你是 {{char}}。请自然地对 {{user}} 说话，并保持沉浸感。",
+    "tags": ["merchant", "shop"],
+    "folder": "harbor/npcs"
   },
+  "tags": ["merchant", "shop"],
+  "folder": "harbor/npcs",
   "cover_file_name": "cover.png",
   "cover_mime_type": "image/png"
 }
@@ -189,6 +197,8 @@ merchant.chr
 说明：
 
 - 当角色尚未设置封面时，`cover_file_name` 与 `cover_mime_type` 为 `null`
+- 当角色未设置文件夹时，`folder` 返回空字符串
+- `tags` 始终返回数组，未设置时为空数组
 - `character.list` 的摘要也会暴露相同的封面元数据字段
 - 可以通过 `GET /download/character:{character_id}/cover` 按角色 id 获取当前封面
 

@@ -56,6 +56,8 @@ fn sample_character() -> DataPackageCharacterEntry {
             style: "casual".to_owned(),
             schema_id: "schema-character-merchant".to_owned(),
             system_prompt: "Stay in character.".to_owned(),
+            tags: vec!["merchant".to_owned()],
+            folder: "harbor".to_owned(),
         },
         cover_file_name: Some("cover.png".to_owned()),
         cover_content_type: Some("image/png".to_owned()),

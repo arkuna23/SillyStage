@@ -162,6 +162,8 @@ pub fn sample_character_content() -> CharacterCardContent {
         style: "talkative, casual".to_owned(),
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
+        tags: vec!["merchant".to_owned(), "starter".to_owned()],
+        folder: "demo/harbor".to_owned(),
     }
 }
 
@@ -177,6 +179,8 @@ pub fn sample_character_record() -> CharacterCardRecord {
             style: archive.content.style.clone(),
             schema_id: archive.content.schema_id.clone(),
             system_prompt: archive.content.system_prompt.clone(),
+            tags: archive.content.tags.clone(),
+            folder: archive.content.folder.clone(),
         },
         cover_blob_id: Some("blob-cover-merchant".to_owned()),
         cover_file_name: Some(archive.manifest.cover_path.clone()),

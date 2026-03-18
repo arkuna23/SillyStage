@@ -199,11 +199,17 @@
 - `style`
 - `schema_id`
 - `system_prompt`
+- `tags`
+- `folder`
 
 说明：
 
 - `schema_id` 引用角色私有状态 schema
+- `tags` 是角色卡的用户标签列表
+- `folder` 是角色卡的文件夹分组；空字符串表示未分组
 - 角色摘要和详情 payload 还会包含：
+  - `tags`
+  - `folder`
   - `cover_file_name`
   - `cover_mime_type`
 - 封面字节通过 `GET /download/character:{character_id}/cover` 获取

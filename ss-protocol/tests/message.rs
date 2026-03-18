@@ -113,6 +113,8 @@ fn json_rpc_request_and_response_round_trip() {
                 name: "Haru".to_owned(),
                 personality: "greedy but friendly trader".to_owned(),
                 style: "talkative, casual".to_owned(),
+                tags: vec!["merchant".to_owned()],
+                folder: "harbor".to_owned(),
                 cover_file_name: None,
                 cover_mime_type: None,
             },

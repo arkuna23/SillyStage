@@ -1594,9 +1594,13 @@ const en = {
     },
     card: {
       coverAlt: '{{name}} cover',
+      folder: 'Folder',
       idLabel: 'Character ID',
+      noTags: 'No tags yet.',
       personality: 'Personality',
       style: 'Style',
+      tags: 'Tags',
+      unfiled: 'Unfiled',
     },
     create: {
       errors: {
@@ -1617,9 +1621,15 @@ const en = {
         styleRequired: 'Style is required.',
         submitFailed: 'Failed to save the character card.',
       },
+      folderClear: 'No folder',
+      folderModes: {
+        existing: 'Choose existing',
+        new: 'Create new',
+      },
       fields: {
         characterId: 'Character ID',
         cover: 'Cover',
+        folder: 'Folder',
         name: 'Display Name',
         personality: 'Personality',
         schemaId: 'Schema',
@@ -1630,10 +1640,16 @@ const en = {
         stateType: 'Value Type',
         style: 'Speaking Style',
         systemPrompt: 'System Prompt',
+        tags: 'Tags',
+      },
+      hints: {
+        tags: 'Separate tags with commas, Chinese commas, or line breaks.',
       },
       placeholders: {
         characterId: 'hakurei-reimu',
         cover: 'PNG, JPEG, or WebP cover art',
+        folder: 'For example Touhou / Hakurei Shrine / Main Cast',
+        folderSelect: 'Choose an existing folder',
         name: 'Reimu Hakurei',
         personality:
           'Blunt, alert, and allergic to trouble, but always the one who steps in when an incident spirals.',
@@ -1645,6 +1661,7 @@ const en = {
           'Direct, dry, and a little impatient, with the steady confidence of someone used to solving problems herself.',
         systemPrompt:
           'Stay grounded as the Hakurei shrine maiden: judge the incident first, keep the tone brisk, and never lose that effortless confidence.',
+        tags: 'shrine maiden, protagonist, touhou, high mobility',
       },
       stateTypes: {
         array: 'Array',
@@ -1710,6 +1727,16 @@ const en = {
       loadCharacterFailed: 'Failed to load the character card.',
       loadFailed: 'Failed to load the character library.',
       loadSchemasFailed: 'Failed to load available schemas.',
+      folderActionFailed: 'Failed to update the folder layout.',
+      folderDeleteConfirm:
+        'Folder {{folder}} still contains {{count}} characters. Deleting it will move them back to unfiled. Continue?',
+      folderCreated: 'Folder created: {{folder}}.',
+      folderDeleted: 'Folder deleted: {{folder}}.',
+      folderExists: 'Folder {{folder}} already exists.',
+      folderNameRequired: 'Enter a folder name first.',
+      folderRenamed: 'Folder renamed from {{from}} to {{to}}.',
+      movedToFolder: '{{count}} characters moved to {{folder}}.',
+      movedToUnfiled: '{{count}} characters moved back to unfiled.',
       sampleCreateFailed: 'Failed to insert the sample cast.',
       samplesCreated: 'Sample cast added: {{names}}.',
       samplesCreatedPartial:
@@ -1724,6 +1751,32 @@ const en = {
     },
     metrics: {
       total: 'Characters',
+    },
+    filters: {
+      allFolders: 'All folders',
+      currentFolder: 'Current folder',
+      emptyDescription: 'Try a different keyword or switch to another folder group.',
+      emptyTitle: 'No character cards match the current filters.',
+      groupCount: '{{count}} cards',
+      results: '{{count}} results',
+      searchPlaceholder: 'Search by ID, name, personality, style, tag, or folder',
+      unfiled: 'Unfiled',
+    },
+    folders: {
+      all: 'All characters',
+      createAction: 'Create Folder',
+      createTitle: 'New Folder',
+      kicker: 'Explorer',
+      menuCreate: 'New Folder',
+      menuDelete: 'Delete Folder',
+      menuRename: 'Rename Folder',
+      nameLabel: 'Folder Name',
+      namePlaceholder: 'For example Main Cast',
+      renameAction: 'Save Name',
+      renameTitle: 'Rename Folder',
+      toggleCollapse: 'Collapse explorer',
+      toggleExpand: 'Expand explorer',
+      title: 'Folders',
     },
     views: {
       grid: 'Cards',

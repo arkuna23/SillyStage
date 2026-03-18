@@ -20,6 +20,11 @@ import { Textarea } from '../../components/ui/textarea'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { listSchemas } from '../schemas/api'
+import { listCharacters } from './api'
+import {
+  loadCharacterFolderRegistry,
+  normalizeCharacterFolderRegistryName,
+} from './folder-registry'
 import type { SchemaResource } from '../schemas/types'
 import {
   createCharacter,
@@ -64,6 +69,9 @@ type FormState = {
   schemaId: string
   style: string
   systemPrompt: string
+  tagsText: string
+  folder: string
+  folderMode: 'existing' | 'new'
 }
 
 function createInitialFormState(): FormState {
@@ -75,7 +83,26 @@ function createInitialFormState(): FormState {
     schemaId: '',
     style: '',
     systemPrompt: '',
+    tagsText: '',
+    folder: '',
+    folderMode: 'existing',
   }
+}
+
+function parseTags(value: string) {
+  const normalized: string[] = []
+
+  for (const segment of value.split(/[\n,，]/)) {
+    const tag = segment.trim()
+
+    if (!tag || normalized.includes(tag)) {
+      continue
+    }
+
+    normalized.push(tag)
+  }
+
+  return normalized
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -90,6 +117,8 @@ function createSummaryFromCharacter(character: CharacterSchemaResult): Character
     name: character.content.name,
     personality: character.content.personality,
     style: character.content.style,
+    tags: character.content.tags,
+    folder: character.content.folder,
   }
 }
 
@@ -102,6 +131,9 @@ function createFormStateFromCharacter(character: CharacterSchemaResult): FormSta
     schemaId: character.content.schema_id,
     style: character.content.style,
     systemPrompt: character.content.system_prompt,
+    tagsText: character.content.tags.join(', '),
+    folder: character.content.folder,
+    folderMode: 'existing',
   }
 }
 
@@ -209,6 +241,7 @@ export function CharacterFormDialog({
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [initialCharacter, setInitialCharacter] = useState<CharacterSchemaResult | null>(null)
   const [availableSchemas, setAvailableSchemas] = useState<SchemaResource[]>([])
+  const [availableFolders, setAvailableFolders] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -221,6 +254,8 @@ export function CharacterFormDialog({
     schemaId: `${fieldIdPrefix}-schema-id`,
     style: `${fieldIdPrefix}-style`,
     systemPrompt: `${fieldIdPrefix}-system-prompt`,
+    tags: `${fieldIdPrefix}-tags`,
+    folder: `${fieldIdPrefix}-folder`,
   } as const
 
   const steps = useMemo(
@@ -248,6 +283,7 @@ export function CharacterFormDialog({
   useEffect(() => {
     if (!open) {
       setAvailableSchemas([])
+      setAvailableFolders([])
       setCurrentStep('identity')
       setFormState(createInitialFormState())
       setInitialCharacter(null)
@@ -267,11 +303,24 @@ export function CharacterFormDialog({
         ? getCharacter(characterId, controller.signal)
         : Promise.resolve(null)
 
-    void Promise.all([listSchemas(controller.signal), loadCharacterPromise])
-      .then(([schemas, character]) => {
+    void Promise.all([
+      listSchemas(controller.signal),
+      listCharacters(controller.signal),
+      loadCharacterPromise,
+    ])
+      .then(([schemas, characters, character]) => {
         if (controller.signal.aborted) {
           return
         }
+
+        setAvailableFolders(
+          Array.from(
+            new Set(
+              [...loadCharacterFolderRegistry(), ...characters.map((item) => item.folder.trim())]
+                .filter((folder) => folder.length > 0),
+            ),
+          ).sort((left, right) => left.localeCompare(right)),
+        )
 
         setCurrentStep('identity')
         setInitialCharacter(character)
@@ -434,6 +483,8 @@ export function CharacterFormDialog({
       schema_id: normalizedFormState.schemaId.trim(),
       style: normalizedFormState.style.trim(),
       system_prompt: normalizedFormState.systemPrompt.trim(),
+      tags: parseTags(normalizedFormState.tagsText),
+      folder: normalizeCharacterFolderRegistryName(normalizedFormState.folder),
     }
 
     setIsSubmitting(true)
@@ -500,6 +551,10 @@ export function CharacterFormDialog({
   const schemaOptions = availableSchemas.map((schema) => ({
     label: schema.display_name,
     value: schema.schema_id,
+  }))
+  const folderOptions = availableFolders.map((folder) => ({
+    label: folder,
+    value: folder,
   }))
 
   return (
@@ -680,6 +735,93 @@ export function CharacterFormDialog({
                         </div>
                       </Field>
                     </div>
+
+                    <Field
+                      htmlFor={fieldIds.folder}
+                      label={t('characters.create.fields.folder')}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex flex-wrap gap-2">
+                          {(['existing', 'new'] as const).map((mode) => (
+                            <button
+                              className={cn(
+                                'rounded-full border px-3 py-1.5 text-sm transition',
+                                formState.folderMode === mode
+                                  ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
+                                  : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+                              )}
+                              key={mode}
+                              onClick={() => {
+                                setFormState((currentFormState) => ({
+                                  ...currentFormState,
+                                  folderMode: mode,
+                                  folder:
+                                    mode === 'existing' &&
+                                    currentFormState.folder.trim().length > 0 &&
+                                    !availableFolders.includes(currentFormState.folder.trim())
+                                      ? ''
+                                      : currentFormState.folder,
+                                }))
+                              }}
+                              type="button"
+                            >
+                              {mode === 'existing'
+                                ? t('characters.create.folderModes.existing')
+                                : t('characters.create.folderModes.new')}
+                            </button>
+                          ))}
+                        </div>
+
+                        {formState.folderMode === 'existing' ? (
+                          <Select
+                            allowClear
+                            clearLabel={t('characters.create.folderClear')}
+                            items={folderOptions}
+                            onValueChange={(value) => {
+                              setFormState((currentFormState) => ({
+                                ...currentFormState,
+                                folder: value,
+                              }))
+                            }}
+                            placeholder={t('characters.create.placeholders.folderSelect')}
+                            textAlign="start"
+                            triggerId={fieldIds.folder}
+                            value={formState.folder}
+                          />
+                        ) : (
+                          <Input
+                            id={fieldIds.folder}
+                            onChange={(event) => {
+                              setFormState((currentFormState) => ({
+                                ...currentFormState,
+                                folder: event.target.value,
+                              }))
+                            }}
+                            placeholder={t('characters.create.placeholders.folder')}
+                            value={formState.folder}
+                          />
+                        )}
+                      </div>
+                    </Field>
+
+                    <Field
+                      description={t('characters.create.hints.tags')}
+                      htmlFor={fieldIds.tags}
+                      label={t('characters.create.fields.tags')}
+                    >
+                      <Textarea
+                        className="min-h-24"
+                        id={fieldIds.tags}
+                        onChange={(event) => {
+                          setFormState((currentFormState) => ({
+                            ...currentFormState,
+                            tagsText: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('characters.create.placeholders.tags')}
+                        value={formState.tagsText}
+                      />
+                    </Field>
                   </div>
                 ) : null}
 
