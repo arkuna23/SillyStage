@@ -1,5 +1,10 @@
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { useEffect, useId, useState } from 'react'
 import type { ReactNode } from 'react'
+import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
+import { faChevronUp } from '@fortawesome/free-solid-svg-icons/faChevronUp'
+import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui/button'
@@ -13,8 +18,10 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { Input } from '../../components/ui/input'
+import { IconButton } from '../../components/ui/icon-button'
 import { Select } from '../../components/ui/select'
 import { useToastMessage } from '../../components/ui/toast-context'
+import { cn } from '../../lib/cn'
 import {
   stateValueTypes,
   type JsonValue,
@@ -291,6 +298,12 @@ function buildFields(
   return { fields }
 }
 
+function summarizeFieldText(value: string, fallback: string) {
+  const trimmedValue = value.trim()
+
+  return trimmedValue.length > 0 ? trimmedValue : fallback
+}
+
 export function SchemaFormDialog({
   existingSchemaIds,
   mode,
@@ -312,8 +325,10 @@ export function SchemaFormDialog({
     } as const satisfies Record<'array' | 'bool' | 'float' | 'int' | 'object', string>,
   }
   const fieldIdPrefix = useId()
+  const prefersReducedMotion = useReducedMotion()
   const [formState, setFormState] = useState<FormState>(createInitialFormState)
   const [initialSchema, setInitialSchema] = useState<SchemaResource | null>(null)
+  const [expandedRowIds, setExpandedRowIds] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -324,6 +339,7 @@ export function SchemaFormDialog({
     if (!open) {
       setFormState(createInitialFormState())
       setInitialSchema(null)
+      setExpandedRowIds([])
       setIsLoading(false)
       setIsSubmitting(false)
       setSubmitError(null)
@@ -333,6 +349,7 @@ export function SchemaFormDialog({
     if (mode === 'create') {
       setFormState(createInitialFormState())
       setInitialSchema(null)
+      setExpandedRowIds([])
       setIsLoading(false)
       setIsSubmitting(false)
       setSubmitError(null)
@@ -357,6 +374,7 @@ export function SchemaFormDialog({
 
         setInitialSchema(schema)
         setFormState(createFormStateFromSchema(schema))
+        setExpandedRowIds([])
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
@@ -373,6 +391,39 @@ export function SchemaFormDialog({
       controller.abort()
     }
   }, [mode, open, schemaId, t])
+
+  function updateRow(rowId: string, updater: (row: FieldRow) => FieldRow) {
+    setFormState((current) => ({
+      ...current,
+      rows: current.rows.map((row) => (row.id === rowId ? updater(row) : row)),
+    }))
+  }
+
+  function appendRow() {
+    const nextRow = createFieldRow()
+
+    setFormState((current) => ({
+      ...current,
+      rows: [...current.rows, nextRow],
+    }))
+    setExpandedRowIds((current) => [...current, nextRow.id])
+  }
+
+  function removeRow(rowId: string) {
+    setFormState((current) => ({
+      ...current,
+      rows: current.rows.filter((row) => row.id !== rowId),
+    }))
+    setExpandedRowIds((current) => current.filter((currentRowId) => currentRowId !== rowId))
+  }
+
+  function toggleRowExpanded(rowId: string) {
+    setExpandedRowIds((current) =>
+      current.includes(rowId)
+        ? current.filter((currentRowId) => currentRowId !== rowId)
+        : [...current, rowId],
+    )
+  }
 
   function validateForm(): string | null {
     const nextFormState = normalizeTags(formState)
@@ -583,12 +634,7 @@ export function SchemaFormDialog({
                       {t('schemas.form.fields.fields')}
                     </p>
                     <Button
-                      onClick={() => {
-                        setFormState((current) => ({
-                          ...current,
-                          rows: [...current.rows, createFieldRow()],
-                        }))
-                      }}
+                      onClick={appendRow}
                       size="sm"
                       variant="secondary"
                     >
@@ -596,126 +642,245 @@ export function SchemaFormDialog({
                     </Button>
                   </div>
 
-                  <div className="space-y-3">
+                  <motion.div layout className="space-y-3">
                     {formState.rows.length === 0 ? (
                       <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-5 text-sm leading-7 text-[var(--color-text-secondary)]">
                         {t('schemas.form.emptyFields')}
                       </div>
                     ) : null}
 
-                    {formState.rows.map((row) => (
-                      <div
-                        className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4"
-                        key={row.id}
-                      >
-                        <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_13rem]">
-                          <Field
-                            htmlFor={`${fieldIdPrefix}-${row.id}-field-key`}
-                            label={t('schemas.form.fields.fieldKey')}
-                          >
-                            <Input
-                              id={`${fieldIdPrefix}-${row.id}-field-key`}
-                              onChange={(event) => {
-                                setFormState((current) => ({
-                                  ...current,
-                                  rows: current.rows.map((fieldRow) =>
-                                    fieldRow.id === row.id
-                                      ? { ...fieldRow, key: event.target.value }
-                                      : fieldRow,
-                                  ),
-                                }))
-                              }}
-                              placeholder={t('schemas.form.placeholders.fieldKey')}
-                              value={row.key}
-                            />
-                          </Field>
+                    <AnimatePresence initial={false}>
+                      {formState.rows.map((row) => {
+                        const isExpanded = expandedRowIds.includes(row.id)
+                        const fieldKeyLabel = summarizeFieldText(
+                          row.key,
+                          t('schemas.form.preview.emptyFieldKey'),
+                        )
+                        const fieldDefaultLabel =
+                          row.valueType === 'null'
+                            ? 'null'
+                            : summarizeFieldText(
+                                row.defaultValue,
+                                t('schemas.form.preview.emptyFieldDefault'),
+                              )
+                        const fieldDescriptionLabel = summarizeFieldText(
+                          row.description,
+                          t('schemas.form.preview.emptyFieldDescription'),
+                        )
 
-                          <Field
-                            htmlFor={`${fieldIdPrefix}-${row.id}-field-type`}
-                            label={t('schemas.form.fields.fieldType')}
-                          >
-                            <Select
-                              items={stateValueTypes.map((valueType) => ({
-                                label: t(`schemas.form.valueTypes.${valueType}` as const),
-                                value: valueType,
-                              }))}
-                              onValueChange={(value) => {
-                                setFormState((current) => ({
-                                  ...current,
-                                  rows: current.rows.map((fieldRow) =>
-                                    fieldRow.id === row.id
-                                      ? { ...fieldRow, valueType: value as StateValueType }
-                                      : fieldRow,
-                                  ),
-                                }))
-                              }}
-                              triggerId={`${fieldIdPrefix}-${row.id}-field-type`}
-                              value={row.valueType}
-                            />
-                          </Field>
-                        </div>
-
-                        <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-                          <Field
-                            htmlFor={`${fieldIdPrefix}-${row.id}-field-default`}
-                            label={t('schemas.form.fields.fieldDefault')}
-                          >
-                            <Input
-                              id={`${fieldIdPrefix}-${row.id}-field-default`}
-                              onChange={(event) => {
-                                setFormState((current) => ({
-                                  ...current,
-                                  rows: current.rows.map((fieldRow) =>
-                                    fieldRow.id === row.id
-                                      ? { ...fieldRow, defaultValue: event.target.value }
-                                      : fieldRow,
-                                  ),
-                                }))
-                              }}
-                              placeholder={t('schemas.form.placeholders.fieldDefault')}
-                              value={row.defaultValue}
-                            />
-                          </Field>
-
-                          <Field
-                            htmlFor={`${fieldIdPrefix}-${row.id}-field-description`}
-                            label={t('schemas.form.fields.fieldDescription')}
-                          >
-                            <Input
-                              id={`${fieldIdPrefix}-${row.id}-field-description`}
-                              onChange={(event) => {
-                                setFormState((current) => ({
-                                  ...current,
-                                  rows: current.rows.map((fieldRow) =>
-                                    fieldRow.id === row.id
-                                      ? { ...fieldRow, description: event.target.value }
-                                      : fieldRow,
-                                  ),
-                                }))
-                              }}
-                              placeholder={t('schemas.form.placeholders.fieldDescription')}
-                              value={row.description}
-                            />
-                          </Field>
-                        </div>
-
-                        <div className="mt-3 flex justify-end">
-                          <Button
-                            onClick={() => {
-                              setFormState((current) => ({
-                                ...current,
-                                rows: current.rows.filter((fieldRow) => fieldRow.id !== row.id),
-                              }))
+                        return (
+                          <motion.div
+                            key={row.id}
+                            layout
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            className="overflow-hidden"
+                            exit={{
+                              opacity: 0,
+                              scale: prefersReducedMotion ? 1 : 0.96,
+                              y: prefersReducedMotion ? 0 : -10,
                             }}
-                            size="sm"
-                            variant="ghost"
+                            initial={{
+                              opacity: 0,
+                              scale: prefersReducedMotion ? 1 : 0.96,
+                              y: prefersReducedMotion ? 0 : 16,
+                            }}
+                            transition={
+                              prefersReducedMotion
+                                ? { duration: 0 }
+                                : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+                            }
                           >
-                            {t('schemas.actions.removeField')}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                            <div
+                              className={cn(
+                                'rounded-[1.65rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 transition duration-200 ease-out',
+                                isExpanded ? 'py-5' : 'py-4',
+                              )}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1 space-y-3">
+                                  <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_13rem]">
+                                    <div className="min-w-0 rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] px-4 py-3">
+                                      <p className="text-[0.72rem] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                        {t('schemas.form.fields.fieldKey')}
+                                      </p>
+                                      <p className="mt-1 truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                        {fieldKeyLabel}
+                                      </p>
+                                    </div>
+
+                                    <div className="min-w-0 rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] px-4 py-3">
+                                      <p className="text-[0.72rem] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                        {t('schemas.form.fields.fieldType')}
+                                      </p>
+                                      <p className="mt-1 truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                        {t(`schemas.form.valueTypes.${row.valueType}` as const)}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid gap-3 md:grid-cols-2">
+                                    <div className="min-w-0 rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] px-4 py-3">
+                                      <p className="text-[0.72rem] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                        {t('schemas.form.fields.fieldDefault')}
+                                      </p>
+                                      <p className="mt-1 truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                        {fieldDefaultLabel}
+                                      </p>
+                                    </div>
+
+                                    <div className="min-w-0 rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] px-4 py-3">
+                                      <p className="text-[0.72rem] uppercase tracking-[0.08em] text-[var(--color-text-muted)]">
+                                        {t('schemas.form.fields.fieldDescription')}
+                                      </p>
+                                      <p className="mt-1 truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                        {fieldDescriptionLabel}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <IconButton
+                                    disabled={isSubmitting}
+                                    icon={
+                                      <FontAwesomeIcon
+                                        icon={isExpanded ? faChevronUp : faChevronDown}
+                                      />
+                                    }
+                                    label={
+                                      isExpanded
+                                        ? t('schemas.actions.collapseField')
+                                        : t('schemas.actions.expandField')
+                                    }
+                                    onClick={() => {
+                                      toggleRowExpanded(row.id)
+                                    }}
+                                    size="sm"
+                                    variant="secondary"
+                                  />
+                                  <IconButton
+                                    disabled={isSubmitting}
+                                    icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                    label={t('schemas.actions.removeField')}
+                                    onClick={() => {
+                                      removeRow(row.id)
+                                    }}
+                                    size="sm"
+                                    variant="ghost"
+                                  />
+                                </div>
+                              </div>
+
+                              <AnimatePresence initial={false}>
+                                {isExpanded ? (
+                                  <motion.div
+                                    animate={{ height: 'auto', opacity: 1, y: 0 }}
+                                    className="overflow-hidden"
+                                    exit={{
+                                      height: 0,
+                                      opacity: 0,
+                                      y: prefersReducedMotion ? 0 : -8,
+                                    }}
+                                    initial={{
+                                      height: 0,
+                                      opacity: 0,
+                                      y: prefersReducedMotion ? 0 : -8,
+                                    }}
+                                    transition={
+                                      prefersReducedMotion
+                                        ? { duration: 0 }
+                                        : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+                                    }
+                                  >
+                                    <div className="mt-5 space-y-4 border-t border-[var(--color-border-subtle)] pt-5">
+                                      <div className="grid gap-3 md:grid-cols-[minmax(0,1.15fr)_13rem]">
+                                        <Field
+                                          htmlFor={`${fieldIdPrefix}-${row.id}-field-key`}
+                                          label={t('schemas.form.fields.fieldKey')}
+                                        >
+                                          <Input
+                                            id={`${fieldIdPrefix}-${row.id}-field-key`}
+                                            name={`${row.id}-field-key`}
+                                            onChange={(event) => {
+                                              updateRow(row.id, (fieldRow) => ({
+                                                ...fieldRow,
+                                                key: event.target.value,
+                                              }))
+                                            }}
+                                            placeholder={t('schemas.form.placeholders.fieldKey')}
+                                            value={row.key}
+                                          />
+                                        </Field>
+
+                                        <Field
+                                          htmlFor={`${fieldIdPrefix}-${row.id}-field-type`}
+                                          label={t('schemas.form.fields.fieldType')}
+                                        >
+                                          <Select
+                                            items={stateValueTypes.map((valueType) => ({
+                                              label: t(`schemas.form.valueTypes.${valueType}` as const),
+                                              value: valueType,
+                                            }))}
+                                            onValueChange={(value) => {
+                                              updateRow(row.id, (fieldRow) => ({
+                                                ...fieldRow,
+                                                valueType: value as StateValueType,
+                                              }))
+                                            }}
+                                            textAlign="start"
+                                            triggerId={`${fieldIdPrefix}-${row.id}-field-type`}
+                                            value={row.valueType}
+                                          />
+                                        </Field>
+                                      </div>
+
+                                      <div className="grid gap-3 md:grid-cols-2">
+                                        <Field
+                                          htmlFor={`${fieldIdPrefix}-${row.id}-field-default`}
+                                          label={t('schemas.form.fields.fieldDefault')}
+                                        >
+                                          <Input
+                                            id={`${fieldIdPrefix}-${row.id}-field-default`}
+                                            name={`${row.id}-field-default`}
+                                            onChange={(event) => {
+                                              updateRow(row.id, (fieldRow) => ({
+                                                ...fieldRow,
+                                                defaultValue: event.target.value,
+                                              }))
+                                            }}
+                                            placeholder={t('schemas.form.placeholders.fieldDefault')}
+                                            value={row.defaultValue}
+                                          />
+                                        </Field>
+
+                                        <Field
+                                          htmlFor={`${fieldIdPrefix}-${row.id}-field-description`}
+                                          label={t('schemas.form.fields.fieldDescription')}
+                                        >
+                                          <Input
+                                            id={`${fieldIdPrefix}-${row.id}-field-description`}
+                                            name={`${row.id}-field-description`}
+                                            onChange={(event) => {
+                                              updateRow(row.id, (fieldRow) => ({
+                                                ...fieldRow,
+                                                description: event.target.value,
+                                              }))
+                                            }}
+                                            placeholder={t('schemas.form.placeholders.fieldDescription')}
+                                            value={row.description}
+                                          />
+                                        </Field>
+                                      </div>
+                                    </div>
+                                  </motion.div>
+                                ) : null}
+                              </AnimatePresence>
+                            </div>
+                          </motion.div>
+                        )
+                      })}
+                    </AnimatePresence>
+                  </motion.div>
                 </div>
               </>
             )}

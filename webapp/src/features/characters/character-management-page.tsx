@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 
 import { Button } from "../../components/ui/button";
 import { IconButton } from "../../components/ui/icon-button";
+import { SelectionIndicator } from "../../components/ui/selection-toggle-button";
 import { WorkspacePanelShell } from "../../components/layout/workspace-panel-shell";
 import { useWorkspaceLayoutContext } from "../../components/layout/workspace-context";
 import { Badge } from "../../components/ui/badge";
@@ -235,22 +236,6 @@ function ViewModeToggle({
 				);
 			})}
 		</div>
-	);
-}
-
-function SelectionIndicator({ selected }: { selected: boolean }) {
-	return (
-		<span
-			aria-hidden="true"
-			className={cn(
-				"inline-flex size-7 items-center justify-center rounded-full border text-xs shadow-[0_10px_24px_rgba(0,0,0,0.16)] transition",
-				selected
-					? "border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold)] text-[color:var(--color-accent-ink)]"
-					: "border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] text-[var(--color-text-muted)]",
-			)}
-		>
-			{selected ? "✓" : ""}
-		</span>
 	);
 }
 

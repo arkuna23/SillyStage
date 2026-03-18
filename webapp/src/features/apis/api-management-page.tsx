@@ -15,6 +15,7 @@ import { dispatchStageApiAvailabilityRefresh } from '../stage/stage-access'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
@@ -25,7 +26,7 @@ import { ApiGroupFormDialog } from './api-group-form-dialog'
 import { deleteApi, deleteApiGroup, listApiGroups, listApis } from './api'
 import { DeleteApiDialog } from './delete-api-dialog'
 import { DeleteApiGroupDialog } from './delete-api-group-dialog'
-import { agentRoleKeys, getAgentBindingKey, type AgentRoleKey, type ApiConfig, type ApiGroup } from './types'
+import { agentRoleKeys, getAgentBindingKey, type ApiConfig, type ApiGroup } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 
@@ -120,19 +121,6 @@ export function ApiManagementPage() {
   const resolvedGroupCount = useMemo(
     () => apiGroups.filter((apiGroup) => isApiGroupResolved(apiGroup, apis)).length,
     [apiGroups, apis],
-  )
-
-  const roleLabels: Record<AgentRoleKey, string> = useMemo(
-    () => ({
-      actor: t('apis.roles.actor'),
-      architect: t('apis.roles.architect'),
-      director: t('apis.roles.director'),
-      keeper: t('apis.roles.keeper'),
-      narrator: t('apis.roles.narrator'),
-      planner: t('apis.roles.planner'),
-      replyer: t('apis.roles.replyer'),
-    }),
-    [t],
   )
 
   const refreshApiResources = useCallback(
@@ -402,15 +390,6 @@ export function ApiManagementPage() {
     )
   }
 
-  function describeApiGroupBinding(apiGroup: ApiGroup, roleKey: AgentRoleKey) {
-    const apiId = apiGroup.bindings[getAgentBindingKey(roleKey)]
-    const apiConfig = apis.find((entry) => entry.api_id === apiId)
-
-    return apiConfig
-      ? `${roleLabels[roleKey]} · ${apiConfig.display_name}`
-      : `${roleLabels[roleKey]} · ${t('apis.groupList.missing')}`
-  }
-
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <ApiFormDialog
@@ -604,18 +583,11 @@ export function ApiManagementPage() {
                           <Badge variant="subtle">
                             {apiConfig.provider === 'open_ai' ? t('apis.providers.open_ai') : apiConfig.provider}
                           </Badge>
-                          <Badge variant="subtle">{apiConfig.model}</Badge>
-                          <Badge variant={apiConfig.has_api_key ? 'info' : 'subtle'}>
-                            {apiConfig.has_api_key
-                              ? apiConfig.api_key_masked ?? t('apis.apiList.keyConfigured')
-                              : t('apis.apiList.keyMissing')}
-                          </Badge>
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">
                           {apiSelectionMode ? (
-                            <IconButton
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            <SelectionToggleButton
                               label={
                                 selectedApiIds.includes(apiConfig.api_id)
                                   ? t('apis.actions.deselect')
@@ -624,10 +596,7 @@ export function ApiManagementPage() {
                               onClick={() => {
                                 toggleApiSelection(apiConfig.api_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedApiIds.includes(apiConfig.api_id) ? 'primary' : 'secondary'
-                              }
+                              selected={selectedApiIds.includes(apiConfig.api_id)}
                             />
                           ) : (
                             <>
@@ -753,11 +722,6 @@ export function ApiManagementPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {agentRoleKeys.slice(0, 3).map((roleKey) => (
-                            <Badge key={roleKey} variant="subtle">
-                              {describeApiGroupBinding(apiGroup, roleKey)}
-                            </Badge>
-                          ))}
                           <Badge variant={isApiGroupResolved(apiGroup, apis) ? 'info' : 'subtle'}>
                             {isApiGroupResolved(apiGroup, apis)
                               ? t('apis.groupList.resolved')
@@ -767,8 +731,7 @@ export function ApiManagementPage() {
 
                         <div className="flex justify-start gap-2 lg:justify-end">
                           {groupSelectionMode ? (
-                            <IconButton
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            <SelectionToggleButton
                               label={
                                 selectedGroupIds.includes(apiGroup.api_group_id)
                                   ? t('apis.actions.deselect')
@@ -777,12 +740,7 @@ export function ApiManagementPage() {
                               onClick={() => {
                                 toggleGroupSelection(apiGroup.api_group_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedGroupIds.includes(apiGroup.api_group_id)
-                                  ? 'primary'
-                                  : 'secondary'
-                              }
+                              selected={selectedGroupIds.includes(apiGroup.api_group_id)}
                             />
                           ) : (
                             <>

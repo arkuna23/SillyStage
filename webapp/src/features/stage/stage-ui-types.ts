@@ -1,5 +1,14 @@
 export type StageMessageVariant = 'action' | 'dialogue' | 'narration' | 'player' | 'thought'
 
+export type PanelMode = 'dialogue' | 'settings' | 'variables'
+export type ComposerMode = 'input' | 'suggestions'
+export type NoticeTone = 'error' | 'success' | 'warning'
+
+export type Notice = {
+  message: string
+  tone: NoticeTone
+}
+
 export type TurnWorkerStatus = {
   label: string
 }

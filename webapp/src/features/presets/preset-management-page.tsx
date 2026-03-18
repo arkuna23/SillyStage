@@ -17,22 +17,17 @@ import { useWorkspaceLayoutContext } from '../../components/layout/workspace-con
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
 import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
 import { createPreset, deletePreset, getPreset, listPresets } from '../apis/api'
-import {
-  agentRoleKeys,
-  getEnabledPresetPromptEntryCount,
-  getPresetPromptEntryCount,
-  hasPresetAgentConfiguration,
-  type AgentRoleKey,
-  type Preset,
-} from '../apis/types'
+import { hasPresetAgentConfiguration, type Preset } from '../apis/types'
 import { DeletePresetDialog } from './delete-preset-dialog'
 import { PresetDetailsDialog } from './preset-details-dialog'
 import { PresetFormDialog } from './preset-form-dialog'
+import { getOrderedAgentRoleKeys } from './preset-labels'
 import { buildPresetTemplateDefinitions } from './preset-presets'
 import { createPresetBundle, isPresetBundle } from './preset-transfer'
 import { PresetTemplateDialog } from './preset-template-dialog'
@@ -55,20 +50,12 @@ function PresetsListSkeleton() {
       <div className="divide-y divide-[var(--color-border-subtle)]">
         {Array.from({ length: 5 }).map((_, index) => (
           <div
-            className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center"
+            className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
             key={index}
           >
             <div className="space-y-2.5">
               <div className="h-5 w-32 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
               <div className="h-3 w-24 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Array.from({ length: 3 }).map((__, badgeIndex) => (
-                <div
-                  className="h-8 w-24 animate-pulse rounded-full bg-[var(--color-bg-elevated)]"
-                  key={badgeIndex}
-                />
-              ))}
             </div>
             <div className="flex justify-end gap-2">
               <div className="h-9 w-16 animate-pulse rounded-full bg-[var(--color-bg-elevated)]" />
@@ -83,41 +70,13 @@ function PresetsListSkeleton() {
 }
 
 function countConfiguredPresetAgents(preset: Preset) {
-  return agentRoleKeys.reduce((count, roleKey) => {
+  return getOrderedAgentRoleKeys().reduce((count, roleKey) => {
     return count + (hasPresetAgentConfiguration(preset.agents[roleKey]) ? 1 : 0)
   }, 0)
 }
 
-function describePresetAgent(
-  preset: Preset,
-  roleKey: AgentRoleKey,
-  t: (key: string, options?: Record<string, unknown>) => string,
-  emptyLabel: string,
-) {
-  const agent = preset.agents[roleKey]
-  const promptEntryCount = getPresetPromptEntryCount(agent)
-  const parts = [
-    agent.temperature !== undefined && agent.temperature !== null ? `T ${agent.temperature}` : null,
-    agent.max_tokens !== undefined && agent.max_tokens !== null ? `Max ${agent.max_tokens}` : null,
-    agent.extra ? t('presetsPage.list.extra') : null,
-    promptEntryCount > 0
-      ? t('presetsPage.list.promptEntriesSummary', {
-          count: promptEntryCount,
-          enabled: getEnabledPresetPromptEntryCount(agent),
-        })
-      : null,
-  ].filter((value): value is string => Boolean(value))
-
-  return parts.length > 0 ? parts.join(' · ') : emptyLabel
-}
-
 export function PresetManagementPage() {
   const { t } = useTranslation()
-  const translate = useCallback(
-    (key: string, options?: Record<string, unknown>) =>
-      String(t(key as never, options as never)),
-    [t],
-  )
   const { setRailContent } = useWorkspaceLayoutContext()
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [presets, setPresets] = useState<Preset[]>([])
@@ -149,19 +108,6 @@ export function PresetManagementPage() {
     [presets],
   )
   const presetTemplates = useMemo(() => buildPresetTemplateDefinitions(t), [t])
-
-  const roleLabels: Record<AgentRoleKey, string> = useMemo(
-    () => ({
-      actor: t('presetsPage.roles.actor'),
-      architect: t('presetsPage.roles.architect'),
-      director: t('presetsPage.roles.director'),
-      keeper: t('presetsPage.roles.keeper'),
-      narrator: t('presetsPage.roles.narrator'),
-      planner: t('presetsPage.roles.planner'),
-      replyer: t('presetsPage.roles.replyer'),
-    }),
-    [t],
-  )
 
   const refreshPresets = useCallback(
     async (signal?: AbortSignal) => {
@@ -669,7 +615,7 @@ export function PresetManagementPage() {
                   <div className="divide-y divide-[var(--color-border-subtle)]">
                     {presets.map((preset) => (
                       <div
-                        className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center"
+                        className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center"
                         key={preset.preset_id}
                       >
                         <div className="space-y-2">
@@ -679,24 +625,9 @@ export function PresetManagementPage() {
                           <p className="text-xs text-[var(--color-text-muted)]">{preset.preset_id}</p>
                         </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          {agentRoleKeys.slice(0, 3).map((roleKey) => (
-                            <Badge key={roleKey} variant="subtle">
-                              {roleLabels[roleKey]} ·{' '}
-                              {describePresetAgent(
-                                preset,
-                                roleKey,
-                                translate,
-                                t('presetsPage.list.unset'),
-                              )}
-                            </Badge>
-                          ))}
-                        </div>
-
                         <div className="flex justify-start gap-2 lg:justify-end">
                           {selectionMode ? (
-                            <IconButton
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            <SelectionToggleButton
                               label={
                                 selectedPresetIds.includes(preset.preset_id)
                                   ? t('presetsPage.actions.deselect')
@@ -705,10 +636,7 @@ export function PresetManagementPage() {
                               onClick={() => {
                                 togglePresetSelection(preset.preset_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedPresetIds.includes(preset.preset_id) ? 'primary' : 'secondary'
-                              }
+                              selected={selectedPresetIds.includes(preset.preset_id)}
                             />
                           ) : (
                             <>

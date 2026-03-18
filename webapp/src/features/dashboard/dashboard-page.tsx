@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { getDashboard } from './api'
+import { DashboardDataPackageActions } from './dashboard-data-package-actions'
 import type { DashboardPayload } from './types'
 
 type Notice = {
@@ -235,9 +236,12 @@ export function DashboardPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <WorkspacePanelShell className="h-full min-h-0">
-        <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+          <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
           <CardHeader className="border-b border-[var(--color-border-subtle)] md:min-h-[92px]">
-            <SectionHeader title={t('dashboard.title')} />
+            <SectionHeader
+              actions={<DashboardDataPackageActions onImported={() => refreshDashboard()} />}
+              title={t('dashboard.title')}
+            />
           </CardHeader>
 
           <CardContent className="scrollbar-none min-h-0 flex-1 overflow-y-auto pt-6">

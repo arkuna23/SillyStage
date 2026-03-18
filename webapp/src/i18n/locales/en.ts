@@ -217,6 +217,59 @@ const en = {
       stories: 'Stories',
       storyResources: 'Story Resources',
     },
+    dataPackage: {
+      actions: {
+        cancel: 'Cancel',
+        clear: 'Clear',
+        export: 'Export Package',
+        exporting: 'Exporting...',
+        import: 'Import Package',
+        importConfirm: 'Import Package',
+        importing: 'Importing...',
+        retry: 'Retry',
+        selectAll: 'Select All',
+      },
+      dialogs: {
+        export: {
+          description:
+            'Choose exactly which resources should be packed into the ZIP. Dependency inclusion can be toggled separately.',
+          emptyGroup: 'No exportable items are available in this group.',
+          includeDependencies: 'Include dependencies automatically',
+          includeDependenciesHint:
+            'When exporting stories, also include referenced story resources, schemas, lorebooks, and characters.',
+          selectedCount: '{{count}} selected',
+          title: 'Export Data Package',
+        },
+        import: {
+          conflictHint:
+            'Import is atomic. If any packaged id already exists, the whole package will fail to import.',
+          description: 'Confirm to import this ZIP data package into the current workspace.',
+          fileName: 'File Name',
+          fileSize: 'File Size',
+          title: 'Import Data Package',
+        },
+      },
+      feedback: {
+        exportFailed: 'Failed to export the data package.',
+        exported: 'Data package exported: {{summary}}.',
+        importFailed: 'Failed to import the data package.',
+        imported: 'Data package imported: {{summary}}.',
+        invalidFile: 'Please choose a .zip data package file.',
+        loadCatalogFailed: 'Failed to load exportable resources.',
+      },
+      groups: {
+        characters: 'Characters',
+        lorebooks: 'Lorebooks',
+        playerProfiles: 'Player Profiles',
+        presets: 'Presets',
+        schemas: 'State Schemas',
+        stories: 'Stories',
+        storyResources: 'Story Resources',
+      },
+      summary: {
+        segment: '{{count}} {{label}}',
+      },
+    },
     feedback: {
       loadFailed: 'Failed to load the dashboard.',
     },
@@ -567,12 +620,12 @@ const en = {
   },
   presetsPage: {
     actions: {
-      addPromptEntry: 'Add Prompt Entry',
+      addCustomEntry: 'Add Custom Entry',
       cancel: 'Cancel',
       cancelSelection: 'Exit selection mode',
       collapseAgent: 'Collapse agent',
+      collapseEntry: 'Collapse entry',
       collapseModelSettings: 'Collapse model settings',
-      collapsePromptEntry: 'Collapse prompt entry',
       close: 'Close',
       confirmDelete: 'Delete Preset',
       create: 'New Preset',
@@ -581,15 +634,15 @@ const en = {
       deleteSelected: 'Delete Selected',
       deselect: 'Deselect',
       deleting: 'Deleting...',
-      dragPromptEntry: 'Drag to reorder',
+      dragEntry: 'Drag to reorder',
       edit: 'Edit',
       expandAgent: 'Expand agent',
+      expandEntry: 'Expand entry',
       expandModelSettings: 'Expand model settings',
-      expandPromptEntry: 'Expand prompt entry',
       export: 'Export',
       import: 'Import',
       importing: 'Importing...',
-      removePromptEntry: 'Remove Prompt Entry',
+      removeEntry: 'Remove entry',
       save: 'Save',
       saving: 'Saving...',
       select: 'Select',
@@ -606,13 +659,18 @@ const en = {
       titleMany: 'Delete Presets',
     },
     details: {
+      contextKey: 'Context Key',
       disabled: 'Disabled',
       enabled: 'Enabled',
+      entryCount: '{{count}} entries',
+      entryText: 'Entry Text',
       extra: 'Extra',
-      noExtra: 'No extra parameters',
-      noPromptEntries: 'No prompt entries.',
-      promptEntriesCount: '{{count}} prompts',
-      promptEntriesSummary: '{{enabled}} / {{count}} enabled',
+      moduleCount: '{{count}} modules',
+      moduleSummary: '{{count}} modules · {{enabled}} / {{entries}} enabled',
+      noModules: 'No module entries.',
+      noText: 'No text',
+      order: 'Order',
+      required: 'Required',
       title: 'Preset Details',
     },
     empty: {
@@ -641,54 +699,71 @@ const en = {
     },
     form: {
       createTitle: 'New Preset',
-      emptyPromptEntries: 'No prompt entries yet. Add the first one when this agent needs extra system guidance.',
+      emptyModuleEntries: 'No entries in this module yet.',
+      emptyModuleEntriesCreate: 'No entries in this module yet. Add the first custom entry when needed.',
       editTitle: 'Edit Preset',
       errors: {
+        customEntryTextRequired: '{{role}} entry {{index}} in {{module}} needs text.',
         displayNameRequired: 'Display name is required.',
-        duplicatePromptEntryId: 'Duplicate prompt ID in {{role}}: {{id}}.',
+        duplicateEntryId: 'Duplicate entry ID in {{role}} / {{module}}: {{id}}.',
+        entryDisplayNameRequired: '{{role}} entry {{index}} in {{module}} needs a display name.',
+        entryIdRequired: '{{role}} entry {{index}} in {{module}} needs an ID.',
+        entryOrderInvalid: 'Entry {{id}} in {{role}} / {{module}} must use an integer order.',
         extraInvalid: '{{role}} extra must be valid JSON.',
         loadFailed: 'Failed to load preset details.',
         maxTokensInvalid: '{{role}} max tokens must be an integer greater than 0.',
         presetIdDuplicate: 'Preset ID already exists.',
         presetIdRequired: 'Preset ID is required.',
-        promptEntryContentRequired: '{{role}} prompt entry {{index}} needs content.',
-        promptEntryIdRequired: '{{role}} prompt entry {{index}} needs an ID.',
-        promptEntryTitleRequired: '{{role}} prompt entry {{index}} needs a title.',
         submitFailed: 'Failed to save the preset.',
         temperatureInvalid: '{{role}} temperature must be a valid number.',
       },
       fields: {
+        contextKey: 'Context Key',
         displayName: 'Display Name',
+        entryDisplayName: 'Entry Title',
+        entryEnabled: 'Enabled',
+        entryId: 'Entry ID',
+        entryText: 'Entry Text',
         extra: 'Extra',
         maxTokens: 'Max Tokens',
         modelSettings: 'Model Settings',
+        order: 'Order',
         presetId: 'Preset ID',
-        promptEntries: 'Prompt Entries',
-        promptEntryContent: 'Entry Content',
-        promptEntryEnabled: 'Enabled',
-        promptEntryId: 'Entry ID',
-        promptEntryTitle: 'Entry Title',
         temperature: 'Temperature',
       },
-      newPromptEntry: 'New entry',
+      moduleHint: 'Built-in entries only allow enabled and order changes. Custom entries can edit title and text.',
+      moduleSummary: '{{enabled}} / {{count}} enabled',
+      newEntry: 'New entry',
       placeholders: {
         displayName: 'High Creativity Stage Preset',
+        entryDisplayName: 'Output Style',
+        entryId: 'architect-tone',
+        entryText: 'Guide this module toward the desired structure, tone, and focus.',
         extra: '{"top_p":0.9}',
         maxTokens: '4096',
+        order: '1000',
         presetId: 'preset-stage-main',
-        promptEntryContent: 'Keep this agent concise, stable, and aligned with the current stage style.',
-        promptEntryId: 'planner-tone',
-        promptEntryTitle: 'Planner Tone',
         temperature: '0.8',
       },
-      promptEntriesHint: 'These entries are submitted in order to the selected agent. Drag the handle on the left to reorder them.',
-      untitledPromptEntry: 'Untitled Entry {{index}}',
+      untitledEntry: 'Untitled Entry {{index}}',
     },
     list: {
       extra: 'Extra',
-      promptEntriesSummary: '{{enabled}} / {{count}} prompts',
+      moduleSummary: '{{count}} modules · {{enabled}} / {{entries}} enabled',
       title: 'Presets',
       unset: 'Unset',
+    },
+    modules: {
+      dynamicContext: 'Dynamic Context',
+      output: 'Output',
+      role: 'Role',
+      staticContext: 'Static Context',
+      task: 'Task',
+    },
+    entryKinds: {
+      builtInContextRef: 'Built-in Context Ref',
+      builtInText: 'Built-in Text',
+      customText: 'Custom Text',
     },
     metrics: {
       configured: 'Configured Presets',
@@ -708,55 +783,9 @@ const en = {
       title: 'Create Starter Presets',
     },
     presets: {
-      balanced: {
-        description: 'A steadier default for pacing, plot advancement, and role output.',
-        title: 'Stage Balanced',
-      },
-      defaultPrompts: {
-        actor: {
-          actionVariety: {
-            content:
-              'Encourage richer and more varied action language by rotating body cues, micro-reactions, and interaction details so the performance stays fresh.',
-            title: 'Action Variety',
-          },
-        },
-        director: {
-          narrationTiming: {
-            content:
-              'Prefer to schedule narration when the scene, state, or available information has meaningfully changed, so narration enters with new stage movement instead of re-covering the same scene.',
-            title: 'Narration Timing',
-          },
-        },
-        keeper: {
-          stateProgression: {
-            content:
-              'Actively advance state updates from the new actions, conflicts, and outcomes of the round so the recorded state clearly shows how the story has moved forward.',
-            title: 'State Progression',
-          },
-        },
-        narrator: {
-          actionFocus: {
-            content:
-              'Let narration carry the stage direction first by emphasizing environment, movement, rhythm, and atmosphere, while leaving spoken lines to the characters.',
-            title: 'Stage Narration',
-          },
-          variation: {
-            content:
-              'Actively vary sentence shape, pacing, point of view, and descriptive detail; if the scene has not changed, keep the established stage feel and avoid describing the same scene again.',
-            title: 'Narration Variety',
-          },
-        },
-        replyer: {
-          actionBrackets: {
-            content:
-              'Prefer a reply structure like "(action) dialogue or expression" so the action lands first and naturally leads into what the character says.',
-            title: 'Action-Led Reply',
-          },
-        },
-      },
-      expressive: {
-        description: 'Pushes role expression and narration further for a more performative tone.',
-        title: 'Stage Expressive',
+      default: {
+        description: 'Provides one ready-to-use default stage preset without any custom prompt entries.',
+        title: 'Stage Default',
       },
     },
     roles: {
@@ -779,6 +808,7 @@ const en = {
       addTag: 'Add Tag',
       cancel: 'Cancel',
       cancelSelection: 'Exit selection mode',
+      collapseField: 'Collapse Field',
       create: 'New Schema',
       createPreset: 'Create Starter Schemas',
       delete: 'Delete',
@@ -786,6 +816,7 @@ const en = {
       deselect: 'Deselect',
       deleting: 'Deleting...',
       edit: 'Edit',
+      expandField: 'Expand Field',
       export: 'Export',
       import: 'Import',
       importing: 'Importing...',
@@ -865,6 +896,11 @@ const en = {
         fieldKey: 'incident_status',
         schemaId: 'schema-character-reimu',
         tag: 'character',
+      },
+      preview: {
+        emptyFieldDefault: 'No default value',
+        emptyFieldDescription: 'No field description yet',
+        emptyFieldKey: 'Field key is empty',
       },
       valueTypes: {
         array: 'Array',
@@ -1308,8 +1344,10 @@ const en = {
     },
     drafts: {
       deleteDialog: {
+        messageMany: 'Delete the selected {{count}} drafts? They cannot be recovered.',
         message: 'Delete draft {{id}}? This draft cannot be recovered.',
         title: 'Delete Draft',
+        titleMany: 'Delete Drafts',
       },
       details: {
         outlineSections: 'Outline Sections',
@@ -1328,6 +1366,8 @@ const en = {
         continuedUnknown: 'Draft generation continued.',
         deleteFailed: 'Failed to delete the draft.',
         deleted: 'Draft deleted: {{name}}.',
+        deletedMany: '{{count}} drafts deleted.',
+        deletedPartial: 'Drafts were partially deleted. Success: {{success}}; Failed: {{failed}}.',
         finalizeFailed: 'Failed to finalize the draft.',
         loadDraftFailed: 'Failed to load draft details.',
         loadListFailed: 'Failed to load drafts.',

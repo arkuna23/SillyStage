@@ -38,3 +38,59 @@ export type DashboardPayload = {
   recent_sessions: DashboardSessionSummary[]
   recent_stories: DashboardStorySummary[]
 }
+
+export type ResourceFileRef = {
+  file_id: string
+  resource_id: string
+}
+
+export type ResourceFile = ResourceFileRef & {
+  content_type: string
+  file_name: string | null
+  size_bytes: number
+}
+
+export type DataPackageResourceSummary = {
+  count: number
+  ids: string[]
+}
+
+export type DataPackageContents = {
+  characters: DataPackageResourceSummary
+  lorebooks: DataPackageResourceSummary
+  player_profiles: DataPackageResourceSummary
+  presets: DataPackageResourceSummary
+  schemas: DataPackageResourceSummary
+  stories: DataPackageResourceSummary
+  story_resources: DataPackageResourceSummary
+}
+
+export type DataPackageExportPrepareParams = {
+  character_ids?: string[]
+  include_dependencies?: boolean
+  lorebook_ids?: string[]
+  player_profile_ids?: string[]
+  preset_ids?: string[]
+  schema_ids?: string[]
+  story_ids?: string[]
+  story_resource_ids?: string[]
+}
+
+export type DataPackageExportPreparedResult = {
+  archive: ResourceFileRef
+  contents: DataPackageContents
+  export_id: string
+  type: 'data_package_export_prepared'
+}
+
+export type DataPackageImportPreparedResult = {
+  archive: ResourceFileRef
+  import_id: string
+  type: 'data_package_import_prepared'
+}
+
+export type DataPackageImportCommittedResult = {
+  contents: DataPackageContents
+  import_id: string
+  type: 'data_package_import_committed'
+}

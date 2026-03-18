@@ -213,6 +213,59 @@ const zhCN = {
       stories: '故事总数',
       storyResources: '故事资源',
     },
+    dataPackage: {
+      actions: {
+        cancel: '取消',
+        clear: '清空',
+        export: '导出数据包',
+        exporting: '正在导出...',
+        import: '导入数据包',
+        importConfirm: '确认导入',
+        importing: '正在导入...',
+        retry: '重新加载',
+        selectAll: '全选',
+      },
+      dialogs: {
+        export: {
+          description:
+            '选择要打包进 ZIP 的资源。这里是按资源条目精确选择，是否自动带上依赖可以单独控制。',
+          emptyGroup: '当前没有可导出的条目。',
+          includeDependencies: '自动包含依赖',
+          includeDependenciesHint:
+            '导出故事时，会自动带上它引用的故事资源、状态结构、世界书和角色。',
+          selectedCount: '已选 {{count}} 项',
+          title: '导出数据包',
+        },
+        import: {
+          conflictHint:
+            '导入会原子应用整个数据包；如果包内任一 id 已存在，整包都会失败。',
+          description: '确认后会把这个 ZIP 数据包导入到当前工作台。',
+          fileName: '文件名',
+          fileSize: '文件大小',
+          title: '导入数据包',
+        },
+      },
+      feedback: {
+        exportFailed: '导出数据包失败。',
+        exported: '数据包已导出：{{summary}}。',
+        importFailed: '导入数据包失败。',
+        imported: '数据包已导入：{{summary}}。',
+        invalidFile: '请选择 .zip 数据包文件。',
+        loadCatalogFailed: '加载可导出资源失败。',
+      },
+      groups: {
+        characters: '角色',
+        lorebooks: '世界书',
+        playerProfiles: '玩家档案',
+        presets: '预设',
+        schemas: '状态结构',
+        stories: '故事',
+        storyResources: '故事资源',
+      },
+      summary: {
+        segment: '{{label}} {{count}}',
+      },
+    },
     feedback: {
       loadFailed: '加载仪表盘失败。',
     },
@@ -563,12 +616,12 @@ const zhCN = {
   },
   presetsPage: {
     actions: {
-      addPromptEntry: '添加 prompt 条目',
+      addCustomEntry: '添加自定义条目',
       cancel: '取消',
       cancelSelection: '退出选择',
       collapseAgent: '收起 agent',
+      collapseEntry: '收起条目',
       collapseModelSettings: '收起模型相关设置',
-      collapsePromptEntry: '收起 prompt 条目',
       close: '关闭',
       confirmDelete: '删除预设',
       create: '新建预设',
@@ -577,15 +630,15 @@ const zhCN = {
       deleteSelected: '删除已选',
       deselect: '取消选中',
       deleting: '正在删除...',
-      dragPromptEntry: '拖动排序',
+      dragEntry: '拖动排序',
       edit: '编辑',
       expandAgent: '展开 agent',
+      expandEntry: '展开条目',
       expandModelSettings: '展开模型相关设置',
-      expandPromptEntry: '展开 prompt 条目',
       export: '导出',
       import: '导入',
       importing: '正在导入...',
-      removePromptEntry: '删除 prompt 条目',
+      removeEntry: '删除条目',
       save: '保存',
       saving: '正在保存...',
       select: '选择',
@@ -602,13 +655,18 @@ const zhCN = {
       titleMany: '批量删除预设',
     },
     details: {
+      contextKey: '上下文键',
       disabled: '停用',
       enabled: '启用',
+      entryCount: '{{count}} 条条目',
+      entryText: '条目文本',
       extra: 'Extra',
-      noExtra: '未配置额外参数',
-      noPromptEntries: '没有 prompt 条目。',
-      promptEntriesCount: '{{count}} 条 prompt',
-      promptEntriesSummary: '{{enabled}} / {{count}} 条已启用',
+      moduleCount: '{{count}} 个模块',
+      moduleSummary: '{{count}} 个模块 · {{enabled}} / {{entries}} 条已启用',
+      noModules: '还没有模块条目。',
+      noText: '无文本',
+      order: '顺序',
+      required: '必需',
       title: '预设详情',
     },
     empty: {
@@ -636,54 +694,71 @@ const zhCN = {
     },
     form: {
       createTitle: '新建预设',
-      emptyPromptEntries: '还没有 prompt 条目。需要补充系统提示时，再添加第一条。',
+      emptyModuleEntries: '这个模块还没有条目。',
+      emptyModuleEntriesCreate: '这个模块还没有条目。需要时先添加第一条自定义提示词。',
       editTitle: '编辑预设',
       errors: {
+        customEntryTextRequired: '{{role}} 的 {{module}} 中第 {{index}} 条需要文本内容。',
         displayNameRequired: '请填写显示名称。',
-        duplicatePromptEntryId: '{{role}} 中存在重复的 prompt ID：{{id}}。',
+        duplicateEntryId: '{{role}} 的 {{module}} 中存在重复的条目 ID：{{id}}。',
+        entryDisplayNameRequired: '{{role}} 的 {{module}} 中第 {{index}} 条需要显示名称。',
+        entryIdRequired: '{{role}} 的 {{module}} 中第 {{index}} 条需要条目 ID。',
+        entryOrderInvalid: '{{role}} 的 {{module}} 中条目 {{id}} 的顺序必须是整数。',
         extraInvalid: '{{role}} 的 Extra 需要是合法的 JSON 对象。',
         loadFailed: '加载预设详情失败。',
         maxTokensInvalid: '{{role}} 的 Max Tokens 需要是大于 0 的整数。',
         presetIdDuplicate: '这个预设 ID 已存在。',
         presetIdRequired: '请填写预设 ID。',
-        promptEntryContentRequired: '{{role}} 的第 {{index}} 条 prompt 需要内容。',
-        promptEntryIdRequired: '{{role}} 的第 {{index}} 条 prompt 需要 ID。',
-        promptEntryTitleRequired: '{{role}} 的第 {{index}} 条 prompt 需要标题。',
         submitFailed: '保存预设失败。',
         temperatureInvalid: '{{role}} 的 Temperature 需要是有效数字。',
       },
       fields: {
         displayName: '显示名称',
+        contextKey: '上下文键',
+        entryDisplayName: '条目标题',
+        entryEnabled: '启用',
+        entryId: '条目 ID',
+        entryText: '条目文本',
         extra: 'Extra',
         maxTokens: 'Max Tokens',
         modelSettings: '模型相关设置',
+        order: '顺序',
         presetId: '预设 ID',
-        promptEntries: 'Prompt 条目',
-        promptEntryContent: '条目内容',
-        promptEntryEnabled: '启用',
-        promptEntryId: '条目 ID',
-        promptEntryTitle: '条目标题',
         temperature: 'Temperature',
       },
-      newPromptEntry: '未命名条目',
+      moduleHint: '内置条目只能调整启用状态和顺序；自定义条目可以编辑标题和文本。',
+      moduleSummary: '{{enabled}} / {{count}} 条已启用',
+      newEntry: '新条目',
       placeholders: {
         displayName: '高创造力舞台预设',
+        entryDisplayName: '输出风格',
+        entryId: 'architect-tone',
+        entryText: '让这个模块更明确地约束生成风格、结构和重点。',
         extra: '{"top_p":0.9}',
         maxTokens: '4096',
+        order: '1000',
         presetId: 'preset-stage-main',
-        promptEntryContent: '让这个 agent 保持简洁、稳定，并遵循当前舞台风格。',
-        promptEntryId: 'planner-tone',
-        promptEntryTitle: '规划口吻',
         temperature: '0.8',
       },
-      promptEntriesHint: '这些条目会按当前顺序提交给对应 agent，拖动左侧手柄即可调整顺序。',
-      untitledPromptEntry: '未命名条目 {{index}}',
+      untitledEntry: '未命名条目 {{index}}',
     },
     list: {
       extra: 'Extra',
-      promptEntriesSummary: '{{enabled}} / {{count}} 条 prompt',
+      moduleSummary: '{{count}} 个模块 · {{enabled}} / {{entries}} 条已启用',
       title: '预设列表',
       unset: '未设置',
+    },
+    modules: {
+      dynamicContext: '动态上下文',
+      output: '输出约束',
+      role: '角色定位',
+      staticContext: '静态上下文',
+      task: '任务指令',
+    },
+    entryKinds: {
+      builtInContextRef: '内置上下文引用',
+      builtInText: '内置文本',
+      customText: '自定义文本',
     },
     metrics: {
       configured: '已配置参数',
@@ -703,55 +778,9 @@ const zhCN = {
       title: '创建样例预设',
     },
     presets: {
-      balanced: {
-        description: '更适合作为通用默认值，稳定推进剧情、节奏和角色输出。',
-        title: '舞台均衡',
-      },
-      defaultPrompts: {
-        actor: {
-          actionVariety: {
-            content:
-              '让角色在动作表达上更有层次与变化，主动换用不同的肢体反应、微动作与互动细节，让表演持续保持鲜活感。',
-            title: '动作变化',
-          },
-        },
-        director: {
-          narrationTiming: {
-            content:
-              '优先把旁白安排在场景、状态或信息出现新变化的时候，让旁白跟着新的舞台变化进入，而不是停留在同一场景上反复铺陈。',
-            title: '旁白时机',
-          },
-        },
-        keeper: {
-          stateProgression: {
-            content:
-              '主动根据这一轮发生的新动作、冲突和结果推进状态变化，让节点内的状态记录能真实反映剧情已经前进到哪里。',
-            title: '状态推进',
-          },
-        },
-        narrator: {
-          actionFocus: {
-            content:
-              '让叙述优先承担舞台说明的作用，重点描写环境、动作、节奏与氛围推进，把角色台词留给角色自己去表达。',
-            title: '场景叙述',
-          },
-          variation: {
-            content:
-              '主动在句式、节奏、观察角度与细节描写上做出变化；如果场景没有新的变化，就沿用已有舞台感，不重复描述同一个场景。',
-            title: '叙述变化',
-          },
-        },
-        replyer: {
-          actionBrackets: {
-            content:
-              '优先采用“（动作）对白或表达”的回复结构，让动作先落地，再自然接上角色想说的话。',
-            title: '动作式回复',
-          },
-        },
-      },
-      expressive: {
-        description: '提高角色表现和叙事张力，适合更放开的表演风格。',
-        title: '舞台表现力',
+      default: {
+        description: '提供一套可直接使用的舞台默认配置，不附带任何自定义提示词。',
+        title: '舞台默认',
       },
     },
     roles: {
@@ -774,6 +803,7 @@ const zhCN = {
       addTag: '添加标签',
       cancel: '取消',
       cancelSelection: '退出选择',
+      collapseField: '收起字段',
       create: '新建结构',
       createPreset: '创建样例 schema',
       delete: '删除',
@@ -781,6 +811,7 @@ const zhCN = {
       deselect: '取消选中',
       deleting: '正在删除...',
       edit: '编辑',
+      expandField: '展开字段',
       export: '导出',
       import: '导入',
       importing: '正在导入...',
@@ -859,6 +890,11 @@ const zhCN = {
         fieldKey: 'incident_status',
         schemaId: 'schema-character-reimu',
         tag: 'character',
+      },
+      preview: {
+        emptyFieldDefault: '未设置默认值',
+        emptyFieldDescription: '还没有字段说明',
+        emptyFieldKey: '未填写字段 Key',
       },
       valueTypes: {
         array: '数组',
@@ -1288,8 +1324,10 @@ const zhCN = {
     },
     drafts: {
       deleteDialog: {
+        messageMany: '确定要删除已选的 {{count}} 条草稿吗？这些草稿将无法恢复。',
         message: '确定要删除草稿 {{id}} 吗？这条草稿将无法恢复。',
         title: '删除草稿',
+        titleMany: '批量删除草稿',
       },
       details: {
         outlineSections: '大纲分段',
@@ -1308,6 +1346,8 @@ const zhCN = {
         continuedUnknown: '草稿已继续生成。',
         deleteFailed: '删除草稿失败。',
         deleted: '已删除草稿：{{name}}。',
+        deletedMany: '已删除 {{count}} 条草稿。',
+        deletedPartial: '草稿已部分删除。成功 {{success}} 条，失败 {{failed}} 条。',
         finalizeFailed: '完成草稿生成失败。',
         loadDraftFailed: '加载草稿详情失败。',
         loadListFailed: '加载草稿列表失败。',

@@ -275,7 +275,7 @@ export function ApiFormDialog({
           </DialogTitle>
         </DialogHeader>
 
-        <DialogBody className="space-y-6 pt-6">
+        <DialogBody className="flex flex-col gap-7 pt-7">
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 5 }).map((_, index) => (
@@ -284,7 +284,7 @@ export function ApiFormDialog({
             </div>
           ) : (
             <>
-              <label className="space-y-3">
+              <label className="flex flex-col gap-3">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">
                   {t('apis.apiForm.fields.apiId')}
                 </span>
@@ -300,7 +300,7 @@ export function ApiFormDialog({
                 />
               </label>
 
-              <label className="space-y-3">
+              <label className="flex flex-col gap-3">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">
                   {t('apis.apiForm.fields.displayName')}
                 </span>
@@ -315,7 +315,7 @@ export function ApiFormDialog({
                 />
               </label>
 
-              <label className="space-y-3">
+              <label className="flex flex-col gap-3">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">
                   {t('apis.apiForm.fields.provider')}
                 </span>
@@ -336,7 +336,7 @@ export function ApiFormDialog({
                 />
               </label>
 
-              <label className="space-y-3">
+              <label className="flex flex-col gap-3">
                 <span className="block text-sm font-medium text-[var(--color-text-primary)]">
                   {t('apis.apiForm.fields.baseUrl')}
                 </span>
@@ -351,7 +351,7 @@ export function ApiFormDialog({
                 />
               </label>
 
-              <label className="space-y-3">
+              <label className="flex flex-col gap-3">
                 <div className="space-y-1.5">
                   <span className="block text-sm font-medium text-[var(--color-text-primary)]">
                     {t('apis.apiForm.fields.apiKey')}

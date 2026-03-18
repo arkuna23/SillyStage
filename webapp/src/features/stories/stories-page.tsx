@@ -18,6 +18,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
@@ -140,9 +141,11 @@ export function StoriesPage() {
   const [detailsDraftId, setDetailsDraftId] = useState<string | null>(null)
   const [editStoryId, setEditStoryId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
+  const [draftSelectionMode, setDraftSelectionMode] = useState(false)
   const [selectedStoryIds, setSelectedStoryIds] = useState<string[]>([])
+  const [selectedDraftIds, setSelectedDraftIds] = useState<string[]>([])
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
-  const [deleteDraftTarget, setDeleteDraftTarget] = useState<StoryDraftSummary | null>(null)
+  const [deleteDraftTargetIds, setDeleteDraftTargetIds] = useState<string[]>([])
   useToastNotice(notice)
 
   const distinctResourceCount = useMemo(
@@ -159,6 +162,13 @@ export function StoriesPage() {
         .map((storyId) => stories.find((story) => story.story_id === storyId))
         .filter((story): story is StorySummary => story !== undefined),
     [deleteTargetIds, stories],
+  )
+  const deleteDraftTargets = useMemo(
+    () =>
+      deleteDraftTargetIds
+        .map((draftId) => drafts.find((draft) => draft.draft_id === draftId))
+        .filter((draft): draft is StoryDraftSummary => draft !== undefined),
+    [deleteDraftTargetIds, drafts],
   )
 
   const refreshStories = useCallback(
@@ -275,9 +285,29 @@ export function StoriesPage() {
   }, [detailsStoryId, editStoryId, stories])
 
   useEffect(() => {
+    const availableDraftIds = new Set(drafts.map((draft) => draft.draft_id))
+
+    setSelectedDraftIds((currentSelection) =>
+      currentSelection.filter((draftId) => availableDraftIds.has(draftId)),
+    )
+    setDeleteDraftTargetIds((currentSelection) =>
+      currentSelection.filter((draftId) => availableDraftIds.has(draftId)),
+    )
+
+    if (detailsDraftId !== null && !availableDraftIds.has(detailsDraftId)) {
+      setDetailsDraftId(null)
+    }
+  }, [detailsDraftId, drafts])
+
+  useEffect(() => {
     if (viewMode !== 'stories') {
       setSelectionMode(false)
       setSelectedStoryIds([])
+    }
+
+    if (viewMode !== 'drafts') {
+      setDraftSelectionMode(false)
+      setSelectedDraftIds([])
     }
   }, [viewMode])
 
@@ -379,6 +409,14 @@ export function StoriesPage() {
     )
   }
 
+  function toggleDraftSelection(draftId: string) {
+    setSelectedDraftIds((currentSelection) =>
+      currentSelection.includes(draftId)
+        ? currentSelection.filter((currentDraftId) => currentDraftId !== draftId)
+        : [...currentSelection, draftId],
+    )
+  }
+
   async function handleContinueDraft(draft: StoryDraftSummary) {
     setActiveDraftActionId(draft.draft_id)
 
@@ -442,23 +480,61 @@ export function StoriesPage() {
   }
 
   async function handleDeleteDraft() {
-    if (!deleteDraftTarget) {
+    if (deleteDraftTargets.length === 0) {
       return
     }
 
-    const target = deleteDraftTarget
     setIsDeletingDraft(true)
 
     try {
-      await deleteStoryDraft(target.draft_id)
-      setNotice({
-        message: t('stories.drafts.feedback.deleted', { name: target.display_name }),
-        tone: 'success',
+      const result = await runBatchDelete(deleteDraftTargets, async (target) => {
+        await deleteStoryDraft(target.draft_id)
       })
-      setDeleteDraftTarget(null)
+      setDeleteDraftTargetIds([])
+
+      if (result.deleted.length > 0) {
+        const deletedIds = new Set(result.deleted.map((target) => target.draft_id))
+
+        setSelectedDraftIds((currentSelection) =>
+          currentSelection.filter((draftId) => !deletedIds.has(draftId)),
+        )
+
+        if (detailsDraftId !== null && deletedIds.has(detailsDraftId)) {
+          setDetailsDraftId(null)
+        }
+      }
+
+      if (result.failed.length === 0) {
+        setNotice({
+          message:
+            result.deleted.length > 1
+              ? t('stories.drafts.feedback.deletedMany', { count: result.deleted.length })
+              : t('stories.drafts.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+          tone: 'success',
+        })
+
+        if (draftSelectionMode) {
+          setDraftSelectionMode(false)
+          setSelectedDraftIds([])
+        }
+      } else if (result.deleted.length > 0) {
+        setNotice({
+          message: t('stories.drafts.feedback.deletedPartial', {
+            failed: result.failed.length,
+            success: result.deleted.length,
+          }),
+          tone: 'warning',
+        })
+      } else {
+        setNotice({
+          message: t('stories.drafts.feedback.deleteFailed'),
+          tone: 'error',
+        })
+      }
+
       await refreshDrafts()
     } catch (error) {
-      setDeleteDraftTarget(null)
+      setDeleteDraftTargetIds([])
       setNotice({
         message: getErrorMessage(error, t('stories.drafts.feedback.deleteFailed')),
         tone: 'error',
@@ -533,14 +609,14 @@ export function StoriesPage() {
 
       <DeleteStoryDraftDialog
         deleting={isDeletingDraft}
-        draft={deleteDraftTarget}
         onConfirm={() => {
           void handleDeleteDraft()
         }}
         onOpenChange={() => {
-          setDeleteDraftTarget(null)
+          setDeleteDraftTargetIds([])
         }}
-        open={deleteDraftTarget !== null}
+        open={deleteDraftTargetIds.length > 0}
+        targets={deleteDraftTargets}
       />
 
       <WorkspacePanelShell className="flex min-h-0 flex-1">
@@ -605,6 +681,42 @@ export function StoriesPage() {
                         variant="secondary"
                       />
                     </>
+                  ) : viewMode === 'drafts' && draftSelectionMode ? (
+                    <>
+                      <Badge className="normal-case px-3.5 py-2" variant="subtle">
+                        {t('stories.selection.count', { count: selectedDraftIds.length })}
+                      </Badge>
+                      <IconButton
+                        disabled={drafts.length === 0}
+                        icon={<FontAwesomeIcon icon={faCheckDouble} />}
+                        label={t('stories.actions.selectAll')}
+                        onClick={() => {
+                          setSelectedDraftIds(drafts.map((draft) => draft.draft_id))
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                      <IconButton
+                        disabled={selectedDraftIds.length === 0}
+                        icon={<FontAwesomeIcon icon={faTrashCan} />}
+                        label={t('stories.actions.deleteSelected')}
+                        onClick={() => {
+                          setDeleteDraftTargetIds(selectedDraftIds)
+                        }}
+                        size="md"
+                        variant="danger"
+                      />
+                      <IconButton
+                        icon={<FontAwesomeIcon icon={faXmark} />}
+                        label={t('stories.actions.cancelSelection')}
+                        onClick={() => {
+                          setDraftSelectionMode(false)
+                          setSelectedDraftIds([])
+                        }}
+                        size="md"
+                        variant="secondary"
+                      />
+                    </>
                   ) : (
                     <>
                       {viewMode === 'stories' ? (
@@ -618,7 +730,18 @@ export function StoriesPage() {
                           size="md"
                           variant="secondary"
                         />
-                      ) : null}
+                      ) : (
+                        <IconButton
+                          icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                          label={t('stories.actions.selectMode')}
+                          onClick={() => {
+                            setDraftSelectionMode(true)
+                            setSelectedDraftIds([])
+                          }}
+                          size="md"
+                          variant="secondary"
+                        />
+                      )}
                       <IconButton
                         icon={<FontAwesomeIcon icon={faPlus} />}
                         label={t('stories.actions.createDraft')}
@@ -702,8 +825,7 @@ export function StoriesPage() {
 
                         <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
                           {selectionMode ? (
-                            <IconButton
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            <SelectionToggleButton
                               label={
                                 selectedStoryIds.includes(story.story_id)
                                   ? t('stories.actions.deselect')
@@ -712,10 +834,7 @@ export function StoriesPage() {
                               onClick={() => {
                                 toggleStorySelection(story.story_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedStoryIds.includes(story.story_id) ? 'primary' : 'secondary'
-                              }
+                              selected={selectedStoryIds.includes(story.story_id)}
                             />
                           ) : (
                             <>
@@ -818,51 +937,67 @@ export function StoriesPage() {
                           </div>
 
                           <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                            <Button
-                              onClick={() => {
-                                setDetailsDraftId(draft.draft_id)
-                              }}
-                              size="sm"
-                              variant="ghost"
-                            >
-                              <FontAwesomeIcon icon={faEye} />
-                              {t('stories.actions.view')}
-                            </Button>
-                            {draft.status === 'building' ? (
-                              <Button
-                                disabled={isWorking}
+                            {draftSelectionMode ? (
+                              <SelectionToggleButton
+                                label={
+                                  selectedDraftIds.includes(draft.draft_id)
+                                    ? t('stories.actions.deselect')
+                                    : t('stories.actions.select')
+                                }
                                 onClick={() => {
-                                  void handleContinueDraft(draft)
+                                  toggleDraftSelection(draft.draft_id)
                                 }}
-                                size="sm"
-                                variant="secondary"
-                              >
-                                <FontAwesomeIcon className={cn(isWorking ? 'animate-spin' : '')} icon={faRotateRight} />
-                                {t('stories.actions.continueDraft')}
-                              </Button>
-                            ) : null}
-                            {draft.status === 'ready_to_finalize' ? (
-                              <Button
-                                disabled={isWorking}
-                                onClick={() => {
-                                  void handleFinalizeDraft(draft)
-                                }}
-                                size="sm"
-                              >
-                                <FontAwesomeIcon icon={faPlus} />
-                                {t('stories.actions.finalizeDraft')}
-                              </Button>
-                            ) : null}
-                            <Button
-                              onClick={() => {
-                                setDeleteDraftTarget(draft)
-                              }}
-                              size="sm"
-                              variant="danger"
-                            >
-                              <FontAwesomeIcon icon={faTrashCan} />
-                              {t('stories.actions.delete')}
-                            </Button>
+                                selected={selectedDraftIds.includes(draft.draft_id)}
+                              />
+                            ) : (
+                              <>
+                                <Button
+                                  onClick={() => {
+                                    setDetailsDraftId(draft.draft_id)
+                                  }}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  <FontAwesomeIcon icon={faEye} />
+                                  {t('stories.actions.view')}
+                                </Button>
+                                {draft.status === 'building' ? (
+                                  <Button
+                                    disabled={isWorking}
+                                    onClick={() => {
+                                      void handleContinueDraft(draft)
+                                    }}
+                                    size="sm"
+                                    variant="secondary"
+                                  >
+                                    <FontAwesomeIcon className={cn(isWorking ? 'animate-spin' : '')} icon={faRotateRight} />
+                                    {t('stories.actions.continueDraft')}
+                                  </Button>
+                                ) : null}
+                                {draft.status === 'ready_to_finalize' ? (
+                                  <Button
+                                    disabled={isWorking}
+                                    onClick={() => {
+                                      void handleFinalizeDraft(draft)
+                                    }}
+                                    size="sm"
+                                  >
+                                    <FontAwesomeIcon icon={faPlus} />
+                                    {t('stories.actions.finalizeDraft')}
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  onClick={() => {
+                                    setDeleteDraftTargetIds([draft.draft_id])
+                                  }}
+                                  size="sm"
+                                  variant="danger"
+                                >
+                                  <FontAwesomeIcon icon={faTrashCan} />
+                                  {t('stories.actions.delete')}
+                                </Button>
+                              </>
+                            )}
                           </div>
                         </div>
                       )

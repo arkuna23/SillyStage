@@ -15,6 +15,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
@@ -508,9 +509,8 @@ export function StoryResourcesPage() {
 
                         <div className="flex justify-start gap-2 lg:justify-end">
                           {selectionMode ? (
-                            <IconButton
+                            <SelectionToggleButton
                               disabled={isGenerating}
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
                               label={
                                 selectedResourceIds.includes(resource.resource_id)
                                   ? t('storyResources.actions.deselect')
@@ -519,12 +519,7 @@ export function StoryResourcesPage() {
                               onClick={() => {
                                 toggleResourceSelection(resource.resource_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedResourceIds.includes(resource.resource_id)
-                                  ? 'primary'
-                                  : 'secondary'
-                              }
+                              selected={selectedResourceIds.includes(resource.resource_id)}
                             />
                           ) : (
                             <>

@@ -10,10 +10,14 @@ import type {
   ApiModelsListedResult,
   ApisListedResult,
   GlobalConfigResult,
-  Preset,
+  PresetDetail,
   PresetAgentConfigs,
   PresetDeletedResult,
+  PresetEntryDeletedResult,
+  PresetEntryMutationResult,
   PresetsListedResult,
+  PromptModuleId,
+  AgentRoleKey,
 } from './types'
 
 export async function listApis(signal?: AbortSignal) {
@@ -131,7 +135,7 @@ export async function listPresets(signal?: AbortSignal) {
 }
 
 export async function getPreset(presetId: string, signal?: AbortSignal) {
-  return rpcRequest<{ preset_id: string }, Preset>(
+  return rpcRequest<{ preset_id: string }, PresetDetail>(
     'preset.get',
     { preset_id: presetId },
     { signal },
@@ -146,7 +150,7 @@ export async function createPreset(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, Preset>('preset.create', params, { signal })
+  return rpcRequest<typeof params, PresetDetail>('preset.create', params, { signal })
 }
 
 export async function updatePreset(
@@ -157,7 +161,63 @@ export async function updatePreset(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, Preset>('preset.update', params, { signal })
+  return rpcRequest<typeof params, PresetDetail>('preset.update', params, { signal })
+}
+
+export async function createPresetEntry(
+  params: {
+    agent: AgentRoleKey
+    display_name: string
+    enabled?: boolean
+    entry_id: string
+    module_id: PromptModuleId
+    order?: number
+    preset_id: string
+    text: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, PresetEntryMutationResult>(
+    'preset_entry.create',
+    params,
+    { signal },
+  )
+}
+
+export async function updatePresetEntry(
+  params: {
+    agent: AgentRoleKey
+    display_name?: string
+    enabled?: boolean
+    entry_id: string
+    module_id: PromptModuleId
+    order?: number
+    preset_id: string
+    text?: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, PresetEntryMutationResult>(
+    'preset_entry.update',
+    params,
+    { signal },
+  )
+}
+
+export async function deletePresetEntry(
+  params: {
+    agent: AgentRoleKey
+    entry_id: string
+    module_id: PromptModuleId
+    preset_id: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, PresetEntryDeletedResult>(
+    'preset_entry.delete',
+    params,
+    { signal },
+  )
 }
 
 export async function deletePreset(presetId: string, signal?: AbortSignal) {

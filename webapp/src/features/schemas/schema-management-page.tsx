@@ -17,6 +17,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
@@ -622,8 +623,7 @@ export function SchemaManagementPage() {
 
                     <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
                       {selectionMode ? (
-                        <IconButton
-                          icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                        <SelectionToggleButton
                           label={
                             selectedSchemaIds.includes(schema.schema_id)
                               ? t('schemas.actions.deselect')
@@ -632,10 +632,7 @@ export function SchemaManagementPage() {
                           onClick={() => {
                             toggleSchemaSelection(schema.schema_id)
                           }}
-                          size="sm"
-                          variant={
-                            selectedSchemaIds.includes(schema.schema_id) ? 'primary' : 'secondary'
-                          }
+                          selected={selectedSchemaIds.includes(schema.schema_id)}
                         />
                       ) : (
                         <>

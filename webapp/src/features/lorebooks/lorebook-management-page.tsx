@@ -17,6 +17,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
@@ -690,8 +691,7 @@ export function LorebookManagementPage() {
 
                         <div className="flex justify-start gap-2 lg:justify-end">
                           {selectionMode ? (
-                            <IconButton
-                              icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                            <SelectionToggleButton
                               label={
                                 selectedLorebookIds.includes(lorebook.lorebook_id)
                                   ? t('lorebooks.actions.deselect')
@@ -700,12 +700,7 @@ export function LorebookManagementPage() {
                               onClick={() => {
                                 toggleLorebookSelection(lorebook.lorebook_id)
                               }}
-                              size="sm"
-                              variant={
-                                selectedLorebookIds.includes(lorebook.lorebook_id)
-                                  ? 'primary'
-                                  : 'secondary'
-                              }
+                              selected={selectedLorebookIds.includes(lorebook.lorebook_id)}
                             />
                           ) : (
                             <>

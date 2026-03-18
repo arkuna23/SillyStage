@@ -16,6 +16,7 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
@@ -472,8 +473,7 @@ export function PlayerProfilesPage() {
 
                       <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
                         {selectionMode ? (
-                          <IconButton
-                            icon={<FontAwesomeIcon icon={faSquareCheck} />}
+                          <SelectionToggleButton
                             label={
                               selectedProfileIds.includes(profile.player_profile_id)
                                 ? t('playerProfiles.actions.deselect')
@@ -482,12 +482,7 @@ export function PlayerProfilesPage() {
                             onClick={() => {
                               toggleProfileSelection(profile.player_profile_id)
                             }}
-                            size="sm"
-                            variant={
-                              selectedProfileIds.includes(profile.player_profile_id)
-                                ? 'primary'
-                                : 'secondary'
-                            }
+                            selected={selectedProfileIds.includes(profile.player_profile_id)}
                           />
                         ) : (
                           <>

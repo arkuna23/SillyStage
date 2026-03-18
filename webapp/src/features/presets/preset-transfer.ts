@@ -1,25 +1,75 @@
-import { agentRoleKeys, type AgentRoleKey, type Preset } from '../apis/types'
+import {
+  agentRoleKeys,
+  presetEntryKinds,
+  promptModuleIds,
+  type AgentRoleKey,
+  type PresetDetail,
+} from '../apis/types'
 
 export type PresetBundle = {
-  presets: Preset[]
+  presets: PresetDetail[]
   type: 'preset_bundle'
-  version: 1
+  version: 2
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
 
-function isPromptEntry(value: unknown) {
+function isPromptEntryKind(value: unknown) {
+  return typeof value === 'string' && presetEntryKinds.includes(value as never)
+}
+
+function isPromptModuleId(value: unknown) {
+  return typeof value === 'string' && promptModuleIds.includes(value as never)
+}
+
+function isPresetModuleEntry(value: unknown) {
+  if (!isObject(value)) {
+    return false
+  }
+
+  if (
+    typeof value.entry_id !== 'string' ||
+    typeof value.display_name !== 'string' ||
+    typeof value.enabled !== 'boolean' ||
+    typeof value.order !== 'number' ||
+    typeof value.required !== 'boolean' ||
+    !isPromptEntryKind(value.kind)
+  ) {
+    return false
+  }
+
+  if (
+    'text' in value &&
+    value.text !== undefined &&
+    value.text !== null &&
+    typeof value.text !== 'string'
+  ) {
+    return false
+  }
+
+  if (
+    'context_key' in value &&
+    value.context_key !== undefined &&
+    value.context_key !== null &&
+    typeof value.context_key !== 'string'
+  ) {
+    return false
+  }
+
+  return true
+}
+
+function isPresetModule(value: unknown) {
   if (!isObject(value)) {
     return false
   }
 
   return (
-    typeof value.entry_id === 'string' &&
-    typeof value.title === 'string' &&
-    typeof value.content === 'string' &&
-    typeof value.enabled === 'boolean'
+    isPromptModuleId(value.module_id) &&
+    Array.isArray(value.entries) &&
+    value.entries.every(isPresetModuleEntry)
   )
 }
 
@@ -46,19 +96,14 @@ function isAgentPresetConfig(value: unknown) {
     return false
   }
 
-  if (
-    'prompt_entries' in value &&
-    value.prompt_entries !== undefined &&
-    value.prompt_entries !== null &&
-    (!Array.isArray(value.prompt_entries) || !value.prompt_entries.every(isPromptEntry))
-  ) {
+  if (!('modules' in value) || !Array.isArray(value.modules) || !value.modules.every(isPresetModule)) {
     return false
   }
 
   return true
 }
 
-function isPresetAgents(value: unknown): value is Preset['agents'] {
+function isPresetAgents(value: unknown): value is PresetDetail['agents'] {
   if (!isObject(value)) {
     return false
   }
@@ -66,8 +111,8 @@ function isPresetAgents(value: unknown): value is Preset['agents'] {
   return agentRoleKeys.every((roleKey: AgentRoleKey) => isAgentPresetConfig(value[roleKey]))
 }
 
-function isPreset(value: unknown): value is Preset {
-  if (!isObject(value) || value.type !== 'preset') {
+function isPreset(value: unknown): value is PresetDetail {
+  if (!isObject(value)) {
     return false
   }
 
@@ -78,16 +123,16 @@ function isPreset(value: unknown): value is Preset {
   )
 }
 
-export function createPresetBundle(presets: ReadonlyArray<Preset>): PresetBundle {
+export function createPresetBundle(presets: ReadonlyArray<PresetDetail>): PresetBundle {
   return {
     presets: [...presets],
     type: 'preset_bundle',
-    version: 1,
+    version: 2,
   }
 }
 
 export function isPresetBundle(value: unknown): value is PresetBundle {
-  if (!isObject(value) || value.type !== 'preset_bundle' || value.version !== 1) {
+  if (!isObject(value) || value.type !== 'preset_bundle' || value.version !== 2) {
     return false
   }
 
