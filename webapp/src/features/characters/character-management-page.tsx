@@ -1069,14 +1069,18 @@ export function CharacterManagementPage() {
 
 		const deletedIds: string[] = [];
 		const failedTargets: CharacterSummary[] = [];
+		let firstDeleteError: unknown = null;
 
 		try {
 			for (const target of deleteTargets) {
 				try {
 					await deleteCharacter(target.character_id);
 					deletedIds.push(target.character_id);
-				} catch {
+				} catch (error) {
 					failedTargets.push(target);
+					if (firstDeleteError === null) {
+						firstDeleteError = error;
+					}
 				}
 			}
 
@@ -1120,7 +1124,10 @@ export function CharacterManagementPage() {
 				});
 			} else {
 				setNotice({
-					message: t("characters.feedback.deleteFailed"),
+					message: getErrorMessage(
+						firstDeleteError,
+						t("characters.feedback.deleteFailed"),
+					),
 					tone: "error",
 				});
 			}

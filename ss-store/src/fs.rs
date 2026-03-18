@@ -754,7 +754,16 @@ async fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> Result<(), StoreError>
     file.flush().await?;
     drop(file);
 
-    fs::rename(&tmp_path, path).await?;
+    if let Err(error) = fs::rename(&tmp_path, path).await {
+        if should_retry_replace(&error) && path_exists(path).await? {
+            fs::remove_file(path).await?;
+            fs::rename(&tmp_path, path).await?;
+        } else {
+            let _ = fs::remove_file(&tmp_path).await;
+            return Err(StoreError::Io(error));
+        }
+    }
+
     Ok(())
 }
 
@@ -763,4 +772,12 @@ fn unique_suffix() -> u128 {
         .duration_since(UNIX_EPOCH)
         .expect("system clock should be after unix epoch")
         .as_nanos()
+}
+
+fn should_retry_replace(error: &std::io::Error) -> bool {
+    cfg!(windows)
+        && matches!(
+            error.kind(),
+            std::io::ErrorKind::AlreadyExists | std::io::ErrorKind::PermissionDenied
+        )
 }

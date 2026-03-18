@@ -694,6 +694,38 @@ async fn filesystem_store_supports_characters_without_cover_file() {
 }
 
 #[tokio::test]
+async fn filesystem_store_overwrites_existing_character_record() {
+    let temp_dir = TestDir::new();
+    let store = FileSystemStore::new(temp_dir.path.clone())
+        .await
+        .expect("filesystem store should build");
+    let mut character = sample_character_record();
+
+    store
+        .save_character(character.clone())
+        .await
+        .expect("initial character save should succeed");
+
+    character.content.name = "Haru Prime".to_owned();
+    character.cover_file_name = Some("cover-updated.webp".to_owned());
+    character.cover_mime_type = Some("image/webp".to_owned());
+
+    store
+        .save_character(character.clone())
+        .await
+        .expect("overwriting character save should succeed");
+
+    let loaded = store
+        .get_character(&character.character_id)
+        .await
+        .expect("load character")
+        .expect("character should exist");
+    assert_eq!(loaded.content.name, "Haru Prime");
+    assert_eq!(loaded.cover_file_name.as_deref(), Some("cover-updated.webp"));
+    assert_eq!(loaded.cover_mime_type.as_deref(), Some("image/webp"));
+}
+
+#[tokio::test]
 async fn filesystem_store_persists_story_and_session_timestamps() {
     let temp_dir = TestDir::new();
     let store = FileSystemStore::new(temp_dir.path.clone())
