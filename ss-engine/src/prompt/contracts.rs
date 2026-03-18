@@ -163,7 +163,7 @@ pub(super) const ARCHITECT_DRAFT_INIT_OUTPUT_CONTRACT: &str = r#"Top-level outpu
   "introduction": "short player-facing opening paragraph"
 }
 
-Always include every top-level key above. "start_node" must match one of the returned node ids. Returned node ids must all be new and unique within this response."#;
+Always include every top-level key above. "start_node" must match one of the returned node ids. Returned node ids must all be new and unique within this response. All transition and transition_patches targets must use returned node ids only. Do not point to future chunk nodes; add those links later with transition_patches."#;
 
 pub(super) const ARCHITECT_DRAFT_CONTINUE_OUTPUT_CONTRACT: &str = r#"Top-level output schema:
 {
@@ -172,4 +172,4 @@ pub(super) const ARCHITECT_DRAFT_CONTINUE_OUTPUT_CONTRACT: &str = r#"Top-level o
   "section_summary": "one short sentence"
 }
 
-Always include "nodes", "transition_patches", and "section_summary". Returned node ids must be unique within this response and must not reuse node ids that already exist in GRAPH_SUMMARY. Existing nodes may only be referenced in transition_patches or transition targets."#;
+Always include "nodes", "transition_patches", and "section_summary". Returned node ids must be unique within this response and must not reuse node ids that already exist in GRAPH_SUMMARY. Existing nodes may only be referenced in transition_patches or transition targets. All transition and transition_patches targets must use either GRAPH_SUMMARY node ids or returned node ids. Do not point to future chunk nodes; add those links later with transition_patches."#;

@@ -362,6 +362,18 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .system_prompt
             .contains("Returned node ids must all be new and unique within this response")
     );
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("All transition and transition_patches targets must use returned node ids only")
+    );
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("Do not point to future chunk nodes; add those links later with transition_patches")
+    );
 
     assert!(
         profiles
@@ -377,6 +389,18 @@ fn default_architect_prompt_profiles_include_output_schemas() {
     );
     assert!(
         profiles
+            .draft_continue
+            .system_prompt
+            .contains("All transition and transition_patches targets must use either GRAPH_SUMMARY node ids or returned node ids")
+    );
+    assert!(
+        profiles
+            .draft_continue
+            .system_prompt
+            .contains("Do not point to future chunk nodes; add those links later with transition_patches")
+    );
+    assert!(
+        profiles
             .repair_system_prompt
             .contains("omit default or make default exactly match one enum_values item")
     );
@@ -384,6 +408,16 @@ fn default_architect_prompt_profiles_include_output_schemas() {
         profiles
             .repair_system_prompt
             .contains("do not return any node whose id already exists in GRAPH_SUMMARY")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("transition and transition_patches targets must use GRAPH_SUMMARY node ids or returned node ids only")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("Remove links to future chunk nodes; later chunks can add them via transition_patches")
     );
 }
 
