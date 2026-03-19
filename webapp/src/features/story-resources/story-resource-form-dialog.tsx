@@ -1,9 +1,8 @@
-import { useEffect, useId, useMemo, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
-import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import {
   Dialog,
@@ -16,26 +15,26 @@ import {
 } from '../../components/ui/dialog'
 import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
+import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Select } from '../../components/ui/select'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { Textarea } from '../../components/ui/textarea'
-import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import {
-  createStoryResource,
   generateAndSaveStoryPlan,
   getStoryResource,
   updateStoryResource,
 } from './api'
+import { StoryResourceCharacterSelector } from './story-resource-character-selector'
 import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 type SubmitIntent = 'generate' | 'save'
-type StoryResourceFormMode = 'create' | 'edit'
+type EditTab = 'basic' | 'characters' | 'draft' | 'settings'
 
 type StoryResourceFormDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
@@ -43,7 +42,6 @@ type StoryResourceFormDialogProps = {
   availableLorebooks: ReadonlyArray<Lorebook>
   availablePresets: ReadonlyArray<Preset>
   availableSchemas: ReadonlyArray<SchemaResource>
-  mode: StoryResourceFormMode
   onCompleted: (result: {
     message: string
     resource: StoryResource
@@ -123,13 +121,22 @@ function Field({
 function LoadingSkeleton() {
   return (
     <div className="space-y-5">
-      <div className="h-24 animate-pulse rounded-[1.5rem] bg-[var(--color-bg-elevated)]" />
-      <div className="h-40 animate-pulse rounded-[1.5rem] bg-[var(--color-bg-elevated)]" />
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-elevated)]" />
-        <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-elevated)]" />
+      <div className="grid gap-3 md:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            className="h-11 animate-pulse rounded-[1rem] bg-[var(--color-bg-elevated)]"
+            key={index}
+          />
+        ))}
       </div>
-      <div className="h-32 animate-pulse rounded-[1.5rem] bg-[var(--color-bg-elevated)]" />
+      <div className="space-y-4 rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-5">
+        <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-panel)]" />
+        <div className="h-36 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-panel)]" />
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-panel)]" />
+          <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-panel)]" />
+        </div>
+      </div>
     </div>
   )
 }
@@ -140,7 +147,6 @@ export function StoryResourceFormDialog({
   availableLorebooks,
   availablePresets,
   availableSchemas,
-  mode,
   onCompleted,
   onOpenChange,
   open,
@@ -154,11 +160,11 @@ export function StoryResourceFormDialog({
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
-  useToastMessage(submitError)
   const [submitIntent, setSubmitIntent] = useState<SubmitIntent>('save')
   const [plannerApiGroupId, setPlannerApiGroupId] = useState('')
   const [plannerPresetId, setPlannerPresetId] = useState('')
-  const isEditMode = mode === 'edit'
+  const [activeTab, setActiveTab] = useState<EditTab>('basic')
+  useToastMessage(submitError)
 
   const fieldIds = {
     apiGroupId: `${fieldIdPrefix}-api-group-id`,
@@ -169,11 +175,6 @@ export function StoryResourceFormDialog({
     storyConcept: `${fieldIdPrefix}-story-concept`,
     worldSchemaIdSeed: `${fieldIdPrefix}-world-schema-seed`,
   } as const
-
-  const characterLookup = useMemo(
-    () => new Map(availableCharacters.map((character) => [character.character_id, character])),
-    [availableCharacters],
-  )
 
   const schemaOptions = useMemo(
     () =>
@@ -199,7 +200,8 @@ export function StoryResourceFormDialog({
       })),
     [availablePresets],
   )
-  const plannerBindingsUnavailable = availableApiGroups.length === 0 || availablePresets.length === 0
+  const plannerBindingsUnavailable =
+    availableApiGroups.length === 0 || availablePresets.length === 0
   const lorebookOptions = useMemo(
     () =>
       availableLorebooks.map((lorebook) => ({
@@ -219,32 +221,25 @@ export function StoryResourceFormDialog({
       setSubmitIntent('save')
       setPlannerApiGroupId('')
       setPlannerPresetId('')
-      return
-    }
-
-    if (mode === 'create') {
-      setFormState(createInitialFormState())
-      setInitialResource(null)
-      setIsLoading(false)
-      setIsSubmitting(false)
-      setSubmitError(null)
-      setSubmitIntent('save')
-      setPlannerApiGroupId('')
-      setPlannerPresetId('')
+      setActiveTab('basic')
       return
     }
 
     if (!resourceId) {
+      setInitialResource(null)
+      setIsLoading(false)
       return
     }
 
     const controller = new AbortController()
+
     setIsLoading(true)
     setIsSubmitting(false)
     setSubmitError(null)
     setSubmitIntent('save')
     setPlannerApiGroupId('')
     setPlannerPresetId('')
+    setActiveTab('basic')
 
     void getStoryResource(resourceId, controller.signal)
       .then((resource) => {
@@ -257,6 +252,7 @@ export function StoryResourceFormDialog({
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
+          setInitialResource(null)
           setSubmitError(getErrorMessage(error, t('storyResources.feedback.loadResourceFailed')))
         }
       })
@@ -269,20 +265,13 @@ export function StoryResourceFormDialog({
     return () => {
       controller.abort()
     }
-  }, [mode, open, resourceId, t])
+  }, [open, resourceId, t])
 
-  function toggleCharacter(characterId: string) {
-    setFormState((currentFormState) => {
-      const isSelected = currentFormState.characterIds.includes(characterId)
-
-      return {
-        ...currentFormState,
-        characterIds: isSelected
-          ? currentFormState.characterIds.filter((id) => id !== characterId)
-          : [...currentFormState.characterIds, characterId],
-      }
-    })
-  }
+  const setActiveTabFromValue = useCallback((value: string) => {
+    if (value === 'basic' || value === 'characters' || value === 'settings' || value === 'draft') {
+      setActiveTab(value)
+    }
+  }, [])
 
   function toggleLorebook(lorebookId: string) {
     setFormState((currentFormState) => {
@@ -297,16 +286,22 @@ export function StoryResourceFormDialog({
     })
   }
 
-  function validateForm(nextFormState: FormState): string | null {
+  function validateForm(nextFormState: FormState) {
     if (nextFormState.storyConcept.trim().length === 0) {
-      return t('storyResources.form.errors.storyConceptRequired')
+      return {
+        error: t('storyResources.form.errors.storyConceptRequired'),
+        tab: 'basic' as const,
+      }
     }
 
     if (nextFormState.characterIds.length === 0) {
-      return t('storyResources.form.errors.charactersRequired')
+      return {
+        error: t('storyResources.form.errors.charactersRequired'),
+        tab: 'characters' as const,
+      }
     }
 
-    return null
+    return { error: null, tab: null }
   }
 
   function hasUnsupportedSeedClear(nextFormState: FormState) {
@@ -334,32 +329,36 @@ export function StoryResourceFormDialog({
       worldSchemaIdSeed: formState.worldSchemaIdSeed.trim(),
     }
 
-    const validationError = validateForm(nextFormState)
+    const validationResult = validateForm(nextFormState)
 
     setFormState(nextFormState)
     setSubmitError(null)
 
-    if (validationError) {
-      setSubmitError(validationError)
+    if (validationResult.error) {
+      setActiveTab(validationResult.tab ?? 'basic')
+      setSubmitError(validationResult.error)
       return
     }
 
-    if (isEditMode && !initialResource) {
+    if (!initialResource) {
       setSubmitError(t('storyResources.feedback.loadResourceFailed'))
       return
     }
 
-    if (isEditMode && hasUnsupportedSeedClear(nextFormState)) {
+    if (hasUnsupportedSeedClear(nextFormState)) {
+      setActiveTab('settings')
       setSubmitError(t('storyResources.form.errors.schemaSeedClearUnsupported'))
       return
     }
 
     if (intent === 'generate' && plannerApiGroupId.trim().length === 0) {
+      setActiveTab('draft')
       setSubmitError(t('storyResources.form.errors.apiGroupRequired'))
       return
     }
 
     if (intent === 'generate' && plannerPresetId.trim().length === 0) {
+      setActiveTab('draft')
       setSubmitError(t('storyResources.form.errors.presetRequired'))
       return
     }
@@ -368,42 +367,25 @@ export function StoryResourceFormDialog({
     setSubmitIntent(intent)
 
     try {
-      const savedResource =
-        mode === 'create'
-          ? await createStoryResource({
-              character_ids: nextFormState.characterIds,
-              lorebook_ids: nextFormState.lorebookIds,
-              ...(nextFormState.plannedStory
-                ? { planned_story: nextFormState.plannedStory }
-                : {}),
-              ...(nextFormState.playerSchemaIdSeed
-                ? { player_schema_id_seed: nextFormState.playerSchemaIdSeed }
-                : {}),
-              story_concept: nextFormState.storyConcept,
-              ...(nextFormState.worldSchemaIdSeed
-                ? { world_schema_id_seed: nextFormState.worldSchemaIdSeed }
-                : {}),
-            })
-          : await updateStoryResource({
-              character_ids: nextFormState.characterIds,
-              lorebook_ids: nextFormState.lorebookIds,
-              planned_story: nextFormState.plannedStory,
-              ...(nextFormState.playerSchemaIdSeed
-                ? { player_schema_id_seed: nextFormState.playerSchemaIdSeed }
-                : {}),
-              resource_id: initialResource!.resource_id,
-              story_concept: nextFormState.storyConcept,
-              ...(nextFormState.worldSchemaIdSeed
-                ? { world_schema_id_seed: nextFormState.worldSchemaIdSeed }
-                : {}),
-            })
+      const savedResource = await updateStoryResource({
+        character_ids: nextFormState.characterIds,
+        lorebook_ids: nextFormState.lorebookIds,
+        planned_story: nextFormState.plannedStory,
+        ...(nextFormState.playerSchemaIdSeed
+          ? { player_schema_id_seed: nextFormState.playerSchemaIdSeed }
+          : {}),
+        resource_id: initialResource.resource_id,
+        story_concept: nextFormState.storyConcept,
+        ...(nextFormState.worldSchemaIdSeed
+          ? { world_schema_id_seed: nextFormState.worldSchemaIdSeed }
+          : {}),
+      })
 
-      let noticeTone: NoticeTone = 'success'
-      let noticeMessage: string =
-        mode === 'create'
-          ? t('storyResources.feedback.created', { id: savedResource.resource_id })
-          : t('storyResources.feedback.updated', { id: savedResource.resource_id })
       let nextResource = savedResource
+      let tone: NoticeTone = 'success'
+      let message: string = t('storyResources.feedback.updated', {
+        id: savedResource.resource_id,
+      })
 
       if (intent === 'generate') {
         try {
@@ -412,13 +394,14 @@ export function StoryResourceFormDialog({
             presetId: plannerPresetId,
             resourceId: savedResource.resource_id,
           })
+
           nextResource = generated.resource
-          noticeMessage = t('storyResources.feedback.generated', {
+          message = t('storyResources.feedback.generated', {
             id: savedResource.resource_id,
           })
         } catch (error) {
-          noticeTone = 'warning'
-          noticeMessage = getErrorMessage(
+          tone = 'warning'
+          message = getErrorMessage(
             error,
             t('storyResources.feedback.savedButGenerateFailed', {
               id: savedResource.resource_id,
@@ -427,10 +410,14 @@ export function StoryResourceFormDialog({
         }
       }
 
+      setInitialResource(nextResource)
+      setFormState(createFormStateFromResource(nextResource))
+      setActiveTab(intent === 'generate' ? 'draft' : activeTab)
+
       await onCompleted({
-        message: noticeMessage,
+        message,
         resource: nextResource,
-        tone: noticeTone,
+        tone,
       })
 
       onOpenChange(false)
@@ -445,7 +432,7 @@ export function StoryResourceFormDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent
         aria-describedby={undefined}
-        className="w-[min(96vw,58rem)] overflow-hidden"
+        className="w-[min(96vw,72rem)] overflow-hidden"
         onEscapeKeyDown={(event) => {
           if (isSubmitting) {
             event.preventDefault()
@@ -459,252 +446,253 @@ export function StoryResourceFormDialog({
       >
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>
-            {isEditMode
-              ? t('storyResources.form.editTitle')
-              : t('storyResources.form.createTitle')}
+            {initialResource?.resource_id ?? t('storyResources.form.editTitle')}
           </DialogTitle>
+          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+            {t('storyResources.editPage.description')}
+          </p>
         </DialogHeader>
 
-        <DialogBody className="max-h-[calc(92vh-12rem)] overflow-y-auto pt-6">
+        <DialogBody className="max-h-[calc(92vh-12rem)] space-y-6 overflow-y-auto pt-6">
           {isLoading ? (
             <LoadingSkeleton />
+          ) : !initialResource ? (
+            <div className="rounded-[1.6rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-6 py-12 text-center">
+              <h3 className="font-display text-3xl text-[var(--color-text-primary)]">
+                {t('storyResources.editPage.loadErrorTitle')}
+              </h3>
+              <p className="mt-3 text-sm leading-7 text-[var(--color-text-secondary)]">
+                {submitError || t('storyResources.feedback.loadResourceFailed')}
+              </p>
+            </div>
           ) : (
-            <div className="space-y-5">
-              {isEditMode && initialResource ? (
-                <Field
-                  description={t('storyResources.form.fields.resourceIdHint')}
-                  htmlFor={fieldIds.resourceId}
-                  label={t('storyResources.form.fields.resourceId')}
-                >
-                  <Input id={fieldIds.resourceId} readOnly value={initialResource.resource_id} />
-                </Field>
-              ) : null}
+            <div className="space-y-6">
+              <SegmentedSelector
+                ariaLabel={t('storyResources.editPage.tabsLabel')}
+                items={[
+                  { label: t('storyResources.editPage.tabs.basic'), value: 'basic' },
+                  { label: t('storyResources.editPage.tabs.characters'), value: 'characters' },
+                  { label: t('storyResources.editPage.tabs.settings'), value: 'settings' },
+                  { label: t('storyResources.editPage.tabs.draft'), value: 'draft' },
+                ]}
+                layoutId="story-resource-edit-tabs-dialog"
+                onValueChange={setActiveTabFromValue}
+                value={activeTab}
+              />
 
-              <Field
-                description={t('storyResources.form.fieldDescriptions.storyConcept')}
-                htmlFor={fieldIds.storyConcept}
-                label={t('storyResources.form.fields.storyConcept')}
-              >
-                <Textarea
-                  autoFocus={!isEditMode}
-                  id={fieldIds.storyConcept}
-                  onChange={(event) => {
-                    setFormState((currentFormState) => ({
-                      ...currentFormState,
-                      storyConcept: event.target.value,
-                    }))
-                  }}
-                  placeholder={t('storyResources.form.placeholders.storyConcept')}
-                  rows={5}
-                  value={formState.storyConcept}
-                />
-              </Field>
+              <div className="rounded-[1.55rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-5">
+                {activeTab === 'basic' ? (
+                  <div className="space-y-5">
+                    <Field
+                      description={t('storyResources.form.fields.resourceIdHint')}
+                      htmlFor={fieldIds.resourceId}
+                      label={t('storyResources.form.fields.resourceId')}
+                    >
+                      <Input id={fieldIds.resourceId} readOnly value={initialResource.resource_id} />
+                    </Field>
 
-              <Field label={t('storyResources.form.fields.characters')}>
-                {referencesLoading ? (
-                  <div className="h-28 animate-pulse rounded-[1.45rem] bg-[var(--color-bg-elevated)]" />
-                ) : availableCharacters.length === 0 ? (
-                  <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-5 text-sm text-[var(--color-text-secondary)]">
-                    {t('storyResources.form.emptyCharacters')}
+                    <Field
+                      description={t('storyResources.form.fieldDescriptions.storyConcept')}
+                      htmlFor={fieldIds.storyConcept}
+                      label={t('storyResources.form.fields.storyConcept')}
+                    >
+                      <Textarea
+                        autoFocus
+                        id={fieldIds.storyConcept}
+                        onChange={(event) => {
+                          setFormState((currentFormState) => ({
+                            ...currentFormState,
+                            storyConcept: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('storyResources.form.placeholders.storyConcept')}
+                        rows={7}
+                        value={formState.storyConcept}
+                      />
+                    </Field>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex flex-wrap gap-2">
-                      {formState.characterIds.length > 0 ? (
-                        formState.characterIds.map((characterId) => (
-                          <Badge className="normal-case px-3 py-1.5" key={characterId} variant="subtle">
-                            {characterLookup.get(characterId)?.name ?? characterId}
-                          </Badge>
-                        ))
+                ) : null}
+
+                {activeTab === 'characters' ? (
+                  <div className="space-y-5">
+                    <Field label={t('storyResources.form.fields.characters')}>
+                      <StoryResourceCharacterSelector
+                        characters={availableCharacters}
+                        disabled={isSubmitting}
+                        loading={referencesLoading}
+                        onChangeSelectedCharacterIds={(characterIds) => {
+                          setFormState((currentFormState) => ({
+                            ...currentFormState,
+                            characterIds,
+                          }))
+                        }}
+                        selectedCharacterIds={formState.characterIds}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+
+                {activeTab === 'settings' ? (
+                  <div className="space-y-5">
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field
+                        htmlFor={fieldIds.playerSchemaIdSeed}
+                        label={t('storyResources.form.fields.playerSchemaIdSeed')}
+                      >
+                        <Select
+                          allowClear
+                          clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
+                          disabled={availableSchemas.length === 0 || isSubmitting}
+                          items={schemaOptions}
+                          onValueChange={(value) => {
+                            setFormState((currentFormState) => ({
+                              ...currentFormState,
+                              playerSchemaIdSeed: value,
+                            }))
+                          }}
+                          placeholder={t('storyResources.form.placeholders.schemaSeed')}
+                          textAlign="start"
+                          triggerId={fieldIds.playerSchemaIdSeed}
+                          value={formState.playerSchemaIdSeed || undefined}
+                        />
+                      </Field>
+
+                      <Field
+                        htmlFor={fieldIds.worldSchemaIdSeed}
+                        label={t('storyResources.form.fields.worldSchemaIdSeed')}
+                      >
+                        <Select
+                          allowClear
+                          clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
+                          disabled={availableSchemas.length === 0 || isSubmitting}
+                          items={schemaOptions}
+                          onValueChange={(value) => {
+                            setFormState((currentFormState) => ({
+                              ...currentFormState,
+                              worldSchemaIdSeed: value,
+                            }))
+                          }}
+                          placeholder={t('storyResources.form.placeholders.schemaSeed')}
+                          textAlign="start"
+                          triggerId={fieldIds.worldSchemaIdSeed}
+                          value={formState.worldSchemaIdSeed || undefined}
+                        />
+                      </Field>
+                    </div>
+
+                    <Field
+                      description={t('storyResources.form.fieldDescriptions.lorebooks')}
+                      label={t('storyResources.form.fields.lorebooks')}
+                    >
+                      <StoryResourceLorebookSelector
+                        disabled={isSubmitting || referencesLoading}
+                        emptyAction={
+                          <DialogRouteButton
+                            onRequestClose={() => {
+                              onOpenChange(false)
+                            }}
+                            to={appPaths.lorebooks}
+                            variant="secondary"
+                          >
+                            {t('storyResources.form.openLorebooks')}
+                          </DialogRouteButton>
+                        }
+                        emptyMessage={t('storyResources.form.emptyLorebooks')}
+                        lorebooks={lorebookOptions}
+                        noSelectionLabel={t('storyResources.form.emptyLorebookSelection')}
+                        onToggleLorebook={toggleLorebook}
+                        selectedLorebookIds={formState.lorebookIds}
+                      />
+                    </Field>
+                  </div>
+                ) : null}
+
+                {activeTab === 'draft' ? (
+                  <div className="space-y-5">
+                    <Field
+                      description={t('storyResources.form.fieldDescriptions.plannedStory')}
+                      htmlFor={fieldIds.plannedStory}
+                      label={t('storyResources.form.fields.plannedStory')}
+                    >
+                      <Textarea
+                        id={fieldIds.plannedStory}
+                        onChange={(event) => {
+                          setFormState((currentFormState) => ({
+                            ...currentFormState,
+                            plannedStory: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('storyResources.form.placeholders.plannedStory')}
+                        rows={12}
+                        value={formState.plannedStory}
+                      />
+                    </Field>
+
+                    <div className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,transparent)] px-4 py-4">
+                      <div className="space-y-1.5">
+                        <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
+                          {t('storyResources.form.generationBindingsTitle')}
+                        </h3>
+                        <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                          {t('storyResources.form.generationBindingsDescription')}
+                        </p>
+                      </div>
+
+                      {plannerBindingsUnavailable ? (
+                        <div className="space-y-4 rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-4">
+                          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                            {availableApiGroups.length === 0
+                              ? t('storyResources.form.emptyApiGroups')
+                              : t('storyResources.form.emptyPresets')}
+                          </p>
+                          <div className="flex justify-end">
+                            <DialogRouteButton
+                              onRequestClose={() => {
+                                onOpenChange(false)
+                              }}
+                              to={availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets}
+                              variant="secondary"
+                            >
+                              {availableApiGroups.length === 0
+                                ? t('storyResources.form.openApiGroups')
+                                : t('storyResources.form.openPresets')}
+                            </DialogRouteButton>
+                          </div>
+                        </div>
                       ) : (
-                        <span className="text-sm text-[var(--color-text-muted)]">
-                          {t('storyResources.form.emptySelection')}
-                        </span>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field
+                            htmlFor={fieldIds.apiGroupId}
+                            label={t('storyResources.form.fields.apiGroupId')}
+                          >
+                            <Select
+                              items={apiGroupOptions}
+                              onValueChange={setPlannerApiGroupId}
+                              placeholder={t('storyResources.form.placeholders.apiGroupId')}
+                              textAlign="start"
+                              triggerId={fieldIds.apiGroupId}
+                              value={plannerApiGroupId || undefined}
+                            />
+                          </Field>
+
+                          <Field
+                            htmlFor={fieldIds.presetId}
+                            label={t('storyResources.form.fields.presetId')}
+                          >
+                            <Select
+                              items={presetOptions}
+                              onValueChange={setPlannerPresetId}
+                              placeholder={t('storyResources.form.placeholders.presetId')}
+                              textAlign="start"
+                              triggerId={fieldIds.presetId}
+                              value={plannerPresetId || undefined}
+                            />
+                          </Field>
+                        </div>
                       )}
                     </div>
-
-                    <div className="grid gap-2 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-3 sm:grid-cols-2">
-                      {availableCharacters.map((character) => {
-                        const isSelected = formState.characterIds.includes(character.character_id)
-
-                        return (
-                          <button
-                            className={cn(
-                              'rounded-[1.2rem] border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-                              isSelected
-                                ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                                : 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_84%,transparent)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
-                            )}
-                            key={character.character_id}
-                            onClick={() => {
-                              toggleCharacter(character.character_id)
-                            }}
-                            type="button"
-                          >
-                            <div className="truncate text-sm font-medium">{character.name}</div>
-                            <div className="truncate pt-1 font-mono text-[0.74rem] text-[var(--color-text-muted)]">
-                              {character.character_id}
-                            </div>
-                          </button>
-                        )
-                      })}
-                    </div>
                   </div>
-                )}
-              </Field>
-
-              <Field
-                description={t('storyResources.form.fieldDescriptions.lorebooks')}
-                label={t('storyResources.form.fields.lorebooks')}
-              >
-                <StoryResourceLorebookSelector
-                  disabled={isSubmitting || referencesLoading}
-                  emptyAction={
-                    <DialogRouteButton
-                      onRequestClose={() => {
-                        onOpenChange(false)
-                      }}
-                      to={appPaths.lorebooks}
-                      variant="secondary"
-                    >
-                      {t('storyResources.form.openLorebooks')}
-                    </DialogRouteButton>
-                  }
-                  emptyMessage={t('storyResources.form.emptyLorebooks')}
-                  lorebooks={lorebookOptions}
-                  noSelectionLabel={t('storyResources.form.emptyLorebookSelection')}
-                  onToggleLorebook={toggleLorebook}
-                  selectedLorebookIds={formState.lorebookIds}
-                />
-              </Field>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <Field
-                  htmlFor={fieldIds.playerSchemaIdSeed}
-                  label={t('storyResources.form.fields.playerSchemaIdSeed')}
-                >
-                  <Select
-                    allowClear
-                    clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
-                    disabled={availableSchemas.length === 0}
-                    items={schemaOptions}
-                    onValueChange={(value) => {
-                      setFormState((currentFormState) => ({
-                        ...currentFormState,
-                        playerSchemaIdSeed: value,
-                      }))
-                    }}
-                    placeholder={t('storyResources.form.placeholders.schemaSeed')}
-                    textAlign="start"
-                    triggerId={fieldIds.playerSchemaIdSeed}
-                    value={formState.playerSchemaIdSeed || undefined}
-                  />
-                </Field>
-
-                <Field
-                  htmlFor={fieldIds.worldSchemaIdSeed}
-                  label={t('storyResources.form.fields.worldSchemaIdSeed')}
-                >
-                  <Select
-                    allowClear
-                    clearLabel={t('storyResources.form.placeholders.schemaSeedClear')}
-                    disabled={availableSchemas.length === 0}
-                    items={schemaOptions}
-                    onValueChange={(value) => {
-                      setFormState((currentFormState) => ({
-                        ...currentFormState,
-                        worldSchemaIdSeed: value,
-                      }))
-                    }}
-                    placeholder={t('storyResources.form.placeholders.schemaSeed')}
-                    textAlign="start"
-                    triggerId={fieldIds.worldSchemaIdSeed}
-                    value={formState.worldSchemaIdSeed || undefined}
-                  />
-                </Field>
-              </div>
-
-              <Field
-                description={t('storyResources.form.fieldDescriptions.plannedStory')}
-                htmlFor={fieldIds.plannedStory}
-                label={t('storyResources.form.fields.plannedStory')}
-              >
-                <Textarea
-                  id={fieldIds.plannedStory}
-                  onChange={(event) => {
-                    setFormState((currentFormState) => ({
-                      ...currentFormState,
-                      plannedStory: event.target.value,
-                    }))
-                  }}
-                  placeholder={t('storyResources.form.placeholders.plannedStory')}
-                  rows={10}
-                  value={formState.plannedStory}
-                />
-              </Field>
-
-              <div className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-                <div className="space-y-1.5">
-                  <h3 className="text-sm font-medium text-[var(--color-text-primary)]">
-                    {t('storyResources.form.generationBindingsTitle')}
-                  </h3>
-                  <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                    {t('storyResources.form.generationBindingsDescription')}
-                  </p>
-                </div>
-
-                {plannerBindingsUnavailable ? (
-                  <div className="space-y-4 rounded-[1.25rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_86%,transparent)] px-4 py-4">
-                    <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-                      {availableApiGroups.length === 0
-                        ? t('storyResources.form.emptyApiGroups')
-                        : t('storyResources.form.emptyPresets')}
-                    </p>
-                    <div className="flex justify-end">
-                      <DialogRouteButton
-                        onRequestClose={() => {
-                          onOpenChange(false)
-                        }}
-                        to={availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets}
-                        variant="secondary"
-                      >
-                        {availableApiGroups.length === 0
-                          ? t('storyResources.form.openApiGroups')
-                          : t('storyResources.form.openPresets')}
-                      </DialogRouteButton>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Field
-                      htmlFor={fieldIds.apiGroupId}
-                      label={t('storyResources.form.fields.apiGroupId')}
-                    >
-                      <Select
-                        items={apiGroupOptions}
-                        onValueChange={setPlannerApiGroupId}
-                        placeholder={t('storyResources.form.placeholders.apiGroupId')}
-                        textAlign="start"
-                        triggerId={fieldIds.apiGroupId}
-                        value={plannerApiGroupId || undefined}
-                      />
-                    </Field>
-
-                    <Field
-                      htmlFor={fieldIds.presetId}
-                      label={t('storyResources.form.fields.presetId')}
-                    >
-                      <Select
-                        items={presetOptions}
-                        onValueChange={setPlannerPresetId}
-                        placeholder={t('storyResources.form.placeholders.presetId')}
-                        textAlign="start"
-                        triggerId={fieldIds.presetId}
-                        value={plannerPresetId || undefined}
-                      />
-                    </Field>
-                  </div>
-                )}
+                ) : null}
               </div>
             </div>
           )}
@@ -712,48 +700,45 @@ export function StoryResourceFormDialog({
 
         <DialogFooter className="sm:items-center">
           <DialogClose asChild>
-            <Button disabled={isSubmitting} size="md" variant="ghost">
+            <Button disabled={isSubmitting} size="md" variant="secondary">
               {t('storyResources.actions.cancel')}
             </Button>
           </DialogClose>
 
-          <div className="flex flex-col-reverse gap-3 sm:ml-auto sm:flex-row">
-            <Button
-              disabled={isSubmitting || referencesLoading || availableCharacters.length === 0}
-              onClick={() => {
-                void handleSubmit('save')
-              }}
-              size="md"
-              variant="secondary"
-            >
-              {isSubmitting && submitIntent === 'save'
-                ? t('storyResources.actions.saving')
-                : isEditMode
-                  ? t('storyResources.actions.saveChanges')
-                  : t('storyResources.actions.create')}
-            </Button>
+          {initialResource ? (
+            <div className="flex flex-col-reverse gap-2 sm:ml-auto sm:flex-row">
+              <Button
+                disabled={isSubmitting || referencesLoading}
+                onClick={() => {
+                  void handleSubmit('save')
+                }}
+                size="md"
+                variant="secondary"
+              >
+                {isSubmitting && submitIntent === 'save'
+                  ? t('storyResources.actions.saving')
+                  : t('storyResources.actions.saveChanges')}
+              </Button>
 
-            <Button
-              disabled={
-                isSubmitting ||
-                referencesLoading ||
-                availableCharacters.length === 0 ||
-                plannerBindingsUnavailable ||
-                plannerApiGroupId.trim().length === 0 ||
-                plannerPresetId.trim().length === 0
-              }
-              onClick={() => {
-                void handleSubmit('generate')
-              }}
-              size="md"
-            >
-              {isSubmitting && submitIntent === 'generate'
-                ? t('storyResources.actions.generating')
-                : isEditMode
-                  ? t('storyResources.actions.saveAndGenerate')
-                  : t('storyResources.actions.createAndGenerate')}
-            </Button>
-          </div>
+              <Button
+                disabled={
+                  isSubmitting ||
+                  referencesLoading ||
+                  plannerBindingsUnavailable ||
+                  plannerApiGroupId.trim().length === 0 ||
+                  plannerPresetId.trim().length === 0
+                }
+                onClick={() => {
+                  void handleSubmit('generate')
+                }}
+                size="md"
+              >
+                {isSubmitting && submitIntent === 'generate'
+                  ? t('storyResources.actions.generating')
+                  : t('storyResources.actions.saveAndGenerate')}
+              </Button>
+            </div>
+          ) : null}
         </DialogFooter>
       </DialogContent>
     </Dialog>

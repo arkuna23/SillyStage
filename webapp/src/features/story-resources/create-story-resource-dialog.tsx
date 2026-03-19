@@ -4,7 +4,6 @@ import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
-import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import {
   Dialog,
@@ -26,12 +25,13 @@ import type { CharacterSummary } from '../characters/types'
 import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import { createStoryResource, generateAndSaveStoryPlan } from './api'
+import { StoryResourceCharacterSelector } from './story-resource-character-selector'
 import { StoryInputFlowCard } from './story-input-flow-card'
 import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
-type CreateWizardStep = 'concept' | 'seeds' | 'planner' | 'generating'
+type CreateWizardStep = 'concept' | 'characters' | 'seeds' | 'planner' | 'generating'
 
 type CreateStoryResourceDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
@@ -170,10 +170,6 @@ export function CreateStoryResourceDialog({
     worldSchemaIdSeed: `${fieldIdPrefix}-world-schema-seed`,
   } as const
 
-  const characterLookup = useMemo(
-    () => new Map(availableCharacters.map((character) => [character.character_id, character])),
-    [availableCharacters],
-  )
   const schemaOptions = useMemo(
     () =>
       availableSchemas.map((schema) => ({
@@ -197,11 +193,6 @@ export function CreateStoryResourceDialog({
         value: preset.preset_id,
       })),
     [availablePresets],
-  )
-  const selectedCharacterLabels = useMemo(
-    () =>
-      formState.characterIds.map((characterId) => characterLookup.get(characterId)?.name ?? characterId),
-    [characterLookup, formState.characterIds],
   )
   const lorebookOptions = useMemo(
     () =>
@@ -230,19 +221,6 @@ export function CreateStoryResourceDialog({
     onOpenChange(nextOpen)
   }
 
-  function toggleCharacter(characterId: string) {
-    setFormState((currentFormState) => {
-      const isSelected = currentFormState.characterIds.includes(characterId)
-
-      return {
-        ...currentFormState,
-        characterIds: isSelected
-          ? currentFormState.characterIds.filter((id) => id !== characterId)
-          : [...currentFormState.characterIds, characterId],
-      }
-    })
-  }
-
   function toggleLorebook(lorebookId: string) {
     setFormState((currentFormState) => {
       const isSelected = currentFormState.lorebookIds.includes(lorebookId)
@@ -261,6 +239,10 @@ export function CreateStoryResourceDialog({
       return t('storyResources.form.errors.storyConceptRequired')
     }
 
+    return null
+  }
+
+  function validateCharactersStep() {
     if (formState.characterIds.length === 0) {
       return t('storyResources.form.errors.charactersRequired')
     }
@@ -269,7 +251,12 @@ export function CreateStoryResourceDialog({
   }
 
   function goNext() {
-    const validationError = activeStep === 'concept' ? validateConceptStep() : null
+    const validationError =
+      activeStep === 'concept'
+        ? validateConceptStep()
+        : activeStep === 'characters'
+          ? validateCharactersStep()
+          : null
 
     if (validationError) {
       setSubmitError(validationError)
@@ -279,6 +266,10 @@ export function CreateStoryResourceDialog({
     setSubmitError(null)
     setActiveStep((currentStep) => {
       if (currentStep === 'concept') {
+        return 'characters'
+      }
+
+      if (currentStep === 'characters') {
         return 'seeds'
       }
 
@@ -298,6 +289,10 @@ export function CreateStoryResourceDialog({
       }
 
       if (currentStep === 'seeds') {
+        return 'characters'
+      }
+
+      if (currentStep === 'characters') {
         return 'concept'
       }
 
@@ -306,13 +301,20 @@ export function CreateStoryResourceDialog({
   }
 
   async function handleCreate() {
-    const validationError = validateConceptStep()
+    const conceptValidationError = validateConceptStep()
+    const charactersValidationError = validateCharactersStep()
 
     setSubmitError(null)
 
-    if (validationError) {
+    if (conceptValidationError) {
       setActiveStep('concept')
-      setSubmitError(validationError)
+      setSubmitError(conceptValidationError)
+      return
+    }
+
+    if (charactersValidationError) {
+      setActiveStep('characters')
+      setSubmitError(charactersValidationError)
       return
     }
 
@@ -401,10 +403,18 @@ export function CreateStoryResourceDialog({
 
   const stepLabels = [
     t('storyResources.createWizard.steps.concept'),
+    t('storyResources.createWizard.steps.characters'),
     t('storyResources.createWizard.steps.seeds'),
     t('storyResources.createWizard.steps.planner'),
   ]
-  const activeStepIndex = activeStep === 'concept' ? 0 : activeStep === 'seeds' ? 1 : 2
+  const activeStepIndex =
+    activeStep === 'concept'
+      ? 0
+      : activeStep === 'characters'
+        ? 1
+        : activeStep === 'seeds'
+          ? 2
+          : 3
   const generatingDescription =
     generatingPhase === 'creating'
       ? t('storyResources.createWizard.loading.preparing')
@@ -430,7 +440,7 @@ export function CreateStoryResourceDialog({
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>{t('storyResources.createWizard.title')}</DialogTitle>
           {activeStep !== 'generating' ? (
-            <div className="grid gap-2 pt-2 md:grid-cols-3">
+            <div className="grid gap-2 pt-2 md:grid-cols-4">
               {stepLabels.map((label, index) => (
                 <StepChip active={index <= activeStepIndex} index={index + 1} key={label} label={label} />
               ))}
@@ -472,58 +482,39 @@ export function CreateStoryResourceDialog({
                     value={formState.storyConcept}
                   />
                 </Field>
+              </motion.div>
+            ) : null}
+
+            {activeStep === 'characters' ? (
+              <motion.div
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-5"
+                initial={{ opacity: 0, y: 14 }}
+                key="characters"
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+              >
+                <div className="space-y-2">
+                  <h3 className="font-display text-[1.85rem] text-[var(--color-text-primary)]">
+                    {t('storyResources.createWizard.headings.characters')}
+                  </h3>
+                  <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                    {t('storyResources.createWizard.descriptions.characters')}
+                  </p>
+                </div>
 
                 <Field label={t('storyResources.form.fields.characters')}>
-                  {referencesLoading ? (
-                    <div className="h-28 animate-pulse rounded-[1.45rem] bg-[var(--color-bg-elevated)]" />
-                  ) : availableCharacters.length === 0 ? (
-                    <div className="rounded-[1.45rem] border border-dashed border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-5 text-sm text-[var(--color-text-secondary)]">
-                      {t('storyResources.form.emptyCharacters')}
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex flex-wrap gap-2">
-                        {selectedCharacterLabels.length > 0 ? (
-                          selectedCharacterLabels.map((label) => (
-                            <Badge className="normal-case px-3 py-1.5" key={label} variant="subtle">
-                              {label}
-                            </Badge>
-                          ))
-                        ) : (
-                          <span className="text-sm text-[var(--color-text-muted)]">
-                            {t('storyResources.form.emptySelection')}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid gap-2 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-3 sm:grid-cols-2">
-                        {availableCharacters.map((character) => {
-                          const isSelected = formState.characterIds.includes(character.character_id)
-
-                          return (
-                            <button
-                              className={cn(
-                                'rounded-[1.2rem] border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-                                isSelected
-                                  ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
-                                  : 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_84%,transparent)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
-                              )}
-                              key={character.character_id}
-                              onClick={() => {
-                                toggleCharacter(character.character_id)
-                              }}
-                              type="button"
-                            >
-                              <div className="truncate text-sm font-medium">{character.name}</div>
-                              <div className="truncate pt-1 font-mono text-[0.74rem] text-[var(--color-text-muted)]">
-                                {character.character_id}
-                              </div>
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )}
+                  <StoryResourceCharacterSelector
+                    characters={availableCharacters}
+                    disabled={isSubmitting}
+                    loading={referencesLoading}
+                    onChangeSelectedCharacterIds={(characterIds) => {
+                      setFormState((currentFormState) => ({
+                        ...currentFormState,
+                        characterIds,
+                      }))
+                    }}
+                    selectedCharacterIds={formState.characterIds}
+                  />
                 </Field>
               </motion.div>
             ) : null}
@@ -849,7 +840,11 @@ export function CreateStoryResourceDialog({
 
               {activeStep !== 'planner' ? (
                 <Button
-                  disabled={referencesLoading && activeStep === 'concept'}
+                  disabled={
+                    isSubmitting ||
+                    (referencesLoading &&
+                      (activeStep === 'characters' || activeStep === 'seeds'))
+                  }
                   onClick={goNext}
                   size="md"
                 >

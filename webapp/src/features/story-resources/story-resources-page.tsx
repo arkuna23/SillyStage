@@ -19,14 +19,6 @@ import { SelectionToggleButton } from '../../components/ui/selection-toggle-butt
 import { SectionHeader } from '../../components/ui/section-header'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
-import { listApiGroups, listPresets } from '../apis/api'
-import type { ApiGroup, Preset } from '../apis/types'
-import { listCharacters } from '../characters/api'
-import type { CharacterSummary } from '../characters/types'
-import { listLorebooks } from '../lorebooks/api'
-import type { Lorebook } from '../lorebooks/types'
-import { listSchemas } from '../schemas/api'
-import type { SchemaResource } from '../schemas/types'
 import {
   deleteStoryResource,
   listStoryResources,
@@ -36,6 +28,7 @@ import { DeleteStoryResourceDialog } from './delete-story-resource-dialog'
 import { GenerateStoryPlanDialog } from './generate-story-plan-dialog'
 import { StoryResourceFormDialog } from './story-resource-form-dialog'
 import type { StoryResource } from './types'
+import { useStoryResourceReferences } from './use-story-resource-references'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 
@@ -88,23 +81,31 @@ export function StoryResourcesPage() {
   const { t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
   const [resources, setResources] = useState<StoryResource[]>([])
-  const [availableCharacters, setAvailableCharacters] = useState<CharacterSummary[]>([])
-  const [availableApiGroups, setAvailableApiGroups] = useState<ApiGroup[]>([])
-  const [availableLorebooks, setAvailableLorebooks] = useState<Lorebook[]>([])
-  const [availablePresets, setAvailablePresets] = useState<Preset[]>([])
-  const [availableSchemas, setAvailableSchemas] = useState<SchemaResource[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isListLoading, setIsListLoading] = useState(true)
-  const [referencesLoading, setReferencesLoading] = useState(true)
   const [isDeleting, setIsDeleting] = useState(false)
   const [generatingResourceId, setGeneratingResourceId] = useState<string | null>(null)
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
-  const [editResourceId, setEditResourceId] = useState<string | null>(null)
+  const [editingResourceId, setEditingResourceId] = useState<string | null>(null)
   const [generateTarget, setGenerateTarget] = useState<StoryResource | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([])
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
   useToastNotice(notice)
+  const handleReferencesLoadError = useCallback((message: string) => {
+    setNotice({ message, tone: 'error' })
+  }, [])
+
+  const {
+    availableApiGroups,
+    availableCharacters,
+    availableLorebooks,
+    availablePresets,
+    availableSchemas,
+    referencesLoading,
+  } = useStoryResourceReferences({
+    onLoadError: handleReferencesLoadError,
+  })
 
   const refinedCount = useMemo(() => countRefinedInputs(resources), [resources])
   const deleteTargets = useMemo(
@@ -141,54 +142,15 @@ export function StoryResourcesPage() {
     [t],
   )
 
-  const refreshReferences = useCallback(
-    async (signal?: AbortSignal) => {
-      setReferencesLoading(true)
-
-      try {
-        const [apiGroups, presets, characters, lorebooks, schemas] = await Promise.all([
-          listApiGroups(signal),
-          listPresets(signal),
-          listCharacters(signal),
-          listLorebooks(signal),
-          listSchemas(signal),
-        ])
-
-        if (!signal?.aborted) {
-          setAvailableApiGroups(apiGroups)
-          setAvailablePresets(presets)
-          setAvailableCharacters(characters)
-          setAvailableLorebooks(lorebooks)
-          setAvailableSchemas(schemas)
-        }
-      } catch (error) {
-        if (!signal?.aborted) {
-          setNotice({
-            message: getErrorMessage(error, t('storyResources.feedback.loadReferencesFailed')),
-            tone: 'error',
-          })
-        }
-      } finally {
-        if (!signal?.aborted) {
-          setReferencesLoading(false)
-        }
-      }
-    },
-    [t],
-  )
-
   useEffect(() => {
     const controller = new AbortController()
 
-    void Promise.all([
-      refreshResources(controller.signal),
-      refreshReferences(controller.signal),
-    ])
+    void refreshResources(controller.signal)
 
     return () => {
       controller.abort()
     }
-  }, [refreshReferences, refreshResources])
+  }, [refreshResources])
 
   useEffect(() => {
     const availableResourceIds = new Set(resources.map((resource) => resource.resource_id))
@@ -200,14 +162,14 @@ export function StoryResourcesPage() {
       currentSelection.filter((resourceId) => availableResourceIds.has(resourceId)),
     )
 
-    if (editResourceId !== null && !availableResourceIds.has(editResourceId)) {
-      setEditResourceId(null)
-    }
-
     if (generateTarget !== null && !availableResourceIds.has(generateTarget.resource_id)) {
       setGenerateTarget(null)
     }
-  }, [editResourceId, generateTarget, resources])
+
+    if (editingResourceId !== null && !availableResourceIds.has(editingResourceId)) {
+      setEditingResourceId(null)
+    }
+  }, [editingResourceId, generateTarget, resources])
 
   useLayoutEffect(() => {
     setRailContent({
@@ -244,10 +206,6 @@ export function StoryResourcesPage() {
           currentSelection.filter((resourceId) => !deletedIds.has(resourceId)),
         )
         setDeleteTargetIds([])
-
-        if (editResourceId !== null && deletedIds.has(editResourceId)) {
-          setEditResourceId(null)
-        }
 
         if (generateTarget !== null && deletedIds.has(generateTarget.resource_id)) {
           setGenerateTarget(null)
@@ -317,27 +275,6 @@ export function StoryResourcesPage() {
         referencesLoading={referencesLoading}
       />
 
-      <StoryResourceFormDialog
-        availableCharacters={availableCharacters}
-        availableApiGroups={availableApiGroups}
-        availableLorebooks={availableLorebooks}
-        availablePresets={availablePresets}
-        availableSchemas={availableSchemas}
-        mode="edit"
-        onCompleted={async ({ message, tone }) => {
-          setNotice({ message, tone })
-          await refreshResources()
-        }}
-        onOpenChange={(open) => {
-          if (!open) {
-            setEditResourceId(null)
-          }
-        }}
-        open={editResourceId !== null}
-        referencesLoading={referencesLoading}
-        resourceId={editResourceId}
-      />
-
       <GenerateStoryPlanDialog
         apiGroups={availableApiGroups}
         onCompleted={async ({ message, tone }) => {
@@ -353,6 +290,26 @@ export function StoryResourcesPage() {
         open={generateTarget !== null}
         presets={availablePresets}
         resource={generateTarget}
+      />
+
+      <StoryResourceFormDialog
+        availableApiGroups={availableApiGroups}
+        availableCharacters={availableCharacters}
+        availableLorebooks={availableLorebooks}
+        availablePresets={availablePresets}
+        availableSchemas={availableSchemas}
+        onCompleted={async ({ message, tone }) => {
+          setNotice({ message, tone })
+          await refreshResources()
+        }}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingResourceId(null)
+          }
+        }}
+        open={editingResourceId !== null}
+        referencesLoading={referencesLoading}
+        resourceId={editingResourceId}
       />
 
       <DeleteStoryResourceDialog
@@ -539,7 +496,7 @@ export function StoryResourcesPage() {
                                 icon={<FontAwesomeIcon icon={faPen} />}
                                 label={t('storyResources.actions.edit')}
                                 onClick={() => {
-                                  setEditResourceId(resource.resource_id)
+                                  setEditingResourceId(resource.resource_id)
                                 }}
                                 size="sm"
                                 variant="secondary"

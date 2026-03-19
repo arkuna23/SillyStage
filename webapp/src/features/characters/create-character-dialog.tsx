@@ -15,6 +15,7 @@ import {
 } from '../../components/ui/dialog'
 import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
+import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { useToastMessage } from '../../components/ui/toast-context'
@@ -279,6 +280,14 @@ export function CharacterFormDialog({
   const currentStepIndex = steps.findIndex((step) => step.key === currentStep)
   const isLastStep = currentStepIndex === steps.length - 1
   const isEditMode = mode === 'edit'
+  const editTabItems = useMemo(
+    () =>
+      steps.map((step) => ({
+        label: step.label,
+        value: step.key,
+      })),
+    [steps],
+  )
 
   useEffect(() => {
     if (!open) {
@@ -589,53 +598,68 @@ export function CharacterFormDialog({
             <LoadingSkeleton />
           ) : (
             <>
-              <div className="grid gap-3 sm:grid-cols-3">
-                {steps.map((step, index) => {
-                  const isActive = step.key === currentStep
-                  const isCompleted = index < currentStepIndex
+              {isEditMode ? (
+                <SegmentedSelector
+                  ariaLabel={t('characters.edit.title')}
+                  items={editTabItems}
+                  layoutId="character-edit-tabs"
+                  onValueChange={(value) => {
+                    if (value === 'identity' || value === 'voice' || value === 'system') {
+                      setCurrentStep(value)
+                      setSubmitError(null)
+                    }
+                  }}
+                  value={currentStep}
+                />
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {steps.map((step, index) => {
+                    const isActive = step.key === currentStep
+                    const isCompleted = index < currentStepIndex
 
-                  return (
-                    <button
-                      className={cn(
-                        'rounded-[1.35rem] border px-4 py-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
-                        isActive
-                          ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)]'
-                          : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] hover:border-[var(--color-accent-copper-soft)]',
-                      )}
-                      key={step.key}
-                      onClick={() => {
-                        if (index <= currentStepIndex) {
-                          goToStep(index)
-                        }
-                      }}
-                      type="button"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span
-                          className={cn(
-                            'text-sm font-medium',
-                            isActive
-                              ? 'text-[var(--color-text-primary)]'
-                              : 'text-[var(--color-text-secondary)]',
-                          )}
-                        >
-                          {step.label}
-                        </span>
-                        <span
-                          className={cn(
-                            'inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs',
-                            isCompleted || isActive
-                              ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold)] text-[color:var(--color-accent-ink)]'
-                              : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)]',
-                          )}
-                        >
-                          {index + 1}
-                        </span>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
+                    return (
+                      <button
+                        className={cn(
+                          'rounded-[1.35rem] border px-4 py-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
+                          isActive
+                            ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)]'
+                            : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] hover:border-[var(--color-accent-copper-soft)]',
+                        )}
+                        key={step.key}
+                        onClick={() => {
+                          if (index <= currentStepIndex) {
+                            goToStep(index)
+                          }
+                        }}
+                        type="button"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span
+                            className={cn(
+                              'text-sm font-medium',
+                              isActive
+                                ? 'text-[var(--color-text-primary)]'
+                                : 'text-[var(--color-text-secondary)]',
+                            )}
+                          >
+                            {step.label}
+                          </span>
+                          <span
+                            className={cn(
+                              'inline-flex h-7 w-7 items-center justify-center rounded-full border text-xs',
+                              isCompleted || isActive
+                                ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold)] text-[color:var(--color-accent-ink)]'
+                                : 'border-[var(--color-border-subtle)] text-[var(--color-text-muted)]',
+                            )}
+                          >
+                            {index + 1}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
 
               <div className="mt-6 space-y-5">
                 {currentStep === 'identity' ? (
@@ -933,7 +957,7 @@ export function CharacterFormDialog({
               </Button>
             </DialogClose>
 
-            {currentStepIndex > 0 && !isLoading ? (
+            {!isEditMode && currentStepIndex > 0 && !isLoading ? (
               <Button
                 disabled={isSubmitting}
                 onClick={() => {
@@ -949,7 +973,7 @@ export function CharacterFormDialog({
             <Button
               disabled={isSubmitting || isLoading}
               onClick={() => {
-                if (isLastStep) {
+                if (isEditMode || isLastStep) {
                   void handleSubmit()
                   return
                 }
@@ -960,10 +984,10 @@ export function CharacterFormDialog({
             >
               {isSubmitting
                 ? t('characters.actions.saving')
-                : isLastStep
-                  ? isEditMode
-                    ? t('characters.actions.saveChanges')
-                    : t('characters.actions.create')
+                : isEditMode
+                  ? t('characters.actions.saveChanges')
+                  : isLastStep
+                    ? t('characters.actions.create')
                   : t('characters.actions.next')}
             </Button>
           </div>

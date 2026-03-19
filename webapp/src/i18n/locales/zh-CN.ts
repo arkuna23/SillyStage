@@ -1156,9 +1156,23 @@ const zhCN = {
         storyConcept: '写下冲突、人物关系和开场局势。规划师会在这条原始剧情输入上继续整理。',
       },
     },
+    filters: {
+      all: '全部文件夹',
+      charactersEmpty: '当前筛选下没有可选角色。',
+      charactersTitle: '候选角色',
+      folderDescription: '先用文件夹缩小角色范围，再从右侧结果里挑选本条资源会用到的角色。',
+      folderEmpty: '没有匹配的文件夹。',
+      folderSearchPlaceholder: '过滤文件夹列表',
+      folderTitle: '文件夹筛选',
+      searchDescription: '支持按 ID、名称、性格、风格和 tag 搜索。',
+      searchPlaceholder: '搜索 ID、名称、性格、风格或 tag',
+      selectedTitle: '已选角色',
+      unfiled: '未分组',
+    },
     createWizard: {
       title: '新建故事资源',
       descriptions: {
+        characters: '把会参与这条剧情输入的角色单独选出来，并且可以先按文件夹或搜索结果缩小范围。',
         concept: '先写下原始剧情输入。规划师和架构师都会沿着这条输入继续工作。',
         planner: '最后决定是先只保存原始输入，还是立刻交给规划师整理成更容易修改的版本。',
         seeds: '如果你已经有玩家、世界状态结构，或需要补充背景设定的世界书，可以把它们一起带进去。',
@@ -1173,6 +1187,7 @@ const zhCN = {
       },
       flowDescription: '这两层不是两种不同资源，而是同一条剧情输入在规划师介入前后的两个阶段。',
       headings: {
+        characters: '再挑选这条剧情输入会用到的角色',
         concept: '先写下这条原始剧情输入',
         planner: '要不要先交给规划师整理',
         seeds: '补充可选的状态结构',
@@ -1201,10 +1216,29 @@ const zhCN = {
         world: '可选。给世界相关状态一个起始结构。',
       },
       steps: {
+        characters: '角色',
         concept: '原始输入',
         planner: '整理方式',
         seeds: '状态结构',
       },
+    },
+    editPage: {
+      backToList: '返回故事资源列表',
+      description: '在一个带标签的弹窗里分别编辑剧情输入、角色、状态结构和整理配置。',
+      loadErrorTitle: '这条故事资源暂时打不开。',
+      metrics: {
+        characters: '角色数量',
+        lorebooks: '世界书数量',
+      },
+      railDescription: '当前正在单独编辑一条故事资源，可分别调整剧情输入、角色和整理配置。',
+      tabs: {
+        basic: '基础',
+        characters: '角色',
+        draft: '草稿与整理',
+        settings: '设定',
+      },
+      tabsLabel: '故事资源编辑页标签',
+      title: '编辑故事资源',
     },
     inputFlow: {
       badge: '同一条剧情输入',

@@ -1170,9 +1170,23 @@ const en = {
         storyConcept: 'Write the conflict, cast, and opening situation here. Planner will refine this same input instead of creating a different artifact.',
       },
     },
+    filters: {
+      all: 'All Folders',
+      charactersEmpty: 'No characters match the current filters.',
+      charactersTitle: 'Available Characters',
+      folderDescription: 'Narrow the cast by folder first, then choose the characters this resource should use.',
+      folderEmpty: 'No folders match the current filter.',
+      folderSearchPlaceholder: 'Filter folder list',
+      folderTitle: 'Folder Filter',
+      searchDescription: 'Search by ID, name, personality, style, or tags.',
+      searchPlaceholder: 'Search ID, name, personality, style, or tags',
+      selectedTitle: 'Selected Characters',
+      unfiled: 'Unfiled',
+    },
     createWizard: {
       title: 'New Story Resource',
       descriptions: {
+        characters: 'Choose the cast for this story input in a dedicated step, with folder narrowing and full-text character search.',
         concept: 'Start with the raw story input. Planner and Architect both continue from this same input chain.',
         planner: 'Decide whether to keep only the raw input for now or hand it to Planner for a cleaner editable version.',
         seeds: 'If you already have player or world schemas, or lorebooks with background context, add them here as optional references.',
@@ -1189,6 +1203,7 @@ const en = {
       },
       flowDescription: 'These are not two different resources. They are two stages of the same story input before and after Planner.',
       headings: {
+        characters: 'Choose the cast for this story input',
         concept: 'Write the raw story input',
         planner: 'Decide whether Planner should refine it now',
         seeds: 'Add optional state schemas',
@@ -1217,10 +1232,29 @@ const en = {
         world: 'Optional. Use a schema as the starting structure for world state.',
       },
       steps: {
+        characters: 'Characters',
         concept: 'Raw Input',
         planner: 'Refinement',
         seeds: 'State Schemas',
       },
+    },
+    editPage: {
+      backToList: 'Back to Story Resources',
+      description: 'Edit the input, cast, schema seeds, and refinement bindings inside one tabbed dialog.',
+      loadErrorTitle: 'This story resource cannot be opened right now.',
+      metrics: {
+        characters: 'Characters',
+        lorebooks: 'Lorebooks',
+      },
+      railDescription: 'Edit one story resource directly and adjust its input, cast, and refinement bindings separately.',
+      tabs: {
+        basic: 'Basic',
+        characters: 'Characters',
+        draft: 'Draft & Refine',
+        settings: 'Settings',
+      },
+      tabsLabel: 'Story resource edit tabs',
+      title: 'Edit Story Resource',
     },
     inputFlow: {
       badge: 'One Architect Input Chain',
