@@ -140,3 +140,83 @@ pub fn normalize_agent_preset_config(
         modules,
     })
 }
+
+pub fn compact_agent_preset_config(
+    agent: PromptAgentKind,
+    incoming: AgentPresetConfig,
+) -> Result<AgentPresetConfig, PromptConfigError> {
+    let normalized = normalize_agent_preset_config(agent, incoming)?;
+    let defaults = default_agent_preset_config(agent);
+    let defaults_by_module = defaults
+        .modules
+        .into_iter()
+        .map(|module| {
+            (
+                module.module_id,
+                module
+                    .entries
+                    .into_iter()
+                    .map(|entry| (entry.entry_id.clone(), entry))
+                    .collect::<HashMap<_, _>>(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+
+    let mut modules = Vec::new();
+    for module in normalized.modules {
+        let default_lookup = defaults_by_module.get(&module.module_id);
+        let mut entries = Vec::new();
+
+        for entry in module.entries {
+            match entry.kind {
+                PromptEntryKind::CustomText => entries.push(entry),
+                PromptEntryKind::BuiltInText | PromptEntryKind::BuiltInContextRef => {
+                    let Some(default_entry) =
+                        default_lookup.and_then(|lookup| lookup.get(&entry.entry_id))
+                    else {
+                        return Err(PromptConfigError::UnknownBuiltInEntry {
+                            agent,
+                            module_id: module.module_id,
+                            entry_id: entry.entry_id,
+                        });
+                    };
+                    if !built_in_entry_matches_default(&entry, default_entry) {
+                        entries.push(AgentPromptModuleEntryConfig {
+                            entry_id: entry.entry_id,
+                            display_name: entry.display_name,
+                            kind: entry.kind,
+                            enabled: entry.enabled,
+                            order: entry.order,
+                            required: false,
+                            text: None,
+                            context_key: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            modules.push(AgentPromptModuleConfig {
+                module_id: module.module_id,
+                entries,
+            });
+        }
+    }
+
+    Ok(AgentPresetConfig {
+        temperature: normalized.temperature,
+        max_tokens: normalized.max_tokens,
+        extra: normalized.extra,
+        modules,
+    })
+}
+
+fn built_in_entry_matches_default(
+    entry: &AgentPromptModuleEntryConfig,
+    default_entry: &AgentPromptModuleEntryConfig,
+) -> bool {
+    entry.display_name == default_entry.display_name
+        && entry.enabled == default_entry.enabled
+        && entry.order == default_entry.order
+}

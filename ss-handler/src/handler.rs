@@ -46,6 +46,7 @@ impl Handler {
         store: Arc<dyn Store>,
         registry: LlmApiRegistry,
     ) -> Result<Self, HandlerError> {
+        preset::migrate_preset_storage(&store).await?;
         let manager = EngineManager::new(Arc::clone(&store), registry).await?;
 
         Ok(Self {

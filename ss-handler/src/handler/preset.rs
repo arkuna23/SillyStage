@@ -1,4 +1,6 @@
-use engine::{PromptAgentKind, normalize_agent_preset_config};
+use std::sync::Arc;
+
+use engine::{PromptAgentKind, compact_agent_preset_config, normalize_agent_preset_config};
 use protocol::{
     AgentPresetConfigPayload, JsonRpcResponseMessage, PresetAgentIdPayload, PresetCreateParams,
     PresetDeleteParams, PresetDeletedPayload, PresetEntryCreateParams, PresetEntryDeleteParams,
@@ -10,7 +12,7 @@ use protocol::{
 };
 use store::{
     AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig, PresetAgentConfigs,
-    PresetRecord, PromptEntryKind, PromptModuleId,
+    PresetRecord, PromptEntryKind, PromptModuleId, Store,
 };
 
 use crate::error::HandlerError;
@@ -31,14 +33,15 @@ impl Handler {
         let record = PresetRecord {
             preset_id: preset_id.clone(),
             display_name: params.display_name,
-            agents: preset_configs_from_payload(params.agents)?,
+            agents: compact_preset_configs_from_payload(params.agents)?,
         };
         self.store.save_preset(record.clone()).await?;
+        let expanded = expand_preset_record(&record)?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::Preset(Box::new(preset_payload_from_record(&record))),
+            ResponseResult::Preset(Box::new(preset_payload_from_record(&expanded))),
         ))
     }
 
@@ -53,11 +56,12 @@ impl Handler {
             .get_preset(&preset_id)
             .await?
             .ok_or_else(|| HandlerError::MissingPreset(preset_id.clone()))?;
+        let expanded = expand_preset_record(&record)?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::Preset(Box::new(preset_payload_from_record(&record))),
+            ResponseResult::Preset(Box::new(preset_payload_from_record(&expanded))),
         ))
     }
 
@@ -70,8 +74,11 @@ impl Handler {
             .list_presets()
             .await?
             .into_iter()
-            .map(|record| preset_summary_payload_from_record(&record))
-            .collect::<Vec<_>>();
+            .map(|record| {
+                expand_preset_record(&record)
+                    .map(|expanded| preset_summary_payload_from_record(&expanded))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         presets.sort_by(|left, right| left.preset_id.cmp(&right.preset_id));
 
         Ok(JsonRpcResponseMessage::ok(
@@ -97,14 +104,15 @@ impl Handler {
             record.display_name = display_name;
         }
         if let Some(agents) = params.agents {
-            record.agents = preset_configs_from_payload(agents)?;
+            record.agents = compact_preset_configs_from_payload(agents)?;
         }
         self.store.save_preset(record.clone()).await?;
+        let expanded = expand_preset_record(&record)?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
             None::<String>,
-            ResponseResult::Preset(Box::new(preset_payload_from_record(&record))),
+            ResponseResult::Preset(Box::new(preset_payload_from_record(&expanded))),
         ))
     }
 
@@ -139,6 +147,7 @@ impl Handler {
             .get_preset(&preset_id)
             .await?
             .ok_or_else(|| HandlerError::MissingPreset(preset_id.clone()))?;
+        record = expand_preset_record(&record)?;
 
         let kind = prompt_agent_kind_from_payload(params.agent);
         let agent_config = agent_config_mut(&mut record.agents, params.agent);
@@ -183,7 +192,9 @@ impl Handler {
             agent: agent_label(params.agent).to_owned(),
             entry_id: entry_id.clone(),
         })?;
-        self.store.save_preset(record).await?;
+        self.store
+            .save_preset(compact_preset_record(&record)?)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -209,6 +220,7 @@ impl Handler {
             .get_preset(&preset_id)
             .await?
             .ok_or_else(|| HandlerError::MissingPreset(preset_id.clone()))?;
+        record = expand_preset_record(&record)?;
 
         let kind = prompt_agent_kind_from_payload(params.agent);
         let agent_config = agent_config_mut(&mut record.agents, params.agent);
@@ -259,7 +271,9 @@ impl Handler {
             agent: agent_label(params.agent).to_owned(),
             entry_id: params.entry_id.clone(),
         })?;
-        self.store.save_preset(record).await?;
+        self.store
+            .save_preset(compact_preset_record(&record)?)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -285,6 +299,7 @@ impl Handler {
             .get_preset(&preset_id)
             .await?
             .ok_or_else(|| HandlerError::MissingPreset(preset_id.clone()))?;
+        record = expand_preset_record(&record)?;
 
         let kind = prompt_agent_kind_from_payload(params.agent);
         let agent_config = agent_config_mut(&mut record.agents, params.agent);
@@ -306,7 +321,9 @@ impl Handler {
 
         *agent_config = normalize_agent_preset_config(kind, agent_config.clone())
             .map_err(|error| HandlerError::InvalidPresetDefinition(error.to_string()))?;
-        self.store.save_preset(record).await?;
+        self.store
+            .save_preset(compact_preset_record(&record)?)
+            .await?;
 
         Ok(JsonRpcResponseMessage::ok(
             request_id,
@@ -361,25 +378,38 @@ fn normalize_entry_id(entry_id: &str) -> Result<String, HandlerError> {
     Ok(trimmed.to_owned())
 }
 
-fn preset_configs_from_payload(
+pub(super) async fn migrate_preset_storage(store: &Arc<dyn Store>) -> Result<(), HandlerError> {
+    for record in store.list_presets().await? {
+        let compacted = compact_preset_record(&record)?;
+        if compacted.agents != record.agents {
+            store.save_preset(compacted).await?;
+        }
+    }
+    Ok(())
+}
+
+fn compact_preset_configs_from_payload(
     payload: protocol::PresetAgentPayloads,
 ) -> Result<PresetAgentConfigs, HandlerError> {
     Ok(PresetAgentConfigs {
-        planner: preset_config_from_payload(payload.planner, PromptAgentKind::Planner)?,
-        architect: preset_config_from_payload(payload.architect, PromptAgentKind::Architect)?,
-        director: preset_config_from_payload(payload.director, PromptAgentKind::Director)?,
-        actor: preset_config_from_payload(payload.actor, PromptAgentKind::Actor)?,
-        narrator: preset_config_from_payload(payload.narrator, PromptAgentKind::Narrator)?,
-        keeper: preset_config_from_payload(payload.keeper, PromptAgentKind::Keeper)?,
-        replyer: preset_config_from_payload(payload.replyer, PromptAgentKind::Replyer)?,
+        planner: compact_preset_config_from_payload(payload.planner, PromptAgentKind::Planner)?,
+        architect: compact_preset_config_from_payload(
+            payload.architect,
+            PromptAgentKind::Architect,
+        )?,
+        director: compact_preset_config_from_payload(payload.director, PromptAgentKind::Director)?,
+        actor: compact_preset_config_from_payload(payload.actor, PromptAgentKind::Actor)?,
+        narrator: compact_preset_config_from_payload(payload.narrator, PromptAgentKind::Narrator)?,
+        keeper: compact_preset_config_from_payload(payload.keeper, PromptAgentKind::Keeper)?,
+        replyer: compact_preset_config_from_payload(payload.replyer, PromptAgentKind::Replyer)?,
     })
 }
 
-fn preset_config_from_payload(
+fn compact_preset_config_from_payload(
     payload: AgentPresetConfigPayload,
     agent: PromptAgentKind,
 ) -> Result<AgentPresetConfig, HandlerError> {
-    normalize_agent_preset_config(
+    compact_agent_preset_config(
         agent,
         AgentPresetConfig {
             temperature: payload.temperature,
@@ -393,6 +423,64 @@ fn preset_config_from_payload(
         },
     )
     .map_err(|error| HandlerError::InvalidPresetDefinition(error.to_string()))
+}
+
+fn expand_preset_record(record: &PresetRecord) -> Result<PresetRecord, HandlerError> {
+    Ok(PresetRecord {
+        preset_id: record.preset_id.clone(),
+        display_name: record.display_name.clone(),
+        agents: expand_preset_configs(&record.agents)?,
+    })
+}
+
+pub(super) fn compact_preset_record(record: &PresetRecord) -> Result<PresetRecord, HandlerError> {
+    Ok(PresetRecord {
+        preset_id: record.preset_id.clone(),
+        display_name: record.display_name.clone(),
+        agents: compact_preset_configs(&record.agents)?,
+    })
+}
+
+fn expand_preset_configs(configs: &PresetAgentConfigs) -> Result<PresetAgentConfigs, HandlerError> {
+    Ok(PresetAgentConfigs {
+        planner: expand_preset_config(&configs.planner, PromptAgentKind::Planner)?,
+        architect: expand_preset_config(&configs.architect, PromptAgentKind::Architect)?,
+        director: expand_preset_config(&configs.director, PromptAgentKind::Director)?,
+        actor: expand_preset_config(&configs.actor, PromptAgentKind::Actor)?,
+        narrator: expand_preset_config(&configs.narrator, PromptAgentKind::Narrator)?,
+        keeper: expand_preset_config(&configs.keeper, PromptAgentKind::Keeper)?,
+        replyer: expand_preset_config(&configs.replyer, PromptAgentKind::Replyer)?,
+    })
+}
+
+fn compact_preset_configs(
+    configs: &PresetAgentConfigs,
+) -> Result<PresetAgentConfigs, HandlerError> {
+    Ok(PresetAgentConfigs {
+        planner: compact_preset_config(&configs.planner, PromptAgentKind::Planner)?,
+        architect: compact_preset_config(&configs.architect, PromptAgentKind::Architect)?,
+        director: compact_preset_config(&configs.director, PromptAgentKind::Director)?,
+        actor: compact_preset_config(&configs.actor, PromptAgentKind::Actor)?,
+        narrator: compact_preset_config(&configs.narrator, PromptAgentKind::Narrator)?,
+        keeper: compact_preset_config(&configs.keeper, PromptAgentKind::Keeper)?,
+        replyer: compact_preset_config(&configs.replyer, PromptAgentKind::Replyer)?,
+    })
+}
+
+fn expand_preset_config(
+    config: &AgentPresetConfig,
+    agent: PromptAgentKind,
+) -> Result<AgentPresetConfig, HandlerError> {
+    normalize_agent_preset_config(agent, config.clone())
+        .map_err(|error| HandlerError::InvalidPresetDefinition(error.to_string()))
+}
+
+fn compact_preset_config(
+    config: &AgentPresetConfig,
+    agent: PromptAgentKind,
+) -> Result<AgentPresetConfig, HandlerError> {
+    compact_agent_preset_config(agent, config.clone())
+        .map_err(|error| HandlerError::InvalidPresetDefinition(error.to_string()))
 }
 
 fn module_config_from_payload(payload: PresetPromptModulePayload) -> AgentPromptModuleConfig {

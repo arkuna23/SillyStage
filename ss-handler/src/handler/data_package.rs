@@ -18,6 +18,7 @@ use story::{validate_common_variables, validate_graph_state_conventions};
 
 use crate::error::HandlerError;
 
+use super::preset::compact_preset_record;
 use super::{BinaryAsset, Handler};
 
 pub(super) const PACKAGE_EXPORT_RESOURCE_PREFIX: &str = "package_export:";
@@ -320,6 +321,7 @@ impl Handler {
 
         for preset in &archive.presets {
             ensure_non_empty_id("preset", &preset.preset_id)?;
+            compact_preset_record(preset)?;
         }
         for schema in &archive.schemas {
             ensure_non_empty_id("schema", &schema.schema_id)?;
@@ -416,7 +418,8 @@ impl Handler {
                 applied.schema_ids.push(schema.schema_id.clone());
             }
             for preset in &archive.presets {
-                self.store.save_preset(preset.clone()).await?;
+                let compacted = compact_preset_record(preset)?;
+                self.store.save_preset(compacted.clone()).await?;
                 applied.preset_ids.push(preset.preset_id.clone());
             }
             for lorebook in &archive.lorebooks {

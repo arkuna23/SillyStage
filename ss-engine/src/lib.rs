@@ -18,8 +18,9 @@ pub use manager::{
     EngineManager, ManagedTurnStream, ManagerError, ResolvedSessionConfig, SessionCharacterUpdate,
 };
 pub use prompt::{
-    PromptAgentKind, PromptConfigError, compile_architect_prompt_profiles, compile_prompt_profile,
-    default_agent_preset_config, normalize_agent_preset_config,
+    PromptAgentKind, PromptConfigError, compact_agent_preset_config,
+    compile_architect_prompt_profiles, compile_prompt_profile, default_agent_preset_config,
+    normalize_agent_preset_config,
 };
 pub use registry::{LlmApiRegistry, RegisteredApi, RegistryError, RuntimeApiRecords};
 pub use runtime::{RuntimeError, RuntimeState, StoryResources};

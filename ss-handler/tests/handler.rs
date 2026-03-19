@@ -2,7 +2,9 @@ mod common;
 
 use std::sync::Arc;
 
-use engine::LlmApiRegistry;
+use engine::{
+    LlmApiRegistry, PromptAgentKind, default_agent_preset_config, normalize_agent_preset_config,
+};
 use futures_util::StreamExt;
 use protocol::{
     AgentPresetConfigPayload, ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams,
@@ -31,8 +33,9 @@ use serde_json::json;
 use ss_handler::{Handler, HandlerReply};
 use state::{StateFieldSchema, StateOp, StateUpdate, StateValueType};
 use store::{
-    InMemoryStore, LorebookEntryRecord, LorebookRecord, SessionBindingConfig, SessionRecord, Store,
-    StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    AgentPromptModuleEntryConfig, InMemoryStore, LorebookEntryRecord, LorebookRecord,
+    PresetAgentConfigs, PresetRecord, PromptEntryKind, PromptModuleId, SessionBindingConfig,
+    SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
 };
 use story::NarrativeNode;
 
@@ -1796,11 +1799,11 @@ async fn story_update_graph_rejects_invalid_graph() {
 }
 
 #[tokio::test]
-async fn story_update_graph_rejects_noncanonical_identifier_values() {
+async fn story_update_graph_accepts_noncanonical_identifier_values() {
     let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
     let store = Arc::new(InMemoryStore::new());
     seed_story_records(&store).await;
-    let handler = Handler::new(store, registry_with_ids(llm))
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
         .await
         .expect("handler should build");
 
@@ -1825,13 +1828,20 @@ async fn story_update_graph_rejects_noncanonical_identifier_values() {
         HandlerReply::Stream { .. } => panic!("expected unary response"),
     };
 
-    assert!(matches!(
-        response.outcome,
-        JsonRpcOutcome::Err(error)
-            if error.code == ErrorCode::InvalidRequest.rpc_code()
-                && error.message.contains("current_event")
-                && error.message.contains("canonical snake_case identifier")
-    ));
+    assert!(matches!(response.outcome, JsonRpcOutcome::Ok(_)));
+
+    let story = store
+        .get_story("story-1")
+        .await
+        .expect("get story")
+        .expect("story should exist");
+    match story.graph.nodes[0].on_enter_updates.as_slice() {
+        [StateOp::SetState { key, value }] => {
+            assert_eq!(key, "current_event");
+            assert_eq!(*value, json!("接近沼泽"));
+        }
+        other => panic!("unexpected on_enter_updates: {other:?}"),
+    }
 }
 
 #[tokio::test]
@@ -3649,6 +3659,27 @@ async fn preset_crud_round_trips_and_preserves_values() {
         }
         other => panic!("unexpected response: {other:?}"),
     }
+    let stored = store
+        .get_preset("managed")
+        .await
+        .expect("get preset")
+        .expect("preset should be stored");
+    assert!(stored.agents.actor.modules.is_empty());
+    assert_eq!(stored.agents.planner.modules.len(), 1);
+    assert_eq!(
+        stored.agents.planner.modules[0].module_id,
+        PromptModuleId::Task
+    );
+    assert_eq!(stored.agents.planner.modules[0].entries.len(), 1);
+    assert_eq!(
+        stored.agents.planner.modules[0].entries[0].entry_id,
+        "planner-tone"
+    );
+    assert_eq!(
+        stored.agents.planner.modules[0].entries[0].kind,
+        PromptEntryKind::CustomText
+    );
+    assert_eq!(stored.agents.replyer.modules.len(), 1);
 
     let fetched = unary_result(
         handler
@@ -3810,6 +3841,74 @@ async fn preset_crud_round_trips_and_preserves_values() {
         }
         other => panic!("unexpected response: {other:?}"),
     }
+    let stored = store
+        .get_preset("managed")
+        .await
+        .expect("get preset")
+        .expect("preset should be stored");
+    assert_eq!(stored.agents.planner.modules.len(), 1);
+    assert_eq!(stored.agents.planner.modules[0].entries.len(), 2);
+    assert!(stored.agents.architect.modules.is_empty());
+    assert_eq!(stored.agents.replyer.modules.len(), 1);
+    assert_eq!(stored.agents.replyer.modules[0].entries.len(), 1);
+
+    let built_in_updated = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-entry-update-built-in",
+                None::<String>,
+                RequestParams::PresetEntryUpdate(PresetEntryUpdateParams {
+                    preset_id: "managed".to_owned(),
+                    agent: PresetAgentIdPayload::Narrator,
+                    module_id: PromptModuleIdPayload::StaticContext,
+                    entry_id: "narrator_lorebook_base".to_owned(),
+                    display_name: None,
+                    text: None,
+                    enabled: Some(false),
+                    order: Some(15),
+                }),
+            ))
+            .await,
+    );
+    match built_in_updated {
+        ResponseResult::PresetEntry(payload) => {
+            assert_eq!(payload.entry.entry_id, "narrator_lorebook_base");
+            assert!(!payload.entry.enabled);
+            assert_eq!(payload.entry.order, 15);
+            assert_eq!(
+                payload.entry.kind,
+                PromptEntryKindPayload::BuiltInContextRef
+            );
+            assert!(payload.entry.text.is_none());
+            assert_eq!(payload.entry.context_key.as_deref(), Some("lorebook_base"));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+    let stored = store
+        .get_preset("managed")
+        .await
+        .expect("get preset")
+        .expect("preset should be stored");
+    let narrator_static_context_module = stored
+        .agents
+        .narrator
+        .modules
+        .iter()
+        .find(|module| module.module_id == PromptModuleId::StaticContext)
+        .expect("narrator static context module should be stored");
+    let narrator_task_override = narrator_static_context_module
+        .entries
+        .iter()
+        .find(|entry| entry.entry_id == "narrator_lorebook_base")
+        .expect("built-in override should be stored");
+    assert_eq!(
+        narrator_task_override.kind,
+        PromptEntryKind::BuiltInContextRef
+    );
+    assert!(!narrator_task_override.enabled);
+    assert_eq!(narrator_task_override.order, 15);
+    assert_eq!(narrator_task_override.text, None);
+    assert_eq!(narrator_task_override.context_key, None);
 
     let created_entry = unary_result(
         handler
@@ -3911,6 +4010,103 @@ async fn preset_crud_round_trips_and_preserves_values() {
         ResponseResult::PresetDeleted(payload) => assert_eq!(payload.preset_id, "managed"),
         other => panic!("unexpected response: {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn handler_startup_migrates_legacy_expanded_presets_to_compact_storage() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+
+    let mut narrator = default_agent_preset_config(PromptAgentKind::Narrator);
+    let static_context_module = narrator
+        .modules
+        .iter_mut()
+        .find(|module| module.module_id == PromptModuleId::StaticContext)
+        .expect("static context module should exist");
+    let built_in = static_context_module
+        .entries
+        .iter_mut()
+        .find(|entry| entry.entry_id == "narrator_lorebook_base")
+        .expect("built-in entry should exist");
+    built_in.enabled = false;
+    built_in.order = 15;
+    let task_module = narrator
+        .modules
+        .iter_mut()
+        .find(|module| module.module_id == PromptModuleId::Task)
+        .expect("task module should exist");
+    task_module.entries.push(AgentPromptModuleEntryConfig {
+        entry_id: "narrator-tone".to_owned(),
+        display_name: "Narrator Tone".to_owned(),
+        kind: PromptEntryKind::CustomText,
+        enabled: true,
+        order: 95,
+        required: false,
+        text: Some("Keep the narration dry.".to_owned()),
+        context_key: None,
+    });
+    let narrator = normalize_agent_preset_config(PromptAgentKind::Narrator, narrator)
+        .expect("narrator preset should normalize");
+
+    store
+        .save_preset(PresetRecord {
+            preset_id: "legacy".to_owned(),
+            display_name: "Legacy Preset".to_owned(),
+            agents: PresetAgentConfigs {
+                planner: default_agent_preset_config(PromptAgentKind::Planner),
+                architect: default_agent_preset_config(PromptAgentKind::Architect),
+                director: default_agent_preset_config(PromptAgentKind::Director),
+                actor: default_agent_preset_config(PromptAgentKind::Actor),
+                narrator,
+                keeper: default_agent_preset_config(PromptAgentKind::Keeper),
+                replyer: default_agent_preset_config(PromptAgentKind::Replyer),
+            },
+        })
+        .await
+        .expect("preset should save");
+
+    Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let stored = store
+        .get_preset("legacy")
+        .await
+        .expect("get preset")
+        .expect("preset should exist");
+    assert!(stored.agents.planner.modules.is_empty());
+    assert!(stored.agents.architect.modules.is_empty());
+    let narrator_static_context_module = stored
+        .agents
+        .narrator
+        .modules
+        .iter()
+        .find(|module| module.module_id == PromptModuleId::StaticContext)
+        .expect("narrator static context module should remain");
+    let built_in = narrator_static_context_module
+        .entries
+        .iter()
+        .find(|entry| entry.entry_id == "narrator_lorebook_base")
+        .expect("built-in override should remain");
+    assert_eq!(built_in.kind, PromptEntryKind::BuiltInContextRef);
+    assert!(!built_in.enabled);
+    assert_eq!(built_in.order, 15);
+    assert_eq!(built_in.text, None);
+    let narrator_task_module = stored
+        .agents
+        .narrator
+        .modules
+        .iter()
+        .find(|module| module.module_id == PromptModuleId::Task)
+        .expect("narrator task module should remain");
+    assert_eq!(narrator_task_module.entries.len(), 1);
+    let custom = narrator_task_module
+        .entries
+        .iter()
+        .find(|entry| entry.entry_id == "narrator-tone")
+        .expect("custom entry should remain");
+    assert_eq!(custom.kind, PromptEntryKind::CustomText);
+    assert_eq!(custom.text.as_deref(), Some("Keep the narration dry."));
 }
 
 #[tokio::test]
