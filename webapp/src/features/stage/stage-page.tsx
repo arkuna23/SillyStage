@@ -3,7 +3,7 @@ import { faDatabase } from '@fortawesome/free-solid-svg-icons/faDatabase'
 import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useReducedMotion } from 'framer-motion'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -21,7 +21,6 @@ import { getStageCopy } from './copy'
 import {
   buildStagePath,
   determineActiveCastOrder,
-  getDefaultRightPanelTab,
   isTextLong,
   normalizeSessionHistory,
   patchSnapshotVariables,
@@ -46,11 +45,10 @@ export function StagePage() {
   const { sessionId: routeSessionId } = useParams<{ sessionId: string }>()
   const copy = getStageCopy(i18n.language)
   const prefersReducedMotion = useReducedMotion()
-  const autoResolvedRightPanelTabSessionRef = useRef<string | null>(null)
   const [panelMode, setPanelMode] = useState<PanelMode>('dialogue')
   const [isStoryIntroExpanded, setIsStoryIntroExpanded] = useState(false)
   const [isStoryNodeExpanded, setIsStoryNodeExpanded] = useState(false)
-  const [rightPanelTab, setRightPanelTab] = useState<StageRightRailTab>('status')
+  const [rightPanelTab, setRightPanelTab] = useState<StageRightRailTab>('variables')
   const [detailsCharacterId, setDetailsCharacterId] = useState<string | null>(null)
   const [detailsSessionCharacterId, setDetailsSessionCharacterId] = useState<string | null>(null)
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -254,12 +252,9 @@ export function StagePage() {
   }, [navigate, stageAccessStatus])
 
   useEffect(() => {
-    autoResolvedRightPanelTabSessionRef.current = null
-
     const frame = requestAnimationFrame(() => {
       setIsStoryIntroExpanded(false)
       setIsStoryNodeExpanded(false)
-      setRightPanelTab(getDefaultRightPanelTab(false))
       setDetailsCharacterId(null)
       setDetailsSessionCharacterId(null)
     })
@@ -268,33 +263,6 @@ export function StagePage() {
       cancelAnimationFrame(frame)
     }
   }, [routeSessionId])
-
-  useEffect(() => {
-    if (!routeSessionId || !selectedSession) {
-      return
-    }
-
-    if (selectedSession.session_id !== routeSessionId) {
-      return
-    }
-
-    if (autoResolvedRightPanelTabSessionRef.current === routeSessionId) {
-      return
-    }
-
-    if (isSessionLoading) {
-      return
-    }
-
-    const frame = requestAnimationFrame(() => {
-      setRightPanelTab(getDefaultRightPanelTab(stageCommonVariables.length > 0))
-      autoResolvedRightPanelTabSessionRef.current = routeSessionId
-    })
-
-    return () => {
-      cancelAnimationFrame(frame)
-    }
-  }, [isSessionLoading, routeSessionId, selectedSession, stageCommonVariables.length])
 
   function selectSession(sessionId: string) {
     navigate(buildStagePath(sessionId))

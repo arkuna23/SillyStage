@@ -16,7 +16,7 @@ import { faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons/faWandMag
 import { faXmark } from "@fortawesome/free-solid-svg-icons/faXmark";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent, CSSProperties, ReactNode } from "react";
+import type { ChangeEvent, CSSProperties, FocusEvent, KeyboardEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { Button } from "../../components/ui/button";
@@ -117,6 +117,8 @@ const LIST_EXCERPT_STYLE: CSSProperties = {
 	textOverflow: "ellipsis",
 	whiteSpace: "nowrap",
 };
+const EXPLORER_PANEL_WIDTH = 248;
+const EXPLORER_PANEL_GAP = 20;
 
 function getErrorMessage(error: unknown, fallback: string) {
 	return error instanceof Error ? error.message : fallback;
@@ -204,6 +206,43 @@ function FolderTreeItem({
 	);
 }
 
+function FolderTreeEditorItem({
+	icon,
+	inputRef,
+	onBlur,
+	onChange,
+	onKeyDown,
+	placeholder,
+	value,
+}: {
+	icon: ReactNode;
+	inputRef: React.RefObject<HTMLInputElement | null>;
+	onBlur: (event: FocusEvent<HTMLInputElement>) => void;
+	onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+	onKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+	placeholder: string;
+	value: string;
+}) {
+	return (
+		<div
+			className="flex min-w-0 w-full items-center gap-2.5 overflow-hidden rounded-[1rem] border border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] px-3 py-2.5 text-left text-sm transition focus-within:ring-2 focus-within:ring-inset focus-within:ring-[var(--color-focus-ring)]"
+			data-folder-editor-item
+		>
+			<span className="shrink-0 text-[var(--color-text-muted)]">{icon}</span>
+			<input
+				autoFocus
+				className="h-6 min-w-0 flex-1 border-0 bg-transparent px-0 text-sm font-medium text-[var(--color-text-primary)] outline-none placeholder:text-[var(--color-text-muted)]"
+				onBlur={onBlur}
+				onChange={onChange}
+				onKeyDown={onKeyDown}
+				placeholder={placeholder}
+				ref={inputRef}
+				value={value}
+			/>
+		</div>
+	);
+}
+
 function truncateSummaryText(text: string, maxLength: number) {
 	const normalizedText = normalizeSummaryText(text);
 	const characters = Array.from(normalizedText);
@@ -243,7 +282,7 @@ function CharacterArtwork({
 			? "size-[4.25rem] rounded-full border border-[var(--color-border-subtle)] shadow-[0_12px_30px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
 			: mode === "dialog"
 				? "aspect-[4/3] rounded-[1.7rem] border border-[var(--color-border-subtle)]"
-				: "aspect-[4/3] border-b border-[var(--color-border-subtle)]";
+				: "aspect-[16/10] border-b border-[var(--color-border-subtle)]";
 
 	return (
 		<div
@@ -489,30 +528,25 @@ function CharacterCard({
 			>
 				<CharacterArtwork coverUrl={coverUrl} mode="card" name={summary.name} />
 
-				<CardHeader className="gap-1 p-4 pb-2">
+				<CardHeader className="gap-1 px-4 pb-1.5 pt-3">
 					<div className="space-y-0.5">
-						<CardTitle className="text-[1.48rem] leading-tight">
+						<CardTitle className="text-[1.34rem] leading-tight">
 							{summary.name}
 						</CardTitle>
-						<CardDescription className="truncate font-mono text-[0.76rem] leading-[1.125rem] text-[var(--color-text-muted)]">
+						<CardDescription className="truncate font-mono text-[0.72rem] leading-4 text-[var(--color-text-muted)]">
 							{summary.character_id}
 						</CardDescription>
 					</div>
 				</CardHeader>
 
-				<CardContent className="flex-1 px-4 pb-3 pt-0">
-					<div className="mb-3 flex flex-wrap items-center gap-2">
-						<Badge className="normal-case px-2.5 py-1" variant="subtle">
+				<CardContent className="flex-1 px-4 pb-2.5 pt-0">
+					<div className="mb-2 flex flex-wrap items-center gap-2">
+						<Badge className="normal-case px-2 py-0.5" variant="subtle">
 							{summary.folder || t("characters.filters.unfiled")}
 						</Badge>
-						{summary.tags.slice(0, 3).map((tag) => (
-							<Badge className="normal-case px-2.5 py-1" key={tag} variant="subtle">
-								#{tag}
-							</Badge>
-						))}
 					</div>
 					<p
-						className="text-sm leading-6 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
+						className="text-[0.92rem] leading-5 text-[var(--color-text-secondary)] transition group-hover:text-[var(--color-text-primary)]"
 						style={CARD_EXCERPT_STYLE}
 					>
 						{personalitySummary}
@@ -520,7 +554,7 @@ function CharacterCard({
 				</CardContent>
 			</button>
 
-			<div className="flex items-center justify-end px-4 pb-4 pt-0">
+			<div className="flex items-center justify-end px-4 pb-3 pt-0">
 				{selectionMode ? (
 					<SelectionIndicator selected={selected} />
 				) : (
@@ -751,6 +785,7 @@ export function CharacterManagementPage() {
 	const { t } = useTranslation();
 	const { setRailContent } = useWorkspaceLayoutContext();
 	const importInputRef = useRef<HTMLInputElement | null>(null);
+	const folderInputRef = useRef<HTMLInputElement | null>(null);
 	const coverCacheRef = useRef<Map<string, string>>(new Map());
 	const [characters, setCharacters] = useState<CharacterSummary[]>([]);
 	const [folderRegistry, setFolderRegistry] = useState<string[]>(() =>
@@ -790,7 +825,6 @@ export function CharacterManagementPage() {
 	const [folderDialogValue, setFolderDialogValue] = useState("");
 	const [folderDeleteTarget, setFolderDeleteTarget] = useState<string | null>(null);
 	const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
-	const [isApplyingFolderChange, setIsApplyingFolderChange] = useState(false);
 	const [isDeletingFolder, setIsDeletingFolder] = useState(false);
 	const [isExplorerOpen, setIsExplorerOpen] = useState(false);
 	const prefersReducedMotion = useReducedMotion();
@@ -1016,6 +1050,21 @@ export function CharacterManagementPage() {
 	}, [isExplorerOpen]);
 
 	useEffect(() => {
+		if (!folderDialogState) {
+			return;
+		}
+
+		const frame = requestAnimationFrame(() => {
+			folderInputRef.current?.focus();
+			folderInputRef.current?.select();
+		});
+
+		return () => {
+			cancelAnimationFrame(frame);
+		};
+	}, [folderDialogState]);
+
+	useEffect(() => {
 		const availableIds = new Set(characters.map((character) => character.character_id));
 
 		setSelectedCharacterIds((currentSelection) =>
@@ -1107,6 +1156,11 @@ export function CharacterManagementPage() {
 		setFolderDeleteTarget(folder);
 	}
 
+	function closeFolderEditor() {
+		setFolderDialogState(null);
+		setFolderDialogValue("");
+	}
+
 	async function moveCharactersToFolder(
 		characterIds: string[],
 		folder: string,
@@ -1119,8 +1173,6 @@ export function CharacterManagementPage() {
 		}
 
 		const normalizedFolder = normalizeCharacterFolderRegistryName(folder);
-		setIsApplyingFolderChange(true);
-
 		try {
 			for (const characterId of characterIds) {
 				const detail = await getCharacter(characterId);
@@ -1156,7 +1208,6 @@ export function CharacterManagementPage() {
 		} finally {
 			setDraggedCharacterId(null);
 			setFolderDropTarget(null);
-			setIsApplyingFolderChange(false);
 		}
 	}
 
@@ -1205,8 +1256,7 @@ export function CharacterManagementPage() {
 			setFolderRegistry((current) =>
 				addCharacterFolderRegistryEntry(current, normalizedFolder),
 			);
-			setFolderDialogState(null);
-			setFolderDialogValue("");
+			closeFolderEditor();
 			setActiveFolder(normalizedFolder);
 			setNotice({
 				message: t("characters.feedback.folderCreated", {
@@ -1221,8 +1271,7 @@ export function CharacterManagementPage() {
 		setFolderRegistry((current) =>
 			renameCharacterFolderRegistryEntry(current, currentFolder, normalizedFolder),
 		);
-		setFolderDialogState(null);
-		setFolderDialogValue("");
+		closeFolderEditor();
 		if (activeFolder === currentFolder) {
 			setActiveFolder(normalizedFolder);
 		}
@@ -1241,6 +1290,32 @@ export function CharacterManagementPage() {
 			}),
 			tone: "success",
 		});
+	}
+
+	function handleFolderEditorKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+		if (event.key === "Enter") {
+			event.preventDefault();
+			void handleFolderDialogSubmit();
+			return;
+		}
+
+		if (event.key === "Escape") {
+			event.preventDefault();
+			closeFolderEditor();
+		}
+	}
+
+	function handleFolderEditorBlur(event: FocusEvent<HTMLInputElement>) {
+		if (
+			event.relatedTarget instanceof HTMLElement &&
+			event.currentTarget.closest("[data-folder-editor-item]")?.contains(
+				event.relatedTarget,
+			)
+		) {
+			return;
+		}
+
+		closeFolderEditor();
 	}
 
 	async function handleFolderDelete() {
@@ -1910,63 +1985,6 @@ export function CharacterManagementPage() {
 				</DialogContent>
 			</Dialog>
 
-			<Dialog
-				onOpenChange={(open) => {
-					if (!open) {
-						setFolderDialogState(null);
-						setFolderDialogValue("");
-					}
-				}}
-				open={folderDialogState !== null}
-			>
-				<DialogContent aria-describedby={undefined} className="max-w-xl">
-					<DialogHeader className="border-b border-[var(--color-border-subtle)]">
-						<DialogTitle>
-							{folderDialogState?.mode === "rename"
-								? t("characters.folders.renameTitle")
-								: t("characters.folders.createTitle")}
-						</DialogTitle>
-					</DialogHeader>
-					<DialogBody className="pt-6">
-						<div className="space-y-3">
-							<label
-								className="text-sm font-medium text-[var(--color-text-primary)]"
-								htmlFor="character-folder-name"
-							>
-								{t("characters.folders.nameLabel")}
-							</label>
-							<Input
-								autoFocus
-								id="character-folder-name"
-								onChange={(event) => {
-									setFolderDialogValue(event.target.value);
-								}}
-								placeholder={t("characters.folders.namePlaceholder")}
-								value={folderDialogValue}
-							/>
-						</div>
-					</DialogBody>
-					<DialogFooter>
-						<DialogClose asChild>
-							<Button size="md" variant="ghost">
-								{t("characters.actions.cancel")}
-							</Button>
-						</DialogClose>
-						<Button
-							disabled={isApplyingFolderChange}
-							onClick={() => {
-								void handleFolderDialogSubmit();
-							}}
-							size="md"
-						>
-							{folderDialogState?.mode === "rename"
-								? t("characters.folders.renameAction")
-								: t("characters.folders.createAction")}
-						</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
-
 			{contextMenu && isExplorerOpen ? (
 				<div
 					className="fixed inset-0 z-50"
@@ -2146,15 +2164,28 @@ export function CharacterManagementPage() {
 				</CardHeader>
 
 				<CardContent className="min-h-0 flex-1 overflow-hidden pt-6">
-					<div className="flex h-full min-h-0 gap-5">
-						<div className="relative hidden min-h-0 shrink-0 lg:block">
+					<div className="flex h-full min-h-0">
+						<motion.div
+							animate={{
+								marginRight: isExplorerOpen ? EXPLORER_PANEL_GAP : 0,
+								width: isExplorerOpen ? EXPLORER_PANEL_WIDTH : 0,
+							}}
+							className="relative hidden min-h-0 shrink-0 overflow-visible lg:block"
+							initial={false}
+							transition={
+								prefersReducedMotion
+									? { duration: 0 }
+									: { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+							}
+						>
 							<motion.aside
 								animate={{
-									opacity: isExplorerOpen ? 1 : 0.8,
-									width: isExplorerOpen ? 248 : 0,
+									opacity: isExplorerOpen ? 1 : 0,
+									x: isExplorerOpen ? 0 : -20,
 								}}
-								className="h-full overflow-hidden"
+								className="absolute inset-y-0 left-0"
 								initial={false}
+								style={{ width: EXPLORER_PANEL_WIDTH }}
 								transition={
 									prefersReducedMotion
 										? { duration: 0 }
@@ -2162,65 +2193,101 @@ export function CharacterManagementPage() {
 								}
 							>
 								<div
-									className="h-full rounded-[1.6rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4"
+									className={cn(
+										"flex h-full min-h-0 flex-col gap-4 rounded-[1.6rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4",
+										!isExplorerOpen && "pointer-events-none",
+									)}
 									onContextMenu={isExplorerOpen ? openRootContextMenu : undefined}
 								>
-									<div className="flex h-full min-h-0 flex-col gap-4">
-										<div className="flex items-center justify-between gap-3">
-											<div>
-												<p className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
-													{t("characters.folders.kicker")}
-												</p>
-												<h3 className="font-display text-2xl text-[var(--color-text-primary)]">
-													{t("characters.folders.title")}
-												</h3>
-											</div>
-											<IconButton
-												icon={<FontAwesomeIcon icon={faPlus} />}
-												label={t("characters.folders.menuCreate")}
-												onClick={openFolderCreateDialog}
-												size="sm"
-												variant="secondary"
-											/>
+									<div className="flex items-center justify-between gap-3">
+										<div>
+											<p className="text-xs uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+												{t("characters.folders.kicker")}
+											</p>
+											<h3 className="font-display text-2xl text-[var(--color-text-primary)]">
+												{t("characters.folders.title")}
+											</h3>
 										</div>
+										<IconButton
+											icon={<FontAwesomeIcon icon={faPlus} />}
+											label={t("characters.folders.menuCreate")}
+											onClick={openFolderCreateDialog}
+											size="sm"
+											variant="secondary"
+										/>
+									</div>
 
-										<div className="min-h-0 space-y-2 overflow-y-auto pr-1">
-											<FolderTreeItem
-												active={activeFolder === "all"}
-												count={characters.length}
+									<div className="min-h-0 space-y-2 overflow-y-auto pr-1">
+										<FolderTreeItem
+											active={activeFolder === "all"}
+											count={characters.length}
+											icon={<FontAwesomeIcon icon={faFolderOpen} />}
+											label={t("characters.folders.all")}
+											onClick={() => {
+												setActiveFolder("all");
+											}}
+										/>
+										<FolderTreeItem
+											active={activeFolder === "__unfiled__"}
+											count={
+												characters.filter(
+													(character) =>
+														normalizeCharacterFolder(character.folder).length === 0,
+												).length
+											}
+											dragActive={folderDropTarget === "__unfiled__"}
+											icon={<FontAwesomeIcon icon={faFolder} />}
+											label={t("characters.filters.unfiled")}
+											onClick={() => {
+												setActiveFolder("__unfiled__");
+											}}
+											onDragLeave={() => {
+												handleFolderDragLeave("__unfiled__");
+											}}
+											onDragOver={(event) => {
+												handleFolderDragOver(event, "__unfiled__");
+											}}
+											onDrop={(event) => {
+												handleFolderDrop(event, "__unfiled__");
+											}}
+										/>
+										{folderDialogState?.mode === "create" ? (
+											<FolderTreeEditorItem
 												icon={<FontAwesomeIcon icon={faFolderOpen} />}
-												label={t("characters.folders.all")}
-												onClick={() => {
-													setActiveFolder("all");
+												inputRef={folderInputRef}
+												onBlur={handleFolderEditorBlur}
+												onChange={(event) => {
+													setFolderDialogValue(event.target.value);
 												}}
+												onKeyDown={handleFolderEditorKeyDown}
+												placeholder={t("characters.folders.namePlaceholder")}
+												value={folderDialogValue}
 											/>
-											<FolderTreeItem
-												active={activeFolder === "__unfiled__"}
-												count={
-													characters.filter(
-														(character) =>
-															normalizeCharacterFolder(character.folder).length === 0,
-													).length
-												}
-												dragActive={folderDropTarget === "__unfiled__"}
-												icon={<FontAwesomeIcon icon={faFolder} />}
-												label={t("characters.filters.unfiled")}
-												onClick={() => {
-													setActiveFolder("__unfiled__");
-												}}
-												onDragLeave={() => {
-													handleFolderDragLeave("__unfiled__");
-												}}
-												onDragOver={(event) => {
-													handleFolderDragOver(event, "__unfiled__");
-												}}
-												onDrop={(event) => {
-													handleFolderDrop(event, "__unfiled__");
-												}}
-											/>
-											{availableFolders
-												.filter((folder) => folder.length > 0)
-												.map((folder) => (
+										) : null}
+										{availableFolders
+											.filter((folder) => folder.length > 0)
+											.map((folder) =>
+												folderDialogState?.mode === "rename" &&
+												folderDialogState.folder === folder ? (
+													<FolderTreeEditorItem
+														icon={
+															<FontAwesomeIcon
+																icon={
+																	activeFolder === folder ? faFolderOpen : faFolder
+																}
+															/>
+														}
+														inputRef={folderInputRef}
+														key={folder}
+														onBlur={handleFolderEditorBlur}
+														onChange={(event) => {
+															setFolderDialogValue(event.target.value);
+														}}
+														onKeyDown={handleFolderEditorKeyDown}
+														placeholder={t("characters.folders.namePlaceholder")}
+														value={folderDialogValue}
+													/>
+												) : (
 													<FolderTreeItem
 														active={activeFolder === folder}
 														count={
@@ -2255,8 +2322,8 @@ export function CharacterManagementPage() {
 															handleFolderDrop(event, folder);
 														}}
 													/>
-												))}
-										</div>
+												),
+											)}
 									</div>
 								</div>
 							</motion.aside>
@@ -2277,7 +2344,7 @@ export function CharacterManagementPage() {
 									icon={isExplorerOpen ? faChevronLeft : faChevronRight}
 								/>
 							</button>
-						</div>
+						</motion.div>
 
 						<div className="min-h-0 flex-1 overflow-y-auto">
 							<div className="space-y-5">

@@ -631,7 +631,7 @@ export function DashboardDataPackageActions({
       <div className="flex flex-wrap justify-end gap-2">
         <IconButton
           disabled={isImporting}
-          icon={<FontAwesomeIcon icon={faUpload} />}
+          icon={<FontAwesomeIcon icon={faDownload} />}
           label={t('dashboard.dataPackage.actions.import')}
           onClick={() => {
             importInputRef.current?.click()
@@ -639,7 +639,7 @@ export function DashboardDataPackageActions({
           variant="secondary"
         />
         <IconButton
-          icon={<FontAwesomeIcon icon={faDownload} />}
+          icon={<FontAwesomeIcon icon={faUpload} />}
           label={t('dashboard.dataPackage.actions.export')}
           onClick={() => {
             setIsExportDialogOpen(true)

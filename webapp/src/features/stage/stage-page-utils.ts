@@ -1,6 +1,6 @@
 import type { CharacterSummary } from '../characters/types'
 import type { StoryDetail } from '../stories/types'
-import type { StageRightRailTab, StageMessage } from './stage-ui-types'
+import type { StageMessage } from './stage-ui-types'
 import type {
   EngineTurnResult,
   RuntimeSnapshot,
@@ -10,10 +10,6 @@ import type {
 } from './types'
 
 const stageRoot = '/stage'
-
-export function getDefaultRightPanelTab(hasCommonVariables: boolean): StageRightRailTab {
-  return hasCommonVariables ? 'variables' : 'status'
-}
 
 export function buildStagePath(sessionId?: string) {
   return sessionId ? `${stageRoot}/${encodeURIComponent(sessionId)}` : stageRoot
