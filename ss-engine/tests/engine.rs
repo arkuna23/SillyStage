@@ -259,6 +259,11 @@ fn default_runtime_prompt_profiles_include_output_contracts() {
             .contains("\"role_actions\": [SessionCharacterAction]")
     );
     assert!(director.system_prompt.contains("\"type\":\"Narrator\""));
+    assert!(
+        director
+            .system_prompt
+            .contains("Every Actor beat speaker_id must be either a CURRENT_CAST id")
+    );
 
     let keeper = compile_prompt_profile(
         PromptAgentKind::Keeper,
@@ -272,6 +277,11 @@ fn default_runtime_prompt_profiles_include_output_contracts() {
             .contains("\"type\":\"SetCharacterState\"")
     );
     assert!(keeper.system_prompt.contains("Always include \"ops\""));
+    assert!(
+        keeper
+            .system_prompt
+            .contains("Never introduce a brand-new character id in active-character ops")
+    );
 
     let replyer = compile_prompt_profile(
         PromptAgentKind::Replyer,
@@ -281,17 +291,17 @@ fn default_runtime_prompt_profiles_include_output_contracts() {
     assert!(
         replyer
             .system_prompt
-            .contains("help move the story forward")
+            .contains("Suggest several player reply options that fit the current state of the scene")
     );
     assert!(
         replyer
             .system_prompt
-            .contains("Use CURRENT_NODE.goal and CURRENT_NODE.transitions as progression hints")
+            .contains("Offer concise, distinct reply options grounded in the visible conversation history and current world state")
     );
     assert!(
         replyer
             .system_prompt
-            .contains("Most options should help the player advance the scene")
+            .contains("Let the options vary naturally in tone, intent, and commitment level")
     );
     assert!(replyer.system_prompt.contains("Reply suggestion schema:"));
     assert!(replyer.system_prompt.contains("\"replies\": ["));
@@ -342,6 +352,12 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .graph
             .system_prompt
             .contains("Every returned NarrativeNode id must be unique within the current response")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("Use only AVAILABLE_CHARACTERS ids in NarrativeNode.characters")
     );
 
     assert!(

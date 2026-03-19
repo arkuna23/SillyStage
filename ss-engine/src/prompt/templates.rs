@@ -80,7 +80,7 @@ const ARCHITECT_TEMPLATES: [BuiltInEntryTemplate; 15] = [
         "Architecture Task",
         10,
         true,
-        "Create compact, valid story structure. Reuse the provided cast and keep transitions and schema fields consistent.",
+        "Create compact, valid story structure. Reuse the provided cast and keep transitions and schema fields consistent. Use only AVAILABLE_CHARACTERS ids in graph data; temporary runtime characters belong to Director, not the graph.",
     ),
     context_entry(
         PromptModuleId::StaticContext,
@@ -230,7 +230,7 @@ const DIRECTOR_TEMPLATES: [BuiltInEntryTemplate; 10] = [
         "Turn Task",
         10,
         true,
-        "Plan a clear response for the current turn. Use only visible context and keep the response plan actionable.",
+        "Plan a clear response for the current turn. Use only visible context and keep the response plan actionable. Actor beats may use only CURRENT_CAST ids or ids created in this same response via create_and_enter.",
     ),
     context_entry(
         PromptModuleId::StaticContext,
@@ -552,7 +552,7 @@ const KEEPER_TEMPLATES: [BuiltInEntryTemplate; 14] = [
         "State Task",
         10,
         true,
-        "Reflect real progress in the state update. Use the current node, recent turn history, and completed beats to decide what changed.",
+        "Reflect real progress in the state update. Use the current node, recent turn history, and completed beats to decide what changed. Do not introduce new character ids into active_characters; temporary characters must be created by Director.",
     ),
     context_entry(
         PromptModuleId::StaticContext,
@@ -694,7 +694,7 @@ const REPLYER_TEMPLATES: [BuiltInEntryTemplate; 9] = [
         "Core Role",
         10,
         true,
-        "You are Replyer. Suggest several player reply options that fit the current state of the scene and help move the story forward.",
+        "You are Replyer. Suggest several player reply options that fit the current state of the scene.",
     ),
     text_entry(
         PromptModuleId::Task,
@@ -702,7 +702,7 @@ const REPLYER_TEMPLATES: [BuiltInEntryTemplate; 9] = [
         "Reply Task",
         10,
         true,
-        "Offer concise, distinct reply options grounded in the visible conversation history and current world state.\nUse CURRENT_NODE.goal and CURRENT_NODE.transitions as progression hints.\nMost options should help the player advance the scene, commit to a branch, test a condition, negotiate a key term, or clarify the next decision.\nKeep at most one lower-commitment probing option when useful, and avoid idle small talk that does not move the scene.",
+        "Offer concise, distinct reply options grounded in the visible conversation history and current world state.\nLet the options vary naturally in tone, intent, and commitment level when they fit the scene.",
     ),
     context_entry(
         PromptModuleId::StaticContext,

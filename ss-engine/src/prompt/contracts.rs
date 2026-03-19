@@ -14,7 +14,7 @@ ResponseBeat schema:
 - {"type":"Narrator","purpose":"DescribeTransition"|"DescribeScene"|"DescribeResult"}
 - {"type":"Actor","speaker_id":"character_id","purpose":"AdvanceGoal"|"ReactToPlayer"|"CommentOnScene"}
 
-Always include "role_actions" and "beats". Use [] when empty."#;
+Always include "role_actions" and "beats". Use [] when empty. Every Actor beat speaker_id must be either a CURRENT_CAST id or an id created in this same response via create_and_enter. Never invent any other speaker_id."#;
 
 pub(super) const ACTOR_OUTPUT_CONTRACT: &str = r#"Return tagged performance segments only. Do not produce JSON, markdown, speaker labels, or text outside tags.
 
@@ -51,7 +51,7 @@ Allowed StateOp shapes:
 - {"type":"SetCharacterState","character":"character_id","key":"character_state_key","value":{}}
 - {"type":"RemoveCharacterState","character":"character_id","key":"character_state_key"}
 
-Always include "ops". Use [] when empty. Do not output SetCurrentNode."#;
+Always include "ops". Use [] when empty. Do not output SetCurrentNode. Never introduce a brand-new character id in active-character ops; temporary characters must be created by Director via create_and_enter."#;
 
 pub(super) const REPLYER_OUTPUT_CONTRACT: &str = r#"Return one JSON object only. No markdown. No commentary.
 
@@ -121,6 +121,7 @@ Every schema field object must include "value_type".
 If "enum_values" is present, omit "default" or make "default" exactly equal to one item from "enum_values".
 Use only the exact StateOp type names listed above. Never invent aliases or new names such as SetGlobalState, SetWorldState, RemoveGlobalState, or RemoveWorldState.
 Every returned NarrativeNode id must be unique within the current response.
+Use only AVAILABLE_CHARACTERS ids in NarrativeNode.characters and all character-scoped references. Do not introduce temporary runtime-only character ids into graph data.
 Use [] for empty arrays and {"fields":{}} for empty schemas."#;
 
 pub(super) const ARCHITECT_GRAPH_OUTPUT_CONTRACT: &str = r#"Top-level output schema:
