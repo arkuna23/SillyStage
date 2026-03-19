@@ -1609,9 +1609,13 @@ const zhCN = {
     },
     card: {
       coverAlt: '{{name}} 的封面',
+      folder: '文件夹',
       idLabel: '角色 ID',
+      noTags: '还没有 tag。',
       personality: '性格',
       style: '表现风格',
+      tags: 'Tags',
+      unfiled: '未分组',
     },
     create: {
       errors: {
@@ -1632,9 +1636,15 @@ const zhCN = {
         styleRequired: '请填写表现风格。',
         submitFailed: '保存角色卡失败。',
       },
+      folderClear: '不设置文件夹',
+      folderModes: {
+        existing: '选择已有文件夹',
+        new: '新建文件夹',
+      },
       fields: {
         characterId: '角色 ID',
         cover: '封面',
+        folder: '文件夹组',
         name: '显示名称',
         personality: '性格',
         schemaId: '状态结构',
@@ -1645,10 +1655,16 @@ const zhCN = {
         stateType: '值类型',
         style: '表现风格',
         systemPrompt: 'System Prompt',
+        tags: 'Tags',
+      },
+      hints: {
+        tags: '可用逗号、中文逗号或换行分隔多个 tag。',
       },
       placeholders: {
         characterId: 'hakurei-reimu',
         cover: '选择 PNG、JPEG 或 WebP 封面',
+        folder: '例如 东方 / 博丽神社 / 主角组',
+        folderSelect: '从已有文件夹中选择',
         name: '博丽灵梦',
         personality:
           '直率、警觉、嫌麻烦，但在关键时刻总会站出来处理异变。',
@@ -1659,6 +1675,7 @@ const zhCN = {
         style: '说话干脆，不绕弯子，带一点不耐烦，但总能稳住场面。',
         systemPrompt:
           '始终以博丽神社巫女的身份行动，先判断异变和来意，再用简洁直接的口吻回应。',
+        tags: '巫女, 主角, 东方, 高机动',
       },
       stateTypes: {
         array: '数组',
@@ -1721,6 +1738,15 @@ const zhCN = {
       loadCharacterFailed: '加载角色卡失败。',
       loadFailed: '角色库加载失败。',
       loadSchemasFailed: '加载状态结构列表失败。',
+      folderActionFailed: '文件夹操作失败。',
+      folderDeleteFailed: '删除文件夹 {{folder}} 失败。',
+      folderCreated: '已创建文件夹：{{folder}}。',
+      folderDeleted: '已删除文件夹：{{folder}}。',
+      folderExists: '文件夹 {{folder}} 已存在。',
+      folderNameRequired: '请先填写文件夹名称。',
+      folderRenamed: '已将文件夹 {{from}} 重命名为 {{to}}。',
+      movedToFolder: '已将 {{count}} 个角色移到 {{folder}}。',
+      movedToUnfiled: '已将 {{count}} 个角色移回未分组。',
       sampleCreateFailed: '插入示例角色失败。',
       samplesCreated: '已加入示例角色：{{names}}。',
       samplesCreatedPartial: '示例角色已部分加入。新增：{{created}}；已存在：{{skipped}}。',
@@ -1733,6 +1759,37 @@ const zhCN = {
     },
     metrics: {
       total: '角色数量',
+    },
+    filters: {
+      allFolders: '全部文件夹',
+      currentFolder: '当前文件夹',
+      emptyDescription: '换个关键词，或者切回其他文件夹组再看看。',
+      emptyTitle: '当前筛选下没有角色卡。',
+      groupCount: '{{count}} 张',
+      results: '结果 {{count}}',
+      searchPlaceholder: '搜索角色 ID、名称、性格、风格、tag 或文件夹',
+      unfiled: '未分组',
+    },
+    folders: {
+      all: '全部角色',
+      createAction: '创建文件夹',
+      createTitle: '新建文件夹',
+      kicker: '资源管理器',
+      menuCreate: '新建文件夹',
+      menuDelete: '删除文件夹',
+      menuRename: '重命名文件夹',
+      nameLabel: '文件夹名称',
+      namePlaceholder: '例如 主角组',
+      renameAction: '保存名称',
+      renameTitle: '重命名文件夹',
+      toggleCollapse: '收起资源管理器',
+      toggleExpand: '展开资源管理器',
+      title: '文件夹',
+    },
+    folderDeleteDialog: {
+      message: '确定要删除文件夹 {{folder}} 吗？其中的 {{count}} 个角色也会一起删除，这个操作不能撤回。',
+      more: '还有 {{count}} 个角色',
+      title: '删除文件夹',
     },
     views: {
       grid: '卡片',

@@ -180,6 +180,18 @@ function validateContent(content: Partial<CharacterCardContent>) {
   if (typeof content.system_prompt !== 'string') {
     throw new Error('Character archive is missing content.system_prompt.')
   }
+
+  if (content.tags !== undefined && !Array.isArray(content.tags)) {
+    throw new Error('Character archive contains an invalid content.tags.')
+  }
+
+  if (Array.isArray(content.tags) && content.tags.some((tag) => typeof tag !== 'string')) {
+    throw new Error('Character archive contains an invalid content.tags.')
+  }
+
+  if (content.folder !== undefined && typeof content.folder !== 'string') {
+    throw new Error('Character archive contains an invalid content.folder.')
+  }
 }
 
 export async function parseCharacterArchive(file: File) {
@@ -212,7 +224,11 @@ export async function parseCharacterArchive(file: File) {
   }
 
   return {
-    content: content as CharacterCardContent,
+    content: {
+      ...content,
+      folder: typeof content.folder === 'string' ? content.folder : '',
+      tags: Array.isArray(content.tags) ? content.tags : [],
+    } as CharacterCardContent,
     manifest,
   }
 }
@@ -228,5 +244,7 @@ export function buildCharacterSummaryFromArchive(args: {
     name: args.content.name,
     personality: args.content.personality,
     style: args.content.style,
+    tags: args.content.tags,
+    folder: args.content.folder,
   } satisfies CharacterSummary
 }

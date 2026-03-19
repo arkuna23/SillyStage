@@ -538,6 +538,8 @@ fn character_summary_payload_from_record(
         name: record.content.name.clone(),
         personality: record.content.personality.clone(),
         style: record.content.style.clone(),
+        tags: record.content.tags.clone(),
+        folder: record.content.folder.clone(),
         cover_file_name: record.cover_file_name.clone(),
         cover_mime_type: parse_cover_mime_type_option(record.cover_mime_type.as_deref()),
     }
@@ -553,6 +555,8 @@ fn character_definition_from_content(
         style: content.style,
         schema_id: content.schema_id,
         system_prompt: content.system_prompt,
+        tags: normalize_tags(content.tags),
+        folder: normalize_folder(content.folder),
     }
 }
 
@@ -566,7 +570,32 @@ fn character_content_from_definition(
         style: definition.style.clone(),
         schema_id: definition.schema_id.clone(),
         system_prompt: definition.system_prompt.clone(),
+        tags: definition.tags.clone(),
+        folder: definition.folder.clone(),
     }
+}
+
+fn normalize_folder(folder: String) -> String {
+    folder.trim().trim_matches('/').to_owned()
+}
+
+fn normalize_tags(tags: Vec<String>) -> Vec<String> {
+    let mut normalized = Vec::new();
+
+    for tag in tags {
+        let tag = tag.trim();
+        if tag.is_empty() {
+            continue;
+        }
+
+        if normalized.iter().any(|existing| existing == tag) {
+            continue;
+        }
+
+        normalized.push(tag.to_owned());
+    }
+
+    normalized
 }
 
 fn normalize_file_name(file_name: Option<String>) -> Option<String> {

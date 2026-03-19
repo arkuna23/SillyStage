@@ -623,6 +623,8 @@ fn character_summary_payload_from_record(
         name: record.content.name.clone(),
         personality: record.content.personality.clone(),
         style: record.content.style.clone(),
+        tags: record.content.tags.clone(),
+        folder: record.content.folder.clone(),
         cover_file_name: record.cover_file_name.clone(),
         cover_mime_type: record
             .cover_mime_type

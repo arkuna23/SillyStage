@@ -237,11 +237,17 @@ Character content fields:
 - `style`
 - `schema_id`
 - `system_prompt`
+- `tags`
+- `folder`
 
 Notes:
 
 - `schema_id` references the character-private state schema
+- `tags` is a user-facing label list for the character card
+- `folder` is the character card folder grouping; an empty string means unfiled
 - character summaries and detail payloads also include:
+  - `tags`
+  - `folder`
   - `cover_file_name`
   - `cover_mime_type`
 - cover bytes are fetched through `GET /download/character:{character_id}/cover`

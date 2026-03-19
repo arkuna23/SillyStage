@@ -123,6 +123,28 @@ export function CharacterDetailsDialog({
       </div>
 
       <div className="space-y-5">
+        <DetailSection title={t('characters.card.folder')}>
+          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+            {summary?.folder || t('characters.card.unfiled')}
+          </p>
+        </DetailSection>
+
+        <DetailSection title={t('characters.card.tags')}>
+          <div className="flex flex-wrap gap-2">
+            {summary?.tags.length ? (
+              summary.tags.map((tag) => (
+                <Badge className="normal-case px-3 py-1" key={tag} variant="subtle">
+                  #{tag}
+                </Badge>
+              ))
+            ) : (
+              <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                {t('characters.card.noTags')}
+              </p>
+            )}
+          </div>
+        </DetailSection>
+
         <DetailSection title={t('characters.card.personality')}>
           <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
             {summary?.personality}

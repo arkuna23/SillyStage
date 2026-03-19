@@ -84,6 +84,10 @@ pub struct CharacterCardContent {
     pub style: String,
     pub schema_id: String,
     pub system_prompt: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub folder: String,
 }
 
 impl From<&CharacterCard> for CharacterCardContent {
@@ -95,6 +99,8 @@ impl From<&CharacterCard> for CharacterCardContent {
             style: value.style.clone(),
             schema_id: value.id.clone(),
             system_prompt: value.system_prompt.clone(),
+            tags: Vec::new(),
+            folder: String::new(),
         }
     }
 }
@@ -124,6 +130,8 @@ pub struct CharacterCardSummaryPayload {
     pub name: String,
     pub personality: String,
     pub style: String,
+    pub tags: Vec<String>,
+    pub folder: String,
     pub cover_file_name: Option<String>,
     pub cover_mime_type: Option<CharacterCoverMimeType>,
 }
@@ -158,6 +166,8 @@ impl CharacterArchive {
             name: self.content.name.clone(),
             personality: self.content.personality.clone(),
             style: self.content.style.clone(),
+            tags: self.content.tags.clone(),
+            folder: self.content.folder.clone(),
             cover_file_name: Some(self.manifest.cover_path.clone()),
             cover_mime_type: Some(self.manifest.cover_mime_type),
         }

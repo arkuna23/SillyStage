@@ -32,6 +32,8 @@ function createSummaryFromCharacter(character: CharacterSchemaResult): Character
     name: character.content.name,
     personality: character.content.personality,
     style: character.content.style,
+    tags: character.content.tags,
+    folder: character.content.folder,
   }
 }
 

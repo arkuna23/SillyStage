@@ -15,6 +15,8 @@ fn sample_content() -> CharacterCardContent {
         style: "talkative".to_owned(),
         schema_id: "schema-character-merchant".to_owned(),
         system_prompt: "Stay in character.".to_owned(),
+        tags: vec!["merchant".to_owned()],
+        folder: "harbor".to_owned(),
     }
 }
 
@@ -33,6 +35,8 @@ fn chr_archive_round_trip_preserves_manifest_content_and_cover() {
     assert_eq!(summary.character_id, "merchant");
     assert_eq!(summary.cover_file_name.as_deref(), Some("cover.png"));
     assert_eq!(summary.cover_mime_type, Some(CharacterCoverMimeType::Png));
+    assert_eq!(summary.tags, vec!["merchant".to_owned()]);
+    assert_eq!(summary.folder, "harbor");
 
     let reader = std::io::Cursor::new(bytes);
     let mut zip = ZipArchive::new(reader).expect("zip should open");

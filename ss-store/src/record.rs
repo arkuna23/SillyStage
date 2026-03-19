@@ -92,6 +92,10 @@ pub struct CharacterCardDefinition {
     pub style: String,
     pub schema_id: String,
     pub system_prompt: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub folder: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

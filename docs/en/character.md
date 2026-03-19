@@ -13,7 +13,9 @@ The current character content structure is:
   "personality": "greedy but friendly trader",
   "style": "talkative, casual, slightly cunning",
   "schema_id": "schema-character-merchant",
-  "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion."
+  "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion.",
+  "tags": ["merchant", "shop"],
+  "folder": "harbor/npcs"
 }
 ```
 
@@ -25,6 +27,8 @@ Field meanings:
 - `style`: speaking / behavior style
 - `schema_id`: id of the character-private state schema
 - `system_prompt`: actor-facing character system prompt
+- `tags`: character-card label list
+- `folder`: character-card folder grouping; empty string means unfiled
 
 Template variables:
 
@@ -179,8 +183,12 @@ Example detail payload shape:
     "personality": "greedy but friendly trader",
     "style": "talkative, casual, slightly cunning",
     "schema_id": "schema-character-merchant",
-    "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion."
+    "system_prompt": "You are {{char}}. Speak naturally to {{user}} and avoid breaking immersion.",
+    "tags": ["merchant", "shop"],
+    "folder": "harbor/npcs"
   },
+  "tags": ["merchant", "shop"],
+  "folder": "harbor/npcs",
   "cover_file_name": "cover.png",
   "cover_mime_type": "image/png"
 }
@@ -189,6 +197,8 @@ Example detail payload shape:
 Notes:
 
 - `cover_file_name` and `cover_mime_type` are `null` when the character has no cover yet
+- `folder` is an empty string when the character is not assigned to a folder
+- `tags` always returns an array and falls back to an empty array when unset
 - `character.list` summaries expose the same cover metadata fields
 - use `GET /download/character:{character_id}/cover` to fetch the current cover bytes
 

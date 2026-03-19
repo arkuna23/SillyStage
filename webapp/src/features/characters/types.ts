@@ -13,6 +13,8 @@ export type CharacterCardContent = {
   schema_id: string
   style: string
   system_prompt: string
+  tags: string[]
+  folder: string
 }
 
 export type CharacterSummary = {
@@ -22,6 +24,8 @@ export type CharacterSummary = {
   name: string
   personality: string
   style: string
+  tags: string[]
+  folder: string
 }
 
 export type CharacterCreateResult = {
