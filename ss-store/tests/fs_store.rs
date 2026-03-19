@@ -733,7 +733,10 @@ async fn filesystem_store_overwrites_existing_character_record() {
         .expect("load character")
         .expect("character should exist");
     assert_eq!(loaded.content.name, "Haru Prime");
-    assert_eq!(loaded.cover_file_name.as_deref(), Some("cover-updated.webp"));
+    assert_eq!(
+        loaded.cover_file_name.as_deref(),
+        Some("cover-updated.webp")
+    );
     assert_eq!(loaded.cover_mime_type.as_deref(), Some("image/webp"));
 }
 

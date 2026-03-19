@@ -289,9 +289,9 @@ fn default_runtime_prompt_profiles_include_output_contracts() {
     )
     .expect("default replyer prompt profile should compile");
     assert!(
-        replyer
-            .system_prompt
-            .contains("Suggest several player reply options that fit the current state of the scene")
+        replyer.system_prompt.contains(
+            "Suggest several player reply options that fit the current state of the scene"
+        )
     );
     assert!(
         replyer
@@ -379,17 +379,13 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .contains("Returned node ids must all be new and unique within this response")
     );
     assert!(
-        profiles
-            .draft_init
-            .system_prompt
-            .contains("All transition and transition_patches targets must use returned node ids only")
+        profiles.draft_init.system_prompt.contains(
+            "All transition and transition_patches targets must use returned node ids only"
+        )
     );
-    assert!(
-        profiles
-            .draft_init
-            .system_prompt
-            .contains("Do not point to future chunk nodes; add those links later with transition_patches")
-    );
+    assert!(profiles.draft_init.system_prompt.contains(
+        "Do not point to future chunk nodes; add those links later with transition_patches"
+    ));
 
     assert!(
         profiles
@@ -409,12 +405,9 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .system_prompt
             .contains("All transition and transition_patches targets must use either GRAPH_SUMMARY node ids or returned node ids")
     );
-    assert!(
-        profiles
-            .draft_continue
-            .system_prompt
-            .contains("Do not point to future chunk nodes; add those links later with transition_patches")
-    );
+    assert!(profiles.draft_continue.system_prompt.contains(
+        "Do not point to future chunk nodes; add those links later with transition_patches"
+    ));
     assert!(
         profiles
             .repair_system_prompt
@@ -430,11 +423,9 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .repair_system_prompt
             .contains("transition and transition_patches targets must use GRAPH_SUMMARY node ids or returned node ids only")
     );
-    assert!(
-        profiles
-            .repair_system_prompt
-            .contains("Remove links to future chunk nodes; later chunks can add them via transition_patches")
-    );
+    assert!(profiles.repair_system_prompt.contains(
+        "Remove links to future chunk nodes; later chunks can add them via transition_patches"
+    ));
 }
 
 fn keeper_update_for_phase(

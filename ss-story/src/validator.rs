@@ -36,7 +36,11 @@ mod tests {
                 vec![],
                 vec![Transition::new(
                     "next",
-                    Condition::new("current_event", ConditionOperator::Eq, json!("Meeting Aqua")),
+                    Condition::new(
+                        "current_event",
+                        ConditionOperator::Eq,
+                        json!("Meeting Aqua"),
+                    ),
                 )],
                 vec![StateOp::SetState {
                     key: "current_event".to_owned(),
