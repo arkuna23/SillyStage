@@ -65,18 +65,24 @@ pub use player_profile::{
     PlayerProfileUpdateParams, PlayerProfilesListedPayload,
 };
 pub use preset::{
-    AgentPresetConfigPayload, AgentPresetConfigSummaryPayload, PresetAgentIdPayload,
-    PresetAgentPayloads, PresetAgentSummaryPayloads, PresetCreateParams, PresetDeleteParams,
-    PresetDeletedPayload, PresetEntryCreateParams, PresetEntryDeleteParams,
+    AgentPresetConfigPayload, AgentPresetConfigSummaryPayload, ArchitectPromptModePayload,
+    PresetAgentIdPayload, PresetAgentPayloads, PresetAgentSummaryPayloads, PresetCreateParams,
+    PresetDeleteParams, PresetDeletedPayload, PresetEntryCreateParams, PresetEntryDeleteParams,
     PresetEntryDeletedPayload, PresetEntryPayload, PresetEntryUpdateParams, PresetGetParams,
     PresetListParams, PresetModuleEntryPayload, PresetModuleEntrySummaryPayload, PresetPayload,
-    PresetPromptModulePayload, PresetPromptModuleSummaryPayload, PresetSummaryPayload,
-    PresetUpdateParams, PresetsListedPayload, PromptEntryKindPayload, PromptModuleIdPayload,
+    PresetPreviewRuntimeParams, PresetPreviewTemplateParams, PresetPromptModulePayload,
+    PresetPromptModuleSummaryPayload, PresetPromptPreviewEntryPayload,
+    PresetPromptPreviewMessagePayload, PresetPromptPreviewModulePayload,
+    PresetPromptPreviewPayload, PresetSummaryPayload, PresetUpdateParams, PresetsListedPayload,
+    PromptEntryKindPayload, PromptMessageRolePayload, PromptModuleIdPayload,
+    PromptPreviewActorPurposePayload, PromptPreviewEntrySourcePayload,
+    PromptPreviewKeeperPhasePayload, PromptPreviewKindPayload, PromptPreviewMessageRolePayload,
+    PromptPreviewNarratorPurposePayload,
 };
 pub use reply_suggestion::{ReplyOptionPayload, SuggestRepliesParams, SuggestedRepliesPayload};
 pub use request::{
     CharacterCreateParams, CharacterDeleteParams, CharacterGetParams, CharacterListParams,
-    CharacterUpdateParams, ContinueStoryDraftParams, CreateStoryResourcesParams,
+    CharacterUpdateParams, ContinueStoryDraftParams, CreateStoryParams, CreateStoryResourcesParams,
     DashboardGetParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
     DeleteStoryResourcesParams, FinalizeStoryDraftParams, GenerateStoryParams,
     GenerateStoryPlanParams, GetRuntimeSnapshotParams, GetSessionParams, GetStoryDraftParams,

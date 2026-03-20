@@ -5,7 +5,8 @@ use std::sync::Arc;
 use ss_engine::{LlmApiRegistry, RegistryError, RuntimeApiRecords};
 use store::{
     AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig, ApiRecord,
-    LlmProvider, PresetAgentConfigs, PresetRecord, PromptEntryKind, PromptModuleId,
+    LlmProvider, PresetAgentConfigs, PresetRecord, PromptEntryKind, PromptMessageRole,
+    PromptModuleId,
 };
 
 use common::QueuedMockLlm;
@@ -28,6 +29,9 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         extra: None,
         modules: vec![AgentPromptModuleConfig {
             module_id: PromptModuleId::Task,
+            display_name: "Task".to_owned(),
+            message_role: PromptMessageRole::System,
+            order: 20,
             entries: vec![AgentPromptModuleEntryConfig {
                 entry_id: format!("entry-{max_tokens}"),
                 display_name: format!("Prompt {max_tokens}"),
@@ -130,13 +134,6 @@ fn registry_builds_story_generation_and_runtime_configs_for_group() {
             .planner
             .prompt_profile
             .system_prompt
-            .contains("Prompt 512")
-    );
-    assert!(
-        generation
-            .planner
-            .prompt_profile
-            .system_prompt
             .contains("Keep replies under 512 tokens when practical.")
     );
     assert_eq!(runtime.director.model, "director-override-model");
@@ -148,10 +145,15 @@ fn registry_builds_story_generation_and_runtime_configs_for_group() {
             .director
             .prompt_profile
             .system_prompt
-            .contains("Prompt 512")
+            .contains("Keep replies under 512 tokens when practical.")
     );
     assert_eq!(replyer.model, "replyer-override-model");
-    assert!(replyer.prompt_profile.system_prompt.contains("Prompt 256"));
+    assert!(
+        replyer
+            .prompt_profile
+            .system_prompt
+            .contains("Keep replies under 256 tokens when practical.")
+    );
 }
 
 #[test]
@@ -191,6 +193,6 @@ fn registry_falls_back_to_group_records_when_override_is_missing() {
             .planner
             .prompt_profile
             .system_prompt
-            .contains("Prompt 512")
+            .contains("Keep replies under 512 tokens when practical.")
     );
 }

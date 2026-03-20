@@ -4,7 +4,11 @@ use ss_protocol::{
     DashboardHealthPayload, DashboardHealthStatus, DashboardPayload,
     DashboardSessionSummaryPayload, DashboardStorySummaryPayload, ErrorCode, ErrorPayload,
     GenerateStoryPlanParams, GlobalConfigPayload, JsonRpcOutcome, JsonRpcRequestMessage,
-    JsonRpcResponseMessage, RequestParams, ResourceFilePayload, ResponseResult,
+    JsonRpcResponseMessage, PresetAgentIdPayload, PresetPromptPreviewEntryPayload,
+    PresetPromptPreviewMessagePayload, PresetPromptPreviewModulePayload,
+    PresetPromptPreviewPayload, PromptEntryKindPayload, PromptMessageRolePayload,
+    PromptModuleIdPayload, PromptPreviewEntrySourcePayload, PromptPreviewKindPayload,
+    PromptPreviewMessageRolePayload, RequestParams, ResourceFilePayload, ResponseResult,
     RuntimeSnapshotPayload, ServerEventMessage, SessionDetailPayload, SessionMessageKind,
     SessionMessagePayload, StoryPlannedPayload, StreamEventBody, StreamFrame,
 };
@@ -102,6 +106,73 @@ fn json_rpc_request_and_response_round_trip() {
         config_round_trip.outcome,
         JsonRpcOutcome::Ok(result) if matches!(*result, ResponseResult::GlobalConfig(_))
     ));
+
+    let preview_response = JsonRpcResponseMessage::ok(
+        "req-preview",
+        None::<String>,
+        ResponseResult::PresetPromptPreview(Box::new(PresetPromptPreviewPayload {
+            preset_id: "preset-default".to_owned(),
+            agent: PresetAgentIdPayload::Planner,
+            module_id: None,
+            architect_mode: None,
+            preview_kind: PromptPreviewKindPayload::Runtime,
+            message_role: PromptPreviewMessageRolePayload::Full,
+            messages: vec![
+                PresetPromptPreviewMessagePayload {
+                    role: PromptMessageRolePayload::System,
+                    modules: vec![PresetPromptPreviewModulePayload {
+                        module_id: PromptModuleIdPayload::Role,
+                        display_name: "Role".to_owned(),
+                        order: 10,
+                        entries: vec![PresetPromptPreviewEntryPayload {
+                            entry_id: "planner_role_core".to_owned(),
+                            display_name: "Core Role".to_owned(),
+                            kind: PromptEntryKindPayload::BuiltInText,
+                            order: 10,
+                            source: PromptPreviewEntrySourcePayload::Preset,
+                            compiled_text: "You are Planner.".to_owned(),
+                        }],
+                    }],
+                },
+                PresetPromptPreviewMessagePayload {
+                    role: PromptMessageRolePayload::User,
+                    modules: vec![PresetPromptPreviewModulePayload {
+                        module_id: PromptModuleIdPayload::StaticContext,
+                        display_name: "Static Context".to_owned(),
+                        order: 30,
+                        entries: vec![PresetPromptPreviewEntryPayload {
+                            entry_id: "__injected_preview_hint".to_owned(),
+                            display_name: "Preview Hint".to_owned(),
+                            kind: PromptEntryKindPayload::BuiltInText,
+                            order: 99,
+                            source: PromptPreviewEntrySourcePayload::Synthetic,
+                            compiled_text: "<context:story_concept>".to_owned(),
+                        }],
+                    }],
+                },
+            ],
+            unresolved_context_keys: vec!["story_concept".to_owned()],
+        })),
+    );
+    let preview_json =
+        serde_json::to_string_pretty(&preview_response).expect("preview response should serialize");
+    assert!(preview_json.contains("\"messages\""));
+    assert!(!preview_json.contains("\"user_prompt\""));
+    let preview_round_trip: JsonRpcResponseMessage =
+        serde_json::from_str(&preview_json).expect("preview response should deserialize");
+    match preview_round_trip.outcome {
+        JsonRpcOutcome::Ok(result) => match *result {
+            ResponseResult::PresetPromptPreview(payload) => {
+                assert_eq!(payload.messages.len(), 2);
+                assert_eq!(
+                    payload.messages[1].modules[0].entries[0].source,
+                    PromptPreviewEntrySourcePayload::Synthetic
+                );
+            }
+            other => panic!("unexpected preview response: {other:?}"),
+        },
+        other => panic!("unexpected preview outcome: {other:?}"),
+    }
 
     let created_response = JsonRpcResponseMessage::ok(
         "req-6",

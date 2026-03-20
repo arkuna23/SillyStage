@@ -15,6 +15,12 @@ pub enum HandlerError {
     MissingApiGroup(String),
     #[error("preset '{0}' not found")]
     MissingPreset(String),
+    #[error("preset '{preset_id}' does not contain module '{module_id}' for agent '{agent}'")]
+    MissingPresetModule {
+        preset_id: String,
+        agent: String,
+        module_id: String,
+    },
     #[error("preset '{preset_id}' does not contain entry '{entry_id}' for agent '{agent}'")]
     MissingPresetEntry {
         preset_id: String,
@@ -145,6 +151,8 @@ pub enum HandlerError {
     InvalidPresetDefinition(String),
     #[error("invalid common variable: {0}")]
     InvalidCommonVariable(String),
+    #[error("invalid prompt preview: {0}")]
+    InvalidPromptPreview(String),
     #[error("invalid session variable update: {0}")]
     InvalidSessionVariableUpdate(String),
     #[error("data package selection must not be empty")]
@@ -193,6 +201,7 @@ impl HandlerError {
             | Self::InvalidSchemaDefinition(_)
             | Self::InvalidPresetDefinition(_)
             | Self::InvalidCommonVariable(_)
+            | Self::InvalidPromptPreview(_)
             | Self::InvalidSessionVariableUpdate(_)
             | Self::EmptyDataPackageSelection
             | Self::InvalidDataPackage(_)
@@ -220,6 +229,7 @@ impl HandlerError {
             | Self::MissingApi(_)
             | Self::MissingApiGroup(_)
             | Self::MissingPreset(_)
+            | Self::MissingPresetModule { .. }
             | Self::MissingPresetEntry { .. } => {
                 ErrorPayload::new(ErrorCode::NotFound, self.to_string())
             }
@@ -289,6 +299,7 @@ impl From<ManagerError> for HandlerError {
             ManagerError::EmptyCharacterIds => Self::EmptyCharacterIds,
             ManagerError::InvalidGeneratedSchema(message) => Self::InvalidSchemaDefinition(message),
             ManagerError::InvalidCommonVariable(message) => Self::InvalidCommonVariable(message),
+            ManagerError::InvalidPromptPreview(message) => Self::InvalidPromptPreview(message),
             ManagerError::InvalidDraft(message) => Self::InvalidStoryDraft(message),
             ManagerError::Architect(error) => Self::Manager(error.to_string()),
             ManagerError::Replyer(error) => Self::Manager(error.to_string()),

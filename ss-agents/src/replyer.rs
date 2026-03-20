@@ -6,8 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    PromptProfile, render_character_summaries, render_node, render_observable_world_state,
-    render_player, render_prompt_entries, render_state_schema_fields,
+    PromptProfile, merge_system_prompt, render_character_summaries, render_node,
+    render_observable_world_state, render_player, render_prompt_modules,
+    render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -101,15 +102,14 @@ impl Replyer {
     ) -> Result<ReplyerResponse, ReplyerError> {
         Self::validate_request(&request)?;
 
-        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
+        let (system_prompt, user_prompt) = self.build_prompts(&request)?;
         let output = self
             .llm
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.prompt_profile.system_prompt)
-                    .user_message(stable_prompt)
-                    .user_message(dynamic_prompt)
+                    .system_message(system_prompt)
+                    .user_message(user_prompt)
                     .response_format(ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -156,14 +156,14 @@ impl Replyer {
         Ok(())
     }
 
-    fn build_user_prompts(
+    fn build_prompts(
         &self,
         request: &ReplyerRequest<'_>,
     ) -> Result<(String, String), ReplyerError> {
         let cast_summaries =
             render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "lorebook_base" => request.lorebook_base.map(str::to_owned),
                 "player" => Some(render_player(
                     request.player_name,
@@ -175,18 +175,33 @@ impl Replyer {
                 "player_state_schema" => Some(render_state_schema_fields(
                     &request.player_state_schema.fields,
                 )),
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "session_history" => Some(render_reply_history(request.history)),
+                "lorebook_matched" => request.lorebook_matched.map(str::to_owned),
                 _ => None,
             });
+        let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
 
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "lorebook_base" => request.lorebook_base.map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "reply_limit" => Some(request.limit.to_string()),
+                "current_cast" => Some(cast_summaries.clone()),
+                "current_node" => Some(render_node(request.current_node)),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
                 "world_state" => Some(render_observable_world_state(request.world_state)),
                 "session_history" => Some(render_reply_history(request.history)),
                 "lorebook_matched" => request.lorebook_matched.map(str::to_owned),
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 
     fn current_cast_summaries<'a>(

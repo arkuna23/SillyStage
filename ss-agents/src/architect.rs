@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use crate::actor::CharacterCard;
 use crate::prompt::{
-    ArchitectPromptProfiles, CharacterTemplateContext, compact_json, render_character_text,
-    render_prompt_entries,
+    ArchitectPromptProfiles, CharacterTemplateContext, PromptProfile, compact_json,
+    merge_system_prompt, render_character_text, render_prompt_modules,
 };
 use llm::{ChatRequest, LlmApi};
 use serde::de::DeserializeOwned;
@@ -202,11 +202,11 @@ impl Architect {
         &self,
         req: ArchitectRequest<'_>,
     ) -> Result<ArchitectResponse, ArchitectError> {
-        let user_messages = self.build_user_messages(&req)?;
+        let (system_prompt, user_prompt) = self.build_graph_prompts(&req)?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.prompt_profiles.graph.system_prompt,
-                user_messages,
+                &system_prompt,
+                user_prompt,
                 ArchitectRepairTarget::FullGraph,
                 Self::parse_json_output::<ArchitectOutputBundle>,
                 |_| Ok(()),
@@ -230,7 +230,7 @@ impl Architect {
         &self,
         req: ArchitectDraftInitRequest<'_>,
     ) -> Result<ArchitectDraftInitResponse, ArchitectError> {
-        let user_messages = self.build_draft_user_messages(
+        let (system_prompt, user_prompt) = self.build_draft_prompts(
             DraftPromptKind::Init,
             DraftPromptInput {
                 story_concept: req.story_concept,
@@ -251,8 +251,8 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.prompt_profiles.draft_init.system_prompt,
-                user_messages,
+                &system_prompt,
+                user_prompt,
                 ArchitectRepairTarget::DraftInit,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
                 validate_draft_init_bundle,
@@ -291,7 +291,7 @@ impl Architect {
         &self,
         req: ArchitectDraftContinueRequest<'_>,
     ) -> Result<ArchitectDraftChunkResponse, ArchitectError> {
-        let user_messages = self.build_draft_user_messages(
+        let (system_prompt, user_prompt) = self.build_draft_prompts(
             DraftPromptKind::Continue,
             DraftPromptInput {
                 story_concept: req.story_concept,
@@ -312,8 +312,8 @@ impl Architect {
         )?;
         let (bundle, output) = self
             .chat_json_with_repair(
-                &self.prompt_profiles.draft_continue.system_prompt,
-                user_messages,
+                &system_prompt,
+                user_prompt,
                 ArchitectRepairTarget::DraftContinue,
                 Self::parse_json_output::<ArchitectDraftOutputBundle>,
                 |bundle| {
@@ -340,10 +340,10 @@ impl Architect {
         })
     }
 
-    fn build_user_messages(
+    fn build_graph_prompts(
         &self,
         req: &ArchitectRequest<'_>,
-    ) -> Result<Vec<String>, ArchitectError> {
+    ) -> Result<(String, String), ArchitectError> {
         let character_summaries = render_architect_character_summaries(
             &req.available_characters
                 .iter()
@@ -351,44 +351,45 @@ impl Architect {
                 .collect::<Vec<_>>(),
         );
 
-        Ok(vec![
-            render_prompt_entries(
-                &self.prompt_profiles.graph.stable_entries,
-                |key| match key {
-                    "story_concept" => Some(req.story_concept.to_owned()),
-                    "lorebook_base" => req.lorebook_base.map(str::to_owned),
-                    "planned_story" => Some(req.planned_story.unwrap_or("null").to_owned()),
-                    "available_characters" => Some(character_summaries.clone()),
-                    "world_state_schema_seed" => Some(render_compact_schema_text(
-                        req.world_state_schema.map(|schema| &schema.fields),
-                    )),
-                    "player_state_schema_seed" => Some(render_compact_schema_text(
-                        req.player_state_schema.map(|schema| &schema.fields),
-                    )),
-                    _ => None,
-                },
-            ),
-            render_prompt_entries(
-                &self.prompt_profiles.graph.dynamic_entries,
-                |key| match key {
-                    "world_state_schema_seed" => Some(render_compact_schema_text(
-                        req.world_state_schema.map(|schema| &schema.fields),
-                    )),
-                    "player_state_schema_seed" => Some(render_compact_schema_text(
-                        req.player_state_schema.map(|schema| &schema.fields),
-                    )),
-                    "lorebook_matched" => req.lorebook_matched.map(str::to_owned),
-                    _ => None,
-                },
-            ),
-        ])
+        let system_prompt =
+            self.render_profile_system_prompt(&self.prompt_profiles.graph, |key| match key {
+                "story_concept" => Some(req.story_concept.to_owned()),
+                "lorebook_base" => req.lorebook_base.map(str::to_owned),
+                "planned_story" => Some(req.planned_story.unwrap_or("null").to_owned()),
+                "available_characters" => Some(character_summaries.clone()),
+                "world_state_schema_seed" => Some(render_compact_schema_text(
+                    req.world_state_schema.map(|schema| &schema.fields),
+                )),
+                "player_state_schema_seed" => Some(render_compact_schema_text(
+                    req.player_state_schema.map(|schema| &schema.fields),
+                )),
+                "lorebook_matched" => req.lorebook_matched.map(str::to_owned),
+                _ => None,
+            });
+        let user_prompt =
+            self.render_profile_user_prompt(&self.prompt_profiles.graph, |key| match key {
+                "story_concept" => Some(req.story_concept.to_owned()),
+                "lorebook_base" => req.lorebook_base.map(str::to_owned),
+                "planned_story" => Some(req.planned_story.unwrap_or("null").to_owned()),
+                "available_characters" => Some(character_summaries.clone()),
+                "world_state_schema_seed" => Some(render_compact_schema_text(
+                    req.world_state_schema.map(|schema| &schema.fields),
+                )),
+                "player_state_schema_seed" => Some(render_compact_schema_text(
+                    req.player_state_schema.map(|schema| &schema.fields),
+                )),
+                "lorebook_matched" => req.lorebook_matched.map(str::to_owned),
+                _ => None,
+            });
+
+        Ok((system_prompt, user_prompt))
     }
 
-    fn build_draft_user_messages(
+    fn build_draft_prompts(
         &self,
         kind: DraftPromptKind,
         input: DraftPromptInput<'_>,
-    ) -> Result<Vec<String>, ArchitectError> {
+    ) -> Result<(String, String), ArchitectError> {
         let character_summaries = render_architect_character_summaries(
             &input
                 .available_characters
@@ -410,8 +411,8 @@ impl Architect {
                 )
                 .map_err(ArchitectError::SerializeRecentNodes)?;
 
-                Ok(vec![
-                    render_prompt_entries(&self.prompt_profiles.draft_init.stable_entries, |key| {
+                let system_prompt =
+                    self.render_profile_system_prompt(&self.prompt_profiles.draft_init, |key| {
                         match key {
                             "story_concept" => Some(input.story_concept.to_owned()),
                             "lorebook_base" => input.lorebook_base.map(str::to_owned),
@@ -425,12 +426,6 @@ impl Architect {
                             "player_state_schema_seed" => Some(render_compact_schema_text(
                                 input.player_state_schema.map(|schema| &schema.fields),
                             )),
-                            _ => None,
-                        }
-                    }),
-                    render_prompt_entries(
-                        &self.prompt_profiles.draft_init.dynamic_entries,
-                        |key| match key {
                             "current_section" => Some(input.current_section.to_owned()),
                             "section_index" => Some(input.section_index.to_string()),
                             "total_sections" => Some(input.total_sections.to_string()),
@@ -439,9 +434,35 @@ impl Architect {
                             "recent_section_detail" => Some(recent_section_detail.clone()),
                             "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
                             _ => None,
-                        },
-                    ),
-                ])
+                        }
+                    });
+                let user_prompt =
+                    self.render_profile_user_prompt(&self.prompt_profiles.draft_init, |key| {
+                        match key {
+                            "story_concept" => Some(input.story_concept.to_owned()),
+                            "lorebook_base" => input.lorebook_base.map(str::to_owned),
+                            "planned_story" => {
+                                Some(input.planned_story.unwrap_or("null").to_owned())
+                            }
+                            "available_characters" => Some(character_summaries.clone()),
+                            "world_state_schema_seed" => Some(render_compact_schema_text(
+                                input.world_state_schema.map(|schema| &schema.fields),
+                            )),
+                            "player_state_schema_seed" => Some(render_compact_schema_text(
+                                input.player_state_schema.map(|schema| &schema.fields),
+                            )),
+                            "current_section" => Some(input.current_section.to_owned()),
+                            "section_index" => Some(input.section_index.to_string()),
+                            "total_sections" => Some(input.total_sections.to_string()),
+                            "target_node_count" => Some(input.target_node_count.to_string()),
+                            "graph_summary" => Some(graph_summary.clone()),
+                            "recent_section_detail" => Some(recent_section_detail.clone()),
+                            "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
+                            _ => None,
+                        }
+                    });
+
+                Ok((system_prompt, user_prompt))
             }
             DraftPromptKind::Continue => {
                 let graph_summary = compact_json(&input.graph_summary)
@@ -455,10 +476,34 @@ impl Architect {
                 )
                 .map_err(ArchitectError::SerializeRecentNodes)?;
 
-                Ok(vec![
-                    render_prompt_entries(
-                        &self.prompt_profiles.draft_continue.stable_entries,
-                        |key| match key {
+                let system_prompt = self.render_profile_system_prompt(
+                    &self.prompt_profiles.draft_continue,
+                    |key| match key {
+                        "story_concept" => Some(input.story_concept.to_owned()),
+                        "lorebook_base" => input.lorebook_base.map(str::to_owned),
+                        "available_characters" => Some(character_summaries.clone()),
+                        "world_state_schema" => Some(render_compact_schema_text(
+                            input.world_state_schema.map(|schema| &schema.fields),
+                        )),
+                        "player_state_schema" => Some(render_compact_schema_text(
+                            input.player_state_schema.map(|schema| &schema.fields),
+                        )),
+                        "section_summaries" => {
+                            Some(render_section_summaries(input.section_summaries))
+                        }
+                        "current_section" => Some(input.current_section.to_owned()),
+                        "section_index" => Some(input.section_index.to_string()),
+                        "total_sections" => Some(input.total_sections.to_string()),
+                        "target_node_count" => Some(input.target_node_count.to_string()),
+                        "graph_summary" => Some(graph_summary.clone()),
+                        "recent_section_detail" => Some(recent_section_detail.clone()),
+                        "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
+                        _ => None,
+                    },
+                );
+                let user_prompt =
+                    self.render_profile_user_prompt(&self.prompt_profiles.draft_continue, |key| {
+                        match key {
                             "story_concept" => Some(input.story_concept.to_owned()),
                             "lorebook_base" => input.lorebook_base.map(str::to_owned),
                             "available_characters" => Some(character_summaries.clone()),
@@ -471,12 +516,6 @@ impl Architect {
                             "section_summaries" => {
                                 Some(render_section_summaries(input.section_summaries))
                             }
-                            _ => None,
-                        },
-                    ),
-                    render_prompt_entries(
-                        &self.prompt_profiles.draft_continue.dynamic_entries,
-                        |key| match key {
                             "current_section" => Some(input.current_section.to_owned()),
                             "section_index" => Some(input.section_index.to_string()),
                             "total_sections" => Some(input.total_sections.to_string()),
@@ -485,17 +524,35 @@ impl Architect {
                             "recent_section_detail" => Some(recent_section_detail.clone()),
                             "lorebook_matched" => input.lorebook_matched.map(str::to_owned),
                             _ => None,
-                        },
-                    ),
-                ])
+                        }
+                    });
+
+                Ok((system_prompt, user_prompt))
             }
         }
+    }
+
+    fn render_profile_system_prompt<F>(&self, profile: &PromptProfile, resolve: F) -> String
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        merge_system_prompt(
+            &profile.system_prompt,
+            &render_prompt_modules(&profile.system_modules, resolve),
+        )
+    }
+
+    fn render_profile_user_prompt<F>(&self, profile: &PromptProfile, resolve: F) -> String
+    where
+        F: Fn(&str) -> Option<String>,
+    {
+        render_prompt_modules(&profile.user_modules, resolve)
     }
 
     async fn chat_json_with_repair<T, P, V>(
         &self,
         system_prompt: &str,
-        user_messages: Vec<String>,
+        user_message: String,
         repair_target: ArchitectRepairTarget,
         parse: P,
         validate: V,
@@ -505,7 +562,7 @@ impl Architect {
         P: Fn(&llm::ChatResponse) -> Result<T, ArchitectError>,
         V: Fn(&T) -> Result<(), ArchitectError>,
     {
-        match self.chat_json(system_prompt, user_messages.clone()).await {
+        match self.chat_json(system_prompt, user_message.clone()).await {
             Ok(output) => match parse(&output).and_then(|parsed| {
                 validate(&parsed)?;
                 Ok(parsed)
@@ -570,10 +627,7 @@ impl Architect {
     {
         let repair_prompt = build_repair_prompt(repair_target, raw_output, original_error);
         let repaired = self
-            .chat_json(
-                &self.prompt_profiles.repair_system_prompt,
-                vec![repair_prompt],
-            )
+            .chat_json(&self.prompt_profiles.repair_system_prompt, repair_prompt)
             .await?;
         let parsed = parse(&repaired)?;
         validate(&parsed)?;
@@ -583,15 +637,13 @@ impl Architect {
     async fn chat_json(
         &self,
         system_prompt: &str,
-        user_messages: Vec<String>,
+        user_message: String,
     ) -> Result<llm::ChatResponse, ArchitectError> {
         let mut builder = ChatRequest::builder()
             .model(self.model.clone())
             .system_message(system_prompt)
+            .user_message(user_message)
             .response_format(llm::ResponseFormat::JsonObject);
-        for message in user_messages {
-            builder = builder.user_message(message);
-        }
         if let Some(temperature) = self.temperature {
             builder = builder.temperature(temperature);
         }

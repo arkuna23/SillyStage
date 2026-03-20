@@ -1,11 +1,12 @@
 use protocol::{
-    CharacterCardSummaryPayload, ContinueStoryDraftParams, CreateStoryResourcesParams,
-    DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
-    FinalizeStoryDraftParams, GenerateStoryParams, GenerateStoryPlanParams, GetStoryDraftParams,
-    GetStoryParams, GetStoryResourcesParams, JsonRpcResponseMessage, ResponseResult,
-    StartSessionFromStoryParams, StartStoryDraftParams, StoriesListedPayload, StoryDeletedPayload,
-    StoryDetailPayload, StoryDraftDeletedPayload, StoryDraftDetailPayload, StoryDraftStatusPayload,
-    StoryDraftSummaryPayload, StoryDraftsListedPayload, StoryGeneratedPayload, StoryPlannedPayload,
+    CharacterCardSummaryPayload, ContinueStoryDraftParams, CreateStoryParams,
+    CreateStoryResourcesParams, DeleteStoryDraftParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, FinalizeStoryDraftParams, GenerateStoryParams,
+    GenerateStoryPlanParams, GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams,
+    JsonRpcResponseMessage, ResponseResult, StartSessionFromStoryParams, StartStoryDraftParams,
+    StoriesListedPayload, StoryDeletedPayload, StoryDetailPayload, StoryDraftDeletedPayload,
+    StoryDraftDetailPayload, StoryDraftStatusPayload, StoryDraftSummaryPayload,
+    StoryDraftsListedPayload, StoryGeneratedPayload, StoryPlannedPayload,
     StoryResourcesDeletedPayload, StoryResourcesListedPayload, StoryResourcesPayload,
     StorySummaryPayload, UpdateStoryDraftGraphParams, UpdateStoryGraphParams, UpdateStoryParams,
     UpdateStoryResourcesParams,
@@ -206,6 +207,49 @@ impl Handler {
                 resource_id: params.resource_id,
                 story_script: response.story_script,
             }),
+        ))
+    }
+
+    pub(crate) async fn handle_story_create(
+        &self,
+        request_id: &str,
+        params: CreateStoryParams,
+    ) -> Result<JsonRpcResponseMessage, HandlerError> {
+        let resource = self
+            .store
+            .get_story_resources(&params.resource_id)
+            .await?
+            .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
+        self.ensure_schema_exists(&params.world_schema_id).await?;
+        self.ensure_schema_exists(&params.player_schema_id).await?;
+        validate_story_graph(&params.graph)?;
+
+        let display_name = params
+            .display_name
+            .unwrap_or_else(|| resource.story_concept.clone());
+        let common_variables = params.common_variables.unwrap_or_default();
+        let now = now_timestamp_ms();
+        let story = StoryRecord {
+            story_id: format!("story-{}", self.store.list_stories().await?.len()),
+            display_name,
+            resource_id: resource.resource_id,
+            graph: params.graph,
+            world_schema_id: params.world_schema_id,
+            player_schema_id: params.player_schema_id,
+            introduction: params.introduction,
+            common_variables,
+            created_at_ms: Some(now),
+            updated_at_ms: Some(now),
+        };
+
+        self.validate_story_common_variables(&story, &story.common_variables)
+            .await?;
+        self.store.save_story(story.clone()).await?;
+
+        Ok(JsonRpcResponseMessage::ok(
+            request_id,
+            None::<String>,
+            ResponseResult::StoryGenerated(Box::new(story_generated_payload_from_record(&story))),
         ))
     }
 

@@ -383,7 +383,7 @@ async fn perform_stream_sends_character_specific_system_prompt() {
 
     let requests = llm.recorded_requests();
     let request = requests.first().expect("request should be recorded");
-    assert_eq!(request.messages.len(), 3);
+    assert_eq!(request.messages.len(), 2);
     assert!(
         request.messages[0]
             .content
@@ -413,36 +413,36 @@ async fn perform_stream_sends_character_specific_system_prompt() {
             .content
             .contains("A cautious courier carrying a sealed satchel")
     );
-    assert!(request.messages[2].content.contains("SHARED_SCENE_HISTORY"));
+    assert!(request.messages[1].content.contains("SHARED_SCENE_HISTORY"));
     assert!(
-        request.messages[2]
+        request.messages[1]
             .content
             .contains("Stay close to the lantern light.")
     );
     assert!(
-        request.messages[2]
+        request.messages[1]
             .content
             .contains("Can you get us through the flooded gate?")
     );
-    assert!(!request.messages[2].content.contains("\"player_state\""));
-    assert!(!request.messages[2].content.contains("\"coins\": 12"));
+    assert!(!request.messages[1].content.contains("\"player_state\""));
+    assert!(!request.messages[1].content.contains("\"coins\": 12"));
     assert!(
-        request.messages[2]
+        request.messages[1]
             .content
             .contains("PRIVATE_CHARACTER_MEMORY")
     );
     assert!(
-        request.messages[2]
+        request.messages[1]
             .content
             .contains("If I play this right, the route stays mine.")
     );
     assert!(
-        !request.messages[2]
+        !request.messages[1]
             .content
             .contains("\"actor_shared_history\"")
     );
     assert!(
-        !request.messages[2]
+        !request.messages[1]
             .content
             .contains("\"actor_private_memory\"")
     );

@@ -5,9 +5,10 @@ use ss_store::{
     AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig,
     ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardDefinition,
     CharacterCardRecord, InMemoryStore, LlmProvider, PlayerProfileRecord, PresetAgentConfigs,
-    PresetRecord, PromptEntryKind, PromptModuleId, RuntimeSnapshot, SchemaRecord,
-    SessionBindingConfig, SessionCharacterRecord, SessionMessageKind, SessionMessageRecord,
-    SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord, StoryResourcesRecord,
+    PresetRecord, PromptEntryKind, PromptMessageRole, PromptModuleId, RuntimeSnapshot,
+    SchemaRecord, SessionBindingConfig, SessionCharacterRecord, SessionMessageKind,
+    SessionMessageRecord, SessionRecord, Store, StoryDraftRecord, StoryDraftStatus, StoryRecord,
+    StoryResourcesRecord,
 };
 use state::{PlayerStateSchema, StateFieldSchema, StateValueType, WorldState, WorldStateSchema};
 use story::{NarrativeNode, StoryGraph};
@@ -58,6 +59,9 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         extra: None,
         modules: vec![AgentPromptModuleConfig {
             module_id: PromptModuleId::Task,
+            display_name: "Task".to_owned(),
+            message_role: PromptMessageRole::System,
+            order: 20,
             entries: vec![AgentPromptModuleEntryConfig {
                 entry_id: format!("entry-{max_tokens}"),
                 display_name: format!("Prompt {max_tokens}"),

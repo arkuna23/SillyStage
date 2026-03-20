@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -7,14 +7,63 @@ pub enum LlmProvider {
     OpenAi,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PromptModuleId {
     Role,
     Task,
     StaticContext,
     DynamicContext,
     Output,
+    Custom(String),
+}
+
+impl PromptModuleId {
+    pub fn from_raw(raw: String) -> Self {
+        match raw.as_str() {
+            "role" => Self::Role,
+            "task" => Self::Task,
+            "static_context" => Self::StaticContext,
+            "dynamic_context" => Self::DynamicContext,
+            "output" => Self::Output,
+            _ => Self::Custom(raw),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Role => "role",
+            Self::Task => "task",
+            Self::StaticContext => "static_context",
+            Self::DynamicContext => "dynamic_context",
+            Self::Output => "output",
+            Self::Custom(value) => value.as_str(),
+        }
+    }
+}
+
+impl Serialize for PromptModuleId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for PromptModuleId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Self::from_raw(String::deserialize(deserializer)?))
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptMessageRole {
+    System,
+    User,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -42,11 +91,57 @@ pub struct AgentPromptModuleEntryConfig {
     pub context_key: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct AgentPromptModuleConfig {
     pub module_id: PromptModuleId,
+    pub display_name: String,
+    pub message_role: PromptMessageRole,
+    #[serde(default)]
+    pub order: i32,
     #[serde(default)]
     pub entries: Vec<AgentPromptModuleEntryConfig>,
+}
+
+impl<'de> Deserialize<'de> for AgentPromptModuleConfig {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct RawAgentPromptModuleConfig {
+            module_id: PromptModuleId,
+            #[serde(default)]
+            display_name: Option<String>,
+            #[serde(default)]
+            message_role: Option<PromptMessageRole>,
+            #[serde(default)]
+            order: Option<i32>,
+            #[serde(default)]
+            entries: Vec<AgentPromptModuleEntryConfig>,
+        }
+
+        let raw = RawAgentPromptModuleConfig::deserialize(deserializer)?;
+        let defaults = builtin_module_defaults(&raw.module_id);
+
+        Ok(Self {
+            display_name: raw.display_name.unwrap_or_else(|| {
+                defaults
+                    .map(|defaults| defaults.display_name.to_owned())
+                    .unwrap_or_else(|| raw.module_id.as_str().to_owned())
+            }),
+            message_role: raw.message_role.unwrap_or_else(|| {
+                defaults
+                    .map(|defaults| defaults.message_role)
+                    .unwrap_or(PromptMessageRole::User)
+            }),
+            order: raw
+                .order
+                .unwrap_or_else(|| defaults.map(|defaults| defaults.order).unwrap_or(1_000)),
+            module_id: raw.module_id,
+            entries: raw.entries,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -91,4 +186,42 @@ pub struct SessionBindingConfig {
 
 fn default_enabled() -> bool {
     true
+}
+
+#[derive(Clone, Copy)]
+struct BuiltInModuleDefaults {
+    display_name: &'static str,
+    message_role: PromptMessageRole,
+    order: i32,
+}
+
+fn builtin_module_defaults(module_id: &PromptModuleId) -> Option<BuiltInModuleDefaults> {
+    match module_id {
+        PromptModuleId::Role => Some(BuiltInModuleDefaults {
+            display_name: "Role",
+            message_role: PromptMessageRole::System,
+            order: 10,
+        }),
+        PromptModuleId::Task => Some(BuiltInModuleDefaults {
+            display_name: "Task",
+            message_role: PromptMessageRole::System,
+            order: 20,
+        }),
+        PromptModuleId::StaticContext => Some(BuiltInModuleDefaults {
+            display_name: "Static Context",
+            message_role: PromptMessageRole::User,
+            order: 30,
+        }),
+        PromptModuleId::DynamicContext => Some(BuiltInModuleDefaults {
+            display_name: "Dynamic Context",
+            message_role: PromptMessageRole::User,
+            order: 40,
+        }),
+        PromptModuleId::Output => Some(BuiltInModuleDefaults {
+            display_name: "Output",
+            message_role: PromptMessageRole::System,
+            order: 50,
+        }),
+        PromptModuleId::Custom(_) => None,
+    }
 }

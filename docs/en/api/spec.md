@@ -182,15 +182,20 @@ Each agent entry currently supports:
 Each `module` contains:
 
 - `module_id`
+- `display_name`
+- `message_role`
+- `order`
 - `entries`
 
-The current `module_id` values are:
+Built-in `module_id` values are:
 
 - `role`
 - `task`
 - `static_context`
 - `dynamic_context`
 - `output`
+
+Custom module ids are also allowed and are stored as plain strings.
 
 Each `entries` item contains:
 
@@ -222,13 +227,43 @@ New single-entry methods:
 - `preset_entry.update`
 - `preset_entry.delete`
 
+New prompt-preview methods:
+
+- `preset_preview.template`
+- `preset_preview.runtime`
+
 Notes:
 
 - `preset_entry.create` only creates `custom_text`
 - `preset_entry.delete` only removes `custom_text`
 - `preset_entry.update` only allows `enabled` and `order` changes for built-in entries
-- Enabled entries are compiled by module into system-prompt or user-prompt segments, rather than
-  being appended as one legacy prompt-entry block
+- `preset_entry.*` operates on existing modules only; it does not create implicit modules
+- Modules are sorted by `order`, then `module_id`; entries are sorted by `order`, then `entry_id`
+- Enabled entries are compiled into one system message and one user message
+- `message_role` decides whether a module is placed into the system message or the user message
+- The compiled prompt keeps module section titles, but omits entry ids and entry display names
+- `preset_preview.template` renders the compiled prompt while unresolved `context_ref` items stay as
+  placeholders such as `<context:story_concept>`
+- `preset_preview.runtime` renders structured compiled entry text for either the full prompt or
+  one compiled module when `module_id` is provided
+- architect preview is mode-specific and requires `architect_mode = graph | draft_init | draft_continue`
+- runtime preview source rules:
+  - planner and architect `graph` mode use `resource_id`
+  - architect `draft_init` and `draft_continue` use `draft_id`
+  - director / actor / narrator / keeper / replyer use top-level `session_id`
+  - actor runtime preview also requires `character_id`
+- preview responses return:
+  - `preview_kind = template | runtime`
+  - `message_role = system | user | full`
+  - `messages[]`
+  - each `message` has `role` and ordered `modules[]`
+  - each `module` has `module_id`, `display_name`, `order`, and ordered `entries[]`
+  - each `entry` has `entry_id`, `display_name`, `kind`, `order`, `source`, and `compiled_text`
+  - `unresolved_context_keys: string[]`
+- `compiled_text` exists only on entries; clients assemble module headers and full prompts
+  themselves
+- `source = preset | synthetic`; synthetic entries are backend-injected additions such as
+  architect mode-specific contracts
 
 The runtime binding model now uses `api_group_id + preset_id`.
 
@@ -496,6 +531,16 @@ Current protocol families:
 If either binding id is omitted and the backend has at least one `api_group` and one `preset`,
 it uses the first available id from each list after sorting.
 
+`story.create` accepts:
+
+- `resource_id`
+- optional `display_name`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
+- optional `common_variables`
+
 `story.generate` accepts the same creation inputs as draft start:
 
 - `resource_id`
@@ -536,6 +581,8 @@ The backend validates the graph before saving and returns `invalid_request` if:
 - `start_node` does not exist
 - any transition points to a missing node
 - duplicate node ids are present
+
+`story.create` uses the same graph validation before creating the story.
 
 ### 5.1.1 Draft Story Generation
 

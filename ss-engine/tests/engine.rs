@@ -611,10 +611,9 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
     let requests = llm.recorded_requests();
     let final_keeper_request = requests.last().expect("final keeper request");
     let final_keeper_user = user_message_content(final_keeper_request);
-    assert!(final_keeper_user.contains("NODE_CHANGE"));
-    assert!(final_keeper_user.contains("PROGRESSION_HINTS"));
     assert!(final_keeper_user.contains("matched_transition_hints"));
-    assert!(final_keeper_user.contains("COMPLETED_BEATS"));
+    assert!(final_keeper_user.contains("target_node=gate"));
+    assert!(final_keeper_user.contains("[actor|merchant|"));
     assert!(final_keeper_user.contains("Follow me."));
     assert!(!final_keeper_user.contains("I can still profit from this."));
 }
@@ -1137,8 +1136,8 @@ async fn generate_story_graph_uses_architect_independently() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].max_tokens, Some(8_192));
     assert_eq!(requests[0].temperature, Some(0.0));
-    assert!(user_message_content(&requests[0]).contains("STORY_CONCEPT"));
-    assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(user_message_content(&requests[0]).contains("A flooded dock story"));
+    assert!(user_message_content(&requests[0]).contains("coins:\"int\""));
 }
 
 #[tokio::test]
@@ -1161,7 +1160,7 @@ async fn generate_story_plan_uses_planner_independently() {
     assert_eq!(requests.len(), 1);
     assert_eq!(requests[0].max_tokens, None);
     assert_eq!(requests[0].temperature, None);
-    assert!(user_message_content(&requests[0]).contains("AVAILABLE_CHARACTERS"));
+    assert!(user_message_content(&requests[0]).contains("merchant | Haru"));
 }
 
 #[tokio::test]
@@ -1202,8 +1201,8 @@ async fn generate_story_graph_passes_planned_story_when_present() {
 
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
-    assert!(user_message_content(&requests[0]).contains("PLANNED_STORY"));
-    assert!(user_message_content(&requests[0]).contains("PLAYER_STATE_SCHEMA_SEED"));
+    assert!(user_message_content(&requests[0]).contains("Title:\nFlooded Dock Bargain"));
+    assert!(user_message_content(&requests[0]).contains("coins:\"int\""));
     assert!(user_message_content(&requests[0]).contains("Flooded Dock Bargain"));
     assert!(response.player_state_schema.has_field("coins"));
 }

@@ -107,6 +107,14 @@ impl Handler {
             RequestParams::PresetEntryDelete(params) => {
                 self.handle_preset_entry_delete(&request_id, params).await
             }
+            RequestParams::PresetPreviewTemplate(params) => {
+                self.handle_preset_preview_template(&request_id, params)
+                    .await
+            }
+            RequestParams::PresetPreviewRuntime(params) => {
+                self.handle_preset_preview_runtime(&request_id, session_id.clone(), params)
+                    .await
+            }
             RequestParams::SchemaCreate(params) => {
                 self.handle_schema_create(&request_id, params).await
             }
@@ -194,6 +202,9 @@ impl Handler {
             }
             RequestParams::StoryGeneratePlan(params) => {
                 self.handle_story_generate_plan(&request_id, params).await
+            }
+            RequestParams::StoryCreate(params) => {
+                self.handle_story_create(&request_id, params).await
             }
             RequestParams::StoryGenerate(params) => {
                 self.handle_story_generate(&request_id, params).await

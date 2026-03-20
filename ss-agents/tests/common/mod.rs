@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use futures_util::stream;
 use llm::{ChatChunk, ChatRequest, ChatResponse, ChatStream, LlmApi, LlmError, Message, Role};
-use ss_agents::{ArchitectPromptProfiles, PromptEntry, PromptEntryValue, PromptProfile};
+use ss_agents::{ArchitectPromptProfiles, PromptModule, PromptModuleEntry, PromptProfile};
 
 type RecordedRequests = Arc<Mutex<Vec<ChatRequest>>>;
 type ChatResults = Arc<Mutex<Vec<Result<ChatResponse, LlmError>>>>;
@@ -95,38 +95,36 @@ pub fn assistant_response(
 }
 
 pub fn context_entry(
-    entry_id: impl Into<String>,
+    _entry_id: impl Into<String>,
     title: impl Into<String>,
     key: impl Into<String>,
-) -> PromptEntry {
-    PromptEntry {
-        entry_id: entry_id.into(),
+) -> PromptModule {
+    PromptModule {
         title: title.into(),
-        value: PromptEntryValue::ContextRef(key.into()),
+        entries: vec![PromptModuleEntry::ContextRef(key.into())],
     }
 }
 
 pub fn text_entry(
-    entry_id: impl Into<String>,
+    _entry_id: impl Into<String>,
     title: impl Into<String>,
     text: impl Into<String>,
-) -> PromptEntry {
-    PromptEntry {
-        entry_id: entry_id.into(),
+) -> PromptModule {
+    PromptModule {
         title: title.into(),
-        value: PromptEntryValue::Text(text.into()),
+        entries: vec![PromptModuleEntry::Text(text.into())],
     }
 }
 
 pub fn prompt_profile(
     system_prompt: impl Into<String>,
-    stable_entries: Vec<PromptEntry>,
-    dynamic_entries: Vec<PromptEntry>,
+    stable_entries: Vec<PromptModule>,
+    dynamic_entries: Vec<PromptModule>,
 ) -> PromptProfile {
     PromptProfile {
         system_prompt: system_prompt.into(),
-        stable_entries,
-        dynamic_entries,
+        system_modules: Vec::new(),
+        user_modules: stable_entries.into_iter().chain(dynamic_entries).collect(),
     }
 }
 

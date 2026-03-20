@@ -7,6 +7,7 @@ use store::{ApiRecord, SessionBindingConfig, Store};
 use crate::{EngineEvent, LlmApiRegistry};
 
 mod error;
+mod preview;
 mod replies;
 mod resolve;
 mod session;

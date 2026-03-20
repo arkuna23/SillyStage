@@ -18,7 +18,10 @@ pub use manager::{
     EngineManager, ManagedTurnStream, ManagerError, ResolvedSessionConfig, SessionCharacterUpdate,
 };
 pub use prompt::{
-    PromptAgentKind, PromptConfigError, compact_agent_preset_config,
+    ArchitectPromptMode, PromptAgentKind, PromptConfigError, PromptPreview,
+    PromptPreviewActorPurpose, PromptPreviewEntry, PromptPreviewEntrySource,
+    PromptPreviewKeeperPhase, PromptPreviewMessage, PromptPreviewMessageRole, PromptPreviewModule,
+    PromptPreviewNarratorPurpose, RuntimePromptPreviewOptions, compact_agent_preset_config,
     compile_architect_prompt_profiles, compile_prompt_profile, default_agent_preset_config,
     normalize_agent_preset_config,
 };

@@ -11,23 +11,22 @@ use crate::actor::CharacterCardSummaryRef;
 const DEFAULT_USER_NAME: &str = "User";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PromptEntryValue {
+pub enum PromptModuleEntry {
     Text(String),
     ContextRef(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PromptEntry {
-    pub entry_id: String,
+pub struct PromptModule {
     pub title: String,
-    pub value: PromptEntryValue,
+    pub entries: Vec<PromptModuleEntry>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PromptProfile {
     pub system_prompt: String,
-    pub stable_entries: Vec<PromptEntry>,
-    pub dynamic_entries: Vec<PromptEntry>,
+    pub system_modules: Vec<PromptModule>,
+    pub user_modules: Vec<PromptModule>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -57,29 +56,49 @@ pub(crate) fn render_sections(sections: &[(&str, String)]) -> String {
         .join("\n\n")
 }
 
-pub(crate) fn render_prompt_entries<F>(entries: &[PromptEntry], resolve: F) -> String
+pub(crate) fn merge_system_prompt(base: &str, modules: &str) -> String {
+    let base = base.trim();
+    let modules = modules.trim();
+    match (base.is_empty(), modules.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => base.to_owned(),
+        (true, false) => modules.to_owned(),
+        (false, false) => format!("{base}\n\n{modules}"),
+    }
+}
+
+pub(crate) fn render_prompt_modules<F>(modules: &[PromptModule], resolve: F) -> String
 where
     F: Fn(&str) -> Option<String>,
 {
-    entries
+    modules
         .iter()
-        .filter_map(|entry| match &entry.value {
-            PromptEntryValue::Text(text) => {
-                let body = text.trim();
-                if body.is_empty() {
-                    None
-                } else {
-                    Some(format!("{}:\n{}", entry.title.trim(), body))
-                }
+        .filter_map(|module| {
+            let body = module
+                .entries
+                .iter()
+                .filter_map(|entry| match entry {
+                    PromptModuleEntry::Text(text) => {
+                        let body = text.trim();
+                        if body.is_empty() {
+                            None
+                        } else {
+                            Some(body.to_owned())
+                        }
+                    }
+                    PromptModuleEntry::ContextRef(key) => resolve(key).and_then(|body| {
+                        let body = body.trim().to_owned();
+                        if body.is_empty() { None } else { Some(body) }
+                    }),
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n");
+
+            if body.is_empty() {
+                None
+            } else {
+                Some(format!("{}:\n{}", module.title.trim(), body))
             }
-            PromptEntryValue::ContextRef(key) => resolve(key).and_then(|body| {
-                let body = body.trim().to_owned();
-                if body.is_empty() {
-                    None
-                } else {
-                    Some(format!("{}:\n{}", entry.title.trim(), body))
-                }
-            }),
         })
         .collect::<Vec<_>>()
         .join("\n\n")

@@ -872,8 +872,8 @@ pub(super) fn templates_for_agent(agent: PromptAgentKind) -> Vec<BuiltInEntryTem
         }
     };
     templates.sort_by(|left, right| {
-        module_sort_key(left.module_id)
-            .cmp(&module_sort_key(right.module_id))
+        module_sort_key(left.module_id.clone())
+            .cmp(&module_sort_key(right.module_id.clone()))
             .then_with(|| left.order.cmp(&right.order))
             .then_with(|| left.entry_id.cmp(right.entry_id))
     });
@@ -887,5 +887,6 @@ fn module_sort_key(module_id: PromptModuleId) -> i32 {
         PromptModuleId::StaticContext => 2,
         PromptModuleId::DynamicContext => 3,
         PromptModuleId::Output => 4,
+        PromptModuleId::Custom(_) => 1_000,
     }
 }

@@ -19,7 +19,7 @@ use crate::player_profile::{
 };
 use crate::preset::{
     PresetDeletedPayload, PresetEntryDeletedPayload, PresetEntryPayload, PresetPayload,
-    PresetsListedPayload,
+    PresetPromptPreviewPayload, PresetsListedPayload,
 };
 use crate::reply_suggestion::SuggestedRepliesPayload;
 use crate::schema::{SchemaDeletedPayload, SchemaPayload, SchemasListedPayload};
@@ -46,6 +46,7 @@ pub enum ResponseResult {
     PresetDeleted(PresetDeletedPayload),
     PresetEntry(Box<PresetEntryPayload>),
     PresetEntryDeleted(PresetEntryDeletedPayload),
+    PresetPromptPreview(Box<PresetPromptPreviewPayload>),
     Schema(Box<SchemaPayload>),
     SchemasListed(SchemasListedPayload),
     SchemaDeleted(SchemaDeletedPayload),

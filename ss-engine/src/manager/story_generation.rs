@@ -432,7 +432,7 @@ impl EngineManager {
         Ok(draft)
     }
 
-    fn story_generation_lorebook_sections<'a>(
+    pub(super) fn story_generation_lorebook_sections<'a>(
         &self,
         resources: &'a crate::StoryResources,
         extra_inputs: &[&'a str],
@@ -522,7 +522,7 @@ impl EngineManager {
         }
     }
 
-    fn recent_draft_nodes(&self, draft: &StoryDraftRecord) -> Vec<NarrativeNode> {
+    pub(super) fn recent_draft_nodes(&self, draft: &StoryDraftRecord) -> Vec<NarrativeNode> {
         draft
             .section_node_ids
             .last()

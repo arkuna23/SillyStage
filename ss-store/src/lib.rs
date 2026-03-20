@@ -7,8 +7,8 @@ mod store;
 
 pub use config::{
     AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig,
-    ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, PromptEntryKind, PromptModuleId,
-    SessionBindingConfig,
+    ApiGroupAgentBindings, LlmProvider, PresetAgentConfigs, PromptEntryKind, PromptMessageRole,
+    PromptModuleId, SessionBindingConfig,
 };
 pub use error::StoreError;
 pub use fs::FileSystemStore;

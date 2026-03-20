@@ -12,9 +12,10 @@ use tracing::error;
 
 use crate::director::ActorPurpose;
 use crate::prompt::{
-    CharacterTemplateContext, PromptProfile, compact_json, render_actor_history,
-    render_actor_world_state, render_character_summaries, render_character_text, render_node,
-    render_player, render_prompt_entries, render_sections, render_state_schema_fields,
+    CharacterTemplateContext, PromptProfile, compact_json, merge_system_prompt,
+    render_actor_history, render_actor_world_state, render_character_summaries,
+    render_character_text, render_node, render_player, render_prompt_modules, render_sections,
+    render_state_schema_fields,
 };
 use state::{ActorMemoryEntry, ActorMemoryKind, WorldState};
 use story::NarrativeNode;
@@ -234,16 +235,11 @@ impl Actor {
         let stream = self
             .llm
             .chat_stream({
-                let (stable_user_prompt, dynamic_user_prompt) =
-                    self.build_user_prompts(&request, world_state)?;
+                let (system_prompt, user_prompt) = self.build_prompts(&request, world_state)?;
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(join_system_prompts(
-                        &self.prompt_profile.system_prompt,
-                        &character_prompt,
-                    ))
-                    .user_message(stable_user_prompt)
-                    .user_message(dynamic_user_prompt);
+                    .system_message(merge_system_prompt(&system_prompt, &character_prompt))
+                    .user_message(user_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -382,7 +378,7 @@ impl Actor {
         ]))
     }
 
-    fn build_user_prompts(
+    fn build_prompts(
         &self,
         request: &ActorRequest<'_>,
         world_state: &WorldState,
@@ -394,8 +390,8 @@ impl Actor {
             request.player_name,
         );
 
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
                 "player" => Some(render_player(
                     request.player_name,
@@ -404,11 +400,28 @@ impl Actor {
                 "actor_purpose" => Some(purpose.clone()),
                 "current_cast" => Some(current_cast.clone()),
                 "current_node" => Some(render_node(request.node)),
+                "world_state" => Some(render_actor_world_state(world_state)),
+                "shared_history" => Some(render_actor_history(
+                    &world_state.recent_actor_shared_history(memory_limit),
+                )),
+                "private_memory" => Some(render_actor_history(
+                    &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
+                )),
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
             });
+        let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
 
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "actor_purpose" => Some(purpose.clone()),
+                "current_cast" => Some(current_cast.clone()),
+                "current_node" => Some(render_node(request.node)),
                 "world_state" => Some(render_actor_world_state(world_state)),
                 "shared_history" => Some(render_actor_history(
                     &world_state.recent_actor_shared_history(memory_limit),
@@ -420,7 +433,7 @@ impl Actor {
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 
     fn current_cast_summaries<'b>(
@@ -448,15 +461,6 @@ impl Actor {
                     })
             })
             .collect()
-    }
-}
-
-fn join_system_prompts(base: &str, extra: &str) -> String {
-    match (base.trim(), extra.trim()) {
-        ("", "") => String::new(),
-        ("", extra) => extra.to_owned(),
-        (base, "") => base.to_owned(),
-        (base, extra) => format!("{base}\n\n{extra}"),
     }
 }
 

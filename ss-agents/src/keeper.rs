@@ -10,9 +10,9 @@ use crate::actor::{ActorResponse, ActorSegmentKind, CharacterCard, CharacterCard
 use crate::director::{ActorPurpose, NarratorPurpose};
 use crate::narrator::NarratorResponse;
 use crate::prompt::{
-    PromptProfile, compact_json, normalize_inline_text, render_character_summaries,
-    render_keeper_node, render_observable_world_state, render_player, render_prompt_entries,
-    render_sections, render_state_schema_fields,
+    PromptProfile, compact_json, merge_system_prompt, normalize_inline_text,
+    render_character_summaries, render_keeper_node, render_observable_world_state, render_player,
+    render_prompt_modules, render_sections, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, StateOp, StateUpdate, WorldState};
 use story::{Condition, ConditionScope, NarrativeNode};
@@ -143,15 +143,14 @@ impl Keeper {
     pub async fn keep(&self, request: KeeperRequest<'_>) -> Result<KeeperResponse, KeeperError> {
         Self::validate_request(&request)?;
 
-        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
+        let (system_prompt, user_prompt) = self.build_prompts(&request)?;
         let output = self
             .llm
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.prompt_profile.system_prompt)
-                    .user_message(stable_prompt)
-                    .user_message(dynamic_prompt)
+                    .system_message(system_prompt)
+                    .user_message(user_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -234,10 +233,7 @@ impl Keeper {
         Ok(())
     }
 
-    fn build_user_prompts(
-        &self,
-        request: &KeeperRequest<'_>,
-    ) -> Result<(String, String), KeeperError> {
+    fn build_prompts(&self, request: &KeeperRequest<'_>) -> Result<(String, String), KeeperError> {
         let keeper_phase =
             compact_json(&request.phase).map_err(KeeperError::SerializePromptData)?;
         let previous_cast = self
@@ -247,8 +243,8 @@ impl Keeper {
         let current_cast =
             render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
 
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
                 "player" => Some(render_player(
                     request.player_name,
@@ -272,11 +268,39 @@ impl Keeper {
                 "player_state_schema" => Some(render_state_schema_fields(
                     &request.player_state_schema.fields,
                 )),
+                "player_input" => Some(request.player_input.to_owned()),
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "completed_beats" => Some(render_keeper_beats(request.completed_beats)),
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
             });
+        let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
 
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "keeper_phase" => Some(keeper_phase.clone()),
+                "previous_node" => Some(
+                    request
+                        .previous_node
+                        .map(render_keeper_node)
+                        .unwrap_or_else(|| "null".to_owned()),
+                ),
+                "node_change" => Some(render_keeper_node_change(
+                    request.previous_node,
+                    request.current_node,
+                )),
+                "previous_cast" => Some(previous_cast.clone()),
+                "current_node" => Some(render_keeper_node(request.current_node)),
+                "progression_hints" => Some(render_keeper_progression_hints(request.current_node)),
+                "current_cast" => Some(current_cast.clone()),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
                 "player_input" => Some(request.player_input.to_owned()),
                 "world_state" => Some(render_observable_world_state(request.world_state)),
                 "completed_beats" => Some(render_keeper_beats(request.completed_beats)),
@@ -284,7 +308,7 @@ impl Keeper {
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 
     fn current_cast_summaries<'b>(

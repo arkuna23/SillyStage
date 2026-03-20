@@ -76,6 +76,8 @@
 | `preset_entry.create` | 否 | `preset_entry` | 给某个 agent 模块新增自定义提示词条目 |
 | `preset_entry.update` | 否 | `preset_entry` | 更新某个模块中的单条提示词条目 |
 | `preset_entry.delete` | 否 | `preset_entry_deleted` | 删除某个模块中的单条自定义提示词条目 |
+| `preset_preview.template` | 否 | `preset_prompt_preview` | 预览编译后的提示词模板，并保留上下文占位符 |
+| `preset_preview.runtime` | 视情况而定 | `preset_prompt_preview` | 基于真实资源、draft 或 session 上下文预览编译后的提示词 |
 
 `preset` 当前支持每个 agent 的常用生成参数，以及模块化提示词设定：
 
@@ -87,15 +89,20 @@
 每个 `module` 包含：
 
 - `module_id`
+- `display_name`
+- `message_role`
+- `order`
 - `entries`
 
-`module_id` 当前固定为：
+内置 `module_id` 当前为：
 
 - `role`
 - `task`
 - `static_context`
 - `dynamic_context`
 - `output`
+
+也允许自定义模块 id，按普通字符串存储。
 
 每个 `entries` 条目包含：
 
@@ -119,11 +126,27 @@
 - `preset.create`、`preset.get`、`preset.update` 使用完整模块结构
 - `preset.list` 返回摘要；每个 agent 会给出 `module_count`、`entry_count`，以及不带 `text/context_key` 的模块摘要
 - 允许只提交需要覆盖的模块或条目；后端会按 agent 内置模板做规范化并补齐缺失的 built-in 项
+- 模块按 `order`、`module_id` 排序；条目按 `order`、`entry_id` 排序
 - `built_in_text` 和 `built_in_context_ref` 来自后端默认模板，不能通过 `preset_entry.create` 新增，也不能通过 `preset_entry.delete` 删除
-- `preset_entry.create` 仅创建 `custom_text` 条目，并落在指定的 `agent + module_id` 下
+- `preset_entry.create` 仅创建 `custom_text` 条目，并落在已有的 `agent + module_id` 下
 - `preset_entry.update` 对 `custom_text` 可修改 `display_name`、`text`、`enabled`、`order`；对 built-in 条目仅允许改 `enabled`、`order`
-- 启用中的条目会按模块编译成最终 prompt：`role/task/output` 进入 system prompt，`static_context/dynamic_context` 进入 user prompt 的稳定段或动态段
+- 启用条目最终会被编译成一条 system message 和一条 user message
+- `message_role` 用于决定模块进入 system 还是 user message
+- 最终 prompt 会保留模块标题，但不会输出 entry id 和 entry 显示名
 - `context_key` 只用于 `built_in_context_ref`；`custom_text` 使用 `text`
+- `preset_preview.template` 会把未解析的 `context_ref` 渲染成 `<context:story_concept>` 这种占位符
+- `preset_preview.runtime` 会返回真实编译后的 entry 文本；如果传了 `module_id`，则只预览该模块，不返回完整 system/user 组合
+- `preset_preview.runtime` 的上下文来源规则：
+  - planner 和 architect 的 `graph` 模式要求传 `resource_id`
+  - architect 的 `draft_init` / `draft_continue` 要求传 `draft_id`
+  - director / actor / narrator / keeper / replyer 要求顶层 `session_id`
+  - actor 的运行期预览还要求传 `character_id`
+- architect 预览必须指定 `architect_mode = graph | draft_init | draft_continue`
+- 预览响应会返回 `preview_kind`、`message_role`、`messages` 和 `unresolved_context_keys`
+- `messages` 按顺序组织为 `message -> module -> entry`
+- `module` 返回 `module_id`、`display_name`、`order` 和有序 `entries`
+- `entry` 返回 `entry_id`、`display_name`、`kind`、`order`、`source = preset | synthetic` 和 `compiled_text`
+- 预览正文只放在 entry 级别；模块标题和完整 prompt 由前端自行拼接
 
 说明：
 
@@ -276,6 +299,7 @@
 | 方法 | session_id | 返回 | 说明 |
 | --- | --- | --- | --- |
 | `story.generate_plan` | 否 | `story_planned` | 调用 Planner 生成可编辑剧本 |
+| `story.create` | 否 | `story_generated` | 直接用调用方传入的 graph 创建 story |
 | `story.generate` | 否 | `story_generated` | 兼容封装：内部执行 `story_draft.start -> continue* -> finalize` |
 | `story.get` | 否 | `story` | 获取 story 详情 |
 | `story.update` | 否 | `story` | 更新 story 元数据 |
@@ -293,6 +317,16 @@
 - `player_schema_id`
 - `introduction`
 - `common_variables`
+
+`story.create` 输入：
+
+- `resource_id`
+- 可选 `display_name`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
+- 可选 `common_variables`
 
 `story.generate` 输入：
 
@@ -333,6 +367,8 @@
 
 - `story_id`
 - `graph`
+
+`story.create` 对传入 graph 使用与 `story.update_graph` 相同的校验规则。
 
 ## 12. story_draft
 

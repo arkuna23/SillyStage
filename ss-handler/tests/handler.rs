@@ -8,20 +8,23 @@ use engine::{
 use futures_util::StreamExt;
 use protocol::{
     AgentPresetConfigPayload, ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams,
-    ApiGroupListParams, ApiGroupUpdateParams, CharacterArchive, CharacterCardContent,
-    CharacterCoverMimeType, CharacterCreateParams, CharacterGetParams, CharacterUpdateParams,
-    CommonVariableDefinition, CommonVariableScope, ConfigGetGlobalParams,
-    CreateSessionMessageParams, CreateStoryResourcesParams, DashboardGetParams, DataPackageArchive,
-    DataPackageExportPrepareParams, DataPackageImportCommitParams, DataPackageImportPrepareParams,
-    DeleteSessionCharacterParams, DeleteSessionMessageParams, DeleteSessionParams,
-    EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams, GetSessionCharacterParams,
-    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryParams,
-    GetStoryResourcesParams, JsonRpcOutcome, JsonRpcRequestMessage,
-    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
-    LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams, PresetAgentIdPayload,
-    PresetCreateParams, PresetDeleteParams, PresetEntryCreateParams, PresetEntryDeleteParams,
-    PresetEntryUpdateParams, PresetGetParams, PresetListParams, PresetModuleEntryPayload,
-    PresetPromptModulePayload, PresetUpdateParams, PromptEntryKindPayload, PromptModuleIdPayload,
+    ApiGroupListParams, ApiGroupUpdateParams, ArchitectPromptModePayload, CharacterArchive,
+    CharacterCardContent, CharacterCoverMimeType, CharacterCreateParams, CharacterGetParams,
+    CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope, ConfigGetGlobalParams,
+    CreateSessionMessageParams, CreateStoryParams, CreateStoryResourcesParams, DashboardGetParams,
+    DataPackageArchive, DataPackageExportPrepareParams, DataPackageImportCommitParams,
+    DataPackageImportPrepareParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
+    DeleteSessionParams, EnterSessionCharacterSceneParams, ErrorCode, GenerateStoryParams,
+    GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
+    GetSessionVariablesParams, GetStoryParams, GetStoryResourcesParams, JsonRpcOutcome,
+    JsonRpcRequestMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
+    ListSessionMessagesParams, LorebookCreateParams, LorebookEntryPayload, LorebookUpdateParams,
+    PresetAgentIdPayload, PresetCreateParams, PresetDeleteParams, PresetEntryCreateParams,
+    PresetEntryDeleteParams, PresetEntryUpdateParams, PresetGetParams, PresetListParams,
+    PresetModuleEntryPayload, PresetPreviewRuntimeParams, PresetPreviewTemplateParams,
+    PresetPromptModulePayload, PresetUpdateParams, PromptEntryKindPayload,
+    PromptMessageRolePayload, PromptModuleIdPayload, PromptPreviewActorPurposePayload,
+    PromptPreviewEntrySourcePayload, PromptPreviewKindPayload, PromptPreviewMessageRolePayload,
     RequestParams, ResponseResult, RunTurnParams, SchemaCreateParams, SessionMessageKind,
     SessionUpdateConfigParams, StartSessionFromStoryParams, StartStoryDraftParams, StreamEventBody,
     StreamFrame, SuggestRepliesParams, UpdatePlayerDescriptionParams, UpdateSessionCharacterParams,
@@ -99,6 +102,30 @@ fn joined_user_messages(request: &llm::ChatRequest) -> String {
         .join("\n\n")
 }
 
+fn preview_message_text(
+    payload: &protocol::PresetPromptPreviewPayload,
+    role: PromptMessageRolePayload,
+) -> String {
+    payload
+        .messages
+        .iter()
+        .find(|message| message.role == role)
+        .map(|message| {
+            message
+                .modules
+                .iter()
+                .flat_map(|module| {
+                    module
+                        .entries
+                        .iter()
+                        .map(|entry| entry.compiled_text.as_str())
+                })
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .unwrap_or_default()
+}
+
 fn custom_preset_module(
     module_id: PromptModuleIdPayload,
     entry_id: &str,
@@ -109,6 +136,9 @@ fn custom_preset_module(
 ) -> PresetPromptModulePayload {
     PresetPromptModulePayload {
         module_id,
+        display_name: "Custom Module".to_owned(),
+        message_role: PromptMessageRolePayload::User,
+        order,
         entries: vec![PresetModuleEntryPayload {
             entry_id: entry_id.to_owned(),
             display_name: display_name.to_owned(),
@@ -1262,6 +1292,368 @@ async fn story_and_session_crud_follow_store_objects() {
     assert!(matches!(
         deleted,
         ResponseResult::SessionDeleted(payload) if payload.session_id == session_id
+    ));
+}
+
+#[tokio::test]
+async fn story_create_with_manual_graph_persists_and_can_start_session() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    seed_player_profiles(&store).await;
+    seed_api_groups_and_presets(&store).await;
+    store
+        .save_blob(sample_blob_record())
+        .await
+        .expect("save blob");
+    store
+        .save_character(sample_character_record())
+        .await
+        .expect("save character");
+
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let created_resource = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-create-resource",
+                None::<String>,
+                RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    story_concept: "A flooded harbor story.".to_owned(),
+                    character_ids: vec!["merchant".to_owned()],
+                    player_schema_id_seed: Some("schema-player-default".to_owned()),
+                    world_schema_id_seed: Some("schema-world-default".to_owned()),
+                    lorebook_ids: vec![],
+                    planned_story: None,
+                }),
+            ))
+            .await,
+    );
+    let resource_id = match created_resource {
+        ResponseResult::StoryResourcesCreated(payload) => payload.resource_id,
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let created_story = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-create-manual",
+                None::<String>,
+                RequestParams::StoryCreate(CreateStoryParams {
+                    resource_id,
+                    display_name: Some("Manual Harbor".to_owned()),
+                    graph: sample_story_graph(),
+                    world_schema_id: "schema-world-story-1".to_owned(),
+                    player_schema_id: "schema-player-story-1".to_owned(),
+                    introduction: "The courier reaches a flooded dock at dusk.".to_owned(),
+                    common_variables: Some(sample_common_variables()),
+                }),
+            ))
+            .await,
+    );
+    let story_id = match created_story {
+        ResponseResult::StoryGenerated(payload) => {
+            assert_eq!(payload.display_name, "Manual Harbor");
+            assert_eq!(payload.world_schema_id, "schema-world-story-1");
+            assert_eq!(payload.player_schema_id, "schema-player-story-1");
+            assert_eq!(
+                payload.introduction,
+                "The courier reaches a flooded dock at dusk."
+            );
+            assert_eq!(
+                payload.common_variables.len(),
+                sample_common_variables().len()
+            );
+            payload.story_id.clone()
+        }
+        other => panic!("unexpected response: {other:?}"),
+    };
+
+    let stored = store
+        .get_story(&story_id)
+        .await
+        .expect("get story")
+        .expect("story should exist");
+    assert_eq!(stored.display_name, "Manual Harbor");
+    assert_eq!(stored.graph.start_node, "dock");
+    assert_eq!(
+        stored.common_variables.len(),
+        sample_common_variables().len()
+    );
+    assert!(stored.created_at_ms.is_some());
+    assert!(stored.updated_at_ms.is_some());
+
+    let started = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-create-start-session",
+            None::<String>,
+            RequestParams::StoryStartSession(StartSessionFromStoryParams {
+                story_id,
+                display_name: Some("Manual Harbor Session".to_owned()),
+                player_profile_id: Some("profile-courier-a".to_owned()),
+                api_group_id: None,
+                preset_id: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary session start"),
+    };
+    assert!(matches!(
+        started.outcome,
+        JsonRpcOutcome::Ok(result)
+            if matches!(
+                *result,
+                ResponseResult::SessionStarted(ref payload)
+                    if payload.display_name == "Manual Harbor Session"
+                        && payload.story_id == stored.story_id
+            )
+    ));
+}
+
+#[tokio::test]
+async fn story_create_defaults_common_variables_to_empty_when_omitted() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-manual".to_owned(),
+            story_concept: "Manual Harbor".to_owned(),
+            character_ids: vec![],
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
+            lorebook_ids: vec![],
+            planned_story: None,
+        })
+        .await
+        .expect("save story resources");
+
+    let handler = Handler::new(store.clone(), registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let created = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "story-create-default-common-variables",
+                None::<String>,
+                RequestParams::StoryCreate(CreateStoryParams {
+                    resource_id: "resource-manual".to_owned(),
+                    display_name: None,
+                    graph: sample_story_graph(),
+                    world_schema_id: "schema-world-story-1".to_owned(),
+                    player_schema_id: "schema-player-story-1".to_owned(),
+                    introduction: "At the dock.".to_owned(),
+                    common_variables: None,
+                }),
+            ))
+            .await,
+    );
+
+    match created {
+        ResponseResult::StoryGenerated(payload) => {
+            assert_eq!(payload.display_name, "Manual Harbor");
+            assert!(payload.common_variables.is_empty());
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn story_create_rejects_missing_story_resources() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-create-missing-resource",
+            None::<String>,
+            RequestParams::StoryCreate(CreateStoryParams {
+                resource_id: "resource-missing".to_owned(),
+                display_name: Some("Manual Harbor".to_owned()),
+                graph: sample_story_graph(),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
+                introduction: "At the dock.".to_owned(),
+                common_variables: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.message.contains("story resources 'resource-missing' not found")
+    ));
+}
+
+#[tokio::test]
+async fn story_create_rejects_missing_schema() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-manual".to_owned(),
+            story_concept: "Manual Harbor".to_owned(),
+            character_ids: vec![],
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
+            lorebook_ids: vec![],
+            planned_story: None,
+        })
+        .await
+        .expect("save story resources");
+    store
+        .save_schema(sample_schema_record(
+            "schema-player-story-1",
+            "Player Story Schema",
+        ))
+        .await
+        .expect("save player schema");
+
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-create-missing-schema",
+            None::<String>,
+            RequestParams::StoryCreate(CreateStoryParams {
+                resource_id: "resource-manual".to_owned(),
+                display_name: Some("Manual Harbor".to_owned()),
+                graph: sample_story_graph(),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
+                introduction: "At the dock.".to_owned(),
+                common_variables: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.message.contains("schema 'schema-world-story-1' not found")
+    ));
+}
+
+#[tokio::test]
+async fn story_create_rejects_invalid_graph() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-manual".to_owned(),
+            story_concept: "Manual Harbor".to_owned(),
+            character_ids: vec![],
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
+            lorebook_ids: vec![],
+            planned_story: None,
+        })
+        .await
+        .expect("save story resources");
+
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-create-invalid-graph",
+            None::<String>,
+            RequestParams::StoryCreate(CreateStoryParams {
+                resource_id: "resource-manual".to_owned(),
+                display_name: Some("Manual Harbor".to_owned()),
+                graph: story::StoryGraph::new("missing", vec![]),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
+                introduction: "At the dock.".to_owned(),
+                common_variables: None,
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.message.contains("start node 'missing' does not exist")
+    ));
+}
+
+#[tokio::test]
+async fn story_create_rejects_invalid_common_variables() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_schema_records(&store).await;
+    store
+        .save_story_resources(StoryResourcesRecord {
+            resource_id: "resource-manual".to_owned(),
+            story_concept: "Manual Harbor".to_owned(),
+            character_ids: vec![],
+            player_schema_id_seed: None,
+            world_schema_id_seed: None,
+            lorebook_ids: vec![],
+            planned_story: None,
+        })
+        .await
+        .expect("save story resources");
+
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let response = match handler
+        .handle(JsonRpcRequestMessage::new(
+            "story-create-invalid-common-variables",
+            None::<String>,
+            RequestParams::StoryCreate(CreateStoryParams {
+                resource_id: "resource-manual".to_owned(),
+                display_name: Some("Manual Harbor".to_owned()),
+                graph: sample_story_graph(),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
+                introduction: "At the dock.".to_owned(),
+                common_variables: Some(vec![CommonVariableDefinition {
+                    scope: CommonVariableScope::World,
+                    key: "unknown_key".to_owned(),
+                    display_name: "Unknown".to_owned(),
+                    character_id: None,
+                    pinned: true,
+                }]),
+            }),
+        ))
+        .await
+    {
+        HandlerReply::Unary(response) => response,
+        HandlerReply::Stream { .. } => panic!("expected unary response"),
+    };
+
+    assert!(matches!(
+        response.outcome,
+        JsonRpcOutcome::Err(error)
+            if error.message.contains("unknown_key")
     ));
 }
 
@@ -3725,6 +4117,9 @@ async fn preset_crud_round_trips_and_preserves_values() {
                             extra: None,
                             modules: vec![PresetPromptModulePayload {
                                 module_id: PromptModuleIdPayload::Task,
+                                display_name: "Task".to_owned(),
+                                message_role: PromptMessageRolePayload::System,
+                                order: 20,
                                 entries: vec![
                                     PresetModuleEntryPayload {
                                         entry_id: "planner-voice".to_owned(),
@@ -4008,6 +4403,266 @@ async fn preset_crud_round_trips_and_preserves_values() {
     );
     match deleted {
         ResponseResult::PresetDeleted(payload) => assert_eq!(payload.preset_id, "managed"),
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn preset_preview_template_renders_context_placeholders() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_api_groups_and_presets(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let preview = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-preview-template",
+                None::<String>,
+                RequestParams::PresetPreviewTemplate(PresetPreviewTemplateParams {
+                    preset_id: "preset-default".to_owned(),
+                    agent: PresetAgentIdPayload::Planner,
+                    module_id: None,
+                    architect_mode: None,
+                }),
+            ))
+            .await,
+    );
+
+    match preview {
+        ResponseResult::PresetPromptPreview(payload) => {
+            assert_eq!(payload.preview_kind, PromptPreviewKindPayload::Template);
+            assert_eq!(payload.message_role, PromptPreviewMessageRolePayload::Full);
+            let user_text = preview_message_text(&payload, PromptMessageRolePayload::User);
+            assert!(user_text.contains("<context:story_concept>"));
+            assert!(user_text.contains("<context:available_characters>"));
+            assert!(
+                payload
+                    .unresolved_context_keys
+                    .contains(&"story_concept".to_owned())
+            );
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn preset_preview_runtime_renders_planner_from_story_resources() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let preview = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-preview-runtime-planner",
+                None::<String>,
+                RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+                    preset_id: "preset-default".to_owned(),
+                    agent: PresetAgentIdPayload::Planner,
+                    module_id: None,
+                    architect_mode: None,
+                    resource_id: Some("resource-1".to_owned()),
+                    draft_id: None,
+                    character_id: None,
+                    actor_purpose: None,
+                    narrator_purpose: None,
+                    keeper_phase: None,
+                    previous_node_id: None,
+                    player_input: None,
+                    reply_limit: None,
+                }),
+            ))
+            .await,
+    );
+
+    match preview {
+        ResponseResult::PresetPromptPreview(payload) => {
+            assert_eq!(payload.preview_kind, PromptPreviewKindPayload::Runtime);
+            let user_text = preview_message_text(&payload, PromptMessageRolePayload::User);
+            assert!(user_text.contains("A flooded harbor story."));
+            assert!(user_text.contains("merchant | Haru"));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn preset_preview_runtime_renders_actor_from_session_context() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    store
+        .save_session(SessionRecord {
+            session_id: "session-preview".to_owned(),
+            display_name: "Preview Session".to_owned(),
+            story_id: "story-1".to_owned(),
+            player_profile_id: Some("profile-courier-a".to_owned()),
+            player_schema_id: "schema-player-story-1".to_owned(),
+            snapshot: engine::RuntimeSnapshot {
+                story_id: "story-1".to_owned(),
+                player_description: "A determined courier.".to_owned(),
+                world_state: state::WorldState::new("dock")
+                    .with_active_characters(vec!["merchant".to_owned()])
+                    .with_player_state(std::collections::HashMap::from([(
+                        "coins".to_owned(),
+                        json!(12),
+                    )]))
+                    .with_character_state(std::collections::HashMap::from([(
+                        "merchant".to_owned(),
+                        std::collections::HashMap::from([("trust".to_owned(), json!(2))]),
+                    )]))
+                    .with_actor_shared_history(vec![state::ActorMemoryEntry {
+                        speaker_id: "player".to_owned(),
+                        speaker_name: "Player".to_owned(),
+                        kind: state::ActorMemoryKind::PlayerInput,
+                        text: "Can you help me?".to_owned(),
+                    }])
+                    .with_actor_private_memory(std::collections::HashMap::from([(
+                        "merchant".to_owned(),
+                        vec![state::ActorMemoryEntry {
+                            speaker_id: "merchant".to_owned(),
+                            speaker_name: "Haru".to_owned(),
+                            kind: state::ActorMemoryKind::Thought,
+                            text: "Maybe this courier is useful.".to_owned(),
+                        }],
+                    )])),
+                turn_index: 3,
+            },
+            binding: SessionBindingConfig {
+                api_group_id: "group-default".to_owned(),
+                preset_id: "preset-default".to_owned(),
+            },
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(2_000),
+        })
+        .await
+        .expect("save preview session");
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let preview = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-preview-runtime-actor",
+                Some("session-preview".to_owned()),
+                RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+                    preset_id: "preset-default".to_owned(),
+                    agent: PresetAgentIdPayload::Actor,
+                    module_id: None,
+                    architect_mode: None,
+                    resource_id: None,
+                    draft_id: None,
+                    character_id: Some("merchant".to_owned()),
+                    actor_purpose: Some(PromptPreviewActorPurposePayload::ReactToPlayer),
+                    narrator_purpose: None,
+                    keeper_phase: None,
+                    previous_node_id: None,
+                    player_input: Some("Can you help me?".to_owned()),
+                    reply_limit: None,
+                }),
+            ))
+            .await,
+    );
+
+    match preview {
+        ResponseResult::PresetPromptPreview(payload) => {
+            assert_eq!(payload.preview_kind, PromptPreviewKindPayload::Runtime);
+            let user_text = preview_message_text(&payload, PromptMessageRolePayload::User);
+            assert!(user_text.contains("\"ReactToPlayer\""));
+            assert!(user_text.contains("Maybe this courier is useful."));
+            assert!(user_text.contains("merchant | Haru"));
+        }
+        other => panic!("unexpected response: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn preset_preview_runtime_renders_architect_draft_continue() {
+    let llm = Arc::new(QueuedMockLlm::new(vec![], vec![]));
+    let store = Arc::new(InMemoryStore::new());
+    seed_story_records(&store).await;
+    store
+        .save_story_draft(StoryDraftRecord {
+            draft_id: "draft-preview".to_owned(),
+            display_name: "Preview Draft".to_owned(),
+            resource_id: "resource-1".to_owned(),
+            api_group_id: "group-default".to_owned(),
+            preset_id: "preset-default".to_owned(),
+            planned_story: "Opening Situation: Reach the flooded dock\nSuggested Beats:\n- Meet Haru\n- Decide whether to trust Haru".to_owned(),
+            outline_sections: vec![
+                "Reach the flooded dock".to_owned(),
+                "Decide whether to trust Haru".to_owned(),
+            ],
+            next_section_index: 1,
+            partial_graph: sample_story_graph(),
+            world_schema_id: "schema-world-story-1".to_owned(),
+            player_schema_id: "schema-player-story-1".to_owned(),
+            introduction: "The courier reaches the dock.".to_owned(),
+            common_variables: vec![],
+            section_summaries: vec!["The courier arrives and meets Haru.".to_owned()],
+            section_node_ids: vec![vec!["dock".to_owned()]],
+            status: StoryDraftStatus::Building,
+            final_story_id: None,
+            created_at_ms: Some(1_000),
+            updated_at_ms: Some(2_000),
+        })
+        .await
+        .expect("save story draft");
+    let handler = Handler::new(store, registry_with_ids(llm))
+        .await
+        .expect("handler should build");
+
+    let preview = unary_result(
+        handler
+            .handle(JsonRpcRequestMessage::new(
+                "preset-preview-runtime-architect",
+                None::<String>,
+                RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+                    preset_id: "preset-default".to_owned(),
+                    agent: PresetAgentIdPayload::Architect,
+                    module_id: None,
+                    architect_mode: Some(ArchitectPromptModePayload::DraftContinue),
+                    resource_id: None,
+                    draft_id: Some("draft-preview".to_owned()),
+                    character_id: None,
+                    actor_purpose: None,
+                    narrator_purpose: None,
+                    keeper_phase: None,
+                    previous_node_id: None,
+                    player_input: None,
+                    reply_limit: None,
+                }),
+            ))
+            .await,
+    );
+
+    match preview {
+        ResponseResult::PresetPromptPreview(payload) => {
+            assert_eq!(payload.preview_kind, PromptPreviewKindPayload::Runtime);
+            assert_eq!(
+                payload.architect_mode,
+                Some(ArchitectPromptModePayload::DraftContinue)
+            );
+            let user_text = preview_message_text(&payload, PromptMessageRolePayload::User);
+            assert!(user_text.contains("The courier arrives and meets Haru."));
+            assert!(user_text.contains("\"id\":\"dock\""));
+            assert!(payload.messages.iter().any(|message| {
+                message.modules.iter().any(|module| {
+                    module.module_id == PromptModuleIdPayload::Output
+                        && module.entries.iter().any(|entry| {
+                            entry.entry_id == "__injected_architect_draft_continue_output_contract"
+                                && entry.source == PromptPreviewEntrySourcePayload::Synthetic
+                        })
+                })
+            }));
+        }
         other => panic!("unexpected response: {other:?}"),
     }
 }

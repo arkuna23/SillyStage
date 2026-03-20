@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
-use crate::prompt::{PromptProfile, render_character_summaries, render_prompt_entries};
+use crate::prompt::{PromptProfile, render_character_summaries, render_prompt_modules};
 use llm::{ChatRequest, LlmApi};
 use serde::{Deserialize, Serialize};
 
@@ -53,15 +53,14 @@ impl Planner {
     }
 
     pub async fn plan(&self, request: PlannerRequest<'_>) -> Result<PlannerResponse, PlannerError> {
-        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
+        let (system_prompt, user_prompt) = self.build_prompts(&request)?;
         let output = self
             .client
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(self.model.clone())
-                    .system_message(self.prompt_profile.system_prompt.clone())
-                    .user_message(stable_prompt)
-                    .user_message(dynamic_prompt);
+                    .system_message(system_prompt)
+                    .user_message(user_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -78,7 +77,7 @@ impl Planner {
         })
     }
 
-    fn build_user_prompts(
+    fn build_prompts(
         &self,
         request: &PlannerRequest<'_>,
     ) -> Result<(String, String), PlannerError> {
@@ -87,22 +86,35 @@ impl Planner {
             .iter()
             .map(|card| card.summary_ref(None))
             .collect();
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "story_concept" => Some(request.story_concept.to_owned()),
                 "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
                 "available_characters" => {
                     Some(render_character_summaries(&character_summaries, None))
                 }
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
             });
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let system_prompt = if system_prompt.is_empty() {
+            self.prompt_profile.system_prompt.clone()
+        } else if self.prompt_profile.system_prompt.is_empty() {
+            system_prompt
+        } else {
+            format!("{}\n\n{}", self.prompt_profile.system_prompt, system_prompt)
+        };
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "story_concept" => Some(request.story_concept.to_owned()),
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "available_characters" => {
+                    Some(render_character_summaries(&character_summaries, None))
+                }
                 "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 }
 

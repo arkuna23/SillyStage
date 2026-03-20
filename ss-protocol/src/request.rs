@@ -22,7 +22,8 @@ use crate::player_profile::{
 };
 use crate::preset::{
     PresetCreateParams, PresetDeleteParams, PresetEntryCreateParams, PresetEntryDeleteParams,
-    PresetEntryUpdateParams, PresetGetParams, PresetListParams, PresetUpdateParams,
+    PresetEntryUpdateParams, PresetGetParams, PresetListParams, PresetPreviewRuntimeParams,
+    PresetPreviewTemplateParams, PresetUpdateParams,
 };
 use crate::reply_suggestion::SuggestRepliesParams;
 use crate::schema::{
@@ -81,6 +82,10 @@ pub enum RequestMethod {
     PresetEntryUpdate,
     #[serde(rename = "preset_entry.delete")]
     PresetEntryDelete,
+    #[serde(rename = "preset_preview.template")]
+    PresetPreviewTemplate,
+    #[serde(rename = "preset_preview.runtime")]
+    PresetPreviewRuntime,
     #[serde(rename = "schema.create")]
     SchemaCreate,
     #[serde(rename = "schema.get")]
@@ -143,6 +148,8 @@ pub enum RequestMethod {
     StoryResourcesDelete,
     #[serde(rename = "story.generate_plan")]
     StoryGeneratePlan,
+    #[serde(rename = "story.create")]
+    StoryCreate,
     #[serde(rename = "story.generate")]
     StoryGenerate,
     #[serde(rename = "story.get")]
@@ -252,6 +259,8 @@ pub enum RequestParams {
     PresetEntryCreate(PresetEntryCreateParams),
     PresetEntryUpdate(PresetEntryUpdateParams),
     PresetEntryDelete(PresetEntryDeleteParams),
+    PresetPreviewTemplate(PresetPreviewTemplateParams),
+    PresetPreviewRuntime(PresetPreviewRuntimeParams),
     SchemaCreate(SchemaCreateParams),
     SchemaGet(SchemaGetParams),
     SchemaList(SchemaListParams),
@@ -283,6 +292,7 @@ pub enum RequestParams {
     StoryResourcesUpdate(UpdateStoryResourcesParams),
     StoryResourcesDelete(DeleteStoryResourcesParams),
     StoryGeneratePlan(GenerateStoryPlanParams),
+    StoryCreate(CreateStoryParams),
     StoryGenerate(GenerateStoryParams),
     StoryGet(GetStoryParams),
     StoryUpdate(UpdateStoryParams),
@@ -350,6 +360,8 @@ impl RequestParams {
             Self::PresetEntryCreate(_) => RequestMethod::PresetEntryCreate,
             Self::PresetEntryUpdate(_) => RequestMethod::PresetEntryUpdate,
             Self::PresetEntryDelete(_) => RequestMethod::PresetEntryDelete,
+            Self::PresetPreviewTemplate(_) => RequestMethod::PresetPreviewTemplate,
+            Self::PresetPreviewRuntime(_) => RequestMethod::PresetPreviewRuntime,
             Self::SchemaCreate(_) => RequestMethod::SchemaCreate,
             Self::SchemaGet(_) => RequestMethod::SchemaGet,
             Self::SchemaList(_) => RequestMethod::SchemaList,
@@ -381,6 +393,7 @@ impl RequestParams {
             Self::StoryResourcesUpdate(_) => RequestMethod::StoryResourcesUpdate,
             Self::StoryResourcesDelete(_) => RequestMethod::StoryResourcesDelete,
             Self::StoryGeneratePlan(_) => RequestMethod::StoryGeneratePlan,
+            Self::StoryCreate(_) => RequestMethod::StoryCreate,
             Self::StoryGenerate(_) => RequestMethod::StoryGenerate,
             Self::StoryGet(_) => RequestMethod::StoryGet,
             Self::StoryUpdate(_) => RequestMethod::StoryUpdate,
@@ -450,6 +463,8 @@ impl RequestParams {
             Self::PresetEntryCreate(params) => serde_json::to_value(params),
             Self::PresetEntryUpdate(params) => serde_json::to_value(params),
             Self::PresetEntryDelete(params) => serde_json::to_value(params),
+            Self::PresetPreviewTemplate(params) => serde_json::to_value(params),
+            Self::PresetPreviewRuntime(params) => serde_json::to_value(params),
             Self::SchemaCreate(params) => serde_json::to_value(params),
             Self::SchemaGet(params) => serde_json::to_value(params),
             Self::SchemaList(params) => serde_json::to_value(params),
@@ -481,6 +496,7 @@ impl RequestParams {
             Self::StoryResourcesUpdate(params) => serde_json::to_value(params),
             Self::StoryResourcesDelete(params) => serde_json::to_value(params),
             Self::StoryGeneratePlan(params) => serde_json::to_value(params),
+            Self::StoryCreate(params) => serde_json::to_value(params),
             Self::StoryGenerate(params) => serde_json::to_value(params),
             Self::StoryGet(params) => serde_json::to_value(params),
             Self::StoryUpdate(params) => serde_json::to_value(params),
@@ -563,6 +579,12 @@ impl RequestParams {
             RequestMethod::PresetEntryDelete => {
                 serde_json::from_value(value).map(Self::PresetEntryDelete)
             }
+            RequestMethod::PresetPreviewTemplate => {
+                serde_json::from_value(value).map(Self::PresetPreviewTemplate)
+            }
+            RequestMethod::PresetPreviewRuntime => {
+                serde_json::from_value(value).map(Self::PresetPreviewRuntime)
+            }
             RequestMethod::SchemaCreate => serde_json::from_value(value).map(Self::SchemaCreate),
             RequestMethod::SchemaGet => serde_json::from_value(value).map(Self::SchemaGet),
             RequestMethod::SchemaList => serde_json::from_value(value).map(Self::SchemaList),
@@ -638,6 +660,7 @@ impl RequestParams {
             RequestMethod::StoryGeneratePlan => {
                 serde_json::from_value(value).map(Self::StoryGeneratePlan)
             }
+            RequestMethod::StoryCreate => serde_json::from_value(value).map(Self::StoryCreate),
             RequestMethod::StoryGenerate => serde_json::from_value(value).map(Self::StoryGenerate),
             RequestMethod::StoryGet => serde_json::from_value(value).map(Self::StoryGet),
             RequestMethod::StoryUpdate => serde_json::from_value(value).map(Self::StoryUpdate),
@@ -839,6 +862,20 @@ pub struct GenerateStoryPlanParams {
     pub api_group_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preset_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateStoryParams {
+    pub resource_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    pub graph: StoryGraph,
+    pub world_schema_id: String,
+    pub player_schema_id: String,
+    pub introduction: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub common_variables: Option<Vec<CommonVariableDefinition>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

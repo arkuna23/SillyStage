@@ -11,7 +11,8 @@ use store::{
     AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig,
     ApiGroupAgentBindings, ApiGroupRecord, ApiRecord, BlobRecord, CharacterCardDefinition,
     CharacterCardRecord, InMemoryStore, PlayerProfileRecord, PresetAgentConfigs, PresetRecord,
-    PromptEntryKind, PromptModuleId, SchemaRecord, Store, StoryRecord, StoryResourcesRecord,
+    PromptEntryKind, PromptMessageRole, PromptModuleId, SchemaRecord, Store, StoryRecord,
+    StoryResourcesRecord,
 };
 use story::{Condition, ConditionOperator, NarrativeNode, StoryGraph, Transition};
 
@@ -44,6 +45,9 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
         extra: None,
         modules: vec![AgentPromptModuleConfig {
             module_id: PromptModuleId::Task,
+            display_name: "Task".to_owned(),
+            message_role: PromptMessageRole::System,
+            order: 20,
             entries: vec![AgentPromptModuleEntryConfig {
                 entry_id: format!("entry-{max_tokens}"),
                 display_name: format!("Prompt {max_tokens}"),
@@ -567,7 +571,7 @@ async fn manager_uses_story_concept_when_planned_story_is_blank_for_draft_start(
     assert_eq!(draft.planned_story, "A flooded harbor story.");
     let requests = llm.recorded_requests();
     assert_eq!(requests.len(), 1);
-    assert!(user_message_content(&requests[0]).contains("PLANNED_STORY:\nA flooded harbor story."));
+    assert!(user_message_content(&requests[0]).contains("A flooded harbor story."));
 }
 
 #[tokio::test]

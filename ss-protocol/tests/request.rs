@@ -1,26 +1,29 @@
 use serde_json::json;
 use ss_protocol::{
-    AgentPresetConfigPayload, ApiCreateParams, ApiDeleteParams, ApiGetParams,
+    AgentPresetConfigPayload, ApiCreateParams, ApiDeleteParams, ApiGetParams, ApiListParams,
     ApiGroupBindingsInput, ApiGroupCreateParams, ApiGroupDeleteParams, ApiGroupGetParams,
-    ApiGroupListParams, ApiListParams, ApiUpdateParams, CharacterCardContent,
+    ApiGroupListParams, ApiUpdateParams, ArchitectPromptModePayload, CharacterCardContent,
     CharacterCreateParams, CharacterDeleteParams, CharacterGetParams, CharacterListParams,
     CharacterUpdateParams, CommonVariableDefinition, CommonVariableScope, ConfigGetGlobalParams,
-    ContinueStoryDraftParams, CreateSessionMessageParams, CreateStoryResourcesParams,
-    DashboardGetParams, DataPackageExportPrepareParams, DataPackageImportCommitParams,
-    DataPackageImportPrepareParams, DeleteSessionCharacterParams, DeleteSessionMessageParams,
-    DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams, DeleteStoryResourcesParams,
-    EnterSessionCharacterSceneParams, FinalizeStoryDraftParams, GenerateStoryParams,
-    GetRuntimeSnapshotParams, GetSessionCharacterParams, GetSessionMessageParams, GetSessionParams,
-    GetSessionVariablesParams, GetStoryDraftParams, GetStoryParams, GetStoryResourcesParams,
-    JsonRpcRequestMessage, LeaveSessionCharacterSceneParams, ListSessionCharactersParams,
-    ListSessionMessagesParams, ListSessionsParams, ListStoriesParams, ListStoryDraftsParams,
-    ListStoryResourcesParams, LorebookCreateParams, LorebookDeleteParams, LorebookGetParams,
-    LorebookListParams, LorebookUpdateParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
+    ContinueStoryDraftParams, CreateSessionMessageParams, CreateStoryParams,
+    CreateStoryResourcesParams, DashboardGetParams, DataPackageExportPrepareParams,
+    DataPackageImportCommitParams, DataPackageImportPrepareParams, DeleteSessionCharacterParams,
+    DeleteSessionMessageParams, DeleteSessionParams, DeleteStoryDraftParams, DeleteStoryParams,
+    DeleteStoryResourcesParams, EnterSessionCharacterSceneParams, FinalizeStoryDraftParams,
+    GenerateStoryParams, GetRuntimeSnapshotParams, GetSessionCharacterParams,
+    GetSessionMessageParams, GetSessionParams, GetSessionVariablesParams, GetStoryDraftParams,
+    GetStoryParams, GetStoryResourcesParams, JsonRpcRequestMessage,
+    LeaveSessionCharacterSceneParams, ListSessionCharactersParams, ListSessionMessagesParams,
+    ListSessionsParams, ListStoriesParams, ListStoryDraftsParams, ListStoryResourcesParams,
+    LorebookCreateParams, LorebookDeleteParams, LorebookGetParams, LorebookListParams,
+    LorebookUpdateParams, PlayerProfileCreateParams, PlayerProfileDeleteParams,
     PlayerProfileGetParams, PlayerProfileListParams, PlayerProfileUpdateParams, PresetCreateParams,
     PresetDeleteParams, PresetGetParams, PresetListParams, PresetModuleEntryPayload,
-    PresetPromptModulePayload, PromptEntryKindPayload, PromptModuleIdPayload, RequestParams,
-    RunTurnParams, SchemaCreateParams, SchemaDeleteParams, SchemaGetParams, SchemaListParams,
-    SchemaUpdateParams, SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams,
+    PresetPreviewRuntimeParams, PresetPreviewTemplateParams, PresetPromptModulePayload,
+    PromptEntryKindPayload, PromptMessageRolePayload, PromptModuleIdPayload,
+    PromptPreviewActorPurposePayload, RequestParams, RunTurnParams, SchemaCreateParams,
+    SchemaDeleteParams, SchemaGetParams, SchemaListParams, SchemaUpdateParams,
+    SessionGetConfigParams, SessionMessageKind, SessionUpdateConfigParams,
     SetPlayerProfileParams, StartSessionFromStoryParams, StartStoryDraftParams,
     SuggestRepliesParams, UpdateSessionCharacterParams, UpdateSessionMessageParams,
     UpdateSessionParams, UpdateSessionVariablesParams, UpdateStoryDraftGraphParams,
@@ -66,6 +69,9 @@ fn sample_preset_agents() -> ss_protocol::PresetAgentPayloads {
     let mut planner = config(512);
     planner.modules.push(PresetPromptModulePayload {
         module_id: PromptModuleIdPayload::Task,
+        display_name: "Task".to_owned(),
+        message_role: PromptMessageRolePayload::System,
+        order: 20,
         entries: vec![PresetModuleEntryPayload {
             entry_id: "planner-tone".to_owned(),
             display_name: "Planner Tone".to_owned(),
@@ -257,6 +263,82 @@ fn data_package_requests_round_trip() {
         RequestParams::DataPackageImportCommit(DataPackageImportCommitParams { import_id })
             if import_id == "package-import-1"
     ));
+}
+
+#[test]
+fn preset_preview_requests_round_trip() {
+    let template_preview = JsonRpcRequestMessage::new(
+        "preset-preview-template",
+        None::<String>,
+        RequestParams::PresetPreviewTemplate(PresetPreviewTemplateParams {
+            preset_id: "preset-default".to_owned(),
+            agent: ss_protocol::PresetAgentIdPayload::Planner,
+            module_id: Some(PromptModuleIdPayload::StaticContext),
+            architect_mode: None,
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&template_preview)
+            .expect("serialize")
+            .contains("\"method\": \"preset_preview.template\"")
+    );
+
+    let runtime_preview = JsonRpcRequestMessage::new(
+        "preset-preview-runtime",
+        Some("session-1".to_owned()),
+        RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+            preset_id: "preset-default".to_owned(),
+            agent: ss_protocol::PresetAgentIdPayload::Actor,
+            module_id: None,
+            architect_mode: None,
+            resource_id: None,
+            draft_id: None,
+            character_id: Some("merchant".to_owned()),
+            actor_purpose: Some(PromptPreviewActorPurposePayload::ReactToPlayer),
+            narrator_purpose: None,
+            keeper_phase: None,
+            previous_node_id: None,
+            player_input: Some("Can you help me?".to_owned()),
+            reply_limit: None,
+        }),
+    );
+    let runtime_preview_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&runtime_preview).expect("serialize"))
+            .expect("deserialize");
+    assert!(matches!(
+        runtime_preview_round_trip.params,
+        RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+            preset_id,
+            character_id,
+            actor_purpose: Some(PromptPreviewActorPurposePayload::ReactToPlayer),
+            ..
+        }) if preset_id == "preset-default" && character_id.as_deref() == Some("merchant")
+    ));
+
+    let architect_preview = JsonRpcRequestMessage::new(
+        "preset-preview-architect",
+        None::<String>,
+        RequestParams::PresetPreviewRuntime(PresetPreviewRuntimeParams {
+            preset_id: "preset-default".to_owned(),
+            agent: ss_protocol::PresetAgentIdPayload::Architect,
+            module_id: None,
+            architect_mode: Some(ArchitectPromptModePayload::DraftContinue),
+            resource_id: None,
+            draft_id: Some("draft-1".to_owned()),
+            character_id: None,
+            actor_purpose: None,
+            narrator_purpose: None,
+            keeper_phase: None,
+            previous_node_id: None,
+            player_input: None,
+            reply_limit: None,
+        }),
+    );
+    assert!(
+        serde_json::to_string_pretty(&architect_preview)
+            .expect("serialize")
+            .contains("\"method\": \"preset_preview.runtime\"")
+    );
 }
 
 #[test]
@@ -552,6 +634,19 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             None::<String>,
             RequestParams::LorebookDelete(LorebookDeleteParams {
                 lorebook_id: "lorebook-1".to_owned(),
+            }),
+        ),
+        JsonRpcRequestMessage::new(
+            "story-create",
+            None::<String>,
+            RequestParams::StoryCreate(CreateStoryParams {
+                resource_id: "resource-1".to_owned(),
+                display_name: Some("Manual Harbor".to_owned()),
+                graph: StoryGraph::new("start", vec![]),
+                world_schema_id: "schema-world-story-1".to_owned(),
+                player_schema_id: "schema-player-story-1".to_owned(),
+                introduction: "A courier arrives at the harbor.".to_owned(),
+                common_variables: Some(sample_common_variables()),
             }),
         ),
         JsonRpcRequestMessage::new(
@@ -878,6 +973,43 @@ fn story_update_and_schema_enum_requests_preserve_new_fields() {
             ..
         }) => {
             assert_eq!(resource_id, "resource-1");
+            assert_eq!(round_tripped, common_variables);
+        }
+        other => panic!("unexpected params: {other:?}"),
+    }
+
+    let story_create = JsonRpcRequestMessage::new(
+        "story-create-common-variables",
+        None::<String>,
+        RequestParams::StoryCreate(CreateStoryParams {
+            resource_id: "resource-1".to_owned(),
+            display_name: Some("Manual Harbor".to_owned()),
+            graph: StoryGraph::new("dock", vec![]),
+            world_schema_id: "schema-world-story-1".to_owned(),
+            player_schema_id: "schema-player-story-1".to_owned(),
+            introduction: "At the dock.".to_owned(),
+            common_variables: Some(common_variables.clone()),
+        }),
+    );
+    let story_create_round_trip: JsonRpcRequestMessage =
+        serde_json::from_str(&serde_json::to_string(&story_create).expect("serialize"))
+            .expect("deserialize");
+    match story_create_round_trip.params {
+        RequestParams::StoryCreate(CreateStoryParams {
+            resource_id,
+            display_name,
+            graph,
+            world_schema_id,
+            player_schema_id,
+            introduction,
+            common_variables: Some(round_tripped),
+        }) => {
+            assert_eq!(resource_id, "resource-1");
+            assert_eq!(display_name.as_deref(), Some("Manual Harbor"));
+            assert_eq!(graph.start_node, "dock");
+            assert_eq!(world_schema_id, "schema-world-story-1");
+            assert_eq!(player_schema_id, "schema-player-story-1");
+            assert_eq!(introduction, "At the dock.");
             assert_eq!(round_tripped, common_variables);
         }
         other => panic!("unexpected params: {other:?}"),

@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::director::NarratorPurpose;
 use crate::prompt::{
-    PromptProfile, compact_json, render_actor_history, render_character_summaries,
-    render_observable_world_state, render_optional_node, render_player, render_prompt_entries,
-    render_state_schema_fields,
+    PromptProfile, compact_json, merge_system_prompt, render_actor_history,
+    render_character_summaries, render_observable_world_state, render_optional_node, render_player,
+    render_prompt_modules, render_state_schema_fields,
 };
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
@@ -107,15 +107,14 @@ impl Narrator {
     ) -> Result<NarratorEventStream<'b>, NarratorError> {
         Self::validate_request(&request)?;
 
-        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(&request)?;
+        let (system_prompt, user_prompt) = self.build_prompts(&request)?;
         let stream = self
             .llm
             .chat_stream({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.prompt_profile.system_prompt)
-                    .user_message(stable_prompt)
-                    .user_message(dynamic_prompt);
+                    .system_message(system_prompt)
+                    .user_message(user_prompt);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
                 }
@@ -229,7 +228,7 @@ impl Narrator {
         Ok(())
     }
 
-    fn build_user_prompts(
+    fn build_prompts(
         &self,
         request: &NarratorRequest<'_>,
     ) -> Result<(String, String), NarratorError> {
@@ -242,8 +241,8 @@ impl Narrator {
         let current_cast =
             render_character_summaries(&self.current_cast_summaries(request)?, request.player_name);
 
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
                 "player" => Some(render_player(
                     request.player_name,
@@ -257,11 +256,30 @@ impl Narrator {
                 "player_state_schema" => Some(render_state_schema_fields(
                     &request.player_state_schema.fields,
                 )),
+                "world_state" => Some(render_observable_world_state(request.world_state)),
+                "shared_history" => Some(render_actor_history(
+                    request.world_state.actor_shared_history(),
+                )),
+                "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
             });
+        let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
 
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "lorebook_base" => request.lorebook_base.as_deref().map(str::to_owned),
+                "player" => Some(render_player(
+                    request.player_name,
+                    request.player_description,
+                )),
+                "narrator_purpose" => Some(narrator_purpose.clone()),
+                "previous_node" => Some(render_optional_node(request.previous_node)),
+                "previous_cast" => Some(previous_cast.clone()),
+                "current_node" => Some(crate::prompt::render_node(request.current_node)),
+                "current_cast" => Some(current_cast.clone()),
+                "player_state_schema" => Some(render_state_schema_fields(
+                    &request.player_state_schema.fields,
+                )),
                 "world_state" => Some(render_observable_world_state(request.world_state)),
                 "shared_history" => Some(render_actor_history(
                     request.world_state.actor_shared_history(),
@@ -270,7 +288,7 @@ impl Narrator {
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 
     fn current_cast_summaries<'b>(

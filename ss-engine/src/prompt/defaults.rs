@@ -1,22 +1,26 @@
 use store::{
-    AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig, PromptModuleId,
+    AgentPresetConfig, AgentPromptModuleConfig, AgentPromptModuleEntryConfig, PromptMessageRole,
+    PromptModuleId,
 };
 
 use super::templates::templates_for_agent;
-use super::types::{BuiltInEntryTemplate, PromptAgentKind};
+use super::types::{BuiltInEntryTemplate, BuiltInModuleTemplate, PromptAgentKind};
 
 pub fn default_agent_preset_config(agent: PromptAgentKind) -> AgentPresetConfig {
     AgentPresetConfig {
         temperature: None,
         max_tokens: None,
         extra: None,
-        modules: module_order()
+        modules: built_in_module_templates()
             .iter()
             .map(|module_id| AgentPromptModuleConfig {
-                module_id: *module_id,
+                module_id: module_id.module_id.clone(),
+                display_name: module_id.display_name.to_owned(),
+                message_role: module_id.message_role,
+                order: module_id.order,
                 entries: templates_for_agent(agent)
                     .iter()
-                    .filter(|template| template.module_id == *module_id)
+                    .filter(|template| template.module_id == module_id.module_id)
                     .map(config_entry_from_template)
                     .collect(),
             })
@@ -24,13 +28,38 @@ pub fn default_agent_preset_config(agent: PromptAgentKind) -> AgentPresetConfig 
     }
 }
 
-pub(super) fn module_order() -> [PromptModuleId; 5] {
+pub(super) fn built_in_module_templates() -> [BuiltInModuleTemplate; 5] {
     [
-        PromptModuleId::Role,
-        PromptModuleId::Task,
-        PromptModuleId::StaticContext,
-        PromptModuleId::DynamicContext,
-        PromptModuleId::Output,
+        BuiltInModuleTemplate {
+            module_id: PromptModuleId::Role,
+            display_name: "Role",
+            message_role: PromptMessageRole::System,
+            order: 10,
+        },
+        BuiltInModuleTemplate {
+            module_id: PromptModuleId::Task,
+            display_name: "Task",
+            message_role: PromptMessageRole::System,
+            order: 20,
+        },
+        BuiltInModuleTemplate {
+            module_id: PromptModuleId::StaticContext,
+            display_name: "Static Context",
+            message_role: PromptMessageRole::User,
+            order: 30,
+        },
+        BuiltInModuleTemplate {
+            module_id: PromptModuleId::DynamicContext,
+            display_name: "Dynamic Context",
+            message_role: PromptMessageRole::User,
+            order: 40,
+        },
+        BuiltInModuleTemplate {
+            module_id: PromptModuleId::Output,
+            display_name: "Output",
+            message_role: PromptMessageRole::System,
+            order: 50,
+        },
     ]
 }
 

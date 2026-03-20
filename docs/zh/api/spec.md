@@ -182,15 +182,20 @@ JSON-RPC envelope。
 每个 `module` 包含：
 
 - `module_id`
+- `display_name`
+- `message_role`
+- `order`
 - `entries`
 
-`module_id` 当前固定为：
+内置 `module_id` 当前为：
 
 - `role`
 - `task`
 - `static_context`
 - `dynamic_context`
 - `output`
+
+也允许自定义模块 id，按普通字符串存储。
 
 每个 `entries` 条目包含：
 
@@ -219,12 +224,41 @@ JSON-RPC envelope。
 - `preset_entry.update`
 - `preset_entry.delete`
 
+新增提示词预览接口：
+
+- `preset_preview.template`
+- `preset_preview.runtime`
+
 说明：
 
 - `preset_entry.create` 仅创建 `custom_text`
 - `preset_entry.delete` 仅删除 `custom_text`
 - `preset_entry.update` 对 built-in 条目仅允许修改 `enabled` 和 `order`
-- 启用条目会按模块编译为 system prompt 或 user prompt 片段，而不是再使用旧的整段追加模式
+- `preset_entry.*` 只能作用于已有模块，不会隐式创建模块
+- 模块按 `order`、`module_id` 排序；条目按 `order`、`entry_id` 排序
+- 启用条目会被编译成一条 system message 和一条 user message
+- `message_role` 用于决定模块进入 system 还是 user message
+- 最终 prompt 会保留模块标题，但不会输出 entry id 和 entry 显示名
+- `preset_preview.template` 会渲染编译后的提示词，并把未解析的 `context_ref` 保留成
+  `<context:story_concept>` 这种占位符
+- `preset_preview.runtime` 会渲染结构化的真实 entry 文本；传 `module_id` 时只返回单个模块的编译结果
+- architect 预览是按模式区分的，必须指定
+  `architect_mode = graph | draft_init | draft_continue`
+- 运行期预览的上下文来源规则：
+  - planner 和 architect 的 `graph` 模式使用 `resource_id`
+  - architect 的 `draft_init` 和 `draft_continue` 使用 `draft_id`
+  - director / actor / narrator / keeper / replyer 使用顶层 `session_id`
+  - actor 的运行期预览还要求传 `character_id`
+- 预览响应返回：
+  - `preview_kind = template | runtime`
+  - `message_role = system | user | full`
+  - `messages[]`
+  - 每个 `message` 包含 `role` 和有序的 `modules[]`
+  - 每个 `module` 包含 `module_id`、`display_name`、`order` 和有序的 `entries[]`
+  - 每个 `entry` 包含 `entry_id`、`display_name`、`kind`、`order`、`source` 和 `compiled_text`
+  - `unresolved_context_keys: string[]`
+- `compiled_text` 只存在于 entry 级别；模块标题和完整 prompt 由客户端自行拼接
+- `source = preset | synthetic`，其中 `synthetic` 表示后端注入的附加条目，例如 architect 模式专用 contract
 
 运行时绑定模型现在是 `api_group_id + preset_id`。
 
@@ -491,6 +525,16 @@ session 绑定一个 story 和一份运行时快照。
 如果省略绑定 id，而后端中至少有一个 `api_group` 和一个 `preset`，就按 id 排序后
 自动选择各自的第一个。
 
+`story.create` 输入：
+
+- `resource_id`
+- 可选 `display_name`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
+- 可选 `common_variables`
+
 `story.generate` 与 draft start 一样，支持以下创建输入：
 
 - `resource_id`
@@ -531,6 +575,8 @@ session 绑定一个 story 和一份运行时快照。
 - `start_node` 不存在
 - 有 transition 指向不存在的节点
 - 存在重复的节点 id
+
+`story.create` 在创建 story 前会使用同样的 graph 校验规则。
 
 ### 5.1.1 draft story 生成
 

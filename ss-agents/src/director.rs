@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use crate::actor::{CharacterCard, CharacterCardSummaryRef};
 use crate::prompt::{
-    PromptProfile, compact_json, render_actor_history, render_character_summaries,
-    render_director_world_state, render_node, render_player, render_prompt_entries,
-    render_state_schema_fields,
+    PromptProfile, compact_json, merge_system_prompt, render_actor_history,
+    render_character_summaries, render_director_world_state, render_node, render_player,
+    render_prompt_modules, render_state_schema_fields,
 };
 use llm::{ChatRequest, LlmApi};
 use petgraph::visit::EdgeRef;
@@ -272,7 +272,7 @@ impl Director {
         player_persona: PlayerPersona<'_>,
         player_state_schema: &PlayerStateSchema,
     ) -> Result<ResponsePlan, DirectorError> {
-        let (stable_prompt, dynamic_prompt) = self.build_user_prompts(
+        let (system_prompt, user_prompt) = self.build_prompts(
             world_state,
             node,
             transitioned,
@@ -288,9 +288,8 @@ impl Director {
             .chat({
                 let mut builder = ChatRequest::builder()
                     .model(&self.model)
-                    .system_message(&self.prompt_profile.system_prompt)
-                    .user_message(stable_prompt)
-                    .user_message(dynamic_prompt)
+                    .system_message(system_prompt)
+                    .user_message(user_prompt)
                     .response_format(llm::ResponseFormat::JsonObject);
                 if let Some(temperature) = self.temperature {
                     builder = builder.temperature(temperature);
@@ -306,7 +305,7 @@ impl Director {
         serde_json::from_value(value).map_err(DirectorError::InvalidPlanJson)
     }
 
-    fn build_user_prompts(
+    fn build_prompts(
         &self,
         world_state: &WorldState,
         node: &NarrativeNode,
@@ -328,8 +327,8 @@ impl Director {
         let transitioned_this_turn =
             compact_json(&transitioned).map_err(DirectorError::SerializePromptData)?;
 
-        let stable_prompt =
-            render_prompt_entries(&self.prompt_profile.stable_entries, |key| match key {
+        let system_prompt =
+            render_prompt_modules(&self.prompt_profile.system_modules, |key| match key {
                 "lorebook_base" => lorebook_base.map(str::to_owned),
                 "player" => Some(render_player(
                     player_persona.name,
@@ -341,18 +340,33 @@ impl Director {
                     Some(render_state_schema_fields(&player_state_schema.fields))
                 }
                 "transitioned_this_turn" => Some(transitioned_this_turn.clone()),
+                "world_state" => Some(render_director_world_state(world_state)),
+                "lorebook_matched" => lorebook_matched.map(str::to_owned),
+                "shared_history" => Some(render_actor_history(world_state.actor_shared_history())),
                 _ => None,
             });
+        let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
 
-        let dynamic_prompt =
-            render_prompt_entries(&self.prompt_profile.dynamic_entries, |key| match key {
+        let user_prompt =
+            render_prompt_modules(&self.prompt_profile.user_modules, |key| match key {
+                "lorebook_base" => lorebook_base.map(str::to_owned),
+                "player" => Some(render_player(
+                    player_persona.name,
+                    player_persona.description,
+                )),
+                "current_cast" => Some(current_cast.clone()),
+                "current_node" => Some(render_node(node)),
+                "player_state_schema" => {
+                    Some(render_state_schema_fields(&player_state_schema.fields))
+                }
+                "transitioned_this_turn" => Some(transitioned_this_turn.clone()),
                 "world_state" => Some(render_director_world_state(world_state)),
                 "lorebook_matched" => lorebook_matched.map(str::to_owned),
                 "shared_history" => Some(render_actor_history(world_state.actor_shared_history())),
                 _ => None,
             });
 
-        Ok((stable_prompt, dynamic_prompt))
+        Ok((system_prompt, user_prompt))
     }
 
     fn build_fallback_response_plan(

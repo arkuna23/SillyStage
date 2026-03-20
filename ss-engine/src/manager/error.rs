@@ -38,6 +38,8 @@ pub enum ManagerError {
     InvalidGeneratedSchema(String),
     #[error("invalid common variable: {0}")]
     InvalidCommonVariable(String),
+    #[error("invalid prompt preview: {0}")]
+    InvalidPromptPreview(String),
     #[error("invalid story draft: {0}")]
     InvalidDraft(String),
     #[error(transparent)]

@@ -76,6 +76,8 @@ Notes:
 | `preset_entry.create` | No | `preset_entry` | Add one custom prompt entry under one agent module |
 | `preset_entry.update` | No | `preset_entry` | Update one prompt entry inside one module |
 | `preset_entry.delete` | No | `preset_entry_deleted` | Delete one custom prompt entry inside one module |
+| `preset_preview.template` | No | `preset_prompt_preview` | Preview the compiled prompt template with context placeholders |
+| `preset_preview.runtime` | Depends | `preset_prompt_preview` | Preview the compiled prompt with real resource, draft, or session context |
 
 A `preset` stores per-agent generation parameters and modular prompt configuration.
 
@@ -89,15 +91,20 @@ The currently implemented fields are:
 Each `module` contains:
 
 - `module_id`
+- `display_name`
+- `message_role`
+- `order`
 - `entries`
 
-The current `module_id` values are:
+Built-in `module_id` values are:
 
 - `role`
 - `task`
 - `static_context`
 - `dynamic_context`
 - `output`
+
+Custom module ids are also allowed. They are stored as plain strings.
 
 Each `entries` item contains:
 
@@ -123,15 +130,34 @@ Behavior notes:
   metadata without `text/context_key`
 - Clients may submit only the modules or entries they want to override; the backend normalizes
   the result against built-in agent templates and fills in missing built-in items
+- Modules are sorted by `order`, then `module_id`; entries are sorted by `order`, then `entry_id`
 - `built_in_text` and `built_in_context_ref` come from backend defaults; they cannot be created
   through `preset_entry.create` and cannot be removed through `preset_entry.delete`
-- `preset_entry.create` creates `custom_text` entries under one `agent + module_id`
+- `preset_entry.create` creates `custom_text` entries under one existing `agent + module_id`
 - `preset_entry.update` can change `display_name`, `text`, `enabled`, and `order` for
   `custom_text`; for built-in entries it only allows `enabled` and `order`
-- Enabled entries are compiled by module into the final prompt: `role/task/output` become part of
-  the system prompt, while `static_context/dynamic_context` become stable and dynamic user-prompt
-  segments
+- Enabled entries are compiled into exactly one system message and one user message
+- `message_role` controls whether a module is emitted into the system message or the user message
+- The compiled prompt keeps module section titles, but omits entry ids and entry display names
 - `context_key` is only used by `built_in_context_ref`; `custom_text` uses `text`
+- `preset_preview.template` renders unresolved `context_ref` entries as placeholders such as
+  `<context:story_concept>`
+- `preset_preview.runtime` returns real compiled entry text; `module_id` is optional and limits
+  the preview to one compiled module instead of the full system/user pair
+- `preset_preview.runtime` source rules:
+  - planner and architect `graph` mode require `resource_id`
+  - architect `draft_init` and `draft_continue` require `draft_id`
+  - director / actor / narrator / keeper / replyer require top-level `session_id`
+  - actor runtime preview also requires `character_id`
+- architect previews require `architect_mode = graph | draft_init | draft_continue`
+- preview responses include `preview_kind`, `message_role`, `messages`, and
+  `unresolved_context_keys`
+- `messages` is ordered and nested as `message -> module -> entry`
+- `module` returns `module_id`, `display_name`, `order`, and ordered `entries`
+- `entry` returns `entry_id`, `display_name`, `kind`, `order`, `source = preset | synthetic`,
+  and `compiled_text`
+- preview text is now exposed only at the entry level; clients assemble module titles and full
+  prompts themselves
 
 Notes:
 
@@ -284,6 +310,7 @@ Notes:
 | Method | session_id | Result | Notes |
 | --- | --- | --- | --- |
 | `story.generate_plan` | No | `story_planned` | Run Planner and get editable script text |
+| `story.create` | No | `story_generated` | Create a story directly from a caller-supplied graph |
 | `story.generate` | No | `story_generated` | Compatibility wrapper: `story_draft.start -> continue* -> finalize` |
 | `story.get` | No | `story` | Get story details |
 | `story.update` | No | `story` | Update story metadata |
@@ -301,6 +328,16 @@ Important `story_generated` fields:
 - `player_schema_id`
 - `introduction`
 - `common_variables`
+
+`story.create` input:
+
+- `resource_id`
+- optional `display_name`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
+- optional `common_variables`
 
 `story.generate` input:
 
@@ -341,6 +378,8 @@ Each `common_variables` item contains:
 
 - `story_id`
 - `graph`
+
+`story.create` validates the supplied graph with the same rules as `story.update_graph`.
 
 ## 12. story_draft
 

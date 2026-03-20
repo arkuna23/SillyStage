@@ -6,7 +6,7 @@ pub mod narrator;
 pub mod planner;
 mod prompt;
 pub mod replyer;
-pub use prompt::{ArchitectPromptProfiles, PromptEntry, PromptEntryValue, PromptProfile};
+pub use prompt::{ArchitectPromptProfiles, PromptModule, PromptModuleEntry, PromptProfile};
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
