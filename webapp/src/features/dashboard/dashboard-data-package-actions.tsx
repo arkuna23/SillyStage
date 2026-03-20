@@ -19,11 +19,14 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { IconButton } from '../../components/ui/icon-button'
+import { Input } from '../../components/ui/input'
+import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Switch } from '../../components/ui/switch'
 import { useToast } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { listPresets } from '../apis/api'
 import type { Preset } from '../apis/types'
+import { normalizeCharacterFolderRegistryName } from '../characters/folder-registry'
 import { listCharacters } from '../characters/api'
 import type { CharacterSummary } from '../characters/types'
 import { listLorebooks } from '../lorebooks/api'
@@ -52,9 +55,12 @@ type DataPackageGroupKind = keyof DataPackageContents
 
 type ExportCatalogItem = {
   description?: string
+  folder?: string
   id: string
   label: string
   meta?: string
+  searchText?: string
+  tags?: string[]
 }
 
 type ExportCatalog = Record<DataPackageGroupKind, ExportCatalogItem[]>
@@ -69,6 +75,9 @@ const dataPackageGroupOrder: DataPackageGroupKind[] = [
   'story_resources',
   'stories',
 ]
+
+const allCharacterFolderValue = '__all__'
+const unfiledCharacterFolderValue = '__unfiled__'
 
 function createEmptyExportCatalog(): ExportCatalog {
   return {
@@ -110,6 +119,26 @@ function truncateText(value: string | null | undefined, maxLength = 92) {
 
 function compareCatalogItems(a: ExportCatalogItem, b: ExportCatalogItem) {
   return a.label.localeCompare(b.label, 'zh-Hans-CN-u-co-pinyin')
+}
+
+function compareTextItems(a: string, b: string) {
+  return a.localeCompare(b, 'zh-Hans-CN-u-co-pinyin')
+}
+
+function normalizeCharacterFolder(folder: string | null | undefined) {
+  return normalizeCharacterFolderRegistryName(folder ?? '')
+}
+
+function buildCharacterExportSearchText(character: CharacterSummary) {
+  return [
+    character.character_id,
+    character.name,
+    character.personality,
+    character.style,
+    ...character.tags,
+  ]
+    .join(' ')
+    .toLocaleLowerCase()
 }
 
 function buildExportCatalog(args: {
@@ -154,9 +183,14 @@ function buildExportCatalog(args: {
     characters: args.characters
       .map((character) => ({
         description: truncateText(character.personality, 88),
+        folder: normalizeCharacterFolder(character.folder),
         id: character.character_id,
         label: trimSingleLine(character.name) || character.character_id,
         meta: character.character_id,
+        searchText: buildCharacterExportSearchText(character),
+        tags: Array.from(new Set(character.tags.map((tag) => trimSingleLine(tag)).filter(Boolean))).sort(
+          compareTextItems,
+        ),
       }))
       .sort(compareCatalogItems),
     story_resources: args.storyResources
@@ -255,12 +289,11 @@ function summarizeDataPackageContents(t: TFunction, contents: DataPackageContent
   return parts.join(' · ')
 }
 
-function ExportGroupCard({
+function BasicExportGroupPanel({
   clearLabel,
   disabled,
   emptyLabel,
   items,
-  kind,
   onClear,
   onSelectAll,
   onToggle,
@@ -272,14 +305,15 @@ function ExportGroupCard({
   disabled: boolean
   emptyLabel: string
   items: ExportCatalogItem[]
-  kind: DataPackageGroupKind
-  onClear: (kind: DataPackageGroupKind) => void
-  onSelectAll: (kind: DataPackageGroupKind) => void
-  onToggle: (kind: DataPackageGroupKind, id: string) => void
+  onClear: () => void
+  onSelectAll: () => void
+  onToggle: (id: string) => void
   selectedIds: string[]
   selectAllLabel: string
   title: string
 }) {
+  const selectedIdSet = new Set(selectedIds)
+
   return (
     <section className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -293,9 +327,7 @@ function ExportGroupCard({
         <div className="flex items-center gap-2">
           <Button
             disabled={disabled || items.length === 0 || selectedIds.length === items.length}
-            onClick={() => {
-              onSelectAll(kind)
-            }}
+            onClick={onSelectAll}
             size="sm"
             variant="ghost"
           >
@@ -303,9 +335,7 @@ function ExportGroupCard({
           </Button>
           <Button
             disabled={disabled || selectedIds.length === 0}
-            onClick={() => {
-              onClear(kind)
-            }}
+            onClick={onClear}
             size="sm"
             variant="ghost"
           >
@@ -321,7 +351,7 @@ function ExportGroupCard({
       ) : (
         <div className="mt-4 space-y-2">
           {items.map((item) => {
-            const checked = selectedIds.includes(item.id)
+            const checked = selectedIdSet.has(item.id)
 
             return (
               <label
@@ -332,15 +362,15 @@ function ExportGroupCard({
                     : 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_82%,transparent)] hover:border-[var(--color-accent-copper-soft)]',
                   disabled && 'cursor-not-allowed opacity-60',
                 )}
-                key={`${kind}:${item.id}`}
+                key={item.id}
               >
                 <input
                   checked={checked}
                   className="mt-1 h-4 w-4 rounded border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-accent-gold)]"
                   disabled={disabled}
-                  name={`data-package-${kind}-${item.id}`}
+                  name={`data-package-item-${item.id}`}
                   onChange={() => {
-                    onToggle(kind, item.id)
+                    onToggle(item.id)
                   }}
                   type="checkbox"
                 />
@@ -366,34 +396,355 @@ function ExportGroupCard({
   )
 }
 
-function ExportCatalogSkeleton() {
+function CharacterExportGroupPanel({
+  activeFolder,
+  allLabel,
+  characterFolderOptions,
+  clearVisibleLabel,
+  disabled,
+  emptyFolderLabel,
+  emptyResultsLabel,
+  emptyTagsLabel,
+  filteredCharacterCount,
+  filteredCharacters,
+  folderSearchPlaceholder,
+  folderListFilter,
+  folderTitle,
+  hasUnfiledCharacters,
+  items,
+  onClearVisible,
+  onFolderListFilterChange,
+  onSearchQueryChange,
+  onSelectAllVisible,
+  onSetActiveFolder,
+  onToggleCharacter,
+  onToggleTag,
+  resultsTitle,
+  searchPlaceholder,
+  searchQuery,
+  selectVisibleLabel,
+  selectedCharacterTags,
+  selectedIds,
+  selectionTitle,
+  tags,
+  tagsTitle,
+  totalCountLabel,
+  unfiledLabel,
+}: {
+  activeFolder: string
+  allLabel: string
+  characterFolderOptions: string[]
+  clearVisibleLabel: string
+  disabled: boolean
+  emptyFolderLabel: string
+  emptyResultsLabel: string
+  emptyTagsLabel: string
+  filteredCharacterCount: number
+  filteredCharacters: ExportCatalogItem[]
+  folderSearchPlaceholder: string
+  folderListFilter: string
+  folderTitle: string
+  hasUnfiledCharacters: boolean
+  items: ExportCatalogItem[]
+  onClearVisible: () => void
+  onFolderListFilterChange: (value: string) => void
+  onSearchQueryChange: (value: string) => void
+  onSelectAllVisible: () => void
+  onSetActiveFolder: (value: string) => void
+  onToggleCharacter: (id: string) => void
+  onToggleTag: (tag: string) => void
+  resultsTitle: string
+  searchPlaceholder: string
+  searchQuery: string
+  selectVisibleLabel: string
+  selectedCharacterTags: string[]
+  selectedIds: string[]
+  selectionTitle: string
+  tags: string[]
+  tagsTitle: string
+  totalCountLabel: string
+  unfiledLabel: string
+}) {
+  const normalizedFolderListFilter = folderListFilter.trim().toLocaleLowerCase()
+  const selectedIdSet = new Set(selectedIds)
+  const selectedTagSet = new Set(selectedCharacterTags)
+  const visibleCharacterIds = filteredCharacters.map((item) => item.id)
+  const allVisibleSelected =
+    visibleCharacterIds.length > 0 &&
+    visibleCharacterIds.every((itemId) => selectedIdSet.has(itemId))
+  const hasVisibleSelected = visibleCharacterIds.some((itemId) => selectedIdSet.has(itemId))
+
+  const filteredFolderOptions = characterFolderOptions.filter((folder) =>
+    normalizedFolderListFilter.length === 0
+      ? true
+      : folder.toLocaleLowerCase().includes(normalizedFolderListFilter),
+  )
+  const showUnfiledOption =
+    hasUnfiledCharacters &&
+    (normalizedFolderListFilter.length === 0 ||
+      unfiledLabel.toLocaleLowerCase().includes(normalizedFolderListFilter))
+
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
-      {Array.from({ length: 6 }).map((_, index) => (
-        <div
-          className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4"
-          key={index}
-        >
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-2">
-              <div className="h-4 w-20 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-              <div className="h-3 w-14 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+    <section className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
+      <div className="grid gap-4 xl:grid-cols-[15rem_minmax(0,1fr)]">
+        <div className="space-y-4">
+          <div className="space-y-3 rounded-[1.15rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_78%,transparent)] p-4">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">
+                {selectionTitle}
+              </h3>
+              <p className="text-xs leading-6 text-[var(--color-text-muted)]">{totalCountLabel}</p>
             </div>
-            <div className="flex gap-2">
-              <div className="h-8 w-14 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
-              <div className="h-8 w-14 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+            <div className="grid w-full grid-cols-[repeat(auto-fit,minmax(4.5rem,1fr))] gap-2">
+              <Button
+                className="w-full"
+                disabled={disabled || visibleCharacterIds.length === 0 || allVisibleSelected}
+                onClick={onSelectAllVisible}
+                size="sm"
+                variant="ghost"
+              >
+                {selectVisibleLabel}
+              </Button>
+              <Button
+                className="w-full"
+                disabled={disabled || !hasVisibleSelected}
+                onClick={onClearVisible}
+                size="sm"
+                variant="ghost"
+              >
+                {clearVisibleLabel}
+              </Button>
             </div>
           </div>
-          <div className="mt-4 space-y-2">
-            {Array.from({ length: 3 }).map((__, rowIndex) => (
-              <div
-                className="h-16 animate-pulse rounded-[1.15rem] bg-[var(--color-bg-panel)]"
-                key={rowIndex}
-              />
-            ))}
+
+          <div className="space-y-3 rounded-[1.15rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_78%,transparent)] p-4">
+            <div className="space-y-1">
+              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{folderTitle}</h4>
+            </div>
+
+            <Input
+              disabled={disabled}
+              onChange={(event) => {
+                onFolderListFilterChange(event.target.value)
+              }}
+              placeholder={folderSearchPlaceholder}
+              value={folderListFilter}
+            />
+
+            <div className="max-h-[16rem] space-y-2 overflow-y-auto pr-1">
+              <button
+                className={cn(
+                  'w-full rounded-[1rem] border px-3 py-2.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] disabled:pointer-events-none disabled:opacity-45',
+                  activeFolder === allCharacterFolderValue
+                    ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
+                    : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
+                )}
+                disabled={disabled}
+                onClick={() => {
+                  onSetActiveFolder(allCharacterFolderValue)
+                }}
+                type="button"
+              >
+                {allLabel}
+              </button>
+
+              {showUnfiledOption ? (
+                <button
+                  className={cn(
+                    'w-full rounded-[1rem] border px-3 py-2.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] disabled:pointer-events-none disabled:opacity-45',
+                    activeFolder === unfiledCharacterFolderValue
+                      ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
+                      : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
+                  )}
+                  disabled={disabled}
+                  onClick={() => {
+                    onSetActiveFolder(unfiledCharacterFolderValue)
+                  }}
+                  type="button"
+                >
+                  {unfiledLabel}
+                </button>
+              ) : null}
+
+              {filteredFolderOptions.length > 0 ? (
+                filteredFolderOptions.map((folder) => (
+                  <button
+                    className={cn(
+                      'w-full rounded-[1rem] border px-3 py-2.5 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)] disabled:pointer-events-none disabled:opacity-45',
+                      activeFolder === folder
+                        ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
+                        : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:border-[var(--color-accent-copper-soft)] hover:text-[var(--color-text-primary)]',
+                    )}
+                    disabled={disabled}
+                    key={folder}
+                    onClick={() => {
+                      onSetActiveFolder(folder)
+                    }}
+                    type="button"
+                  >
+                    {folder}
+                  </button>
+                ))
+              ) : !showUnfiledOption ? (
+                <div className="rounded-[1rem] border border-dashed border-[var(--color-border-subtle)] px-3 py-3 text-xs leading-6 text-[var(--color-text-muted)]">
+                  {emptyFolderLabel}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-[1.15rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_78%,transparent)] p-4">
+            <div className="space-y-1">
+              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{tagsTitle}</h4>
+              <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                {selectedCharacterTags.length} / {tags.length}
+              </p>
+            </div>
+
+            {tags.length > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {tags.map((tag) => {
+                  const selected = selectedTagSet.has(tag)
+
+                  return (
+                    <button
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-xs transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
+                        selected
+                          ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)] text-[var(--color-text-primary)]'
+                          : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+                      )}
+                      disabled={disabled}
+                      key={tag}
+                      onClick={() => {
+                        onToggleTag(tag)
+                      }}
+                      type="button"
+                    >
+                      #{tag}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="rounded-[1rem] border border-dashed border-[var(--color-border-subtle)] px-3 py-3 text-xs leading-6 text-[var(--color-text-muted)]">
+                {emptyTagsLabel}
+              </div>
+            )}
           </div>
         </div>
-      ))}
+
+        <div className="space-y-3 rounded-[1.15rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_78%,transparent)] p-4">
+          <div className="space-y-1">
+            <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{resultsTitle}</h4>
+            <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+              {filteredCharacterCount} / {items.length}
+            </p>
+          </div>
+
+          <Input
+            disabled={disabled}
+            onChange={(event) => {
+              onSearchQueryChange(event.target.value)
+            }}
+            placeholder={searchPlaceholder}
+            value={searchQuery}
+          />
+
+          {filteredCharacters.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {filteredCharacters.map((item) => {
+                const checked = selectedIdSet.has(item.id)
+                const folderLabel = item.folder?.length ? item.folder : unfiledLabel
+
+                return (
+                  <label
+                    className={cn(
+                      'flex cursor-pointer items-start gap-3 rounded-[1.15rem] border px-3.5 py-3 transition',
+                      checked
+                        ? 'border-[var(--color-accent-gold-line)] bg-[var(--color-accent-gold-soft)]'
+                        : 'border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_82%,transparent)] hover:border-[var(--color-accent-copper-soft)]',
+                      disabled && 'cursor-not-allowed opacity-60',
+                    )}
+                    key={item.id}
+                  >
+                    <input
+                      checked={checked}
+                      className="mt-1 h-4 w-4 rounded border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-accent-gold)]"
+                      disabled={disabled}
+                      name={`data-package-character-${item.id}`}
+                      onChange={() => {
+                        onToggleCharacter(item.id)
+                      }}
+                      type="checkbox"
+                    />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                        {item.label}
+                      </p>
+                      {item.meta ? (
+                        <p className="truncate text-xs text-[var(--color-text-muted)]">
+                          {item.meta}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap gap-1.5 text-[0.72rem]">
+                        <span className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 py-1 text-[var(--color-text-muted)]">
+                          {folderLabel}
+                        </span>
+                        {item.tags?.slice(0, 3).map((tag) => (
+                          <span
+                            className="rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-2 py-1 text-[var(--color-text-muted)]"
+                            key={tag}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                      {item.description ? (
+                        <p className="line-clamp-2 text-xs leading-6 text-[var(--color-text-secondary)]">
+                          {item.description}
+                        </p>
+                      ) : null}
+                    </div>
+                  </label>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="rounded-[1.15rem] border border-dashed border-[var(--color-border-subtle)] px-4 py-5 text-sm text-[var(--color-text-secondary)]">
+              {emptyResultsLabel}
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function ExportCatalogSkeleton() {
+  return (
+    <div className="space-y-4">
+      <div className="h-12 w-full animate-pulse rounded-[1.2rem] bg-[var(--color-bg-elevated)]" />
+      <div className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-4 w-24 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+            <div className="h-3 w-16 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+          </div>
+          <div className="flex gap-2">
+            <div className="h-8 w-20 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+            <div className="h-8 w-20 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
+          </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div
+              className="h-16 animate-pulse rounded-[1.15rem] bg-[var(--color-bg-panel)]"
+              key={index}
+            />
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -418,6 +769,11 @@ export function DashboardDataPackageActions({
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
+  const [activeExportTab, setActiveExportTab] = useState<DataPackageGroupKind>('presets')
+  const [activeCharacterFolder, setActiveCharacterFolder] = useState<string>(allCharacterFolderValue)
+  const [characterFolderListFilter, setCharacterFolderListFilter] = useState('')
+  const [characterSearchQuery, setCharacterSearchQuery] = useState('')
+  const [selectedCharacterTags, setSelectedCharacterTags] = useState<string[]>([])
 
   const selectedExportCount = useMemo(
     () =>
@@ -507,6 +863,74 @@ export function DashboardDataPackageActions({
     }
   }, [isExportDialogOpen, loadExportCatalog])
 
+  const characterItems = catalog.characters
+  const normalizedCharacterSearchQuery = characterSearchQuery.trim().toLocaleLowerCase()
+  const characterFolderOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          characterItems
+            .map((item) => item.folder ?? '')
+            .filter((folder) => folder.length > 0),
+        ),
+      ).sort(compareTextItems),
+    [characterItems],
+  )
+  const characterTagOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          characterItems.flatMap((item) => item.tags ?? []).filter((tag) => tag.length > 0),
+        ),
+      ).sort(compareTextItems),
+    [characterItems],
+  )
+  const hasUnfiledCharacters = useMemo(
+    () => characterItems.some((item) => !item.folder),
+    [characterItems],
+  )
+  const filteredCharacters = useMemo(
+    () =>
+      characterItems.filter((item) => {
+        const matchesFolder =
+          activeCharacterFolder === allCharacterFolderValue ||
+          (activeCharacterFolder === unfiledCharacterFolderValue
+            ? !item.folder
+            : item.folder === activeCharacterFolder)
+        const matchesSearch =
+          normalizedCharacterSearchQuery.length === 0 ||
+          (item.searchText ?? '').includes(normalizedCharacterSearchQuery)
+        const matchesTags = selectedCharacterTags.every((tag) => item.tags?.includes(tag))
+
+        return matchesFolder && matchesSearch && matchesTags
+      }),
+    [activeCharacterFolder, characterItems, normalizedCharacterSearchQuery, selectedCharacterTags],
+  )
+
+  useEffect(() => {
+    const availableTags = new Set(characterTagOptions)
+    setSelectedCharacterTags((currentTags) =>
+      currentTags.filter((tag) => availableTags.has(tag)),
+    )
+  }, [characterTagOptions])
+
+  useEffect(() => {
+    if (activeCharacterFolder === allCharacterFolderValue) {
+      return
+    }
+
+    if (activeCharacterFolder === unfiledCharacterFolderValue) {
+      if (!hasUnfiledCharacters) {
+        setActiveCharacterFolder(allCharacterFolderValue)
+      }
+      return
+    }
+
+    if (!characterFolderOptions.includes(activeCharacterFolder)) {
+      setActiveCharacterFolder(allCharacterFolderValue)
+    }
+  }, [activeCharacterFolder, characterFolderOptions, hasUnfiledCharacters])
+
   function toggleSelectedItem(kind: DataPackageGroupKind, itemId: string) {
     setSelectedItems((currentSelection) => ({
       ...currentSelection,
@@ -516,18 +940,33 @@ export function DashboardDataPackageActions({
     }))
   }
 
-  function selectAllGroup(kind: DataPackageGroupKind) {
+  function selectGroupItems(kind: DataPackageGroupKind, itemIds: string[]) {
+    if (itemIds.length === 0) {
+      return
+    }
+
     setSelectedItems((currentSelection) => ({
       ...currentSelection,
-      [kind]: catalog[kind].map((item) => item.id),
+      [kind]: Array.from(new Set([...currentSelection[kind], ...itemIds])),
     }))
   }
 
-  function clearGroup(kind: DataPackageGroupKind) {
+  function clearGroupItems(kind: DataPackageGroupKind, itemIds?: string[]) {
     setSelectedItems((currentSelection) => ({
       ...currentSelection,
-      [kind]: [],
+      [kind]:
+        itemIds === undefined
+          ? []
+          : currentSelection[kind].filter((itemId) => !itemIds.includes(itemId)),
     }))
+  }
+
+  function toggleCharacterTag(tag: string) {
+    setSelectedCharacterTags((currentTags) =>
+      currentTags.includes(tag)
+        ? currentTags.filter((currentTag) => currentTag !== tag)
+        : [...currentTags, tag],
+    )
   }
 
   async function handleExport() {
@@ -626,6 +1065,17 @@ export function DashboardDataPackageActions({
     }
   }
 
+  const exportTabItems = useMemo(
+    () =>
+      dataPackageGroupOrder.map((group) => ({
+        label: getDataPackageGroupLabel(t, group),
+        value: group,
+      })),
+    [t],
+  )
+
+  const activeExportGroupItems = catalog[activeExportTab]
+
   return (
     <>
       <div className="flex flex-wrap justify-end gap-2">
@@ -704,23 +1154,94 @@ export function DashboardDataPackageActions({
             ) : isCatalogLoading ? (
               <ExportCatalogSkeleton />
             ) : (
-              <div className="grid gap-4 xl:grid-cols-2">
-                {dataPackageGroupOrder.map((group) => (
-                  <ExportGroupCard
+              <div className="space-y-4">
+                <div className="overflow-x-auto pb-1">
+                  <SegmentedSelector
+                    ariaLabel={t('dashboard.dataPackage.dialogs.export.tabsLabel')}
+                    className="min-w-max"
+                    items={exportTabItems}
+                    layoutId="dashboard-data-package-export-tabs"
+                    onValueChange={(value) => {
+                      setActiveExportTab(value as DataPackageGroupKind)
+                    }}
+                    value={activeExportTab}
+                  />
+                </div>
+
+                {activeExportTab === 'characters' ? (
+                  <CharacterExportGroupPanel
+                    activeFolder={activeCharacterFolder}
+                    allLabel={t('dashboard.dataPackage.filters.all')}
+                    characterFolderOptions={characterFolderOptions}
+                    clearVisibleLabel={t('dashboard.dataPackage.actions.clearVisible')}
+                    disabled={isExporting}
+                    emptyFolderLabel={t('dashboard.dataPackage.filters.folderEmpty')}
+                    emptyResultsLabel={t('dashboard.dataPackage.filters.charactersEmpty')}
+                    emptyTagsLabel={t('dashboard.dataPackage.filters.tagsEmpty')}
+                    filteredCharacterCount={filteredCharacters.length}
+                    filteredCharacters={filteredCharacters}
+                    folderSearchPlaceholder={t('dashboard.dataPackage.filters.folderSearchPlaceholder')}
+                    folderListFilter={characterFolderListFilter}
+                    folderTitle={t('dashboard.dataPackage.filters.folderTitle')}
+                    hasUnfiledCharacters={hasUnfiledCharacters}
+                    items={characterItems}
+                    onClearVisible={() => {
+                      clearGroupItems(
+                        'characters',
+                        filteredCharacters.map((item) => item.id),
+                      )
+                    }}
+                    onFolderListFilterChange={setCharacterFolderListFilter}
+                    onSearchQueryChange={setCharacterSearchQuery}
+                    onSelectAllVisible={() => {
+                      selectGroupItems(
+                        'characters',
+                        filteredCharacters.map((item) => item.id),
+                      )
+                    }}
+                    onSetActiveFolder={setActiveCharacterFolder}
+                    onToggleCharacter={(itemId) => {
+                      toggleSelectedItem('characters', itemId)
+                    }}
+                    onToggleTag={toggleCharacterTag}
+                    resultsTitle={t('dashboard.dataPackage.filters.charactersTitle')}
+                    searchPlaceholder={t('dashboard.dataPackage.filters.searchPlaceholder')}
+                    searchQuery={characterSearchQuery}
+                    selectVisibleLabel={t('dashboard.dataPackage.actions.selectVisible')}
+                    selectedCharacterTags={selectedCharacterTags}
+                    selectedIds={selectedItems.characters}
+                    selectionTitle={t('dashboard.dataPackage.filters.selectionTitle')}
+                    tags={characterTagOptions}
+                    tagsTitle={t('dashboard.dataPackage.filters.tagsTitle')}
+                    totalCountLabel={t('dashboard.dataPackage.filters.charactersSummary', {
+                      count: selectedItems.characters.length,
+                      total: characterItems.length,
+                    })}
+                    unfiledLabel={t('dashboard.dataPackage.filters.unfiled')}
+                  />
+                ) : (
+                  <BasicExportGroupPanel
                     clearLabel={t('dashboard.dataPackage.actions.clear')}
                     disabled={isExporting}
                     emptyLabel={t('dashboard.dataPackage.dialogs.export.emptyGroup')}
-                    items={catalog[group]}
-                    key={group}
-                    kind={group}
-                    onClear={clearGroup}
-                    onSelectAll={selectAllGroup}
-                    onToggle={toggleSelectedItem}
-                    selectedIds={selectedItems[group]}
+                    items={activeExportGroupItems}
+                    onClear={() => {
+                      clearGroupItems(activeExportTab)
+                    }}
+                    onSelectAll={() => {
+                      selectGroupItems(
+                        activeExportTab,
+                        activeExportGroupItems.map((item) => item.id),
+                      )
+                    }}
+                    onToggle={(itemId) => {
+                      toggleSelectedItem(activeExportTab, itemId)
+                    }}
+                    selectedIds={selectedItems[activeExportTab]}
                     selectAllLabel={t('dashboard.dataPackage.actions.selectAll')}
-                    title={getDataPackageGroupLabel(t, group)}
+                    title={getDataPackageGroupLabel(t, activeExportTab)}
                   />
-                ))}
+                )}
               </div>
             )}
           </DialogBody>

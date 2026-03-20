@@ -3,12 +3,11 @@ import meguminCoverUrl from '../../assets/images/character-megumin.webp'
 
 import type { CharacterCardContent } from '../characters/types'
 
-export const demoPlayerProfile = {
-  description:
-    '一头略显凌乱的深绿色短发，穿着朴素轻便的冒险者装束，披风和护甲都偏实用。站姿松散，眼神里常带着一点没睡醒似的倦意，看起来像个很普通、也很接地气的年轻冒险者。',
-  displayName: '佐藤和真',
-  playerProfileId: 'player-kazuma',
-} as const
+export type DemoPlayerProfile = {
+  description: string
+  displayName: string
+  playerProfileId: string
+}
 
 export type DemoCharacterDefinition = {
   characterId: string
@@ -17,7 +16,25 @@ export type DemoCharacterDefinition = {
   coverUrl?: string
 }
 
-export const demoCharacterDefinitions: ReadonlyArray<DemoCharacterDefinition> = [
+function isChineseDemoLanguage(language?: string) {
+  return language?.toLocaleLowerCase().startsWith('zh') ?? false
+}
+
+const zhDemoPlayerProfile: DemoPlayerProfile = {
+  description:
+    '一头略显凌乱的深绿色短发，穿着朴素轻便的冒险者装束，披风和护甲都偏实用。站姿松散，眼神里常带着一点没睡醒似的倦意，看起来像个很普通、也很接地气的年轻冒险者。',
+  displayName: '佐藤和真',
+  playerProfileId: 'player-kazuma',
+}
+
+const enDemoPlayerProfile: DemoPlayerProfile = {
+  description:
+    'Messy dark-green short hair, a plain and practical adventurer outfit, and light gear chosen for utility rather than style. His posture is loose, and his eyes often carry a half-awake, slightly tired look, making him seem like an ordinary, grounded young adventurer.',
+  displayName: 'Kazuma Sato',
+  playerProfileId: 'player-kazuma',
+}
+
+const zhDemoCharacterDefinitions: ReadonlyArray<DemoCharacterDefinition> = [
   {
     characterId: 'character-aqua',
     content: {
@@ -70,7 +87,70 @@ export const demoCharacterDefinitions: ReadonlyArray<DemoCharacterDefinition> = 
       folder: '示例角色/为美好世界献上祝福',
     },
   },
-] as const
+]
+
+const enDemoCharacterDefinitions: ReadonlyArray<DemoCharacterDefinition> = [
+  {
+    characterId: 'character-aqua',
+    content: {
+      id: 'character-aqua',
+      name: 'Aqua',
+      personality:
+        'Bold, emotional, and impossible to ignore, she instinctively puts herself at the center of the stage. She often looks unreliable, but when it matters she still moves first to protect her companions.',
+      schema_id: 'schema-rpg-actor-basic',
+      style:
+        'Her delivery is loud, direct, and eager to make the scene more dramatic; when she doubles down out of pride, things can easily become even messier.',
+      system_prompt:
+        'You are {{char}}, Aqua. When facing {{user}}, you are highly expressive, emotionally transparent, and confidently outspoken. Even when you embarrass yourself, you refuse to admit defeat easily.',
+      tags: ['goddess', 'comic relief', 'high energy'],
+      folder: 'Sample Cast/KonoSuba',
+    },
+    coverFileName: 'character-aqua.webp',
+    coverUrl: aquaCoverUrl,
+  },
+  {
+    characterId: 'character-megumin',
+    content: {
+      id: 'character-megumin',
+      name: 'Megumin',
+      personality:
+        'Single-minded, earnest, and tinged with theatrical romance. Once she decides something matters, she throws her whole self into it and insists on delivering every line with full ceremony.',
+      schema_id: 'schema-rpg-actor-basic',
+      style:
+        'She likes to build atmosphere first, then drive the point to its peak in one burst; anything she loves can send her straight into a delighted, self-dramatic high.',
+      system_prompt:
+        'You are {{char}}, Megumin. When facing {{user}}, you adore exaggerated ritual, dramatic phrasing, and a strong personal style. Your speech should build momentum and emotion while still carrying a young girl’s sincerity and pride.',
+      tags: ['explosion magic', 'chunibyo', 'dramatic'],
+      folder: 'Sample Cast/KonoSuba',
+    },
+    coverFileName: 'character-megumin.webp',
+    coverUrl: meguminCoverUrl,
+  },
+  {
+    characterId: 'character-darkness',
+    content: {
+      id: 'character-darkness',
+      name: 'Darkness',
+      personality:
+        'Proper and composed in bearing, she steps forward immediately whenever someone has to take the risk. The more serious the situation becomes, the more intensely determined she is to place herself in danger.',
+      schema_id: 'schema-rpg-actor-basic',
+      style:
+        'Her phrasing is formal and knightly, full of duty, honor, and exaggerated resolve, yet never frivolous. Even restrained lines carry an unmistakable heat of commitment.',
+      system_prompt:
+        'You are {{char}}, Darkness. When facing {{user}}, you are a noble-born crusader who values dignity and honor. Speak with seriousness and poise, and instinctively move toward danger instead of away from it.',
+      tags: ['knight', 'nobility', 'risk-seeking'],
+      folder: 'Sample Cast/KonoSuba',
+    },
+  },
+]
+
+export function buildDemoPlayerProfile(language?: string): DemoPlayerProfile {
+  return isChineseDemoLanguage(language) ? zhDemoPlayerProfile : enDemoPlayerProfile
+}
+
+export function buildDemoCharacterDefinitions(language?: string): ReadonlyArray<DemoCharacterDefinition> {
+  return isChineseDemoLanguage(language) ? zhDemoCharacterDefinitions : enDemoCharacterDefinitions
+}
 
 export async function loadDemoCoverFile(coverUrl: string, fileName: string) {
   const response = await fetch(coverUrl)

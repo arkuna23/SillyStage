@@ -12,6 +12,22 @@ export const PopupMenuPortal = DropdownMenu.Portal
 export const PopupMenuTrigger = DropdownMenu.Trigger
 export const PopupMenuRadioGroup = DropdownMenu.RadioGroup
 
+export const PopupMenuItem = forwardRef<
+  ElementRef<typeof DropdownMenu.Item>,
+  ComponentPropsWithoutRef<typeof DropdownMenu.Item>
+>(function PopupMenuItem({ className, ...props }, ref) {
+  return (
+    <DropdownMenu.Item
+      className={cn(
+        'relative flex cursor-pointer select-none items-center gap-3 rounded-[1rem] px-2.5 py-2.5 text-sm text-[var(--color-text-secondary)] outline-none transition focus:bg-white/8 focus:text-[var(--color-text-primary)] data-[disabled]:pointer-events-none data-[disabled]:opacity-40',
+        className,
+      )}
+      ref={ref}
+      {...props}
+    />
+  )
+})
+
 export const PopupMenuContent = forwardRef<
   ElementRef<typeof DropdownMenu.Content>,
   ComponentPropsWithoutRef<typeof DropdownMenu.Content>

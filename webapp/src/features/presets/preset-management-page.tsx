@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
-import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
@@ -25,7 +24,6 @@ import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../
 import { createPreset, deletePreset, getPreset, listPresets } from '../apis/api'
 import { hasPresetAgentConfiguration, type Preset } from '../apis/types'
 import { DeletePresetDialog } from './delete-preset-dialog'
-import { PresetDetailsDialog } from './preset-details-dialog'
 import { PresetFormDialog } from './preset-form-dialog'
 import { getOrderedAgentRoleKeys } from './preset-labels'
 import { buildPresetTemplateDefinitions } from './preset-presets'
@@ -88,7 +86,6 @@ export function PresetManagementPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false)
   const [editPresetId, setEditPresetId] = useState<string | null>(null)
-  const [detailsPresetId, setDetailsPresetId] = useState<string | null>(null)
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedPresetIds, setSelectedPresetIds] = useState<string[]>([])
   const [deleteTargetIds, setDeleteTargetIds] = useState<string[]>([])
@@ -158,10 +155,7 @@ export function PresetManagementPage() {
       setEditPresetId(null)
     }
 
-    if (detailsPresetId !== null && !availablePresetIds.has(detailsPresetId)) {
-      setDetailsPresetId(null)
-    }
-  }, [detailsPresetId, editPresetId, presets])
+  }, [editPresetId, presets])
 
   useLayoutEffect(() => {
     setRailContent({
@@ -210,9 +204,6 @@ export function PresetManagementPage() {
           setEditPresetId(null)
         }
 
-        if (detailsPresetId !== null && deletedIds.has(detailsPresetId)) {
-          setDetailsPresetId(null)
-        }
       }
 
       if (result.failed.length === 0) {
@@ -464,16 +455,6 @@ export function PresetManagementPage() {
         presetId={editPresetId}
       />
 
-      <PresetDetailsDialog
-        onOpenChange={(open) => {
-          if (!open) {
-            setDetailsPresetId(null)
-          }
-        }}
-        open={detailsPresetId !== null}
-        presetId={detailsPresetId}
-      />
-
       <DeletePresetDialog
         deleting={isDeleting}
         onConfirm={() => void handleDeletePreset()}
@@ -558,7 +539,6 @@ export function PresetManagementPage() {
                         onClick={() => {
                           setSelectionMode(true)
                           setSelectedPresetIds([])
-                          setDetailsPresetId(null)
                         }}
                         variant="secondary"
                       />
@@ -640,15 +620,6 @@ export function PresetManagementPage() {
                             />
                           ) : (
                             <>
-                              <IconButton
-                                icon={<FontAwesomeIcon icon={faEye} />}
-                                label={t('presetsPage.actions.view')}
-                                onClick={() => {
-                                  setDetailsPresetId(preset.preset_id)
-                                }}
-                                size="sm"
-                                variant="ghost"
-                              />
                               <IconButton
                                 icon={<FontAwesomeIcon icon={faPen} />}
                                 label={t('presetsPage.actions.edit')}

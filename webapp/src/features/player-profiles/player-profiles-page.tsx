@@ -8,7 +8,7 @@ import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useTranslation } from 'react-i18next'
 
-import { demoPlayerProfile } from '../demo-content/konosuba-sample-data'
+import { buildDemoPlayerProfile } from '../demo-content/konosuba-sample-data'
 import { InsertSampleDialog } from '../demo-content/insert-sample-dialog'
 import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
@@ -70,8 +70,9 @@ function summarizeDescription(description: string) {
 }
 
 export function PlayerProfilesPage() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
+  const sampleLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en'
   const [profiles, setProfiles] = useState<PlayerProfile[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -88,6 +89,10 @@ export function PlayerProfilesPage() {
   const existingProfileIds = useMemo(
     () => profiles.map((profile) => profile.player_profile_id),
     [profiles],
+  )
+  const demoPlayerProfile = useMemo(
+    () => buildDemoPlayerProfile(sampleLanguage),
+    [sampleLanguage],
   )
   const deleteTargets = useMemo(
     () =>

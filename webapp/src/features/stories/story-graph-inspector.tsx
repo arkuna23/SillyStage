@@ -1,4 +1,10 @@
-import { useMemo } from 'react'
+import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
+import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
+import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
+import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -7,21 +13,23 @@ import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
-import type {
-  ConditionOperator,
-  ConditionScope,
-  StoryGraph,
-  StoryGraphCondition,
-  StoryGraphStateOpType,
-  StoryGraphTransition,
-} from './types'
-import { StoryGraphOnEnterUpdatesEditor } from './story-graph-on-enter-updates-editor'
+import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildConditionDraftKey,
   getGraphNodeLabel,
   type GraphConditionDrafts,
   type GraphOnEnterUpdateDrafts,
 } from './story-graph-editor-utils'
+import { StoryGraphOnEnterUpdatesEditor } from './story-graph-on-enter-updates-editor'
+import type {
+  ConditionOperator,
+  ConditionScope,
+  StoryGraph,
+  StoryGraphCondition,
+  StoryGraphNode,
+  StoryGraphStateOpType,
+  StoryGraphTransition,
+} from './types'
 
 type StoryGraphInspectorProps = {
   conditionDrafts: GraphConditionDrafts
@@ -66,6 +74,17 @@ type StoryGraphInspectorProps = {
   selectedTransitionIndex: number | null
 }
 
+type SelectedNodeInspectorContentProps = Omit<
+  StoryGraphInspectorProps,
+  'selectedNodeId'
+> & {
+  activeTab: InspectorTab
+  onActiveTabChange: (nextValue: InspectorTab) => void
+  selectedNode: StoryGraphNode
+}
+
+type InspectorTab = 'node' | 'transitions' | 'updates'
+
 const conditionScopeItems: Array<{ label: string; value: ConditionScope }> = [
   { label: 'Global', value: 'global' },
   { label: 'Player', value: 'player' },
@@ -82,26 +101,19 @@ const conditionOperatorItems: Array<{ label: string; value: ConditionOperator }>
   { label: 'contains', value: 'contains' },
 ]
 
-function SectionTitle({
-  action,
-  children,
-}: {
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{children}</h4>
-      {action}
-    </div>
-  )
+function buildTransitionExpansionKey(nodeId: string, transitionIndex: number) {
+  return `${nodeId}:${transitionIndex}`
+}
+
+function buildOnEnterUpdateExpansionKey(nodeId: string, operationIndex: number) {
+  return `${nodeId}:op:${operationIndex}`
 }
 
 function Field({
   children,
   label,
 }: {
-  children: React.ReactNode
+  children: ReactNode
   label: string
 }) {
   return (
@@ -109,6 +121,590 @@ function Field({
       <span className="text-xs text-[var(--color-text-muted)]">{label}</span>
       {children}
     </label>
+  )
+}
+
+function InspectorTabButton({
+  active,
+  icon,
+  id,
+  label,
+  onClick,
+  panelId,
+}: {
+  active: boolean
+  icon: ReactNode
+  id: string
+  label: string
+  onClick: () => void
+  panelId: string
+}) {
+  return (
+    <button
+      aria-controls={panelId}
+      aria-label={label}
+      aria-selected={active}
+      className={cn(
+        'inline-flex size-10 items-center justify-center rounded-[0.95rem] border transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-focus-ring)]',
+        active
+          ? 'border-[var(--color-accent-gold-line)] bg-[linear-gradient(135deg,color-mix(in_srgb,var(--color-accent-gold)_88%,var(--color-bg-curtain)),color-mix(in_srgb,var(--color-accent-gold-strong)_82%,var(--color-bg-curtain)))] text-[color:var(--color-accent-ink)] shadow-[0_10px_24px_var(--color-accent-glow-soft)]'
+          : 'border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]',
+      )}
+      id={id}
+      onClick={onClick}
+      role="tab"
+      title={label}
+      type="button"
+    >
+      <span aria-hidden="true" className="inline-flex items-center justify-center text-sm">
+        {icon}
+      </span>
+    </button>
+  )
+}
+
+function SelectedNodeInspectorContent({
+  activeTab,
+  conditionDrafts,
+  graph,
+  newNodeIds,
+  onActiveTabChange,
+  onAddOnEnterUpdate,
+  onAddTransition,
+  onConditionDraftChange,
+  onDeleteNode,
+  onOnEnterUpdateDraftChange,
+  onRemoveTransition,
+  onRemoveOnEnterUpdate,
+  onSelectTransition,
+  onSetStartNode,
+  onToggleCondition,
+  onUpdateCharacters,
+  onUpdateNodeField,
+  onUpdateNodeId,
+  onUpdateOnEnterUpdate,
+  onUpdateTransition,
+  onEnterUpdateDrafts,
+  onUpdateTransitionCondition,
+  readOnly = false,
+  selectedNode,
+  selectedTransitionIndex,
+}: SelectedNodeInspectorContentProps) {
+  const { t } = useTranslation()
+  const prefersReducedMotion = useReducedMotion()
+  const [expandedTransitionKeys, setExpandedTransitionKeys] = useState<Set<string>>(new Set())
+  const [expandedOnEnterUpdateKeys, setExpandedOnEnterUpdateKeys] = useState<Set<string>>(new Set())
+
+  const duplicateId =
+    newNodeIds.has(selectedNode.id)
+      ? graph.nodes.filter((node) => node.id === selectedNode.id).length > 1
+      : false
+
+  const targetItems = graph.nodes.map((node) => ({
+    label: `${getGraphNodeLabel(node)} (${node.id})`,
+    value: node.id,
+  }))
+  const onEnterUpdatesCount = selectedNode.on_enter_updates?.length ?? 0
+  const tabItems = [
+    {
+      icon: <FontAwesomeIcon fixedWidth icon={faBookOpen} />,
+      label: t('stories.graph.nodeSection'),
+      value: 'node' as const,
+    },
+    {
+      icon: <FontAwesomeIcon fixedWidth icon={faDiagramProject} />,
+      label: t('stories.graph.transitions'),
+      value: 'transitions' as const,
+    },
+    {
+      icon: <FontAwesomeIcon fixedWidth icon={faCheckDouble} />,
+      label: t('stories.graph.onEnterUpdatesTitle'),
+      value: 'updates' as const,
+    },
+  ]
+
+  const activeTabTitle =
+    activeTab === 'node'
+      ? t('stories.graph.nodeSection')
+      : activeTab === 'transitions'
+        ? t('stories.graph.transitions')
+        : t('stories.graph.onEnterUpdatesTitle')
+  const activeTabSubtitle =
+    activeTab === 'transitions'
+      ? t('stories.graph.transitionsCount', { count: selectedNode.transitions.length })
+      : activeTab === 'updates'
+        ? t('stories.graph.onEnterUpdatesCount', { count: onEnterUpdatesCount })
+        : selectedNode.id
+  const activeTabAction =
+    activeTab === 'transitions' && !readOnly ? (
+      <Button
+        onClick={() => {
+          const nextTransitionIndex = selectedNode.transitions.length
+          const transitionKey = buildTransitionExpansionKey(selectedNode.id, nextTransitionIndex)
+
+          onAddTransition(selectedNode.id)
+          setExpandedTransitionKeys((currentKeys) => new Set(currentKeys).add(transitionKey))
+        }}
+        size="sm"
+        variant="secondary"
+      >
+        <FontAwesomeIcon icon={faPlus} />
+        {t('stories.graph.addTransition' as const)}
+      </Button>
+    ) : activeTab === 'updates' && !readOnly ? (
+      <Button
+        onClick={() => {
+          const nextOperationIndex = onEnterUpdatesCount
+          const nextOperationKey = buildOnEnterUpdateExpansionKey(
+            selectedNode.id,
+            nextOperationIndex,
+          )
+
+          onAddOnEnterUpdate(selectedNode.id)
+          setExpandedOnEnterUpdateKeys((currentKeys) => new Set(currentKeys).add(nextOperationKey))
+        }}
+        size="sm"
+        variant="secondary"
+      >
+        <FontAwesomeIcon icon={faPlus} />
+        {t('stories.graph.addOnEnterUpdate')}
+      </Button>
+    ) : null
+
+  const activePanelId = `story-graph-inspector-panel-${selectedNode.id}-${activeTab}`
+  const activeTabId = `story-graph-inspector-tab-${selectedNode.id}-${activeTab}`
+
+  return (
+    <div className="scrollbar-none flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">
+      <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
+                {getGraphNodeLabel(selectedNode)}
+              </h3>
+              {graph.start_node === selectedNode.id ? (
+                <Badge className="px-2.5 py-1" variant="info">
+                  {t('stories.graph.start')}
+                </Badge>
+              ) : null}
+              {readOnly ? (
+                <Badge className="px-2.5 py-1" variant="gold">
+                  {t('stories.graph.readOnly')}
+                </Badge>
+              ) : null}
+            </div>
+            <p className="text-sm text-[var(--color-text-secondary)]">{selectedNode.id}</p>
+          </div>
+
+          {!readOnly ? (
+            <div className="flex shrink-0 items-center gap-2">
+              {graph.start_node !== selectedNode.id ? (
+                <Button
+                  onClick={() => {
+                    onSetStartNode(selectedNode.id)
+                  }}
+                  size="sm"
+                  variant="ghost"
+                >
+                  {t('stories.graph.setStart')}
+                </Button>
+              ) : null}
+              <Button
+                onClick={() => {
+                  onDeleteNode(selectedNode.id)
+                }}
+                size="sm"
+                variant="danger"
+              >
+                {t('stories.graph.deleteNode')}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0 flex-1 self-center">
+            <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{activeTabTitle}</h4>
+            <p className="mt-1 text-xs leading-6 text-[var(--color-text-muted)]">
+              {activeTabSubtitle}
+            </p>
+          </div>
+
+          <div
+            aria-label={t('stories.graph.title')}
+            className="inline-flex shrink-0 items-center gap-2 rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)] p-1 self-center"
+            role="tablist"
+          >
+            {tabItems.map((item) => {
+              const tabId = `story-graph-inspector-tab-${selectedNode.id}-${item.value}`
+              const panelId = `story-graph-inspector-panel-${selectedNode.id}-${item.value}`
+
+              return (
+                <InspectorTabButton
+                  active={item.value === activeTab}
+                  icon={item.icon}
+                  id={tabId}
+                  key={item.value}
+                  label={item.label}
+                  onClick={() => {
+                    onActiveTabChange(item.value)
+                  }}
+                  panelId={panelId}
+                />
+              )
+            })}
+          </div>
+        </div>
+
+        <AnimatePresence initial={false} mode="wait">
+          <motion.div
+            animate={prefersReducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+            aria-labelledby={activeTabId}
+            className="mt-5"
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -6 }}
+            id={activePanelId}
+            initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 8 }}
+            key={activeTab}
+            role="tabpanel"
+            transition={{ duration: prefersReducedMotion ? 0 : 0.18, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="space-y-4">
+              {activeTabAction ? <div className="flex justify-end">{activeTabAction}</div> : null}
+
+              {activeTab === 'node' ? (
+                <div className="space-y-4">
+                  <Field label={t('stories.graph.nodeId')}>
+                    <Input
+                      id={`story-graph-node-id-${selectedNode.id}`}
+                      name={`story-graph-node-id-${selectedNode.id}`}
+                      onChange={(event) => {
+                        onUpdateNodeId(selectedNode.id, event.target.value)
+                      }}
+                      readOnly={readOnly || !newNodeIds.has(selectedNode.id)}
+                      value={selectedNode.id}
+                    />
+                  </Field>
+                  {duplicateId ? (
+                    <p className="text-xs text-[var(--color-state-error-text)]">
+                      {t('stories.graph.errors.duplicateNodeId')}
+                    </p>
+                  ) : null}
+
+                  <Field label={t('stories.graph.nodeTitle')}>
+                    <Input
+                      id={`story-graph-node-title-${selectedNode.id}`}
+                      name={`story-graph-node-title-${selectedNode.id}`}
+                      onChange={(event) => {
+                        onUpdateNodeField(selectedNode.id, 'title', event.target.value)
+                      }}
+                      readOnly={readOnly}
+                      value={selectedNode.title}
+                    />
+                  </Field>
+
+                  <Field label={t('stories.graph.scene')}>
+                    <Textarea
+                      id={`story-graph-node-scene-${selectedNode.id}`}
+                      name={`story-graph-node-scene-${selectedNode.id}`}
+                      onChange={(event) => {
+                        onUpdateNodeField(selectedNode.id, 'scene', event.target.value)
+                      }}
+                      readOnly={readOnly}
+                      rows={4}
+                      value={selectedNode.scene}
+                    />
+                  </Field>
+
+                  <Field label={t('stories.graph.goal')}>
+                    <Textarea
+                      id={`story-graph-node-goal-${selectedNode.id}`}
+                      name={`story-graph-node-goal-${selectedNode.id}`}
+                      onChange={(event) => {
+                        onUpdateNodeField(selectedNode.id, 'goal', event.target.value)
+                      }}
+                      readOnly={readOnly}
+                      rows={4}
+                      value={selectedNode.goal}
+                    />
+                  </Field>
+
+                  <Field label={t('stories.graph.characters')}>
+                    <Input
+                      id={`story-graph-node-characters-${selectedNode.id}`}
+                      name={`story-graph-node-characters-${selectedNode.id}`}
+                      onChange={(event) => {
+                        onUpdateCharacters(selectedNode.id, event.target.value)
+                      }}
+                      placeholder={t('stories.graph.charactersPlaceholder')}
+                      readOnly={readOnly}
+                      value={selectedNode.characters.join(', ')}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              {activeTab === 'transitions' ? (
+                <div className="space-y-4">
+                  {selectedNode.transitions.length === 0 ? (
+                    <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
+                      {t('stories.graph.emptyTransitions')}
+                    </p>
+                  ) : null}
+
+                  <div className="space-y-4">
+                    {selectedNode.transitions.map((transition, transitionIndex) => {
+                      const transitionDraftKey = buildConditionDraftKey(selectedNode.id, transitionIndex)
+                      const transitionCardKey = buildTransitionExpansionKey(selectedNode.id, transitionIndex)
+                      const conditionDraft =
+                        conditionDrafts[transitionDraftKey] ??
+                        JSON.stringify(transition.condition?.value ?? '', null, 2)
+                      const targetNode = graph.nodes.find((node) => node.id === transition.to) ?? null
+                      const conditionValueError =
+                        transition.condition && conditionDraft
+                          ? (() => {
+                              try {
+                                JSON.parse(conditionDraft)
+                                return null
+                              } catch {
+                                return t('stories.graph.errors.invalidConditionValue')
+                              }
+                            })()
+                          : null
+
+                      return (
+                        <StoryGraphCollapsibleCard
+                          action={
+                            !readOnly ? (
+                              <Button
+                                onClick={() => {
+                                  onRemoveTransition(selectedNode.id, transitionIndex)
+                                }}
+                                size="sm"
+                                variant="ghost"
+                              >
+                                {t('stories.graph.removeTransition')}
+                              </Button>
+                            ) : null
+                          }
+                          className={cn(
+                            'rounded-[1.2rem] bg-[color-mix(in_srgb,var(--color-bg-panel-strong)_75%,transparent)]',
+                            selectedTransitionIndex === transitionIndex
+                              ? 'border-[var(--color-accent-gold-line)] ring-1 ring-[var(--color-focus-ring)]'
+                              : 'border-[var(--color-border-subtle)]',
+                          )}
+                          contentClassName="space-y-4"
+                          key={`${selectedNode.id}:${transitionIndex}`}
+                          onToggle={() => {
+                            onSelectTransition(transitionIndex)
+                            setExpandedTransitionKeys((currentKeys) => {
+                              const nextKeys = new Set(currentKeys)
+
+                              if (nextKeys.has(transitionCardKey)) {
+                                nextKeys.delete(transitionCardKey)
+                              } else {
+                                nextKeys.add(transitionCardKey)
+                              }
+
+                              return nextKeys
+                            })
+                          }}
+                          open={expandedTransitionKeys.has(transitionCardKey)}
+                          subtitle={
+                            <span className="block truncate">
+                              {(targetNode
+                                ? `${getGraphNodeLabel(targetNode)} (${targetNode.id})`
+                                : transition.to || '—')}{' '}
+                              ·{' '}
+                              {transition.condition
+                                ? t('stories.graph.conditionEnabled')
+                                : t('stories.graph.conditionDisabled')}
+                            </span>
+                          }
+                          title={t('stories.graph.transitionLabel', { index: transitionIndex + 1 })}
+                        >
+                          <Field label={t('stories.graph.transitionTarget')}>
+                            <Select
+                              disabled={readOnly}
+                              items={targetItems}
+                              onValueChange={(nextValue) => {
+                                onUpdateTransition(selectedNode.id, transitionIndex, {
+                                  to: nextValue,
+                                })
+                              }}
+                              textAlign="start"
+                              value={transition.to}
+                            />
+                          </Field>
+
+                          <div className="flex items-center justify-between gap-3 rounded-[1.1rem] border border-[var(--color-border-subtle)] px-3 py-3">
+                            <div>
+                              <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                                {t('stories.graph.condition')}
+                              </p>
+                              <p className="text-xs text-[var(--color-text-muted)]">
+                                {transition.condition
+                                  ? t('stories.graph.conditionEnabled')
+                                  : t('stories.graph.conditionDisabled')}
+                              </p>
+                            </div>
+                            {!readOnly ? (
+                              <Button
+                                onClick={() => {
+                                  onToggleCondition(
+                                    selectedNode.id,
+                                    transitionIndex,
+                                    !transition.condition,
+                                  )
+                                }}
+                                size="sm"
+                                variant={transition.condition ? 'secondary' : 'ghost'}
+                              >
+                                {transition.condition
+                                  ? t('stories.graph.disableCondition')
+                                  : t('stories.graph.enableCondition')}
+                              </Button>
+                            ) : null}
+                          </div>
+
+                          {transition.condition ? (
+                            <div className="grid gap-3">
+                              <div className="grid gap-3 sm:grid-cols-2">
+                                <Field label={t('stories.graph.conditionScope')}>
+                                  <Select
+                                    disabled={readOnly}
+                                    items={conditionScopeItems.map((item) => ({
+                                      label: t(`stories.graph.scope.${item.value}` as const),
+                                      value: item.value,
+                                    }))}
+                                    onValueChange={(nextValue) => {
+                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
+                                        scope: nextValue as ConditionScope,
+                                      })
+                                    }}
+                                    textAlign="start"
+                                    value={transition.condition.scope ?? 'global'}
+                                  />
+                                </Field>
+                                <Field label={t('stories.graph.conditionOperator')}>
+                                  <Select
+                                    disabled={readOnly}
+                                    items={conditionOperatorItems}
+                                    onValueChange={(nextValue) => {
+                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
+                                        op: nextValue as ConditionOperator,
+                                      })
+                                    }}
+                                    textAlign="start"
+                                    value={transition.condition.op}
+                                  />
+                                </Field>
+                              </div>
+
+                              {transition.condition.scope === 'character' ? (
+                                <Field label={t('stories.graph.conditionCharacter')}>
+                                  <Input
+                                    id={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
+                                    name={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
+                                    onChange={(event) => {
+                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
+                                        character: event.target.value,
+                                      })
+                                    }}
+                                    placeholder={t('stories.graph.conditionCharacterPlaceholder')}
+                                    readOnly={readOnly}
+                                    value={transition.condition.character ?? ''}
+                                  />
+                                </Field>
+                              ) : null}
+
+                              <Field label={t('stories.graph.conditionKey')}>
+                                <Input
+                                  id={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
+                                  name={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
+                                  onChange={(event) => {
+                                    onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
+                                      key: event.target.value,
+                                    })
+                                  }}
+                                  readOnly={readOnly}
+                                  value={transition.condition.key}
+                                />
+                              </Field>
+
+                              <Field label={t('stories.graph.conditionValue')}>
+                                <Textarea
+                                  className={cn(
+                                    conditionValueError
+                                      ? 'border-[var(--color-state-error-line)] focus:border-[var(--color-state-error-line)]'
+                                      : undefined,
+                                  )}
+                                  id={`story-graph-condition-value-${selectedNode.id}-${transitionIndex}`}
+                                  name={`story-graph-condition-value-${selectedNode.id}-${transitionIndex}`}
+                                  onChange={(event) => {
+                                    onConditionDraftChange(
+                                      selectedNode.id,
+                                      transitionIndex,
+                                      event.target.value,
+                                    )
+                                  }}
+                                  placeholder={t('stories.graph.conditionValuePlaceholder')}
+                                  readOnly={readOnly}
+                                  rows={4}
+                                  value={conditionDraft}
+                                />
+                              </Field>
+                              {conditionValueError ? (
+                                <p className="text-xs text-[var(--color-state-error-text)]">
+                                  {conditionValueError}
+                                </p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </StoryGraphCollapsibleCard>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {activeTab === 'updates' ? (
+                <StoryGraphOnEnterUpdatesEditor
+                  drafts={onEnterUpdateDrafts}
+                  expandedOperationKeys={expandedOnEnterUpdateKeys}
+                  key={selectedNode.id}
+                  node={selectedNode}
+                  onDraftChange={onOnEnterUpdateDraftChange}
+                  onRemoveOperation={onRemoveOnEnterUpdate}
+                  onToggleOperation={(operationIndex) => {
+                    const expansionKey = buildOnEnterUpdateExpansionKey(
+                      selectedNode.id,
+                      operationIndex,
+                    )
+
+                    setExpandedOnEnterUpdateKeys((currentKeys) => {
+                      const nextKeys = new Set(currentKeys)
+
+                      if (nextKeys.has(expansionKey)) {
+                        nextKeys.delete(expansionKey)
+                      } else {
+                        nextKeys.add(expansionKey)
+                      }
+
+                      return nextKeys
+                    })
+                  }}
+                  onUpdateOperation={onUpdateOnEnterUpdate}
+                  readOnly={readOnly}
+                />
+              ) : null}
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      </div>
+    </div>
   )
 }
 
@@ -138,21 +734,12 @@ export function StoryGraphInspector({
   selectedTransitionIndex,
 }: StoryGraphInspectorProps) {
   const { t } = useTranslation()
+  const [activeTab, setActiveTab] = useState<InspectorTab>('node')
 
   const selectedNode = useMemo(
     () => graph.nodes.find((node) => node.id === selectedNodeId) ?? null,
     [graph.nodes, selectedNodeId],
   )
-
-  const duplicateId =
-    selectedNode && newNodeIds.has(selectedNode.id)
-      ? graph.nodes.filter((node) => node.id === selectedNode.id).length > 1
-      : false
-
-  const targetItems = graph.nodes.map((node) => ({
-    label: `${getGraphNodeLabel(node)} (${node.id})`,
-    value: node.id,
-  }))
 
   if (!selectedNode) {
     return (
@@ -168,347 +755,32 @@ export function StoryGraphInspector({
   }
 
   return (
-    <div className="scrollbar-none flex h-full min-h-0 flex-col overflow-y-auto px-6 py-6">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-[var(--color-text-primary)]">
-            {getGraphNodeLabel(selectedNode)}
-          </h3>
-          {graph.start_node === selectedNode.id ? (
-            <Badge className="px-2.5 py-1" variant="info">
-              {t('stories.graph.start')}
-            </Badge>
-          ) : null}
-          {readOnly ? (
-            <Badge className="px-2.5 py-1" variant="gold">
-              {t('stories.graph.readOnly')}
-            </Badge>
-          ) : null}
-        </div>
-        <p className="text-sm text-[var(--color-text-secondary)]">{selectedNode.id}</p>
-      </div>
-
-      <div className="mt-6 space-y-6">
-        <div className="space-y-4 rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
-          <SectionTitle
-            action={
-              !readOnly ? (
-                <div className="flex items-center gap-2">
-                  {graph.start_node !== selectedNode.id ? (
-                    <Button
-                      onClick={() => {
-                        onSetStartNode(selectedNode.id)
-                      }}
-                      size="sm"
-                      variant="ghost"
-                    >
-                      {t('stories.graph.setStart')}
-                    </Button>
-                  ) : null}
-                  <Button
-                    onClick={() => {
-                      onDeleteNode(selectedNode.id)
-                    }}
-                    size="sm"
-                    variant="danger"
-                  >
-                    {t('stories.graph.deleteNode')}
-                  </Button>
-                </div>
-              ) : null
-            }
-          >
-            {t('stories.graph.nodeSection')}
-          </SectionTitle>
-
-          <Field label={t('stories.graph.nodeId')}>
-            <Input
-              id={`story-graph-node-id-${selectedNode.id}`}
-              name={`story-graph-node-id-${selectedNode.id}`}
-              onChange={(event) => {
-                onUpdateNodeId(selectedNode.id, event.target.value)
-              }}
-              readOnly={readOnly || !newNodeIds.has(selectedNode.id)}
-              value={selectedNode.id}
-            />
-          </Field>
-          {duplicateId ? (
-            <p className="text-xs text-[var(--color-state-error-text)]">
-              {t('stories.graph.errors.duplicateNodeId')}
-            </p>
-          ) : null}
-
-          <Field label={t('stories.graph.nodeTitle')}>
-            <Input
-              id={`story-graph-node-title-${selectedNode.id}`}
-              name={`story-graph-node-title-${selectedNode.id}`}
-              onChange={(event) => {
-                onUpdateNodeField(selectedNode.id, 'title', event.target.value)
-              }}
-              readOnly={readOnly}
-              value={selectedNode.title}
-            />
-          </Field>
-
-          <Field label={t('stories.graph.scene')}>
-            <Textarea
-              id={`story-graph-node-scene-${selectedNode.id}`}
-              name={`story-graph-node-scene-${selectedNode.id}`}
-              onChange={(event) => {
-                onUpdateNodeField(selectedNode.id, 'scene', event.target.value)
-              }}
-              readOnly={readOnly}
-              rows={4}
-              value={selectedNode.scene}
-            />
-          </Field>
-
-          <Field label={t('stories.graph.goal')}>
-            <Textarea
-              id={`story-graph-node-goal-${selectedNode.id}`}
-              name={`story-graph-node-goal-${selectedNode.id}`}
-              onChange={(event) => {
-                onUpdateNodeField(selectedNode.id, 'goal', event.target.value)
-              }}
-              readOnly={readOnly}
-              rows={4}
-              value={selectedNode.goal}
-            />
-          </Field>
-
-          <Field label={t('stories.graph.characters')}>
-            <Input
-              id={`story-graph-node-characters-${selectedNode.id}`}
-              name={`story-graph-node-characters-${selectedNode.id}`}
-              onChange={(event) => {
-                onUpdateCharacters(selectedNode.id, event.target.value)
-              }}
-              placeholder={t('stories.graph.charactersPlaceholder')}
-              readOnly={readOnly}
-              value={selectedNode.characters.join(', ')}
-            />
-          </Field>
-        </div>
-
-        <div className="space-y-4 rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
-          <SectionTitle
-            action={
-              !readOnly ? (
-                <Button
-                  onClick={() => {
-                    onAddTransition(selectedNode.id)
-                  }}
-                  size="sm"
-                  variant="secondary"
-                >
-                  {t('stories.graph.addTransition' as const)}
-                </Button>
-              ) : null
-            }
-          >
-            {t('stories.graph.transitions')}
-          </SectionTitle>
-
-          {selectedNode.transitions.length === 0 ? (
-            <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-              {t('stories.graph.emptyTransitions')}
-            </p>
-          ) : null}
-
-          <div className="space-y-4">
-            {selectedNode.transitions.map((transition, transitionIndex) => {
-              const transitionDraftKey = buildConditionDraftKey(selectedNode.id, transitionIndex)
-              const conditionDraft =
-                conditionDrafts[transitionDraftKey] ??
-                JSON.stringify(transition.condition?.value ?? '', null, 2)
-              const conditionValueError =
-                transition.condition && conditionDraft
-                  ? (() => {
-                      try {
-                        JSON.parse(conditionDraft)
-                        return null
-                      } catch {
-                        return t('stories.graph.errors.invalidConditionValue')
-                      }
-                    })()
-                  : null
-
-              return (
-                <div
-                  className={cn(
-                    'space-y-4 rounded-[1.2rem] border bg-[color-mix(in_srgb,var(--color-bg-panel-strong)_75%,transparent)] p-4 transition',
-                    selectedTransitionIndex === transitionIndex
-                      ? 'border-[var(--color-accent-gold-line)] ring-1 ring-[var(--color-focus-ring)]'
-                      : 'border-[var(--color-border-subtle)]',
-                  )}
-                  key={`${selectedNode.id}:${transitionIndex}`}
-                  onClick={() => {
-                    onSelectTransition(transitionIndex)
-                  }}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                      {t('stories.graph.transitionLabel', { index: transitionIndex + 1 })}
-                    </p>
-                    {!readOnly ? (
-                      <Button
-                        onClick={() => {
-                          onRemoveTransition(selectedNode.id, transitionIndex)
-                        }}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        {t('stories.graph.removeTransition')}
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  <Field label={t('stories.graph.transitionTarget')}>
-                    <Select
-                      disabled={readOnly}
-                      items={targetItems}
-                      onValueChange={(nextValue) => {
-                        onUpdateTransition(selectedNode.id, transitionIndex, {
-                          to: nextValue,
-                        })
-                      }}
-                      textAlign="start"
-                      value={transition.to}
-                    />
-                  </Field>
-
-                  <div className="flex items-center justify-between gap-3 rounded-[1.1rem] border border-[var(--color-border-subtle)] px-3 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                        {t('stories.graph.condition')}
-                      </p>
-                      <p className="text-xs text-[var(--color-text-muted)]">
-                        {transition.condition
-                          ? t('stories.graph.conditionEnabled')
-                          : t('stories.graph.conditionDisabled')}
-                      </p>
-                    </div>
-                    {!readOnly ? (
-                      <Button
-                        onClick={() => {
-                          onToggleCondition(selectedNode.id, transitionIndex, !transition.condition)
-                        }}
-                        size="sm"
-                        variant={transition.condition ? 'secondary' : 'ghost'}
-                      >
-                        {transition.condition
-                          ? t('stories.graph.disableCondition')
-                          : t('stories.graph.enableCondition')}
-                      </Button>
-                    ) : null}
-                  </div>
-
-                  {transition.condition ? (
-                    <div className="grid gap-3">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Field label={t('stories.graph.conditionScope')}>
-                          <Select
-                            disabled={readOnly}
-                            items={conditionScopeItems.map((item) => ({
-                              label: t(`stories.graph.scope.${item.value}` as const),
-                              value: item.value,
-                            }))}
-                            onValueChange={(nextValue) => {
-                              onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                scope: nextValue as ConditionScope,
-                              })
-                            }}
-                            textAlign="start"
-                            value={transition.condition.scope ?? 'global'}
-                          />
-                        </Field>
-                        <Field label={t('stories.graph.conditionOperator')}>
-                          <Select
-                            disabled={readOnly}
-                            items={conditionOperatorItems}
-                            onValueChange={(nextValue) => {
-                              onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                op: nextValue as ConditionOperator,
-                              })
-                            }}
-                            textAlign="start"
-                            value={transition.condition.op}
-                          />
-                        </Field>
-                      </div>
-
-                      {transition.condition.scope === 'character' ? (
-                        <Field label={t('stories.graph.conditionCharacter')}>
-                          <Input
-                            id={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
-                            name={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
-                            onChange={(event) => {
-                              onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                character: event.target.value,
-                              })
-                            }}
-                            placeholder={t('stories.graph.conditionCharacterPlaceholder')}
-                            readOnly={readOnly}
-                            value={transition.condition.character ?? ''}
-                          />
-                        </Field>
-                      ) : null}
-
-                      <Field label={t('stories.graph.conditionKey')}>
-                        <Input
-                          id={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
-                          name={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
-                          onChange={(event) => {
-                            onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                              key: event.target.value,
-                            })
-                          }}
-                          readOnly={readOnly}
-                          value={transition.condition.key}
-                        />
-                      </Field>
-
-                      <Field label={t('stories.graph.conditionValue')}>
-                        <Textarea
-                          className={cn(
-                            conditionValueError
-                              ? 'border-[var(--color-state-error-line)] focus:border-[var(--color-state-error-line)]'
-                              : undefined,
-                          )}
-                          id={`story-graph-condition-value-${selectedNode.id}-${transitionIndex}`}
-                          name={`story-graph-condition-value-${selectedNode.id}-${transitionIndex}`}
-                          onChange={(event) => {
-                            onConditionDraftChange(selectedNode.id, transitionIndex, event.target.value)
-                          }}
-                          placeholder={t('stories.graph.conditionValuePlaceholder')}
-                          readOnly={readOnly}
-                          rows={4}
-                          value={conditionDraft}
-                        />
-                      </Field>
-                      {conditionValueError ? (
-                        <p className="text-xs text-[var(--color-state-error-text)]">
-                          {conditionValueError}
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        <StoryGraphOnEnterUpdatesEditor
-          drafts={onEnterUpdateDrafts}
-          node={selectedNode}
-          onAddOperation={onAddOnEnterUpdate}
-          onDraftChange={onOnEnterUpdateDraftChange}
-          onRemoveOperation={onRemoveOnEnterUpdate}
-          onUpdateOperation={onUpdateOnEnterUpdate}
-          readOnly={readOnly}
-        />
-      </div>
-    </div>
+    <SelectedNodeInspectorContent
+      activeTab={activeTab}
+      conditionDrafts={conditionDrafts}
+      graph={graph}
+      newNodeIds={newNodeIds}
+      onActiveTabChange={setActiveTab}
+      onAddOnEnterUpdate={onAddOnEnterUpdate}
+      onAddTransition={onAddTransition}
+      onConditionDraftChange={onConditionDraftChange}
+      onDeleteNode={onDeleteNode}
+      onEnterUpdateDrafts={onEnterUpdateDrafts}
+      onOnEnterUpdateDraftChange={onOnEnterUpdateDraftChange}
+      onRemoveOnEnterUpdate={onRemoveOnEnterUpdate}
+      onRemoveTransition={onRemoveTransition}
+      onSelectTransition={onSelectTransition}
+      onSetStartNode={onSetStartNode}
+      onToggleCondition={onToggleCondition}
+      onUpdateCharacters={onUpdateCharacters}
+      onUpdateNodeField={onUpdateNodeField}
+      onUpdateNodeId={onUpdateNodeId}
+      onUpdateOnEnterUpdate={onUpdateOnEnterUpdate}
+      onUpdateTransition={onUpdateTransition}
+      onUpdateTransitionCondition={onUpdateTransitionCondition}
+      readOnly={readOnly}
+      selectedNode={selectedNode}
+      selectedTransitionIndex={selectedTransitionIndex}
+    />
   )
 }

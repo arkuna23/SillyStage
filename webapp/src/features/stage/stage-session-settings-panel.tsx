@@ -9,6 +9,7 @@ import { Textarea } from '../../components/ui/textarea'
 import { useToastNotice } from '../../components/ui/toast-context'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { PlayerProfile } from '../player-profiles/types'
+import { StagePromptPreviewDialog } from './stage-prompt-preview-dialog'
 import type { RuntimeSnapshot, SessionCharacter, SessionConfig, UpdateSessionConfigParams } from './types'
 import type { StageCopy } from './copy'
 
@@ -20,6 +21,10 @@ type Notice = {
 }
 
 type StageSessionSettingsPanelProps = {
+  actorPreviewCharacterOptions: ReadonlyArray<{
+    label: string
+    value: string
+  }>
   apiGroups: ReadonlyArray<ApiGroup>
   config: SessionConfig
   copy: StageCopy
@@ -34,10 +39,12 @@ type StageSessionSettingsPanelProps = {
   playerProfiles: ReadonlyArray<PlayerProfile>
   presets: ReadonlyArray<Preset>
   runtimeSnapshot: RuntimeSnapshot | null
+  sessionId: string
   sessionCharacters: ReadonlyArray<SessionCharacter>
 }
 
 export function StageSessionSettingsPanel({
+  actorPreviewCharacterOptions,
   apiGroups,
   config,
   copy,
@@ -52,6 +59,7 @@ export function StageSessionSettingsPanel({
   playerProfiles,
   presets,
   runtimeSnapshot,
+  sessionId,
   sessionCharacters,
 }: StageSessionSettingsPanelProps) {
   const [apiGroupId, setApiGroupId] = useState(config.api_group_id)
@@ -65,6 +73,7 @@ export function StageSessionSettingsPanel({
   const [isSavingPlayerProfile, setIsSavingPlayerProfile] = useState(false)
   const [isSavingDescription, setIsSavingDescription] = useState(false)
   const [isRefreshingSnapshot, setIsRefreshingSnapshot] = useState(false)
+  const [isPreviewDialogOpen, setIsPreviewDialogOpen] = useState(false)
   useToastNotice(notice)
 
   useEffect(() => {
@@ -243,6 +252,15 @@ export function StageSessionSettingsPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      <StagePromptPreviewDialog
+        actorCharacterOptions={actorPreviewCharacterOptions}
+        copy={copy}
+        onOpenChange={setIsPreviewDialogOpen}
+        open={isPreviewDialogOpen}
+        presetId={config.preset_id}
+        sessionId={sessionId}
+      />
+
       <div className="border-b border-[var(--color-border-subtle)] px-6 py-5 md:px-7">
         <div className="space-y-2">
           <h3 className="font-display text-[1.45rem] leading-tight text-[var(--color-text-primary)]">
@@ -257,13 +275,25 @@ export function StageSessionSettingsPanel({
       <div className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-6 md:px-7 md:pb-7">
         <div className="space-y-6">
           <section className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                {copy.settings.bindings.section}
-              </p>
-              <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
-                {copy.settings.bindings.description}
-              </p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                  {copy.settings.bindings.section}
+                </p>
+                <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+                  {copy.settings.bindings.description}
+                </p>
+              </div>
+              <Button
+                disabled={!config.preset_id.trim()}
+                onClick={() => {
+                  setIsPreviewDialogOpen(true)
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {copy.settings.bindings.preview.open}
+              </Button>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">

@@ -212,6 +212,58 @@ export function StagePage() {
       }),
     [characterMap, coverCache, orderedActiveCastIds, sessionCharacterMap],
   )
+  const actorPreviewCharacterOptions = useMemo(() => {
+    const options: Array<{ label: string; value: string }> = []
+    const seenIds = new Set<string>()
+
+    for (const character of sessionCharacters) {
+      if (seenIds.has(character.session_character_id)) {
+        continue
+      }
+
+      seenIds.add(character.session_character_id)
+      options.push({
+        label: `${character.display_name || character.session_character_id} · ${copy.cast.sessionCharacterBadge}`,
+        value: character.session_character_id,
+      })
+    }
+
+    const regularCharacterIds = new Set<string>()
+
+    selectedStoryDetail?.graph.nodes.forEach((node) => {
+      node.characters.forEach((characterId) => {
+        regularCharacterIds.add(characterId)
+      })
+    })
+
+    currentSnapshot?.world_state.active_characters.forEach((characterId) => {
+      regularCharacterIds.add(characterId)
+    })
+
+    Object.keys(currentSnapshot?.world_state.character_state ?? {}).forEach((characterId) => {
+      regularCharacterIds.add(characterId)
+    })
+
+    for (const characterId of regularCharacterIds) {
+      if (seenIds.has(characterId)) {
+        continue
+      }
+
+      const character = characterMap.get(characterId)
+
+      if (!character) {
+        continue
+      }
+
+      seenIds.add(characterId)
+      options.push({
+        label: character.name || character.character_id,
+        value: character.character_id,
+      })
+    }
+
+    return options
+  }, [characterMap, copy.cast.sessionCharacterBadge, currentSnapshot, selectedStoryDetail, sessionCharacters])
 
   const storyIntroduction = selectedStoryDetail?.introduction?.trim() ?? ''
   const storyIntroNeedsExpand = isTextLong(storyIntroduction, 140)
@@ -442,6 +494,7 @@ export function StagePage() {
                 selectedSession ? (
                   <div className="scrollbar-none h-full overflow-y-auto pr-1">
                     <StageSessionSettingsPanel
+                      actorPreviewCharacterOptions={actorPreviewCharacterOptions}
                       apiGroups={apiGroups}
                       config={selectedSession.config}
                       copy={copy}
@@ -460,6 +513,7 @@ export function StagePage() {
                       playerProfiles={playerProfiles}
                       presets={presets}
                       runtimeSnapshot={currentSnapshot}
+                      sessionId={selectedSession.session_id}
                       sessionCharacters={sessionCharacters}
                     />
                   </div>

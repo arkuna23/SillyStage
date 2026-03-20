@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui/button'
@@ -5,7 +6,7 @@ import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
-import type { StoryGraphNode, StoryGraphStateOpType } from './types'
+import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildOnEnterUpdateDraftKey,
   editableGraphStateOpTypes,
@@ -13,13 +14,15 @@ import {
   isGraphStateValueOpType,
   type GraphOnEnterUpdateDrafts,
 } from './story-graph-editor-utils'
+import type { StoryGraphNode, StoryGraphStateOpType } from './types'
 
 type StoryGraphOnEnterUpdatesEditorProps = {
   drafts: GraphOnEnterUpdateDrafts
+  expandedOperationKeys: Set<string>
   node: StoryGraphNode
-  onAddOperation: (nodeId: string) => void
   onDraftChange: (nodeId: string, operationIndex: number, value: string) => void
   onRemoveOperation: (nodeId: string, operationIndex: number) => void
+  onToggleOperation: (operationIndex: number) => void
   onUpdateOperation: (
     nodeId: string,
     operationIndex: number,
@@ -35,11 +38,15 @@ type StoryGraphOnEnterUpdatesEditorProps = {
 
 const operationTypeItems = editableGraphStateOpTypes.map((value) => ({ value }))
 
+function buildOperationExpansionKey(nodeId: string, operationIndex: number) {
+  return `${nodeId}:op:${operationIndex}`
+}
+
 function Field({
   children,
   label,
 }: {
-  children: React.ReactNode
+  children: ReactNode
   label: string
 }) {
   return (
@@ -52,39 +59,26 @@ function Field({
 
 export function StoryGraphOnEnterUpdatesEditor({
   drafts,
+  expandedOperationKeys,
   node,
-  onAddOperation,
   onDraftChange,
   onRemoveOperation,
+  onToggleOperation,
   onUpdateOperation,
   readOnly = false,
 }: StoryGraphOnEnterUpdatesEditorProps) {
   const { t } = useTranslation()
+  const operationTypeLabels: Partial<Record<StoryGraphStateOpType, string>> = {
+    RemoveCharacterState: t('stories.graph.onEnterUpdateTypes.RemoveCharacterState'),
+    RemovePlayerState: t('stories.graph.onEnterUpdateTypes.RemovePlayerState'),
+    RemoveState: t('stories.graph.onEnterUpdateTypes.RemoveState'),
+    SetCharacterState: t('stories.graph.onEnterUpdateTypes.SetCharacterState'),
+    SetPlayerState: t('stories.graph.onEnterUpdateTypes.SetPlayerState'),
+    SetState: t('stories.graph.onEnterUpdateTypes.SetState'),
+  }
 
   return (
-    <div className="space-y-4 rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_75%,transparent)] p-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-[var(--color-text-primary)]">
-            {t('stories.graph.onEnterUpdatesTitle')}
-          </p>
-          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-            {t('stories.graph.onEnterUpdatesHint')}
-          </p>
-        </div>
-        {!readOnly ? (
-          <Button
-            onClick={() => {
-              onAddOperation(node.id)
-            }}
-            size="sm"
-            variant="secondary"
-          >
-            {t('stories.graph.addOnEnterUpdate')}
-          </Button>
-        ) : null}
-      </div>
-
+    <>
       {node.on_enter_updates?.length ? (
         <div className="space-y-4">
           {node.on_enter_updates.map((operation, operationIndex) => {
@@ -96,6 +90,7 @@ export function StoryGraphOnEnterUpdatesEditor({
 
             const draftKey = buildOnEnterUpdateDraftKey(node.id, operationIndex)
             const draftValue = drafts[draftKey] ?? 'null'
+            const expansionKey = buildOperationExpansionKey(node.id, operationIndex)
             const valueError =
               needsValue && draftValue
                 ? (() => {
@@ -107,17 +102,17 @@ export function StoryGraphOnEnterUpdatesEditor({
                     }
                   })()
                 : null
+            const operationTypeLabel = operationTypeLabels[operation.type] ?? operation.type
+            const operationSummaryParts = [
+              operationTypeLabel,
+              'character' in operation ? operation.character : null,
+              'key' in operation ? operation.key : null,
+            ].filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
 
             return (
-              <div
-                className="space-y-4 rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel-strong)_75%,transparent)] p-4"
-                key={`${node.id}:op:${operationIndex}:${operation.type}`}
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                    {t('stories.graph.onEnterUpdateLabel', { index: operationIndex + 1 })}
-                  </p>
-                  {!readOnly && isEditable ? (
+              <StoryGraphCollapsibleCard
+                action={
+                  !readOnly && isEditable ? (
                     <Button
                       onClick={() => {
                         onRemoveOperation(node.id, operationIndex)
@@ -127,15 +122,24 @@ export function StoryGraphOnEnterUpdatesEditor({
                     >
                       {t('stories.graph.removeOnEnterUpdate')}
                     </Button>
-                  ) : null}
-                </div>
-
+                  ) : null
+                }
+                className="rounded-[1.2rem] bg-[color-mix(in_srgb,var(--color-bg-panel-strong)_75%,transparent)]"
+                contentClassName="space-y-4"
+                key={`${node.id}:op:${operationIndex}:${operation.type}`}
+                onToggle={() => {
+                  onToggleOperation(operationIndex)
+                }}
+                open={expandedOperationKeys.has(expansionKey)}
+                subtitle={operationSummaryParts.join(' · ') || operationTypeLabel}
+                title={t('stories.graph.onEnterUpdateLabel', { index: operationIndex + 1 })}
+              >
                 <Field label={t('stories.graph.onEnterUpdateType')}>
                   {isEditable ? (
                     <Select
                       disabled={readOnly}
                       items={operationTypeItems.map((item) => ({
-                        label: t(`stories.graph.onEnterUpdateTypes.${item.value}` as const),
+                        label: operationTypeLabels[item.value] ?? item.value,
                         value: item.value,
                       }))}
                       onValueChange={(nextValue) => {
@@ -255,7 +259,7 @@ export function StoryGraphOnEnterUpdatesEditor({
                     ) : null}
                   </div>
                 )}
-              </div>
+              </StoryGraphCollapsibleCard>
             )
           })}
         </div>
@@ -264,6 +268,6 @@ export function StoryGraphOnEnterUpdatesEditor({
           {t('stories.graph.emptyOnEnterUpdates')}
         </p>
       )}
-    </div>
+    </>
   )
 }

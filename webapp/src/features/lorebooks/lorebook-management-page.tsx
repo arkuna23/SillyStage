@@ -23,7 +23,7 @@ import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
 import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
 import { isRpcConflict } from '../../lib/rpc'
-import { demoLorebook } from '../demo-content/lorebook-sample-data'
+import { buildDemoLorebook } from '../demo-content/lorebook-sample-data'
 import { InsertSampleDialog } from '../demo-content/insert-sample-dialog'
 import { createLorebook, deleteLorebook, listLorebooks } from './api'
 import { DeleteLorebookDialog } from './delete-lorebook-dialog'
@@ -95,8 +95,9 @@ function summarizeLorebook(lorebook: Lorebook, emptyLabel: string) {
 }
 
 export function LorebookManagementPage() {
-  const { t } = useTranslation()
+  const { i18n, t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
+  const sampleLanguage = i18n.resolvedLanguage ?? i18n.language ?? 'en'
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [lorebooks, setLorebooks] = useState<Lorebook[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
@@ -116,6 +117,10 @@ export function LorebookManagementPage() {
     () => lorebooks.map((lorebook) => lorebook.lorebook_id),
     [lorebooks],
   )
+  const demoLorebook = useMemo(
+    () => buildDemoLorebook(sampleLanguage),
+    [sampleLanguage],
+  )
   const totalEntryCount = useMemo(
     () => lorebooks.reduce((total, lorebook) => total + lorebook.entries.length, 0),
     [lorebooks],
@@ -130,7 +135,7 @@ export function LorebookManagementPage() {
   )
   const sampleLorebookExists = useMemo(
     () => existingLorebookIds.includes(demoLorebook.lorebookId),
-    [existingLorebookIds],
+    [demoLorebook.lorebookId, existingLorebookIds],
   )
   const deleteTargets = useMemo(
     () =>

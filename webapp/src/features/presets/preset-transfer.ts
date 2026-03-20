@@ -1,9 +1,9 @@
 import {
   agentRoleKeys,
   presetEntryKinds,
-  promptModuleIds,
   type AgentRoleKey,
   type PresetDetail,
+  type PromptMessageRole,
 } from '../apis/types'
 
 export type PresetBundle = {
@@ -20,8 +20,8 @@ function isPromptEntryKind(value: unknown) {
   return typeof value === 'string' && presetEntryKinds.includes(value as never)
 }
 
-function isPromptModuleId(value: unknown) {
-  return typeof value === 'string' && promptModuleIds.includes(value as never)
+function isPromptMessageRole(value: unknown): value is PromptMessageRole {
+  return value === 'system' || value === 'user'
 }
 
 function isPresetModuleEntry(value: unknown) {
@@ -67,7 +67,10 @@ function isPresetModule(value: unknown) {
   }
 
   return (
-    isPromptModuleId(value.module_id) &&
+    typeof value.display_name === 'string' &&
+    typeof value.module_id === 'string' &&
+    typeof value.order === 'number' &&
+    isPromptMessageRole(value.message_role) &&
     Array.isArray(value.entries) &&
     value.entries.every(isPresetModuleEntry)
   )

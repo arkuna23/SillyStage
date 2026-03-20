@@ -1,5 +1,6 @@
 import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
+import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faGripVertical } from '@fortawesome/free-solid-svg-icons/faGripVertical'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
@@ -19,34 +20,35 @@ import {
 } from '../../components/ui/dialog'
 import { IconButton } from '../../components/ui/icon-button'
 import { Input } from '../../components/ui/input'
+import { Select } from '../../components/ui/select'
 import { Switch } from '../../components/ui/switch'
 import { Textarea } from '../../components/ui/textarea'
-import { useToastMessage } from '../../components/ui/toast-context'
+import { useToastMessage, useToastNotice, type ToastInput } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
+import { createPreset, getPreset, updatePreset } from '../apis/api'
 import {
-  createPreset,
-  createPresetEntry,
-  deletePresetEntry,
-  getPreset,
-  updatePreset,
-  updatePresetEntry,
-} from '../apis/api'
-import {
-  promptModuleIds,
+  promptMessageRoles,
   type AgentPresetConfig,
   type AgentRoleKey,
+  type PresetAgentConfigs,
   type PresetDetail,
   type PresetEntryKind,
   type PresetModuleEntry,
-  type PresetAgentConfigs,
+  type PromptMessageRole,
   type PromptModuleId,
 } from '../apis/types'
 import {
   createPresetRoleLabels,
+  getBuiltInPromptModuleDefinition,
   getOrderedAgentRoleKeys,
+  getOrderedModuleIds,
+  getPromptMessageRoleLabel,
+  getPromptModuleDefaultDisplayName,
   getPromptModuleLabel,
   getPresetEntryKindLabel,
+  isBuiltInPromptModuleId,
 } from './preset-labels'
+import { PresetPromptPreviewDialog } from './preset-prompt-preview-dialog'
 
 type PresetFormDialogProps = {
   existingPresetIds: ReadonlyArray<string>
@@ -71,12 +73,20 @@ type PromptEntryFormState = {
   text: string
 }
 
-type ModuleEntriesState = Record<PromptModuleId, PromptEntryFormState[]>
+type PromptModuleFormState = {
+  clientId: string
+  displayName: string
+  entries: PromptEntryFormState[]
+  isBuiltIn: boolean
+  messageRole: PromptMessageRole
+  moduleId: string
+  order: string
+}
 
 type AgentFormState = {
   extra: string
   maxTokens: string
-  modules: ModuleEntriesState
+  modules: PromptModuleFormState[]
   temperature: string
 }
 
@@ -88,50 +98,182 @@ type FormState = {
 
 type EntryDragState = {
   clientId: string
-  moduleId: PromptModuleId
+  moduleClientId: string
   roleKey: AgentRoleKey
 }
 
+type ModuleDragState = {
+  clientId: string
+  roleKey: AgentRoleKey
+}
+
+type PreviewDialogState = {
+  initialAgent: AgentRoleKey
+  initialModuleId?: string
+  scopeLabel?: string
+}
+
+const presetModuleOrderStart = 10
+const presetModuleOrderStep = 10
 const presetEntryOrderStart = 1000
 const presetEntryOrderStep = 10
 
 let promptEntryClientIdCounter = 0
+let promptModuleClientIdCounter = 0
 
 function createPromptEntryClientId() {
   promptEntryClientIdCounter += 1
   return `preset-module-entry-${promptEntryClientIdCounter}`
 }
 
-function createEmptyModulesState(): ModuleEntriesState {
+function createPromptModuleClientId() {
+  promptModuleClientIdCounter += 1
+  return `preset-module-${promptModuleClientIdCounter}`
+}
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback
+}
+
+function sortEntries<T extends { display_name?: string | null; entry_id: string; order: number }>(
+  entries: T[],
+) {
+  return [...entries].sort((left, right) => {
+    if (left.order !== right.order) {
+      return left.order - right.order
+    }
+
+    return left.entry_id.localeCompare(right.entry_id, 'zh-Hans-CN-u-co-pinyin')
+  })
+}
+
+function sortModules<T extends { display_name?: string | null; module_id: string; order: number }>(
+  modules: T[],
+) {
+  return [...modules].sort((left, right) => {
+    if (left.order !== right.order) {
+      return left.order - right.order
+    }
+
+    return left.module_id.localeCompare(right.module_id, 'zh-Hans-CN-u-co-pinyin')
+  })
+}
+
+function sortModuleStates(modules: PromptModuleFormState[]) {
+  return [...modules].sort((left, right) => {
+    const leftOrder = Number(left.order)
+    const rightOrder = Number(right.order)
+
+    if (Number.isInteger(leftOrder) && Number.isInteger(rightOrder) && leftOrder !== rightOrder) {
+      return leftOrder - rightOrder
+    }
+
+    return left.moduleId.localeCompare(right.moduleId, 'zh-Hans-CN-u-co-pinyin')
+  })
+}
+
+function renumberModuleEntries(entries: PromptEntryFormState[]) {
+  return entries.map((entry, index) => ({
+    ...entry,
+    order: String(presetEntryOrderStart + index * presetEntryOrderStep),
+  }))
+}
+
+function renumberModules(modules: PromptModuleFormState[]) {
+  return modules.map((module, index) => ({
+    ...module,
+    order: String(presetModuleOrderStart + index * presetModuleOrderStep),
+  }))
+}
+
+function createPromptEntryState(entry?: PresetModuleEntry): PromptEntryFormState {
   return {
-    dynamic_context: [],
-    output: [],
-    role: [],
-    static_context: [],
-    task: [],
+    clientId: createPromptEntryClientId(),
+    contextKey: entry?.context_key ?? '',
+    displayName: entry?.display_name ?? '',
+    enabled: entry?.enabled ?? true,
+    entryId: entry?.entry_id ?? '',
+    kind: entry?.kind ?? 'custom_text',
+    order: entry?.order !== undefined ? String(entry.order) : String(presetEntryOrderStart),
+    required: entry?.required ?? false,
+    text: entry?.text ?? '',
   }
 }
 
-function createEmptyAgentState(): AgentFormState {
+function createBuiltInModuleState(
+  t: TranslateFn,
+  moduleId: PromptModuleId,
+): PromptModuleFormState {
+  if (!isBuiltInPromptModuleId(moduleId)) {
+    return {
+      clientId: createPromptModuleClientId(),
+      displayName: '',
+      entries: [],
+      isBuiltIn: false,
+      messageRole: 'user',
+      moduleId,
+      order: String(1000),
+    }
+  }
+
+  const definition = getBuiltInPromptModuleDefinition(moduleId)
+
+  return {
+    clientId: createPromptModuleClientId(),
+    displayName: getPromptModuleDefaultDisplayName(t, moduleId, definition.defaultDisplayName),
+    entries: [],
+    isBuiltIn: true,
+    messageRole: definition.messageRole,
+    moduleId,
+    order: String(definition.order),
+  }
+}
+
+function createPromptModuleState(
+  module: AgentPresetConfig['modules'][number],
+): PromptModuleFormState {
+  return {
+    clientId: createPromptModuleClientId(),
+    displayName: module.display_name,
+    entries: sortEntries(module.entries).map((entry) => createPromptEntryState(entry)),
+    isBuiltIn: isBuiltInPromptModuleId(module.module_id),
+    messageRole: module.message_role,
+    moduleId: module.module_id,
+    order: String(module.order),
+  }
+}
+
+function createModulesState(
+  modules: PresetDetail['agents'][AgentRoleKey]['modules'],
+  t: TranslateFn,
+) {
+  const nextModules = sortModules(modules).map((module) => createPromptModuleState(module))
+  const existingIds = new Set(nextModules.map((module) => module.moduleId))
+
+  for (const moduleId of getOrderedModuleIds()) {
+    if (!existingIds.has(moduleId)) {
+      nextModules.push(createBuiltInModuleState(t, moduleId))
+    }
+  }
+
+  return sortModuleStates(nextModules)
+}
+
+function createEmptyAgentState(t: TranslateFn): AgentFormState {
   return {
     extra: '',
     maxTokens: '',
-    modules: createEmptyModulesState(),
+    modules: getOrderedModuleIds().map((moduleId) => createBuiltInModuleState(t, moduleId)),
     temperature: '',
   }
 }
 
-function createInitialState(): FormState {
+function createInitialState(t: TranslateFn): FormState {
   return {
-    agents: {
-      actor: createEmptyAgentState(),
-      architect: createEmptyAgentState(),
-      director: createEmptyAgentState(),
-      keeper: createEmptyAgentState(),
-      narrator: createEmptyAgentState(),
-      planner: createEmptyAgentState(),
-      replyer: createEmptyAgentState(),
-    },
+    agents: getOrderedAgentRoleKeys().reduce<FormState['agents']>((agents, roleKey) => {
+      agents[roleKey] = createEmptyAgentState(t)
+      return agents
+    }, {} as FormState['agents']),
     displayName: '',
     presetId: '',
   }
@@ -149,57 +291,15 @@ function createCollapsedAgentsState(): Record<AgentRoleKey, boolean> {
   }
 }
 
-function createCollapsedModulesState(): Record<AgentRoleKey, Record<PromptModuleId, boolean>> {
+function createExpandedModulesState(): Record<AgentRoleKey, string[]> {
   return {
-    actor: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    architect: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    director: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    keeper: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    narrator: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    planner: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
-    replyer: {
-      dynamic_context: false,
-      output: false,
-      role: false,
-      static_context: false,
-      task: false,
-    },
+    actor: [],
+    architect: [],
+    director: [],
+    keeper: [],
+    narrator: [],
+    planner: [],
+    replyer: [],
   }
 }
 
@@ -207,64 +307,12 @@ function createExpandedEntryIdsState() {
   return [] as string[]
 }
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback
-}
-
-function sortEntries<T extends { display_name?: string | null; entry_id: string; order: number }>(
-  entries: T[],
-) {
-  return [...entries].sort((left, right) => {
-    if (left.order !== right.order) {
-      return left.order - right.order
-    }
-
-    const leftLabel = (left.display_name ?? left.entry_id).trim()
-    const rightLabel = (right.display_name ?? right.entry_id).trim()
-    return leftLabel.localeCompare(rightLabel, 'zh-Hans-CN-u-co-pinyin')
-  })
-}
-
-function createPromptEntryState(entry?: PresetModuleEntry): PromptEntryFormState {
-  return {
-    clientId: createPromptEntryClientId(),
-    contextKey: entry?.context_key ?? '',
-    displayName: entry?.display_name ?? '',
-    enabled: entry?.enabled ?? true,
-    entryId: entry?.entry_id ?? '',
-    kind: entry?.kind ?? 'custom_text',
-    order: entry?.order !== undefined ? String(entry.order) : String(presetEntryOrderStart),
-    required: entry?.required ?? false,
-    text: entry?.text ?? '',
-  }
-}
-
-function renumberModuleEntries(entries: PromptEntryFormState[]) {
-  return entries.map((entry, index) => ({
-    ...entry,
-    order: String(presetEntryOrderStart + index * presetEntryOrderStep),
-  }))
-}
-
-function createModulesState(modules: PresetDetail['agents'][AgentRoleKey]['modules']): ModuleEntriesState {
-  const nextModules = createEmptyModulesState()
-
-  for (const moduleId of promptModuleIds) {
-    const existingModule = modules.find((module) => module.module_id === moduleId)
-    nextModules[moduleId] = sortEntries(existingModule?.entries ?? []).map((entry) =>
-      createPromptEntryState(entry),
-    )
-  }
-
-  return nextModules
-}
-
-function createAgentFormState(agent: PresetDetail['agents'][AgentRoleKey]): AgentFormState {
+function createAgentFormState(agent: PresetDetail['agents'][AgentRoleKey], t: TranslateFn): AgentFormState {
   return {
     extra:
       agent.extra !== undefined && agent.extra !== null ? JSON.stringify(agent.extra, null, 2) : '',
     maxTokens: agent.max_tokens?.toString() ?? '',
-    modules: createModulesState(agent.modules),
+    modules: createModulesState(agent.modules, t),
     temperature: agent.temperature?.toString() ?? '',
   }
 }
@@ -274,23 +322,19 @@ function summarizeAgent(
   t: TranslateFn,
   emptyLabel: string,
 ) {
-  const totalEntries = promptModuleIds.reduce(
-    (count, moduleId) => count + agent.modules[moduleId].length,
+  const totalEntries = agent.modules.reduce((count, module) => count + module.entries.length, 0)
+  const enabledEntries = agent.modules.reduce(
+    (count, module) => count + module.entries.filter((entry) => entry.enabled).length,
     0,
   )
-  const enabledEntries = promptModuleIds.reduce(
-    (count, moduleId) =>
-      count + agent.modules[moduleId].filter((entry) => entry.enabled).length,
-    0,
-  )
-  const nonEmptyModules = promptModuleIds.filter((moduleId) => agent.modules[moduleId].length > 0)
+  const nonEmptyModules = agent.modules.filter((module) => module.entries.length > 0).length
   const parts = [
     agent.temperature.trim() ? `T ${agent.temperature.trim()}` : null,
     agent.maxTokens.trim() ? `Max ${agent.maxTokens.trim()}` : null,
     agent.extra.trim() ? t('presetsPage.list.extra') : null,
     totalEntries > 0
       ? t('presetsPage.list.moduleSummary', {
-          count: nonEmptyModules.length,
+          count: nonEmptyModules,
           enabled: enabledEntries,
           entries: totalEntries,
         })
@@ -300,9 +344,32 @@ function summarizeAgent(
   return parts.length > 0 ? parts : [emptyLabel]
 }
 
+function parseModuleOrder(
+  roleKey: AgentRoleKey,
+  module: PromptModuleFormState,
+  t: TranslateFn,
+  roleLabels: Record<AgentRoleKey, string>,
+) {
+  const parsed = Number(module.order.trim())
+
+  if (!Number.isInteger(parsed)) {
+    throw new Error(
+      t('presetsPage.form.errors.moduleOrderInvalid', {
+        id:
+          module.moduleId.trim() ||
+          module.displayName.trim() ||
+          t('presetsPage.form.newModule'),
+        role: roleLabels[roleKey],
+      }),
+    )
+  }
+
+  return parsed
+}
+
 function parseEntryOrder(
   roleKey: AgentRoleKey,
-  moduleId: PromptModuleId,
+  moduleLabel: string,
   entry: PromptEntryFormState,
   t: TranslateFn,
   roleLabels: Record<AgentRoleKey, string>,
@@ -310,13 +377,13 @@ function parseEntryOrder(
   const parsed = Number(entry.order.trim())
 
   if (!Number.isInteger(parsed)) {
-      throw new Error(
-        t('presetsPage.form.errors.entryOrderInvalid', {
-          id: entry.entryId.trim() || entry.displayName.trim() || '—',
-          module: getPromptModuleLabel(t, moduleId),
-          role: roleLabels[roleKey],
-        }),
-      )
+    throw new Error(
+      t('presetsPage.form.errors.entryOrderInvalid', {
+        id: entry.entryId.trim() || entry.displayName.trim() || '—',
+        module: moduleLabel,
+        role: roleLabels[roleKey],
+      }),
+    )
   }
 
   return parsed
@@ -368,77 +435,108 @@ function parseAgentPresetConfig(
     maxTokens = parsed
   }
 
-  const modules = promptModuleIds
-    .map((moduleId) => {
+  const seenModuleIds = new Set<string>()
+  const modules = sortModules(
+    agent.modules.map((module, index) => {
+      const moduleId = module.moduleId.trim()
+      const order = parseModuleOrder(roleKey, module, t, roleLabels)
+
+      if (!moduleId) {
+        throw new Error(
+          t('presetsPage.form.errors.moduleIdRequired', {
+            index: index + 1,
+            role: roleLabels[roleKey],
+          }),
+        )
+      }
+
+      if (seenModuleIds.has(moduleId)) {
+        throw new Error(
+          t('presetsPage.form.errors.duplicateModuleId', {
+            id: moduleId,
+            role: roleLabels[roleKey],
+          }),
+        )
+      }
+      seenModuleIds.add(moduleId)
+
+      const moduleLabel = getPromptModuleLabel(t, moduleId, module.displayName)
       const seenEntryIds = new Set<string>()
-      const entries = agent.modules[moduleId].map((entry, index) => {
-        const entryId = entry.entryId.trim()
-        const displayName = entry.displayName.trim()
-        const text = entry.text.trim()
-        const contextKey = entry.contextKey.trim()
-        const order = parseEntryOrder(roleKey, moduleId, entry, t, roleLabels)
+      const entries = sortEntries(
+        module.entries.map((entry, entryIndex) => {
+          const entryId = entry.entryId.trim()
+          const displayName = entry.displayName.trim()
+          const text = entry.text.trim()
+          const contextKey = entry.contextKey.trim()
+          const entryOrder = parseEntryOrder(roleKey, moduleLabel, entry, t, roleLabels)
 
-        if (!entryId) {
-          throw new Error(
-            t('presetsPage.form.errors.entryIdRequired', {
-              index: index + 1,
-              module: getPromptModuleLabel(t, moduleId),
-              role: roleLabels[roleKey],
-            }),
-          )
-        }
-
-        if (seenEntryIds.has(entryId)) {
-          throw new Error(
-            t('presetsPage.form.errors.duplicateEntryId', {
-              id: entryId,
-              module: getPromptModuleLabel(t, moduleId),
-              role: roleLabels[roleKey],
-            }),
-          )
-        }
-        seenEntryIds.add(entryId)
-
-        if (entry.kind === 'custom_text') {
-          if (!displayName) {
+          if (!entryId) {
             throw new Error(
-              t('presetsPage.form.errors.entryDisplayNameRequired', {
-                index: index + 1,
-                module: getPromptModuleLabel(t, moduleId),
+              t('presetsPage.form.errors.entryIdRequired', {
+                index: entryIndex + 1,
+                module: moduleLabel,
                 role: roleLabels[roleKey],
               }),
             )
           }
 
-          if (!text) {
+          if (seenEntryIds.has(entryId)) {
             throw new Error(
-              t('presetsPage.form.errors.customEntryTextRequired', {
-                index: index + 1,
-                module: getPromptModuleLabel(t, moduleId),
+              t('presetsPage.form.errors.duplicateEntryId', {
+                id: entryId,
+                module: moduleLabel,
                 role: roleLabels[roleKey],
               }),
             )
           }
-        }
+          seenEntryIds.add(entryId)
 
-        return {
-          ...(contextKey ? { context_key: contextKey } : {}),
-          ...(text ? { text } : {}),
-          display_name: displayName || entry.displayName.trim() || entryId,
-          enabled: entry.enabled,
-          entry_id: entryId,
-          kind: entry.kind,
-          order,
-          required: entry.required,
-        } satisfies PresetModuleEntry
-      })
+          if (entry.kind === 'custom_text') {
+            if (!displayName) {
+              throw new Error(
+                t('presetsPage.form.errors.entryDisplayNameRequired', {
+                  index: entryIndex + 1,
+                  module: moduleLabel,
+                  role: roleLabels[roleKey],
+                }),
+              )
+            }
+
+            if (!text) {
+              throw new Error(
+                t('presetsPage.form.errors.customEntryTextRequired', {
+                  index: entryIndex + 1,
+                  module: moduleLabel,
+                  role: roleLabels[roleKey],
+                }),
+              )
+            }
+          }
+
+          return {
+            ...(contextKey ? { context_key: contextKey } : {}),
+            ...(text ? { text } : {}),
+            display_name: displayName || entry.entryId.trim() || entryId,
+            enabled: entry.enabled,
+            entry_id: entryId,
+            kind: entry.kind,
+            order: entryOrder,
+            required: entry.required,
+          } satisfies PresetModuleEntry
+        }),
+      )
 
       return {
+        display_name:
+          module.displayName.trim() ||
+          getPromptModuleDefaultDisplayName(t, moduleId, undefined),
         entries,
+        message_role: module.messageRole,
         module_id: moduleId,
+        order,
       }
-    })
-    .filter((module) => module.entries.length > 0)
+    }),
+  )
 
   return {
     ...(temperature !== undefined ? { temperature } : {}),
@@ -461,105 +559,20 @@ function toPresetAgents(
   ) as PresetAgentConfigs
 }
 
-function areJsonValuesEqual(left: unknown, right: unknown) {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null)
-}
-
-function haveAgentSettingsChanged(
-  originalAgents: PresetDetail['agents'],
-  nextAgents: PresetAgentConfigs,
-) {
-  return getOrderedAgentRoleKeys().some((roleKey) => {
-    const originalAgent = originalAgents[roleKey]
-    const nextAgent = nextAgents[roleKey]
-
-    return (
-      (originalAgent.temperature ?? null) !== (nextAgent.temperature ?? null) ||
-      (originalAgent.max_tokens ?? null) !== (nextAgent.max_tokens ?? null) ||
-      !areJsonValuesEqual(originalAgent.extra, nextAgent.extra)
-    )
-  })
-}
-
-type FlatPresetEntry = {
-  agent: AgentRoleKey
-  display_name: string
-  enabled: boolean
-  entry_id: string
-  kind: PresetEntryKind
-  module_id: PromptModuleId
-  order: number
-  required: boolean
-  text?: string | null
-}
-
-function flattenPresetEntries(agents: PresetAgentConfigs) {
-  return getOrderedAgentRoleKeys().flatMap((roleKey) =>
-    agents[roleKey].modules.flatMap((module) =>
-      module.entries.map((entry) => ({
-        agent: roleKey,
-        display_name: entry.display_name,
-        enabled: entry.enabled,
-        entry_id: entry.entry_id,
-        kind: entry.kind,
-        module_id: module.module_id,
-        order: entry.order,
-        required: entry.required,
-        text: entry.text ?? null,
-      })),
-    ),
-  )
-}
-
-function getFlatEntryKey(entry: Pick<FlatPresetEntry, 'agent' | 'module_id' | 'entry_id'>) {
-  return `${entry.agent}:${entry.module_id}:${entry.entry_id}`
-}
-
-function createEntryDiffs(original: PresetDetail['agents'], current: PresetAgentConfigs) {
-  const originalEntries = flattenPresetEntries(original)
-  const currentEntries = flattenPresetEntries(current)
-
-  const originalMap = new Map(originalEntries.map((entry) => [getFlatEntryKey(entry), entry]))
-  const currentMap = new Map(currentEntries.map((entry) => [getFlatEntryKey(entry), entry]))
-
-  const createEntries = currentEntries.filter(
-    (entry) => entry.kind === 'custom_text' && !originalMap.has(getFlatEntryKey(entry)),
-  )
-  const deleteEntries = originalEntries.filter(
-    (entry) => entry.kind === 'custom_text' && !currentMap.has(getFlatEntryKey(entry)),
-  )
-  const updateEntries = currentEntries.filter((entry) => {
-    const originalEntry = originalMap.get(getFlatEntryKey(entry))
-
-    if (!originalEntry) {
-      return false
-    }
-
-    if (entry.kind === 'custom_text') {
-      return (
-        entry.display_name !== originalEntry.display_name ||
-        (entry.text ?? null) !== (originalEntry.text ?? null) ||
-        entry.enabled !== originalEntry.enabled ||
-        entry.order !== originalEntry.order
-      )
-    }
-
-    return entry.enabled !== originalEntry.enabled || entry.order !== originalEntry.order
-  })
-
-  return {
-    createEntries,
-    deleteEntries,
-    updateEntries,
-  }
-}
-
 function createModuleEntryLabel(entry: PromptEntryFormState, t: TranslateFn, index: number) {
   if (entry.displayName.trim()) {
     return entry.displayName.trim()
   }
 
   return t('presetsPage.form.untitledEntry', { index })
+}
+
+function createModuleLabel(module: PromptModuleFormState, t: TranslateFn) {
+  if (module.displayName.trim() || module.moduleId.trim()) {
+    return getPromptModuleLabel(t, module.moduleId.trim(), module.displayName.trim())
+  }
+
+  return t('presetsPage.form.newModule')
 }
 
 export function PresetFormDialog({
@@ -578,60 +591,104 @@ export function PresetFormDialog({
     [t],
   )
   const roleLabels = useMemo(() => createPresetRoleLabels(translate), [translate])
-  const [formState, setFormState] = useState<FormState>(createInitialState)
-  const [originalPreset, setOriginalPreset] = useState<PresetDetail | null>(null)
+  const messageRoleItems = useMemo(
+    () =>
+      promptMessageRoles.map((role) => ({
+        label: getPromptMessageRoleLabel(translate, role),
+        value: role,
+      })),
+    [translate],
+  )
+  const [formState, setFormState] = useState<FormState>(() => createInitialState(translate))
   const [expandedAgents, setExpandedAgents] = useState<Record<AgentRoleKey, boolean>>(
     createCollapsedAgentsState,
   )
   const [expandedModelSettings, setExpandedModelSettings] = useState<Record<AgentRoleKey, boolean>>(
     createCollapsedAgentsState,
   )
-  const [expandedModules, setExpandedModules] = useState<
-    Record<AgentRoleKey, Record<PromptModuleId, boolean>>
-  >(createCollapsedModulesState)
-  const [expandedEntryIds, setExpandedEntryIds] = useState<string[]>(
-    createExpandedEntryIdsState,
+  const [expandedModules, setExpandedModules] = useState<Record<AgentRoleKey, string[]>>(
+    createExpandedModulesState,
   )
+  const [expandedEntryIds, setExpandedEntryIds] = useState<string[]>(createExpandedEntryIdsState)
   const [draggedEntry, setDraggedEntry] = useState<EntryDragState | null>(null)
   const [dropTarget, setDropTarget] = useState<EntryDragState | null>(null)
+  const [draggedModule, setDraggedModule] = useState<ModuleDragState | null>(null)
+  const [moduleDropTarget, setModuleDropTarget] = useState<ModuleDragState | null>(null)
+  const [loadedPreset, setLoadedPreset] = useState<PresetDetail | null>(null)
+  const [previewDialogState, setPreviewDialogState] = useState<PreviewDialogState | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [previewNotice, setPreviewNotice] = useState<ToastInput | null>(null)
   useToastMessage(submitError)
+  useToastNotice(previewNotice)
 
-  async function loadPresetFromServer(nextPresetId: string, signal?: AbortSignal) {
-    const result = await getPreset(nextPresetId, signal)
+  const updateAgentModules = useCallback(
+    (
+      roleKey: AgentRoleKey,
+      updater: (modules: PromptModuleFormState[]) => PromptModuleFormState[],
+    ) => {
+      setFormState((current) => ({
+        ...current,
+        agents: {
+          ...current.agents,
+          [roleKey]: {
+            ...current.agents[roleKey],
+            modules: updater(current.agents[roleKey].modules),
+          },
+        },
+      }))
+    },
+    [],
+  )
 
-    if (signal?.aborted) {
-      return null
-    }
+  const loadPresetFromServer = useCallback(
+    async (nextPresetId: string, signal?: AbortSignal) => {
+      const result = await getPreset(nextPresetId, signal)
 
-    setOriginalPreset(result)
-    setFormState({
-      agents: Object.fromEntries(
-        getOrderedAgentRoleKeys().map((roleKey) => [roleKey, createAgentFormState(result.agents[roleKey])]),
-      ) as FormState['agents'],
-      displayName: result.display_name,
-      presetId: result.preset_id,
-    })
-    setExpandedAgents(createCollapsedAgentsState())
-    setExpandedModelSettings(createCollapsedAgentsState())
-    setExpandedModules(createCollapsedModulesState())
-    setExpandedEntryIds(createExpandedEntryIdsState())
+      if (signal?.aborted) {
+        return null
+      }
 
-    return result
-  }
-
-  useEffect(() => {
-    if (!open) {
-      setFormState(createInitialState())
-      setOriginalPreset(null)
+      setFormState({
+        agents: Object.fromEntries(
+          getOrderedAgentRoleKeys().map((roleKey) => [
+            roleKey,
+            createAgentFormState(result.agents[roleKey], translate),
+          ]),
+        ) as FormState['agents'],
+        displayName: result.display_name,
+        presetId: result.preset_id,
+      })
+      setLoadedPreset(result)
       setExpandedAgents(createCollapsedAgentsState())
       setExpandedModelSettings(createCollapsedAgentsState())
-      setExpandedModules(createCollapsedModulesState())
+      setExpandedModules(createExpandedModulesState())
       setExpandedEntryIds(createExpandedEntryIdsState())
       setDraggedEntry(null)
       setDropTarget(null)
+      setDraggedModule(null)
+      setModuleDropTarget(null)
+      setPreviewDialogState(null)
+
+      return result
+    },
+    [translate],
+  )
+
+  useEffect(() => {
+    if (!open) {
+      setFormState(createInitialState(translate))
+      setExpandedAgents(createCollapsedAgentsState())
+      setExpandedModelSettings(createCollapsedAgentsState())
+      setExpandedModules(createExpandedModulesState())
+      setExpandedEntryIds(createExpandedEntryIdsState())
+      setDraggedEntry(null)
+      setDropTarget(null)
+      setDraggedModule(null)
+      setModuleDropTarget(null)
+      setLoadedPreset(null)
+      setPreviewDialogState(null)
       setIsLoading(false)
       setIsSubmitting(false)
       setSubmitError(null)
@@ -639,14 +696,17 @@ export function PresetFormDialog({
     }
 
     if (mode !== 'edit' || !presetId) {
-      setFormState(createInitialState())
-      setOriginalPreset(null)
+      setFormState(createInitialState(translate))
       setExpandedAgents(createCollapsedAgentsState())
       setExpandedModelSettings(createCollapsedAgentsState())
-      setExpandedModules(createCollapsedModulesState())
+      setExpandedModules(createExpandedModulesState())
       setExpandedEntryIds(createExpandedEntryIdsState())
       setDraggedEntry(null)
       setDropTarget(null)
+      setDraggedModule(null)
+      setModuleDropTarget(null)
+      setLoadedPreset(null)
+      setPreviewDialogState(null)
       setIsLoading(false)
       setSubmitError(null)
       return
@@ -655,8 +715,6 @@ export function PresetFormDialog({
     const controller = new AbortController()
     setIsLoading(true)
     setSubmitError(null)
-    setDraggedEntry(null)
-    setDropTarget(null)
 
     void loadPresetFromServer(presetId, controller.signal)
       .catch((error) => {
@@ -673,9 +731,13 @@ export function PresetFormDialog({
     return () => {
       controller.abort()
     }
-  }, [mode, open, presetId, t])
+  }, [loadPresetFromServer, mode, open, presetId, t, translate])
 
-  function updateAgentField(roleKey: AgentRoleKey, key: keyof Omit<AgentFormState, 'modules'>, value: string) {
+  function updateAgentField(
+    roleKey: AgentRoleKey,
+    key: keyof Omit<AgentFormState, 'modules'>,
+    value: string,
+  ) {
     setFormState((current) => ({
       ...current,
       agents: {
@@ -702,66 +764,193 @@ export function PresetFormDialog({
     }))
   }
 
-  function toggleModule(roleKey: AgentRoleKey, moduleId: PromptModuleId) {
+  function toggleModule(roleKey: AgentRoleKey, moduleClientId: string) {
     setExpandedModules((current) => ({
       ...current,
-      [roleKey]: {
-        ...current[roleKey],
-        [moduleId]: !current[roleKey][moduleId],
-      },
+      [roleKey]: current[roleKey].includes(moduleClientId)
+        ? current[roleKey].filter((currentId) => currentId !== moduleClientId)
+        : [...current[roleKey], moduleClientId],
     }))
+  }
+
+  function updateModuleField(
+    roleKey: AgentRoleKey,
+    moduleClientId: string,
+    key: 'displayName' | 'messageRole' | 'moduleId' | 'order',
+    value: string,
+  ) {
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((module) =>
+        module.clientId === moduleClientId ? { ...module, [key]: value } : module,
+      ),
+    )
+  }
+
+  function addCustomModule(roleKey: AgentRoleKey) {
+    const modules = formState.agents[roleKey].modules
+    const highestOrder = modules.reduce((maxOrder, module) => {
+      const parsed = Number(module.order)
+      return Number.isInteger(parsed) ? Math.max(maxOrder, parsed) : maxOrder
+    }, presetModuleOrderStart - presetModuleOrderStep)
+    const nextModule: PromptModuleFormState = {
+      clientId: createPromptModuleClientId(),
+      displayName: '',
+      entries: [],
+      isBuiltIn: false,
+      messageRole: 'user',
+      moduleId: '',
+      order: String(highestOrder + presetModuleOrderStep),
+    }
+
+    updateAgentModules(roleKey, (modulesState) => [...modulesState, nextModule])
+    setExpandedAgents((current) => ({ ...current, [roleKey]: true }))
+    setExpandedModules((current) => ({
+      ...current,
+      [roleKey]: current[roleKey].includes(nextModule.clientId)
+        ? current[roleKey]
+        : [...current[roleKey], nextModule.clientId],
+    }))
+  }
+
+  function removeModule(roleKey: AgentRoleKey, moduleClientId: string) {
+    updateAgentModules(roleKey, (modules) =>
+      modules.filter((module) => module.clientId !== moduleClientId),
+    )
+    setExpandedModules((current) => ({
+      ...current,
+      [roleKey]: current[roleKey].filter((moduleId) => moduleId !== moduleClientId),
+    }))
+    setExpandedEntryIds((current) => {
+      const removedEntryIds =
+        formState.agents[roleKey].modules.find((module) => module.clientId === moduleClientId)?.entries ?? []
+
+      if (removedEntryIds.length === 0) {
+        return current
+      }
+
+      const removedSet = new Set(removedEntryIds.map((entry) => entry.clientId))
+      return current.filter((entryId) => !removedSet.has(entryId))
+    })
+
+    if (draggedModule?.clientId === moduleClientId && draggedModule.roleKey === roleKey) {
+      setDraggedModule(null)
+    }
+
+    if (moduleDropTarget?.clientId === moduleClientId && moduleDropTarget.roleKey === roleKey) {
+      setModuleDropTarget(null)
+    }
+  }
+
+  function moveModule(roleKey: AgentRoleKey, sourceClientId: string, targetClientId: string) {
+    if (sourceClientId === targetClientId) {
+      return
+    }
+
+    updateAgentModules(roleKey, (modules) => {
+      const sourceIndex = modules.findIndex((module) => module.clientId === sourceClientId)
+      const targetIndex = modules.findIndex((module) => module.clientId === targetClientId)
+
+      if (sourceIndex === -1 || targetIndex === -1) {
+        return modules
+      }
+
+      const nextModules = [...modules]
+      const [movedModule] = nextModules.splice(sourceIndex, 1)
+      nextModules.splice(targetIndex, 0, movedModule)
+      return renumberModules(nextModules)
+    })
+  }
+
+  function handleModuleDragStart(roleKey: AgentRoleKey, clientId: string) {
+    setDraggedModule({ clientId, roleKey })
+    setModuleDropTarget(null)
+  }
+
+  function handleModuleDragOver(
+    event: DragEvent<HTMLDivElement>,
+    roleKey: AgentRoleKey,
+    clientId: string,
+  ) {
+    if (!draggedModule || draggedModule.roleKey !== roleKey || draggedModule.clientId === clientId) {
+      return
+    }
+
+    event.preventDefault()
+
+    if (moduleDropTarget?.clientId !== clientId || moduleDropTarget.roleKey !== roleKey) {
+      setModuleDropTarget({ clientId, roleKey })
+    }
+  }
+
+  function handleModuleDrop(
+    event: DragEvent<HTMLDivElement>,
+    roleKey: AgentRoleKey,
+    clientId: string,
+  ) {
+    if (!draggedModule || draggedModule.roleKey !== roleKey) {
+      return
+    }
+
+    event.preventDefault()
+    moveModule(roleKey, draggedModule.clientId, clientId)
+    setDraggedModule(null)
+    setModuleDropTarget(null)
+  }
+
+  function handleModuleDragEnd() {
+    setDraggedModule(null)
+    setModuleDropTarget(null)
   }
 
   function updateEntryField(
     roleKey: AgentRoleKey,
-    moduleId: PromptModuleId,
+    moduleClientId: string,
     clientId: string,
     key: 'displayName' | 'entryId' | 'order' | 'text',
     value: string,
   ) {
-    setFormState((current) => ({
-      ...current,
-      agents: {
-        ...current.agents,
-        [roleKey]: {
-          ...current.agents[roleKey],
-          modules: {
-            ...current.agents[roleKey].modules,
-            [moduleId]: current.agents[roleKey].modules[moduleId].map((entry) =>
-              entry.clientId === clientId ? { ...entry, [key]: value } : entry,
-            ),
-          },
-        },
-      },
-    }))
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((module) =>
+        module.clientId === moduleClientId
+          ? {
+              ...module,
+              entries: module.entries.map((entry) =>
+                entry.clientId === clientId ? { ...entry, [key]: value } : entry,
+              ),
+            }
+          : module,
+      ),
+    )
   }
 
   function updateEntryEnabled(
     roleKey: AgentRoleKey,
-    moduleId: PromptModuleId,
+    moduleClientId: string,
     clientId: string,
     enabled: boolean,
   ) {
-    setFormState((current) => ({
-      ...current,
-      agents: {
-        ...current.agents,
-        [roleKey]: {
-          ...current.agents[roleKey],
-          modules: {
-            ...current.agents[roleKey].modules,
-            [moduleId]: current.agents[roleKey].modules[moduleId].map((entry) =>
-              entry.clientId === clientId ? { ...entry, enabled } : entry,
-            ),
-          },
-        },
-      },
-    }))
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((module) =>
+        module.clientId === moduleClientId
+          ? {
+              ...module,
+              entries: module.entries.map((entry) =>
+                entry.clientId === clientId ? { ...entry, enabled } : entry,
+              ),
+            }
+          : module,
+      ),
+    )
   }
 
-  function addCustomEntry(roleKey: AgentRoleKey, moduleId: PromptModuleId) {
-    const entries = formState.agents[roleKey].modules[moduleId]
-    const highestOrder = entries.reduce((maxOrder, entry) => {
+  function addCustomEntry(roleKey: AgentRoleKey, moduleClientId: string) {
+    const module = formState.agents[roleKey].modules.find((item) => item.clientId === moduleClientId)
+
+    if (!module) {
+      return
+    }
+
+    const highestOrder = module.entries.reduce((maxOrder, entry) => {
       const parsed = Number(entry.order)
       return Number.isInteger(parsed) ? Math.max(maxOrder, parsed) : maxOrder
     }, presetEntryOrderStart - presetEntryOrderStep)
@@ -777,26 +966,22 @@ export function PresetFormDialog({
       text: '',
     }
 
-    setFormState((current) => ({
-      ...current,
-      agents: {
-        ...current.agents,
-        [roleKey]: {
-          ...current.agents[roleKey],
-          modules: {
-            ...current.agents[roleKey].modules,
-            [moduleId]: [...current.agents[roleKey].modules[moduleId], nextEntry],
-          },
-        },
-      },
-    }))
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((currentModule) =>
+        currentModule.clientId === moduleClientId
+          ? {
+              ...currentModule,
+              entries: [...currentModule.entries, nextEntry],
+            }
+          : currentModule,
+      ),
+    )
     setExpandedAgents((current) => ({ ...current, [roleKey]: true }))
     setExpandedModules((current) => ({
       ...current,
-      [roleKey]: {
-        ...current[roleKey],
-        [moduleId]: true,
-      },
+      [roleKey]: current[roleKey].includes(moduleClientId)
+        ? current[roleKey]
+        : [...current[roleKey], moduleClientId],
     }))
     setExpandedEntryIds((current) =>
       current.includes(nextEntry.clientId) ? current : [...current, nextEntry.clientId],
@@ -811,36 +996,39 @@ export function PresetFormDialog({
     )
   }
 
-  function removeEntry(roleKey: AgentRoleKey, moduleId: PromptModuleId, clientId: string) {
-    setFormState((current) => ({
-      ...current,
-      agents: {
-        ...current.agents,
-        [roleKey]: {
-          ...current.agents[roleKey],
-          modules: {
-            ...current.agents[roleKey].modules,
-            [moduleId]: current.agents[roleKey].modules[moduleId].filter(
-              (entry) => entry.clientId !== clientId,
-            ),
-          },
-        },
-      },
-    }))
+  function removeEntry(roleKey: AgentRoleKey, moduleClientId: string, clientId: string) {
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((module) =>
+        module.clientId === moduleClientId
+          ? {
+              ...module,
+              entries: module.entries.filter((entry) => entry.clientId !== clientId),
+            }
+          : module,
+      ),
+    )
     setExpandedEntryIds((current) => current.filter((currentId) => currentId !== clientId))
 
-    if (draggedEntry?.clientId === clientId && draggedEntry.roleKey === roleKey && draggedEntry.moduleId === moduleId) {
+    if (
+      draggedEntry?.clientId === clientId &&
+      draggedEntry.roleKey === roleKey &&
+      draggedEntry.moduleClientId === moduleClientId
+    ) {
       setDraggedEntry(null)
     }
 
-    if (dropTarget?.clientId === clientId && dropTarget.roleKey === roleKey && dropTarget.moduleId === moduleId) {
+    if (
+      dropTarget?.clientId === clientId &&
+      dropTarget.roleKey === roleKey &&
+      dropTarget.moduleClientId === moduleClientId
+    ) {
       setDropTarget(null)
     }
   }
 
   function moveEntry(
     roleKey: AgentRoleKey,
-    moduleId: PromptModuleId,
+    moduleClientId: string,
     sourceClientId: string,
     targetClientId: string,
   ) {
@@ -848,51 +1036,46 @@ export function PresetFormDialog({
       return
     }
 
-    setFormState((current) => {
-      const entries = current.agents[roleKey].modules[moduleId]
-      const sourceIndex = entries.findIndex((entry) => entry.clientId === sourceClientId)
-      const targetIndex = entries.findIndex((entry) => entry.clientId === targetClientId)
+    updateAgentModules(roleKey, (modules) =>
+      modules.map((module) => {
+        if (module.clientId !== moduleClientId) {
+          return module
+        }
 
-      if (sourceIndex === -1 || targetIndex === -1) {
-        return current
-      }
+        const sourceIndex = module.entries.findIndex((entry) => entry.clientId === sourceClientId)
+        const targetIndex = module.entries.findIndex((entry) => entry.clientId === targetClientId)
 
-      const nextEntries = [...entries]
-      const [movedEntry] = nextEntries.splice(sourceIndex, 1)
-      nextEntries.splice(targetIndex, 0, movedEntry)
-      const renumberedEntries = renumberModuleEntries(nextEntries)
+        if (sourceIndex === -1 || targetIndex === -1) {
+          return module
+        }
 
-      return {
-        ...current,
-        agents: {
-          ...current.agents,
-          [roleKey]: {
-            ...current.agents[roleKey],
-            modules: {
-              ...current.agents[roleKey].modules,
-              [moduleId]: renumberedEntries,
-            },
-          },
-        },
-      }
-    })
+        const nextEntries = [...module.entries]
+        const [movedEntry] = nextEntries.splice(sourceIndex, 1)
+        nextEntries.splice(targetIndex, 0, movedEntry)
+
+        return {
+          ...module,
+          entries: renumberModuleEntries(nextEntries),
+        }
+      }),
+    )
   }
 
-  function handleEntryDragStart(roleKey: AgentRoleKey, moduleId: PromptModuleId, clientId: string) {
-    setDraggedEntry({ clientId, moduleId, roleKey })
+  function handleEntryDragStart(roleKey: AgentRoleKey, moduleClientId: string, clientId: string) {
+    setDraggedEntry({ clientId, moduleClientId, roleKey })
     setDropTarget(null)
   }
 
   function handleEntryDragOver(
     event: DragEvent<HTMLDivElement>,
     roleKey: AgentRoleKey,
-    moduleId: PromptModuleId,
+    moduleClientId: string,
     clientId: string,
   ) {
     if (
       !draggedEntry ||
       draggedEntry.roleKey !== roleKey ||
-      draggedEntry.moduleId !== moduleId ||
+      draggedEntry.moduleClientId !== moduleClientId ||
       draggedEntry.clientId === clientId
     ) {
       return
@@ -903,28 +1086,28 @@ export function PresetFormDialog({
     if (
       dropTarget?.clientId !== clientId ||
       dropTarget.roleKey !== roleKey ||
-      dropTarget.moduleId !== moduleId
+      dropTarget.moduleClientId !== moduleClientId
     ) {
-      setDropTarget({ clientId, moduleId, roleKey })
+      setDropTarget({ clientId, moduleClientId, roleKey })
     }
   }
 
   function handleEntryDrop(
     event: DragEvent<HTMLDivElement>,
     roleKey: AgentRoleKey,
-    moduleId: PromptModuleId,
+    moduleClientId: string,
     clientId: string,
   ) {
     if (
       !draggedEntry ||
       draggedEntry.roleKey !== roleKey ||
-      draggedEntry.moduleId !== moduleId
+      draggedEntry.moduleClientId !== moduleClientId
     ) {
       return
     }
 
     event.preventDefault()
-    moveEntry(roleKey, moduleId, draggedEntry.clientId, clientId)
+    moveEntry(roleKey, moduleClientId, draggedEntry.clientId, clientId)
     setDraggedEntry(null)
     setDropTarget(null)
   }
@@ -932,6 +1115,47 @@ export function PresetFormDialog({
   function handleEntryDragEnd() {
     setDraggedEntry(null)
     setDropTarget(null)
+  }
+
+  function openAgentPreview(roleKey: AgentRoleKey) {
+    if (!loadedPreset) {
+      return
+    }
+
+    setPreviewDialogState({
+      initialAgent: roleKey,
+      scopeLabel: roleLabels[roleKey],
+    })
+  }
+
+  function openModulePreview(roleKey: AgentRoleKey, module: PromptModuleFormState) {
+    const moduleId = module.moduleId.trim()
+
+    if (!loadedPreset || !moduleId) {
+      setPreviewNotice({
+        message: t('presetsPage.preview.feedback.saveModuleBeforePreview'),
+        tone: 'warning',
+      })
+      return
+    }
+
+    const savedModule = loadedPreset.agents[roleKey].modules.find(
+      (candidate) => candidate.module_id === moduleId,
+    )
+
+    if (!savedModule) {
+      setPreviewNotice({
+        message: t('presetsPage.preview.feedback.saveModuleBeforePreview'),
+        tone: 'warning',
+      })
+      return
+    }
+
+    setPreviewDialogState({
+      initialAgent: roleKey,
+      initialModuleId: moduleId,
+      scopeLabel: getPromptModuleLabel(translate, savedModule.module_id, savedModule.display_name),
+    })
   }
 
   async function handleSubmit() {
@@ -965,76 +1189,11 @@ export function PresetFormDialog({
               display_name: nextDisplayName,
               preset_id: nextPresetId,
             })
-          : await (async () => {
-              if (!originalPreset) {
-                throw new Error(t('presetsPage.feedback.loadPresetFailed'))
-              }
-
-              const { createEntries, deleteEntries, updateEntries } = createEntryDiffs(
-                originalPreset.agents,
-                nextAgents,
-              )
-
-              for (const entry of createEntries) {
-                await createPresetEntry({
-                  agent: entry.agent,
-                  display_name: entry.display_name,
-                  enabled: entry.enabled,
-                  entry_id: entry.entry_id,
-                  module_id: entry.module_id,
-                  order: entry.order,
-                  preset_id: nextPresetId,
-                  text: entry.text ?? '',
-                })
-              }
-
-              for (const entry of updateEntries) {
-                if (entry.kind === 'custom_text') {
-                  await updatePresetEntry({
-                    agent: entry.agent,
-                    display_name: entry.display_name,
-                    enabled: entry.enabled,
-                    entry_id: entry.entry_id,
-                    module_id: entry.module_id,
-                    order: entry.order,
-                    preset_id: nextPresetId,
-                    text: entry.text ?? '',
-                  })
-                } else {
-                  await updatePresetEntry({
-                    agent: entry.agent,
-                    enabled: entry.enabled,
-                    entry_id: entry.entry_id,
-                    module_id: entry.module_id,
-                    order: entry.order,
-                    preset_id: nextPresetId,
-                  })
-                }
-              }
-
-              for (const entry of deleteEntries) {
-                await deletePresetEntry({
-                  agent: entry.agent,
-                  entry_id: entry.entry_id,
-                  module_id: entry.module_id,
-                  preset_id: nextPresetId,
-                })
-              }
-
-              const needsPresetUpdate =
-                nextDisplayName !== originalPreset.display_name ||
-                haveAgentSettingsChanged(originalPreset.agents, nextAgents)
-
-              return needsPresetUpdate
-                ? await updatePreset({
-                    agents: nextAgents,
-                    display_name: nextDisplayName,
-                    preset_id: nextPresetId,
-                  })
-                : await getPreset(nextPresetId)
-            })()
-
-      setOriginalPreset(preset)
+          : await updatePreset({
+              agents: nextAgents,
+              display_name: nextDisplayName,
+              preset_id: nextPresetId,
+            })
 
       await onCompleted({
         message:
@@ -1044,16 +1203,10 @@ export function PresetFormDialog({
         preset,
       })
 
+      setLoadedPreset(preset)
+
       onOpenChange(false)
     } catch (error) {
-      if (mode === 'edit' && formState.presetId.trim()) {
-        try {
-          await loadPresetFromServer(formState.presetId.trim())
-        } catch {
-          // Keep the original error message and preserve current visible state if refresh fails.
-        }
-      }
-
       setSubmitError(getErrorMessage(error, t('presetsPage.form.errors.submitFailed')))
     } finally {
       setIsSubmitting(false)
@@ -1061,101 +1214,102 @@ export function PresetFormDialog({
   }
 
   return (
-    <Dialog onOpenChange={onOpenChange} open={open}>
-      <DialogContent
-        aria-describedby={undefined}
-        contentClassName="w-[min(96vw,76rem)]"
-        onEscapeKeyDown={(event) => {
-          if (isSubmitting) {
-            event.preventDefault()
-          }
-        }}
-        onInteractOutside={(event) => {
-          if (isSubmitting) {
-            event.preventDefault()
-          }
-        }}
-      >
-        <DialogHeader className="border-b border-[var(--color-border-subtle)]">
-          <DialogTitle>
-            {mode === 'create' ? t('presetsPage.form.createTitle') : t('presetsPage.form.editTitle')}
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog onOpenChange={onOpenChange} open={open}>
+        <DialogContent
+          aria-describedby={undefined}
+          contentClassName="w-[min(96vw,76rem)]"
+          onEscapeKeyDown={(event) => {
+            if (isSubmitting) {
+              event.preventDefault()
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (isSubmitting) {
+              event.preventDefault()
+            }
+          }}
+        >
+          <DialogHeader className="border-b border-[var(--color-border-subtle)]">
+            <DialogTitle>
+              {mode === 'create' ? t('presetsPage.form.createTitle') : t('presetsPage.form.editTitle')}
+            </DialogTitle>
+          </DialogHeader>
 
-        <DialogBody className="space-y-5 pt-6">
-          {isLoading ? (
-            <div className="space-y-3">
-              <div className="h-12 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]" />
-              {Array.from({ length: getOrderedAgentRoleKeys().length }).map((_, index) => (
-                <div
-                  className="h-20 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]"
-                  key={index}
-                />
-              ))}
-            </div>
-          ) : (
-            <>
-              <div className="grid gap-4 md:grid-cols-2">
-                <label className="space-y-2.5">
-                  <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-                    {t('presetsPage.form.fields.presetId')}
-                  </span>
-                  <Input
-                    disabled={mode === 'edit'}
-                    id="preset-form-preset-id"
-                    name="preset_id"
-                    onChange={(event) => {
-                      setFormState((current) => ({
-                        ...current,
-                        presetId: event.target.value,
-                      }))
-                    }}
-                    placeholder={t('presetsPage.form.placeholders.presetId')}
-                    value={formState.presetId}
+          <DialogBody className="space-y-5 pt-6">
+            {isLoading ? (
+              <div className="space-y-3">
+                <div className="h-12 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]" />
+                {Array.from({ length: getOrderedAgentRoleKeys().length }).map((_, index) => (
+                  <div
+                    className="h-20 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]"
+                    key={index}
                   />
-                </label>
-
-                <label className="space-y-2.5">
-                  <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-                    {t('presetsPage.form.fields.displayName')}
-                  </span>
-                  <Input
-                    id="preset-form-display-name"
-                    name="display_name"
-                    onChange={(event) => {
-                      setFormState((current) => ({
-                        ...current,
-                        displayName: event.target.value,
-                      }))
-                    }}
-                    placeholder={t('presetsPage.form.placeholders.displayName')}
-                    value={formState.displayName}
-                  />
-                </label>
+                ))}
               </div>
+            ) : (
+              <>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2.5">
+                    <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                      {t('presetsPage.form.fields.presetId')}
+                    </span>
+                    <Input
+                      disabled={mode === 'edit'}
+                      id="preset-form-preset-id"
+                      name="preset_id"
+                      onChange={(event) => {
+                        setFormState((current) => ({
+                          ...current,
+                          presetId: event.target.value,
+                        }))
+                      }}
+                      placeholder={t('presetsPage.form.placeholders.presetId')}
+                      value={formState.presetId}
+                    />
+                  </label>
 
-              <motion.div layout className="space-y-3">
-                {getOrderedAgentRoleKeys().map((roleKey) => {
-                  const agentState = formState.agents[roleKey]
-                  const isExpanded = expandedAgents[roleKey]
-                  const isModelSettingsExpanded = expandedModelSettings[roleKey]
-                  const summaryItems = summarizeAgent(
-                    agentState,
-                    translate,
-                    t('presetsPage.list.unset'),
-                  )
+                  <label className="space-y-2.5">
+                    <span className="block text-sm font-medium text-[var(--color-text-primary)]">
+                      {t('presetsPage.form.fields.displayName')}
+                    </span>
+                    <Input
+                      id="preset-form-display-name"
+                      name="display_name"
+                      onChange={(event) => {
+                        setFormState((current) => ({
+                          ...current,
+                          displayName: event.target.value,
+                        }))
+                      }}
+                      placeholder={t('presetsPage.form.placeholders.displayName')}
+                      value={formState.displayName}
+                    />
+                  </label>
+                </div>
 
-                  return (
-                    <motion.section
-                      layout
-                      className="overflow-hidden rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)]"
-                      key={roleKey}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0 }
-                          : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
-                      }
-                    >
+                <motion.div layout className="space-y-3">
+                  {getOrderedAgentRoleKeys().map((roleKey) => {
+                    const agentState = formState.agents[roleKey]
+                    const isExpanded = expandedAgents[roleKey]
+                    const isModelSettingsExpanded = expandedModelSettings[roleKey]
+                    const summaryItems = summarizeAgent(
+                      agentState,
+                      translate,
+                      t('presetsPage.list.unset'),
+                    )
+
+                    return (
+                      <motion.section
+                        layout
+                        className="overflow-hidden rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)]"
+                        key={roleKey}
+                        transition={
+                          prefersReducedMotion
+                            ? { duration: 0 }
+                            : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+                        }
+                      >
                       <button
                         aria-expanded={isExpanded}
                         className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
@@ -1314,48 +1468,135 @@ export function PresetFormDialog({
                               </div>
 
                               <div className="space-y-3">
-                                {promptModuleIds.map((moduleId) => {
-                                  const moduleEntries = agentState.modules[moduleId]
-                                  const enabledCount = moduleEntries.filter((entry) => entry.enabled).length
-                                  const isModuleExpanded = expandedModules[roleKey][moduleId]
+                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                  <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                                    {t('presetsPage.form.moduleHint')}
+                                  </p>
+                                  <div className="flex flex-wrap items-center justify-end gap-2">
+                                    {mode === 'edit' && loadedPreset ? (
+                                      <Button
+                                        onClick={() => {
+                                          openAgentPreview(roleKey)
+                                        }}
+                                        size="sm"
+                                        variant="secondary"
+                                      >
+                                        <FontAwesomeIcon icon={faEye} />
+                                        {t('presetsPage.actions.previewPrompt')}
+                                      </Button>
+                                    ) : null}
+                                    <Button
+                                      onClick={() => {
+                                        addCustomModule(roleKey)
+                                      }}
+                                      size="sm"
+                                      variant="secondary"
+                                    >
+                                      <FontAwesomeIcon icon={faPlus} />
+                                      {t('presetsPage.actions.addModule')}
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {agentState.modules.map((module) => {
+                                  const isModuleExpanded = expandedModules[roleKey].includes(module.clientId)
+                                  const enabledCount = module.entries.filter((entry) => entry.enabled).length
+                                  const isModuleDragged =
+                                    draggedModule?.clientId === module.clientId &&
+                                    draggedModule.roleKey === roleKey
+                                  const isModuleDropTarget =
+                                    moduleDropTarget?.clientId === module.clientId &&
+                                    moduleDropTarget.roleKey === roleKey &&
+                                    !isModuleDragged
+                                  const moduleLabel = createModuleLabel(module, translate)
 
                                   return (
                                     <div
-                                      className="overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)]"
-                                      key={`${roleKey}:${moduleId}`}
+                                      className={cn(
+                                        'overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] transition duration-200',
+                                        isModuleDragged && 'opacity-55',
+                                        isModuleDropTarget &&
+                                          'border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]',
+                                      )}
+                                      key={module.clientId}
+                                      onDragOver={(event) => {
+                                        handleModuleDragOver(event, roleKey, module.clientId)
+                                      }}
+                                      onDrop={(event) => {
+                                        handleModuleDrop(event, roleKey, module.clientId)
+                                      }}
                                     >
-                                      <button
-                                        aria-expanded={isModuleExpanded}
-                                        className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
-                                        onClick={() => {
-                                          toggleModule(roleKey, moduleId)
-                                        }}
-                                        type="button"
-                                      >
-                                        <div className="min-w-0 space-y-1">
-                                          <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                                            {getPromptModuleLabel(translate, moduleId)}
-                                          </p>
-                                          <p className="text-xs leading-6 text-[var(--color-text-muted)]">
-                                            {t('presetsPage.form.moduleSummary', {
-                                              count: moduleEntries.length,
-                                              enabled: enabledCount,
-                                            })}
-                                          </p>
-                                        </div>
-
-                                        <motion.span
-                                          animate={{ rotate: isModuleExpanded ? 180 : 0 }}
-                                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
-                                          transition={
-                                            prefersReducedMotion
-                                              ? { duration: 0 }
-                                              : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
-                                          }
+                                      <div className="flex items-center gap-3 px-4 py-4">
+                                        <button
+                                          aria-label={t('presetsPage.actions.dragModule')}
+                                          className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] transition duration-200 hover:text-[var(--color-text-primary)] active:cursor-grabbing"
+                                          draggable
+                                          onDragEnd={handleModuleDragEnd}
+                                          onDragStart={(event) => {
+                                            event.dataTransfer.effectAllowed = 'move'
+                                            event.dataTransfer.setData('text/plain', module.clientId)
+                                            handleModuleDragStart(roleKey, module.clientId)
+                                          }}
+                                          type="button"
                                         >
-                                          <FontAwesomeIcon icon={faChevronDown} />
-                                        </motion.span>
-                                      </button>
+                                          <FontAwesomeIcon icon={faGripVertical} />
+                                        </button>
+
+                                        <button
+                                          aria-expanded={isModuleExpanded}
+                                          className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left transition duration-200"
+                                          onClick={() => {
+                                            toggleModule(roleKey, module.clientId)
+                                          }}
+                                          type="button"
+                                        >
+                                          <div className="min-w-0 space-y-1">
+                                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                              <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                                {moduleLabel}
+                                              </p>
+                                              <Badge variant="subtle">
+                                                {getPromptMessageRoleLabel(translate, module.messageRole)}
+                                              </Badge>
+                                              {module.moduleId.trim() ? (
+                                                <Badge variant="subtle">{module.moduleId.trim()}</Badge>
+                                              ) : null}
+                                            </div>
+                                            <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                                              {t('presetsPage.form.moduleSummary', {
+                                                count: module.entries.length,
+                                                enabled: enabledCount,
+                                              })}
+                                            </p>
+                                          </div>
+
+                                          <div className="flex items-center gap-2">
+                                            {!module.isBuiltIn ? (
+                                              <IconButton
+                                                icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                                label={t('presetsPage.actions.removeModule')}
+                                                onClick={(event) => {
+                                                  event.stopPropagation()
+                                                  removeModule(roleKey, module.clientId)
+                                                }}
+                                                size="sm"
+                                                variant="danger"
+                                              />
+                                            ) : null}
+                                            <motion.span
+                                              animate={{ rotate: isModuleExpanded ? 180 : 0 }}
+                                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
+                                              transition={
+                                                prefersReducedMotion
+                                                  ? { duration: 0 }
+                                                  : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+                                              }
+                                            >
+                                              <FontAwesomeIcon icon={faChevronDown} />
+                                            </motion.span>
+                                          </div>
+                                        </button>
+                                      </div>
 
                                       <AnimatePresence initial={false}>
                                         {isModuleExpanded ? (
@@ -1379,34 +1620,132 @@ export function PresetFormDialog({
                                             }
                                           >
                                             <div className="space-y-4 border-t border-[var(--color-border-subtle)] px-4 py-4">
+                                              <div className="grid gap-4 md:grid-cols-2">
+                                                <label className="space-y-2">
+                                                  <span className="block text-xs text-[var(--color-text-muted)]">
+                                                    {t('presetsPage.form.fields.moduleId')}
+                                                  </span>
+                                                  <Input
+                                                    disabled={module.isBuiltIn}
+                                                    id={`preset-form-${roleKey}-${module.clientId}-module-id`}
+                                                    name={`${roleKey}_module_id_${module.clientId}`}
+                                                    onChange={(event) => {
+                                                      updateModuleField(
+                                                        roleKey,
+                                                        module.clientId,
+                                                        'moduleId',
+                                                        event.target.value,
+                                                      )
+                                                    }}
+                                                    placeholder={t('presetsPage.form.placeholders.moduleId')}
+                                                    value={module.moduleId}
+                                                  />
+                                                </label>
+
+                                                <label className="space-y-2">
+                                                  <span className="block text-xs text-[var(--color-text-muted)]">
+                                                    {t('presetsPage.form.fields.moduleDisplayName')}
+                                                  </span>
+                                                  <Input
+                                                    id={`preset-form-${roleKey}-${module.clientId}-display-name`}
+                                                    name={`${roleKey}_module_display_name_${module.clientId}`}
+                                                    onChange={(event) => {
+                                                      updateModuleField(
+                                                        roleKey,
+                                                        module.clientId,
+                                                        'displayName',
+                                                        event.target.value,
+                                                      )
+                                                    }}
+                                                    placeholder={t(
+                                                      'presetsPage.form.placeholders.moduleDisplayName',
+                                                    )}
+                                                    value={module.displayName}
+                                                  />
+                                                </label>
+
+                                                <label className="space-y-2">
+                                                  <span className="block text-xs text-[var(--color-text-muted)]">
+                                                    {t('presetsPage.form.fields.messageRole')}
+                                                  </span>
+                                                  <Select
+                                                    items={messageRoleItems}
+                                                    onValueChange={(nextValue) => {
+                                                      updateModuleField(
+                                                        roleKey,
+                                                        module.clientId,
+                                                        'messageRole',
+                                                        nextValue,
+                                                      )
+                                                    }}
+                                                    textAlign="start"
+                                                    value={module.messageRole}
+                                                  />
+                                                </label>
+
+                                                <label className="space-y-2">
+                                                  <span className="block text-xs text-[var(--color-text-muted)]">
+                                                    {t('presetsPage.form.fields.order')}
+                                                  </span>
+                                                  <Input
+                                                    id={`preset-form-${roleKey}-${module.clientId}-order`}
+                                                    name={`${roleKey}_module_order_${module.clientId}`}
+                                                    onChange={(event) => {
+                                                      updateModuleField(
+                                                        roleKey,
+                                                        module.clientId,
+                                                        'order',
+                                                        event.target.value,
+                                                      )
+                                                    }}
+                                                    placeholder={t('presetsPage.form.placeholders.order')}
+                                                    value={module.order}
+                                                  />
+                                                </label>
+                                              </div>
+
                                               <div className="flex flex-wrap items-start justify-between gap-3">
                                                 <p className="text-xs leading-6 text-[var(--color-text-muted)]">
                                                   {t('presetsPage.form.moduleHint')}
                                                 </p>
-                                                <Button
-                                                  onClick={() => {
-                                                    addCustomEntry(roleKey, moduleId)
-                                                  }}
-                                                  size="sm"
-                                                  variant="secondary"
-                                                >
-                                                  <FontAwesomeIcon icon={faPlus} />
-                                                  {t('presetsPage.actions.addCustomEntry')}
-                                                </Button>
+                                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                                  {mode === 'edit' && loadedPreset ? (
+                                                    <Button
+                                                      onClick={() => {
+                                                        openModulePreview(roleKey, module)
+                                                      }}
+                                                      size="sm"
+                                                      variant="secondary"
+                                                    >
+                                                      <FontAwesomeIcon icon={faEye} />
+                                                      {t('presetsPage.actions.previewPrompt')}
+                                                    </Button>
+                                                  ) : null}
+                                                  <Button
+                                                    onClick={() => {
+                                                      addCustomEntry(roleKey, module.clientId)
+                                                    }}
+                                                    size="sm"
+                                                    variant="secondary"
+                                                  >
+                                                    <FontAwesomeIcon icon={faPlus} />
+                                                    {t('presetsPage.actions.addCustomEntry')}
+                                                  </Button>
+                                                </div>
                                               </div>
 
-                                              {moduleEntries.length > 0 ? (
+                                              {module.entries.length > 0 ? (
                                                 <div className="space-y-3">
-                                                  {moduleEntries.map((entry, index) => {
+                                                  {module.entries.map((entry, entryIndex) => {
                                                     const isExpanded = expandedEntryIds.includes(entry.clientId)
                                                     const isDragged =
                                                       draggedEntry?.clientId === entry.clientId &&
                                                       draggedEntry.roleKey === roleKey &&
-                                                      draggedEntry.moduleId === moduleId
+                                                      draggedEntry.moduleClientId === module.clientId
                                                     const isDropTarget =
                                                       dropTarget?.clientId === entry.clientId &&
                                                       dropTarget.roleKey === roleKey &&
-                                                      dropTarget.moduleId === moduleId &&
+                                                      dropTarget.moduleClientId === module.clientId &&
                                                       !isDragged
                                                     const canEditText = entry.kind === 'custom_text'
                                                     const canEditDisplayName = entry.kind === 'custom_text'
@@ -1424,10 +1763,20 @@ export function PresetFormDialog({
                                                         )}
                                                         key={entry.clientId}
                                                         onDragOver={(event) => {
-                                                          handleEntryDragOver(event, roleKey, moduleId, entry.clientId)
+                                                          handleEntryDragOver(
+                                                            event,
+                                                            roleKey,
+                                                            module.clientId,
+                                                            entry.clientId,
+                                                          )
                                                         }}
                                                         onDrop={(event) => {
-                                                          handleEntryDrop(event, roleKey, moduleId, entry.clientId)
+                                                          handleEntryDrop(
+                                                            event,
+                                                            roleKey,
+                                                            module.clientId,
+                                                            entry.clientId,
+                                                          )
                                                         }}
                                                         transition={
                                                           prefersReducedMotion
@@ -1448,7 +1797,11 @@ export function PresetFormDialog({
                                                               onDragStart={(event) => {
                                                                 event.dataTransfer.effectAllowed = 'move'
                                                                 event.dataTransfer.setData('text/plain', entry.clientId)
-                                                                handleEntryDragStart(roleKey, moduleId, entry.clientId)
+                                                                handleEntryDragStart(
+                                                                  roleKey,
+                                                                  module.clientId,
+                                                                  entry.clientId,
+                                                                )
                                                               }}
                                                               type="button"
                                                             >
@@ -1464,7 +1817,11 @@ export function PresetFormDialog({
                                                               type="button"
                                                             >
                                                               <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-                                                                {createModuleEntryLabel(entry, translate, index + 1)}
+                                                                {createModuleEntryLabel(
+                                                                  entry,
+                                                                  translate,
+                                                                  entryIndex + 1,
+                                                                )}
                                                               </p>
                                                               <Badge variant="subtle">
                                                                 {getPresetEntryKindLabel(translate, entry.kind)}
@@ -1515,7 +1872,12 @@ export function PresetFormDialog({
                                                             <Switch
                                                               checked={entry.enabled}
                                                               onCheckedChange={(enabled) => {
-                                                                updateEntryEnabled(roleKey, moduleId, entry.clientId, enabled)
+                                                                updateEntryEnabled(
+                                                                  roleKey,
+                                                                  module.clientId,
+                                                                  entry.clientId,
+                                                                  enabled,
+                                                                )
                                                               }}
                                                               size="sm"
                                                             />
@@ -1524,7 +1886,11 @@ export function PresetFormDialog({
                                                                 icon={<FontAwesomeIcon icon={faTrashCan} />}
                                                                 label={t('presetsPage.actions.removeEntry')}
                                                                 onClick={() => {
-                                                                  removeEntry(roleKey, moduleId, entry.clientId)
+                                                                  removeEntry(
+                                                                    roleKey,
+                                                                    module.clientId,
+                                                                    entry.clientId,
+                                                                  )
                                                                 }}
                                                                 size="sm"
                                                                 variant="danger"
@@ -1565,12 +1931,12 @@ export function PresetFormDialog({
                                                                     </span>
                                                                     <Input
                                                                       disabled={!canEditEntryId}
-                                                                      id={`preset-form-${roleKey}-${moduleId}-${entry.clientId}-id`}
-                                                                      name={`${roleKey}_${moduleId}_entry_id_${index}`}
+                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-id`}
+                                                                      name={`${roleKey}_${module.clientId}_entry_id_${entryIndex}`}
                                                                       onChange={(event) => {
                                                                         updateEntryField(
                                                                           roleKey,
-                                                                          moduleId,
+                                                                          module.clientId,
                                                                           entry.clientId,
                                                                           'entryId',
                                                                           event.target.value,
@@ -1586,12 +1952,12 @@ export function PresetFormDialog({
                                                                       {t('presetsPage.form.fields.order')}
                                                                     </span>
                                                                     <Input
-                                                                      id={`preset-form-${roleKey}-${moduleId}-${entry.clientId}-order`}
-                                                                      name={`${roleKey}_${moduleId}_entry_order_${index}`}
+                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-order`}
+                                                                      name={`${roleKey}_${module.clientId}_entry_order_${entryIndex}`}
                                                                       onChange={(event) => {
                                                                         updateEntryField(
                                                                           roleKey,
-                                                                          moduleId,
+                                                                          module.clientId,
                                                                           entry.clientId,
                                                                           'order',
                                                                           event.target.value,
@@ -1609,18 +1975,20 @@ export function PresetFormDialog({
                                                                   </span>
                                                                   <Input
                                                                     disabled={!canEditDisplayName}
-                                                                    id={`preset-form-${roleKey}-${moduleId}-${entry.clientId}-display-name`}
-                                                                    name={`${roleKey}_${moduleId}_entry_display_name_${index}`}
+                                                                    id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-display-name`}
+                                                                    name={`${roleKey}_${module.clientId}_entry_display_name_${entryIndex}`}
                                                                     onChange={(event) => {
                                                                       updateEntryField(
                                                                         roleKey,
-                                                                        moduleId,
+                                                                        module.clientId,
                                                                         entry.clientId,
                                                                         'displayName',
                                                                         event.target.value,
                                                                       )
                                                                     }}
-                                                                    placeholder={t('presetsPage.form.placeholders.entryDisplayName')}
+                                                                    placeholder={t(
+                                                                      'presetsPage.form.placeholders.entryDisplayName',
+                                                                    )}
                                                                     value={entry.displayName}
                                                                   />
                                                                 </label>
@@ -1642,18 +2010,20 @@ export function PresetFormDialog({
                                                                     <Textarea
                                                                       className="min-h-[8rem]"
                                                                       disabled={!canEditText}
-                                                                      id={`preset-form-${roleKey}-${moduleId}-${entry.clientId}-text`}
-                                                                      name={`${roleKey}_${moduleId}_entry_text_${index}`}
+                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-text`}
+                                                                      name={`${roleKey}_${module.clientId}_entry_text_${entryIndex}`}
                                                                       onChange={(event) => {
                                                                         updateEntryField(
                                                                           roleKey,
-                                                                          moduleId,
+                                                                          module.clientId,
                                                                           entry.clientId,
                                                                           'text',
                                                                           event.target.value,
                                                                         )
                                                                       }}
-                                                                      placeholder={t('presetsPage.form.placeholders.entryText')}
+                                                                      placeholder={t(
+                                                                        'presetsPage.form.placeholders.entryText',
+                                                                      )}
                                                                       value={entry.text}
                                                                     />
                                                                   </label>
@@ -1686,22 +2056,38 @@ export function PresetFormDialog({
                         ) : null}
                       </AnimatePresence>
                     </motion.section>
-                  )
-                })}
-              </motion.div>
-            </>
-          )}
-        </DialogBody>
+                    )
+                  })}
+                </motion.div>
+              </>
+            )}
+          </DialogBody>
 
-        <DialogFooter className="justify-end gap-2">
-          <Button disabled={isSubmitting} onClick={() => onOpenChange(false)} variant="ghost">
-            {t('presetsPage.actions.cancel')}
-          </Button>
-          <Button disabled={isLoading || isSubmitting} onClick={() => void handleSubmit()}>
-            {isSubmitting ? t('presetsPage.actions.saving') : t('presetsPage.actions.save')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter className="justify-end gap-2">
+            <Button disabled={isSubmitting} onClick={() => onOpenChange(false)} variant="ghost">
+              {t('presetsPage.actions.cancel')}
+            </Button>
+            <Button disabled={isLoading || isSubmitting} onClick={() => void handleSubmit()}>
+              {isSubmitting ? t('presetsPage.actions.saving') : t('presetsPage.actions.save')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {mode === 'edit' && loadedPreset && previewDialogState ? (
+        <PresetPromptPreviewDialog
+          initialAgent={previewDialogState.initialAgent}
+          initialModuleId={previewDialogState.initialModuleId}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) {
+              setPreviewDialogState(null)
+            }
+          }}
+          open
+          preset={loadedPreset}
+          scopeLabel={previewDialogState.scopeLabel}
+        />
+      ) : null}
+    </>
   )
 }

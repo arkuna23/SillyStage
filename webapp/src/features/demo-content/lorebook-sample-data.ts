@@ -1,6 +1,16 @@
 import type { LorebookEntry } from '../lorebooks/types'
 
-const demoLorebookEntries: LorebookEntry[] = [
+export type DemoLorebook = {
+  displayName: string
+  entries: LorebookEntry[]
+  lorebookId: string
+}
+
+function isChineseDemoLanguage(language?: string) {
+  return language?.toLocaleLowerCase().startsWith('zh') ?? false
+}
+
+const zhDemoLorebookEntries: LorebookEntry[] = [
   {
     always_include: true,
     content:
@@ -48,8 +58,66 @@ const demoLorebookEntries: LorebookEntry[] = [
   },
 ]
 
-export const demoLorebook = {
+const enDemoLorebookEntries: LorebookEntry[] = [
+  {
+    always_include: true,
+    content:
+      'This is a classic sword-and-sorcery adventure world. Most people live around towns, guilds, trade roads, and ruins. Monsters remain a constant threat, but civilization has not been crushed by them. Adventurers are both the people hired to solve trouble and the ones most often standing closest to risk.',
+    enabled: true,
+    entry_id: 'entry-world-basics',
+    keywords: ['world', 'common sense', 'background', 'adventurer'],
+    title: 'World Tone and Adventuring Basics',
+  },
+  {
+    always_include: false,
+    content:
+      'Stories often begin in a beginner-friendly frontier town. It has an adventurers guild, inns, a general store, a blacksmith, and the main road leading into the wilds. Public order is imperfect, but stable enough to keep quests, supplies, and information flowing.',
+    enabled: true,
+    entry_id: 'entry-starter-town',
+    keywords: ['town', 'starter town', 'inn', 'market', 'frontier'],
+    title: 'Starter Town and Daily Life',
+  },
+  {
+    always_include: false,
+    content:
+      'The adventurers guild registers identities, posts quests, verifies results, and settles rewards. Common jobs include monster subjugation, escort duty, gathering, investigation, and errands. The guild does not absorb risk for adventurers, but it still tries not to hand obviously impossible jobs straight to beginners.',
+    enabled: true,
+    entry_id: 'entry-guild-rules',
+    keywords: ['guild', 'quest', 'job', 'reward', 'registration'],
+    title: 'Guild Rules and Contracts',
+  },
+  {
+    always_include: false,
+    content:
+      'Outside town lie training grounds, monster dens, ruins, and relic sites of uncertain age. The farther a party moves toward undeveloped land, the harder resupply becomes and the less reliable information is. Many story-changing turns begin with what looked like a routine escort or investigation.',
+    enabled: true,
+    entry_id: 'entry-wilderness-risks',
+    keywords: ['wilderness', 'monster', 'ruins', 'relics', 'investigation'],
+    title: 'Wilderness, Monsters, and Ruin Risk',
+  },
+  {
+    always_include: false,
+    content:
+      'Magic, blessings, and special skills are all real, but cost, proficiency, and environmental limits matter just as much. The stronger and more spectacular a power is, the more preparation, stamina, or aftermath it usually demands, which keeps conflict tense instead of effortless.',
+    enabled: true,
+    entry_id: 'entry-magic-constraints',
+    keywords: ['magic', 'blessing', 'skill', 'cost', 'limit'],
+    title: 'Magic Systems and Power Limits',
+  },
+]
+
+const zhDemoLorebook: DemoLorebook = {
   displayName: '新手冒险世界设定集',
-  entries: demoLorebookEntries,
+  entries: zhDemoLorebookEntries,
   lorebookId: 'lorebook-rpg-starter-world',
+}
+
+const enDemoLorebook: DemoLorebook = {
+  displayName: 'Starter Adventure World Lorebook',
+  entries: enDemoLorebookEntries,
+  lorebookId: 'lorebook-rpg-starter-world',
+}
+
+export function buildDemoLorebook(language?: string): DemoLorebook {
+  return isChineseDemoLanguage(language) ? zhDemoLorebook : enDemoLorebook
 }

@@ -15,6 +15,9 @@ import type {
   PresetDeletedResult,
   PresetEntryDeletedResult,
   PresetEntryMutationResult,
+  PresetPreviewRuntimeParams,
+  PresetPreviewTemplateParams,
+  PresetPromptPreview,
   PresetsListedResult,
   PromptModuleId,
   AgentRoleKey,
@@ -225,6 +228,34 @@ export async function deletePreset(presetId: string, signal?: AbortSignal) {
     'preset.delete',
     { preset_id: presetId },
     { signal },
+  )
+}
+
+export async function previewPresetTemplate(
+  params: PresetPreviewTemplateParams,
+  signal?: AbortSignal,
+) {
+  return rpcRequest<PresetPreviewTemplateParams, PresetPromptPreview>(
+    'preset_preview.template',
+    params,
+    { signal },
+  )
+}
+
+export async function previewPresetRuntime(
+  params: PresetPreviewRuntimeParams,
+  options?: {
+    sessionId?: string
+    signal?: AbortSignal
+  },
+) {
+  return rpcRequest<PresetPreviewRuntimeParams, PresetPromptPreview>(
+    'preset_preview.runtime',
+    params,
+    {
+      sessionId: options?.sessionId,
+      signal: options?.signal,
+    },
   )
 }
 

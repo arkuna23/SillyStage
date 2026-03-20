@@ -18,6 +18,12 @@ import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
+import {
+  PopupMenu,
+  PopupMenuContent,
+  PopupMenuItem,
+  PopupMenuTrigger,
+} from '../../components/ui/popup-menu'
 import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { SectionHeader } from '../../components/ui/section-header'
@@ -42,6 +48,7 @@ import { getDraftSectionProgress } from './draft-progress'
 import { DeleteStoryDraftDialog } from './delete-story-draft-dialog'
 import { DeleteStoryDialog } from './delete-story-dialog'
 import { GenerateStoryDialog } from './generate-story-dialog'
+import { ManualStoryCreateDialog } from './manual-story-create-dialog'
 import { StoryDraftDetailsDialog } from './story-draft-details-dialog'
 import { StoryDetailsDialog } from './story-details-dialog'
 import { StoryFormDialog } from './story-form-dialog'
@@ -120,6 +127,74 @@ function summarizeIntroduction(introduction: string) {
   return introduction.replace(/\s+/g, ' ').trim()
 }
 
+function StoryCreateMenu({
+  compact = false,
+  onOpenManualCreate,
+  onOpenResourceGenerate,
+}: {
+  compact?: boolean
+  onOpenManualCreate: () => void
+  onOpenResourceGenerate: () => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <PopupMenu>
+      <PopupMenuTrigger asChild>
+        {compact ? (
+          <IconButton
+            icon={<FontAwesomeIcon icon={faPlus} />}
+            label={t('stories.actions.createMenu')}
+            size="md"
+          />
+        ) : (
+          <Button>
+            <FontAwesomeIcon icon={faPlus} />
+            {t('stories.actions.createMenu')}
+          </Button>
+        )}
+      </PopupMenuTrigger>
+
+      <PopupMenuContent align="end" className="w-64">
+        <PopupMenuItem
+          onSelect={() => {
+            onOpenResourceGenerate()
+          }}
+        >
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]">
+            <FontAwesomeIcon icon={faDiagramProject} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+              {t('stories.actions.createFromResource')}
+            </p>
+            <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+              {t('stories.actions.createFromResourceDescription')}
+            </p>
+          </div>
+        </PopupMenuItem>
+        <PopupMenuItem
+          onSelect={() => {
+            onOpenManualCreate()
+          }}
+        >
+          <span className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] text-[var(--color-text-primary)]">
+            <FontAwesomeIcon icon={faPen} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-[var(--color-text-primary)]">
+              {t('stories.actions.createManual')}
+            </p>
+            <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+              {t('stories.actions.createManualDescription')}
+            </p>
+          </div>
+        </PopupMenuItem>
+      </PopupMenuContent>
+    </PopupMenu>
+  )
+}
+
 export function StoriesPage() {
   const { t } = useTranslation()
   const { setRailContent } = useWorkspaceLayoutContext()
@@ -137,6 +212,7 @@ export function StoriesPage() {
   const [activeDraftActionId, setActiveDraftActionId] = useState<string | null>(null)
   const [viewMode, setViewMode] = useState<StoryViewMode>('stories')
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isManualCreateDialogOpen, setIsManualCreateDialogOpen] = useState(false)
   const [detailsStoryId, setDetailsStoryId] = useState<string | null>(null)
   const [detailsDraftId, setDetailsDraftId] = useState<string | null>(null)
   const [editStoryId, setEditStoryId] = useState<string | null>(null)
@@ -560,6 +636,17 @@ export function StoriesPage() {
         resources={resources}
       />
 
+      <ManualStoryCreateDialog
+        availableCharacters={characters}
+        onCompleted={async ({ message }) => {
+          setNotice({ message, tone: 'success' })
+          await refreshStories()
+        }}
+        onOpenChange={setIsManualCreateDialogOpen}
+        open={isManualCreateDialogOpen}
+        resources={resources}
+      />
+
       <StoryFormDialog
         availableCharacters={characters}
         availableResources={resources}
@@ -742,13 +829,14 @@ export function StoriesPage() {
                           variant="secondary"
                         />
                       )}
-                      <IconButton
-                        icon={<FontAwesomeIcon icon={faPlus} />}
-                        label={t('stories.actions.createDraft')}
-                        onClick={() => {
+                      <StoryCreateMenu
+                        compact
+                        onOpenManualCreate={() => {
+                          setIsManualCreateDialogOpen(true)
+                        }}
+                        onOpenResourceGenerate={() => {
                           setIsCreateDialogOpen(true)
                         }}
-                        size="md"
                       />
                     </>
                   )}
@@ -781,13 +869,14 @@ export function StoriesPage() {
                     </p>
 
                     <div className="mt-7 flex justify-center">
-                      <Button
-                        onClick={() => {
+                      <StoryCreateMenu
+                        onOpenManualCreate={() => {
+                          setIsManualCreateDialogOpen(true)
+                        }}
+                        onOpenResourceGenerate={() => {
                           setIsCreateDialogOpen(true)
                         }}
-                      >
-                        {t('stories.actions.createDraft')}
-                      </Button>
+                      />
                     </div>
                   </div>
                 ) : (
@@ -888,13 +977,14 @@ export function StoriesPage() {
                     </p>
 
                     <div className="mt-7 flex justify-center">
-                      <Button
-                        onClick={() => {
+                      <StoryCreateMenu
+                        onOpenManualCreate={() => {
+                          setIsManualCreateDialogOpen(true)
+                        }}
+                        onOpenResourceGenerate={() => {
                           setIsCreateDialogOpen(true)
                         }}
-                      >
-                        {t('stories.actions.createDraft')}
-                      </Button>
+                      />
                     </div>
                   </div>
                 ) : (

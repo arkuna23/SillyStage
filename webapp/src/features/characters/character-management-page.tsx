@@ -47,7 +47,11 @@ import { useToastNotice } from "../../components/ui/toast-context";
 import { cn } from "../../lib/cn";
 import { revokeObjectUrl } from "../../lib/binary-resource";
 import { isRpcConflict } from "../../lib/rpc";
-import { demoCharacterDefinitions, loadDemoCoverFile } from "../demo-content/konosuba-sample-data";
+import {
+	buildDemoCharacterDefinitions,
+	loadDemoCoverFile,
+	type DemoCharacterDefinition,
+} from "../demo-content/konosuba-sample-data";
 import { createSchema, listSchemas } from "../schemas/api";
 import { buildSchemaPresetDefinitions } from "../schemas/schema-presets";
 import {
@@ -255,7 +259,7 @@ function truncateSummaryText(text: string, maxLength: number) {
 }
 
 function demoCharacterNeedsCoverSync(
-	definition: (typeof demoCharacterDefinitions)[number],
+	definition: DemoCharacterDefinition,
 	summary?: CharacterSummary,
 ) {
 	return Boolean(
@@ -782,8 +786,9 @@ function CharacterResults({
 }
 
 export function CharacterManagementPage() {
-	const { t } = useTranslation();
+	const { i18n, t } = useTranslation();
 	const { setRailContent } = useWorkspaceLayoutContext();
+	const sampleLanguage = i18n.resolvedLanguage ?? i18n.language ?? "en";
 	const importInputRef = useRef<HTMLInputElement | null>(null);
 	const folderInputRef = useRef<HTMLInputElement | null>(null);
 	const coverCacheRef = useRef<Map<string, string>>(new Map());
@@ -828,6 +833,18 @@ export function CharacterManagementPage() {
 	const [isDeletingFolder, setIsDeletingFolder] = useState(false);
 	const [isExplorerOpen, setIsExplorerOpen] = useState(false);
 	const prefersReducedMotion = useReducedMotion();
+	const demoCharacterDefinitions = useMemo(
+		() => buildDemoCharacterDefinitions(sampleLanguage),
+		[sampleLanguage],
+	);
+	const sampleNameFormatter = useMemo(
+		() =>
+			new Intl.ListFormat(sampleLanguage, {
+				style: "long",
+				type: "conjunction",
+			}),
+		[sampleLanguage],
+	);
 
 	const selectedCharacter =
 		selectedCharacterId !== null
@@ -1531,15 +1548,15 @@ export function CharacterManagementPage() {
 			if (failedNames.length === 0 && processedNames.length > 0 && skippedNames.length === 0) {
 				setNotice({
 					message: t("characters.feedback.samplesCreated", {
-						names: processedNames.join("、"),
+						names: sampleNameFormatter.format(processedNames),
 					}),
 					tone: "success",
 				});
 			} else if (processedNames.length > 0 && (skippedNames.length > 0 || failedNames.length > 0)) {
 				setNotice({
 					message: t("characters.feedback.samplesCreatedPartial", {
-						created: processedNames.join("、"),
-						skipped: [...skippedNames, ...failedNames].join("、"),
+						created: sampleNameFormatter.format(processedNames),
+						skipped: sampleNameFormatter.format([...skippedNames, ...failedNames]),
 					}),
 					tone: "warning",
 				});

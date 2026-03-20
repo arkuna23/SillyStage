@@ -13,6 +13,7 @@ type StoryGraphToolbarProps = {
   onZoomIn: () => void
   onZoomOut: () => void
   readOnly?: boolean
+  showFullscreenToggle?: boolean
 }
 
 export function StoryGraphToolbar({
@@ -25,6 +26,7 @@ export function StoryGraphToolbar({
   onZoomIn,
   onZoomOut,
   readOnly = false,
+  showFullscreenToggle = true,
 }: StoryGraphToolbarProps) {
   const { t } = useTranslation()
 
@@ -54,9 +56,11 @@ export function StoryGraphToolbar({
         <Button onClick={onResetView} size="sm" variant="ghost">
           {t('stories.graph.reset')}
         </Button>
-        <Button onClick={onToggleFullscreen} size="sm" variant="ghost">
-          {isFullscreen ? t('stories.graph.exitFullscreen') : t('stories.graph.fullscreen')}
-        </Button>
+        {showFullscreenToggle ? (
+          <Button onClick={onToggleFullscreen} size="sm" variant="ghost">
+            {isFullscreen ? t('stories.graph.exitFullscreen') : t('stories.graph.fullscreen')}
+          </Button>
+        ) : null}
         {!readOnly ? (
           <Button onClick={onAddNode} size="sm" variant="secondary">
             {t('stories.graph.addNode')}

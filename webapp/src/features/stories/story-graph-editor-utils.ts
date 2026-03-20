@@ -321,6 +321,13 @@ export function createEmptyNode(id: string): StoryGraphNode {
   }
 }
 
+export function createDefaultStoryGraph(nodeId = 'node-1'): StoryGraph {
+  return {
+    nodes: [createEmptyNode(nodeId)],
+    start_node: nodeId,
+  }
+}
+
 export function createUniqueNodeId(graph: StoryGraph) {
   const existingIds = new Set(graph.nodes.map((node) => node.id))
   let index = graph.nodes.length + 1
@@ -440,6 +447,47 @@ export function normalizeGraphForSave(
     errors,
     graph: errors.length === 0 ? normalizedGraph : null,
   }
+}
+
+export function getStoryGraphValidationMessage(
+  translate: (key: string, options?: Record<string, unknown>) => string,
+  errorKey: string,
+) {
+  if (errorKey.startsWith('duplicate:') || errorKey === 'empty_node_id') {
+    return translate('stories.graph.errors.duplicateNodeId')
+  }
+  if (errorKey.startsWith('missing_target:')) {
+    return translate('stories.graph.errors.missingTarget')
+  }
+  if (errorKey.startsWith('missing_condition_key:')) {
+    return translate('stories.graph.errors.missingConditionKey')
+  }
+  if (errorKey.startsWith('missing_condition_character:')) {
+    return translate('stories.graph.errors.missingConditionCharacter')
+  }
+  if (errorKey.startsWith('invalid_condition_value:')) {
+    return translate('stories.graph.errors.invalidConditionValue')
+  }
+  if (errorKey.startsWith('missing_on_enter_update_key:')) {
+    return translate('stories.graph.errors.missingOnEnterUpdateKey')
+  }
+  if (errorKey.startsWith('missing_on_enter_update_character:')) {
+    return translate('stories.graph.errors.missingOnEnterUpdateCharacter')
+  }
+  if (errorKey.startsWith('invalid_on_enter_update_value:')) {
+    return translate('stories.graph.errors.invalidOnEnterUpdateValue')
+  }
+  if (errorKey.startsWith('unsupported_on_enter_update:')) {
+    return translate('stories.graph.errors.unsupportedOnEnterUpdate')
+  }
+  if (errorKey === 'missing_start_node') {
+    return translate('stories.graph.errors.missingStartNode')
+  }
+  if (errorKey === 'empty_graph') {
+    return translate('stories.graph.errors.emptyGraph')
+  }
+
+  return translate('stories.graph.errors.invalidGraph')
 }
 
 export function getConditionTargetValue(

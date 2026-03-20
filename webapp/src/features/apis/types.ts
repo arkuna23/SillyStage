@@ -18,18 +18,47 @@ export const promptModuleIds = [
   'output',
 ] as const
 
+export const promptMessageRoles = ['system', 'user'] as const
+export const promptPreviewKinds = ['template', 'runtime'] as const
+export const promptPreviewMessageRoles = ['system', 'user', 'full'] as const
+export const architectPromptModes = ['graph', 'draft_init', 'draft_continue'] as const
+export const promptPreviewActorPurposes = [
+  'advance_goal',
+  'react_to_player',
+  'comment_on_scene',
+] as const
+export const promptPreviewNarratorPurposes = [
+  'describe_transition',
+  'describe_scene',
+  'describe_result',
+] as const
+export const promptPreviewKeeperPhases = [
+  'after_player_input',
+  'after_turn_outputs',
+] as const
+
 export const presetEntryKinds = [
   'built_in_text',
   'built_in_context_ref',
   'custom_text',
 ] as const
+export const promptPreviewEntrySources = ['preset', 'synthetic'] as const
 
 export type LlmProvider = (typeof llmProviders)[number]
 export type AgentRoleKey = (typeof agentRoleKeys)[number]
 export type AgentRoleRecord<T> = Record<AgentRoleKey, T>
 export type AgentBindingKey = `${AgentRoleKey}_api_id`
-export type PromptModuleId = (typeof promptModuleIds)[number]
+export type BuiltInPromptModuleId = (typeof promptModuleIds)[number]
+export type PromptModuleId = string
+export type PromptMessageRole = (typeof promptMessageRoles)[number]
+export type PromptPreviewKind = (typeof promptPreviewKinds)[number]
+export type PromptPreviewMessageRole = (typeof promptPreviewMessageRoles)[number]
+export type ArchitectPromptMode = (typeof architectPromptModes)[number]
+export type PromptPreviewActorPurpose = (typeof promptPreviewActorPurposes)[number]
+export type PromptPreviewNarratorPurpose = (typeof promptPreviewNarratorPurposes)[number]
+export type PromptPreviewKeeperPhase = (typeof promptPreviewKeeperPhases)[number]
 export type PresetEntryKind = (typeof presetEntryKinds)[number]
+export type PromptPreviewEntrySource = (typeof promptPreviewEntrySources)[number]
 
 export type ApiConfigInput = {
   api_key: string
@@ -102,14 +131,20 @@ export type PresetModuleEntry = PresetModuleEntryBase & {
 export type PresetModuleEntrySummary = PresetModuleEntryBase
 
 export type PresetPromptModule = {
+  display_name: string
   entries: PresetModuleEntry[]
+  message_role: PromptMessageRole
   module_id: PromptModuleId
+  order: number
 }
 
 export type PresetPromptModuleSummary = {
+  display_name: string
   entries: PresetModuleEntrySummary[]
   entry_count: number
+  message_role: PromptMessageRole
   module_id: PromptModuleId
+  order: number
 }
 
 export type AgentPresetConfig = {
@@ -167,6 +202,61 @@ export type PresetEntryDeletedResult = {
   module_id: PromptModuleId
   preset_id: string
   type: 'preset_entry_deleted'
+}
+
+export type PresetPreviewTemplateParams = {
+  agent: AgentRoleKey
+  architect_mode?: ArchitectPromptMode
+  module_id?: PromptModuleId
+  preset_id: string
+}
+
+export type PresetPreviewRuntimeParams = {
+  actor_purpose?: PromptPreviewActorPurpose
+  agent: AgentRoleKey
+  architect_mode?: ArchitectPromptMode
+  character_id?: string
+  draft_id?: string
+  keeper_phase?: PromptPreviewKeeperPhase
+  module_id?: PromptModuleId
+  narrator_purpose?: PromptPreviewNarratorPurpose
+  player_input?: string
+  preset_id: string
+  previous_node_id?: string
+  reply_limit?: number
+  resource_id?: string
+}
+
+export type PresetPromptPreviewEntry = {
+  compiled_text: string
+  display_name: string
+  entry_id: string
+  kind: PresetEntryKind
+  order: number
+  source: PromptPreviewEntrySource
+}
+
+export type PresetPromptPreviewModule = {
+  display_name: string
+  entries: PresetPromptPreviewEntry[]
+  module_id: PromptModuleId
+  order: number
+}
+
+export type PresetPromptPreviewMessage = {
+  modules: PresetPromptPreviewModule[]
+  role: PromptMessageRole
+}
+
+export type PresetPromptPreview = {
+  agent: AgentRoleKey
+  architect_mode?: ArchitectPromptMode | null
+  message_role: PromptPreviewMessageRole
+  module_id?: PromptModuleId | null
+  messages: PresetPromptPreviewMessage[]
+  preset_id: string
+  preview_kind: PromptPreviewKind
+  unresolved_context_keys: string[]
 }
 
 export type GlobalConfigResult = {

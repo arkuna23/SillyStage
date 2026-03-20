@@ -42,6 +42,21 @@ export async function generateStory(
   return rpcRequest<typeof params, StoryGeneratedResult>('story.generate', params, { signal })
 }
 
+export async function createStory(
+  params: {
+    common_variables?: CommonVariableDefinition[]
+    display_name?: string
+    graph: StoryDetail['graph']
+    introduction: string
+    player_schema_id: string
+    resource_id: string
+    world_schema_id: string
+  },
+  signal?: AbortSignal,
+) {
+  return rpcRequest<typeof params, StoryGeneratedResult>('story.create', params, { signal })
+}
+
 export async function listStoryDrafts(signal?: AbortSignal) {
   const result = await rpcRequest<Record<string, never>, StoryDraftsListedResult>(
     'story_draft.list',

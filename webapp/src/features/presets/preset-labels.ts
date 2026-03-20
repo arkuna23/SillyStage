@@ -2,11 +2,56 @@ import {
   agentRoleKeys,
   promptModuleIds,
   type AgentRoleKey,
+  type BuiltInPromptModuleId,
   type PresetEntryKind,
+  type PromptMessageRole,
   type PromptModuleId,
 } from '../apis/types'
 
 type TranslateLike = (key: string, options?: Record<string, unknown>) => string
+
+type BuiltInPromptModuleDefinition = {
+  defaultDisplayName: string
+  messageRole: PromptMessageRole
+  order: number
+  translationKey: string
+}
+
+const builtInPromptModuleDefinitions: Record<
+  BuiltInPromptModuleId,
+  BuiltInPromptModuleDefinition
+> = {
+  dynamic_context: {
+    defaultDisplayName: 'Dynamic Context',
+    messageRole: 'user',
+    order: 40,
+    translationKey: 'presetsPage.modules.dynamicContext',
+  },
+  output: {
+    defaultDisplayName: 'Output',
+    messageRole: 'system',
+    order: 50,
+    translationKey: 'presetsPage.modules.output',
+  },
+  role: {
+    defaultDisplayName: 'Role',
+    messageRole: 'system',
+    order: 10,
+    translationKey: 'presetsPage.modules.role',
+  },
+  static_context: {
+    defaultDisplayName: 'Static Context',
+    messageRole: 'user',
+    order: 30,
+    translationKey: 'presetsPage.modules.staticContext',
+  },
+  task: {
+    defaultDisplayName: 'Task',
+    messageRole: 'system',
+    order: 20,
+    translationKey: 'presetsPage.modules.task',
+  },
+}
 
 export function createPresetRoleLabels(t: TranslateLike): Record<AgentRoleKey, string> {
   return {
@@ -20,18 +65,49 @@ export function createPresetRoleLabels(t: TranslateLike): Record<AgentRoleKey, s
   }
 }
 
-export function getPromptModuleLabel(t: TranslateLike, moduleId: PromptModuleId) {
-  switch (moduleId) {
-    case 'role':
-      return t('presetsPage.modules.role')
-    case 'task':
-      return t('presetsPage.modules.task')
-    case 'static_context':
-      return t('presetsPage.modules.staticContext')
-    case 'dynamic_context':
-      return t('presetsPage.modules.dynamicContext')
-    case 'output':
-      return t('presetsPage.modules.output')
+export function isBuiltInPromptModuleId(moduleId: PromptModuleId): moduleId is BuiltInPromptModuleId {
+  return promptModuleIds.includes(moduleId as BuiltInPromptModuleId)
+}
+
+export function getBuiltInPromptModuleDefinition(moduleId: BuiltInPromptModuleId) {
+  return builtInPromptModuleDefinitions[moduleId]
+}
+
+export function getPromptModuleDefaultDisplayName(
+  t: TranslateLike,
+  moduleId: PromptModuleId,
+  displayName?: string | null,
+) {
+  const normalizedDisplayName = displayName?.trim()
+
+  if (isBuiltInPromptModuleId(moduleId)) {
+    const definition = getBuiltInPromptModuleDefinition(moduleId)
+
+    if (
+      !normalizedDisplayName ||
+      normalizedDisplayName === definition.defaultDisplayName
+    ) {
+      return t(definition.translationKey)
+    }
+  }
+
+  return normalizedDisplayName || moduleId
+}
+
+export function getPromptModuleLabel(
+  t: TranslateLike,
+  moduleId: PromptModuleId,
+  displayName?: string | null,
+) {
+  return getPromptModuleDefaultDisplayName(t, moduleId, displayName)
+}
+
+export function getPromptMessageRoleLabel(t: TranslateLike, role: PromptMessageRole) {
+  switch (role) {
+    case 'system':
+      return t('presetsPage.messageRoles.system')
+    case 'user':
+      return t('presetsPage.messageRoles.user')
   }
 }
 
