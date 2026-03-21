@@ -6,9 +6,9 @@ This document describes the current flow from resource preparation to interactiv
 
 Start by creating reusable configuration resources:
 
-- `api`
-- `api_group`
-- `preset`
+- `api`: a connection definition that includes `provider`, `base_url`, `api_key`, and `model`
+- `api_group`: `api_id` bindings for each agent
+- `preset`: generation parameters and prompt modules for each agent
 
 Common methods:
 
@@ -25,6 +25,12 @@ Then create reusable `schema` resources for:
 - character-private state
 - player state
 - world state seeds
+
+Manage schemas with:
+
+- `schema.create`
+- `schema.list`
+- `schema.get`
 
 Each schema contains:
 
@@ -43,7 +49,7 @@ Fields:
 - `display_name`
 - `description`
 
-One session activates at most one profile at a time.
+One session activates at most one profile at a time, but the system can store multiple profiles for later switching.
 
 ## 4. Import or Create Characters
 
@@ -75,12 +81,16 @@ Character content currently stores:
 
 Once characters and schemas exist, create `story_resources` with:
 
+- `story_resources.create`
+- `display_name`
 - `story_concept`
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
 - `lorebook_ids`
 - `planned_story`
+
+If `display_name` is omitted or blank, the backend falls back to `story_concept`.
 
 ## 6. Optional: Run Planner First
 
@@ -108,10 +118,20 @@ The draft flow:
 
 1. reads `story_resources`
 2. generates `planned_story` if needed
-3. has `Architect` generate the first partial graph section plus schemas and introduction
-4. stores the partial graph and optional `common_variables` in `story_draft`
+3. has `Architect` generate the first partial graph section, initial schemas, and the introduction
+4. stores the partial graph and `common_variables` in `story_draft`
 5. appends one outline section per `story_draft.continue`
 6. validates and creates the final `story` in `story_draft.finalize`
+
+The final `story` stores:
+
+- `story_id`
+- `resource_id`
+- `graph`
+- `world_schema_id`
+- `player_schema_id`
+- `introduction`
+- `common_variables`
 
 ## 8. Start a Session
 
@@ -133,4 +153,4 @@ The main runtime method is:
 
 - `session.run_turn`
 
-It is initiated through `POST /rpc`, but the HTTP response is streamed as `text/event-stream`.
+It is initiated through `POST /rpc`, but the HTTP response is streamed as `text/event-stream`. Clients receive an `ack` first, followed by a sequence of `message` frames.

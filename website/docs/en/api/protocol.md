@@ -76,7 +76,7 @@ The runtime binding model uses `api_group_id + preset_id`.
 ### 2.3 Creative Resources
 
 - `character`: character card content plus cover metadata
-- `story_resources`: editable pre-generation input bundle
+- `story_resources`: editable pre-generation input bundle with `display_name`, concept, cast, and schema seeds
 - `story`: final graph plus schema bindings
 - `session`: story runtime snapshot and transcript
 

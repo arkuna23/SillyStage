@@ -1,17 +1,12 @@
 [
   {
-    "text": "首页",
-    "link": "/"
-  },
-  {
     "text": "中文",
     "link": "/zh/",
     "activeMatch": "/zh/"
   },
   {
     "text": "English",
-    "link": "/en/",
-    "activeMatch": "/en/"
+    "link": "/"
   },
   {
     "text": "GitHub",

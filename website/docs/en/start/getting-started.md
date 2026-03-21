@@ -1,74 +1,101 @@
 # Getting Started
 
-SillyStage currently ships with a Rust backend, an application frontend workspace in `webapp/`, and this documentation site in `website/`.
+SillyStage is a multi-agent system for AI interactive storytelling. You can think of it as a runnable narrative engine: you provide characters, setting, story resources, and model configuration, and the system coordinates planning, directing, acting, narration, and state updates across each session turn.
 
-## Prerequisites
+This guide walks through one end-to-end example: start the service, finish the base configuration, create a story, enter a session, and run the first interaction.
 
-- Rust toolchain, stable, 2024 edition
-- Cargo
-- `just`, optional but recommended
-- `pnpm` for `webapp/` and `website/`
+## 1. Install and Boot
 
-## Start the Backend
+- Install and start SillyStage. See the [Installation Guide](./installation-guide).
+- Default listen address: `http://127.0.0.1:8080`
+- If automatic browser opening is enabled, a browser window opens after startup
+- Otherwise, open the local address manually
 
-```bash
-just backend
-# or
-SS_APP_DEV_MODE=1 cargo run -p ss-app
-```
+## 2. Configure the API
 
-The server listens on `127.0.0.1:8080` by default.
+Prepare a usable LLM API first. Only OpenAI-compatible APIs are currently supported.
 
-## Run Full Development Mode
+1. Open the API management page and create an API entry with your credentials and model configuration.
+2. Create an API group and assign that API to the agents you want to run.
 
-```bash
-just dev
-```
+## 3. Prepare Basic Story Resources
 
-## Develop This Docs Site
+1. Configure presets
 
-From `website/`:
+   Presets define agent parameters such as temperature and prompt modules.
 
-```bash
-pnpm dev
-pnpm lint
-pnpm format
-pnpm build
-```
+   Open the Presets page and use the sample action to create a base preset.
 
-## Default HTTP Entrypoints
+2. Optional: Configure schemas
 
-- `POST /rpc`
-- `GET /healthz`
+   Schemas declare which variables a story uses, what they mean, and what types they have. They help drive story transitions and provide references for agent responses.
 
-## Configuration Loading
+   Open the Schemas page and use the sample action to create a starter schema.
 
-The app looks for `ss-app.toml` in the working directory.
+3. Optional: Configure lorebooks
 
-```toml
-[server]
-listen = "127.0.0.1:8080"
-open_browser = true
+   Lorebooks add background details such as scenes, history, and setting information. They help keep character behavior and dialogue more coherent.
 
-[store]
-backend = "fs"
-root = "./data"
+   Open the Lorebooks page and use the sample action to generate a starter lorebook.
 
-[frontend]
-enabled = true
-mount_path = "/"
-static_dir = "webapp"
-```
+4. Optional: Configure player profiles
 
-Override order:
+   Player profiles add more detail for the player character.
 
-- CLI flags
-- environment variables
-- config file
-- built-in defaults
+   You can create a sample player profile in the same way.
 
-Common environment variables:
+5. Add character cards
 
-- `SS_APP_LISTEN`
-- `SS_APP_STORE_BACKEND`
-- `SS_APP_STORE_ROOT`
+   Character cards are one of the main building blocks of a story. They describe a character's personality, background, and characteristic lines.
+
+   The sample setup provides three character cards. Add or replace them as needed.
+
+## 4. Create Story Resources
+
+Story resources are the main input for story generation. One story resource can be used to generate multiple stories.
+
+Open the Story Resources page and click the create button in the top-right corner to enter the creation wizard.
+
+1. Enter the raw story input
+
+   The raw story input gives the Planner agent source material it can organize into a script that is easier for the Architect agent to turn into a story graph.
+
+   If you do not want Planner assistance, you can enter the full script directly here.
+
+2. Choose character cards
+
+   Select the characters that should participate in the story.
+
+3. Optional: Set initial schemas and lorebooks
+
+   Initial schemas and lorebooks are optional, but they can improve world detail and runtime behavior.
+
+   An initial schema gives the Architect agent a variable reference so the generated schema structure better matches your needs.
+
+4. Organize the story
+
+   If you want the Planner agent to refine the raw input, choose Create and send to Planner. Otherwise choose Save raw input only.
+
+   In most cases, sending it to Planner gives better results.
+
+## 5. Create the Story
+
+Open the Stories page and click the create button in the top-right corner to start story creation.
+
+Stories can be created manually or generated from resources. This guide only covers generation from story resources.
+
+1. Choose the API group, preset, and story name
+
+2. Optional: Set pinned common variables
+
+   These variables stay visible in the right-side panel of the stage page for quick reference.
+
+3. Start story generation
+
+   Story generation can take a while, and failures may happen depending on the LLM you use.
+
+   If generation stops with an error, open the draft page and continue the interrupted flow from there.
+
+## 6. Enter a Session
+
+Switch to the stage page and click the new-session button in the left sidebar. Select the configuration you want, then start the dialogue flow.

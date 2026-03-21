@@ -76,7 +76,7 @@
 ### 2.3 创作资源
 
 - `character`：角色卡内容与封面元数据
-- `story_resources`：生成 story 前的输入资源集合
+- `story_resources`：生成 story 前的输入资源集合，包含 `display_name`、概念、角色列表与 schema seed
 - `story`：最终故事图与 schema 绑定
 - `session`：story 运行时快照与 transcript
 

@@ -81,12 +81,15 @@ POST /upload/character:{character_id}/archive
 
 主要字段：
 
+- `display_name`
 - `story_concept`
 - `character_ids`
 - `player_schema_id_seed`
 - `world_schema_id_seed`
 - `lorebook_ids`
 - `planned_story`
+
+如果 `display_name` 省略或为空，后端会回退到 `story_concept`。
 
 ## 6. 可选：先做 Planner
 
