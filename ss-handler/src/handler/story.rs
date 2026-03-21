@@ -48,6 +48,9 @@ impl Handler {
 
         let record = StoryResourcesRecord {
             resource_id: self.id_generator.next("resource"),
+            display_name: StoryResourcesRecord::normalize_display_name(
+                params.display_name.as_deref(),
+            ),
             story_concept: params.story_concept,
             character_ids: params.character_ids,
             player_schema_id_seed: params.player_schema_id_seed,
@@ -115,6 +118,9 @@ impl Handler {
             .await?
             .ok_or_else(|| HandlerError::MissingStoryResources(params.resource_id.clone()))?;
 
+        if let Some(display_name) = params.display_name {
+            record.display_name = StoryResourcesRecord::normalize_display_name(Some(&display_name));
+        }
         if let Some(story_concept) = params.story_concept {
             record.story_concept = story_concept;
         }
@@ -226,7 +232,7 @@ impl Handler {
 
         let display_name = params
             .display_name
-            .unwrap_or_else(|| resource.story_concept.clone());
+            .unwrap_or_else(|| resource.effective_display_name());
         let common_variables = params.common_variables.unwrap_or_default();
         let now = now_timestamp_ms();
         let story = StoryRecord {
@@ -680,6 +686,7 @@ fn character_summary_payload_from_record(
 fn story_resources_payload_from_record(record: &StoryResourcesRecord) -> StoryResourcesPayload {
     StoryResourcesPayload {
         resource_id: record.resource_id.clone(),
+        display_name: record.effective_display_name(),
         story_concept: record.story_concept.clone(),
         character_ids: record.character_ids.clone(),
         player_schema_id_seed: record.player_schema_id_seed.clone(),

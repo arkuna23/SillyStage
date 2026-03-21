@@ -34,6 +34,10 @@ pub(super) fn effective_planned_story_text(resource: &StoryResourcesRecord) -> S
         .unwrap_or_else(|| resource.story_concept.clone())
 }
 
+pub(super) fn effective_story_resources_display_name(resource: &StoryResourcesRecord) -> String {
+    resource.effective_display_name()
+}
+
 pub(super) fn extract_outline_sections(planned_story: &str) -> Vec<String> {
     let mut sections = Vec::new();
     let mut in_suggested_beats = false;
@@ -178,7 +182,7 @@ pub(super) fn merge_story_chunk(
     for node in nodes {
         if graph.has_node(&node.id) {
             return Err(ManagerError::InvalidDraft(format!(
-                "architect draft returned duplicate node id '{}'",
+                "architect draft reused existing partial graph node id '{}' as a new node; existing nodes must only be referenced in transition targets or transition_patches",
                 node.id
             )));
         }

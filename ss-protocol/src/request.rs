@@ -808,6 +808,8 @@ pub struct CharacterDeleteParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateStoryResourcesParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub story_concept: String,
     pub character_ids: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -834,6 +836,8 @@ pub struct ListStoryResourcesParams {}
 #[serde(deny_unknown_fields)]
 pub struct UpdateStoryResourcesParams {
     pub resource_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub story_concept: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

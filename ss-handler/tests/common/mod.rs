@@ -211,6 +211,7 @@ pub fn sample_blob_record() -> BlobRecord {
 pub fn sample_resources_payload(resource_id: impl Into<String>) -> StoryResourcesPayload {
     StoryResourcesPayload {
         resource_id: resource_id.into(),
+        display_name: "Flooded Harbor Seed".to_owned(),
         story_concept: "A flooded harbor story.".to_owned(),
         character_ids: vec!["merchant".to_owned()],
         player_schema_id_seed: Some("schema-player-default".to_owned()),

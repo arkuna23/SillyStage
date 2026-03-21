@@ -565,6 +565,7 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             "resources-create",
             None::<String>,
             RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                display_name: Some("Flooded Harbor Seed".to_owned()),
                 story_concept: "A flooded harbor story.".to_owned(),
                 character_ids: vec!["merchant".to_owned(), "guard".to_owned()],
                 player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -590,6 +591,7 @@ fn resource_story_schema_profile_and_dashboard_requests_round_trip() {
             None::<String>,
             RequestParams::StoryResourcesUpdate(UpdateStoryResourcesParams {
                 resource_id: "resource-1".to_owned(),
+                display_name: Some("Updated Harbor Seed".to_owned()),
                 story_concept: Some("Updated story".to_owned()),
                 character_ids: None,
                 player_schema_id_seed: None,

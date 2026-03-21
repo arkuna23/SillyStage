@@ -5,7 +5,7 @@ use agents::architect::{Architect, ArchitectDraftContinueRequest, ArchitectDraft
 use state::StateFieldSchema;
 use store::{SchemaRecord, StoryDraftRecord, StoryDraftStatus, StoryRecord};
 use story::{CommonVariableDefinition, NarrativeNode, StoryGraph, validate_common_variables};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 use crate::logging::{
     json_for_log, summarize_architect_draft_chunk, summarize_architect_draft_init,
@@ -14,8 +14,8 @@ use crate::lorebook::{LorebookPromptSections, build_lorebook_prompt_sections};
 
 use super::util::{
     apply_transition_patches, build_graph_summary, effective_planned_story_text,
-    extract_outline_sections, merge_story_chunk, now_timestamp_ms, validate_schema_fields,
-    validate_story_graph,
+    effective_story_resources_display_name, extract_outline_sections, merge_story_chunk,
+    now_timestamp_ms, validate_schema_fields, validate_story_graph,
 };
 use super::{
     DEFAULT_ARCHITECT_CHUNK_NODE_COUNT, DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS,
@@ -92,6 +92,7 @@ impl EngineManager {
             .ok_or_else(|| ManagerError::MissingStoryResources(resource_id.to_owned()))?;
 
         let planned_story = effective_planned_story_text(&resource);
+        let resource_display_name = effective_story_resources_display_name(&resource);
         let outline_sections = extract_outline_sections(&planned_story);
         if outline_sections.is_empty() {
             return Err(ManagerError::InvalidDraft(
@@ -185,7 +186,7 @@ impl EngineManager {
                     "{} player schema",
                     display_name
                         .as_deref()
-                        .unwrap_or(resource.story_concept.as_str())
+                        .unwrap_or(resource_display_name.as_str())
                 ),
                 vec!["player".to_owned(), "generated".to_owned(), story_id_tag],
                 init.player_state_schema.fields.clone(),
@@ -198,7 +199,7 @@ impl EngineManager {
 
         let draft = StoryDraftRecord {
             draft_id,
-            display_name: display_name.unwrap_or_else(|| resource.story_concept.clone()),
+            display_name: display_name.unwrap_or(resource_display_name),
             resource_id: resource.resource_id,
             api_group_id: binding.api_group_id,
             preset_id: binding.preset_id,
@@ -318,11 +319,26 @@ impl EngineManager {
             "architect draft continuation payload"
         );
 
-        merge_story_chunk(
+        if let Err(error) = merge_story_chunk(
             &mut draft.partial_graph,
             &chunk.nodes,
             &chunk.transition_patches,
-        )?;
+        ) {
+            error!(
+                draft_id = %draft.draft_id,
+                resource_id = %draft.resource_id,
+                section_index = draft.next_section_index,
+                returned_node_ids = %chunk
+                    .nodes
+                    .iter()
+                    .map(|node| node.id.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                error = %error,
+                "failed to merge architect draft chunk"
+            );
+            return Err(error);
+        }
         draft.section_summaries.push(chunk.section_summary);
         draft
             .section_node_ids

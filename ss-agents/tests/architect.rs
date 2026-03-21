@@ -709,3 +709,118 @@ async fn architect_draft_continue_repairs_missing_future_transition_targets() {
         )
     );
 }
+
+#[tokio::test]
+async fn architect_draft_continue_repairs_reused_existing_graph_node_ids() {
+    let llm = Arc::new(MockLlm::with_chat_responses(vec![
+        Ok(assistant_response(
+            "{\"nodes\":[{\"id\":\"start\",\"title\":\"Dock Choice\",\"scene\":\"The courier reaches a choice at the dock.\",\"goal\":\"Choose a path.\",\"characters\":[\"merchant\"],\"transitions\":[{\"to\":\"start\"}],\"on_enter_updates\":[]}],\"transition_patches\":[],\"section_summary\":\"The courier faces a branching choice.\"}",
+            Some(json!({
+                "nodes": [{
+                    "id": "start",
+                    "title": "Dock Choice",
+                    "scene": "The courier reaches a choice at the dock.",
+                    "goal": "Choose a path.",
+                    "characters": ["merchant"],
+                    "transitions": [{
+                        "to": "start"
+                    }],
+                    "on_enter_updates": []
+                }],
+                "transition_patches": [],
+                "section_summary": "The courier faces a branching choice."
+            })),
+        )),
+        Ok(assistant_response(
+            "{\"nodes\":[{\"id\":\"s1_n1_dock_choice\",\"title\":\"Dock Choice\",\"scene\":\"The courier reaches a choice at the dock.\",\"goal\":\"Choose a path.\",\"characters\":[\"merchant\"],\"transitions\":[{\"to\":\"start\"}],\"on_enter_updates\":[]}],\"transition_patches\":[],\"section_summary\":\"The courier faces a branching choice.\"}",
+            Some(json!({
+                "nodes": [{
+                    "id": "s1_n1_dock_choice",
+                    "title": "Dock Choice",
+                    "scene": "The courier reaches a choice at the dock.",
+                    "goal": "Choose a path.",
+                    "characters": ["merchant"],
+                    "transitions": [{
+                        "to": "start"
+                    }],
+                    "on_enter_updates": []
+                }],
+                "transition_patches": [],
+                "section_summary": "The courier faces a branching choice."
+            })),
+        )),
+    ]));
+    let architect = Architect::new(llm.clone(), "test-model")
+        .with_prompt_profiles(sample_architect_prompt_profiles());
+    let available_characters = vec![CharacterCard {
+        id: "merchant".to_owned(),
+        name: "Old Merchant".to_owned(),
+        personality: "greedy but friendly trader".to_owned(),
+        style: "talkative".to_owned(),
+        state_schema: sample_state_schema(),
+        system_prompt: "Stay in character.".to_owned(),
+    }];
+    let mut world_schema = WorldStateSchema::new();
+    world_schema.insert_field(
+        "flood_gate_open",
+        StateFieldSchema::new(StateValueType::Bool).with_default(json!(false)),
+    );
+    let player_state_schema = sample_player_state_schema();
+
+    let chunk = architect
+        .continue_draft(ArchitectDraftContinueRequest {
+            story_concept: "A courier must escape a flooded market district.",
+            current_section: "The courier reaches a fork between the flooded dock and the watchtower.",
+            section_index: 1,
+            total_sections: 3,
+            section_summaries: &[
+                "The courier entered the district and found the dock half-submerged.".to_owned(),
+            ],
+            graph_summary: &[GraphSummaryNode {
+                id: "start".to_owned(),
+                title: "Flooded Gate".to_owned(),
+                scene_summary: "The courier arrives at the gate.".to_owned(),
+                goal: "Open the story.".to_owned(),
+                characters: vec!["merchant".to_owned()],
+                transition_targets: vec!["node-12".to_owned()],
+            }],
+            recent_nodes: &[NarrativeNode {
+                id: "start".to_owned(),
+                title: "Flooded Gate".to_owned(),
+                scene: "The courier arrives at the flooded gate while the merchant waits nearby.".to_owned(),
+                goal: "Open the story.".to_owned(),
+                characters: vec!["merchant".to_owned()],
+                transitions: vec![],
+                on_enter_updates: vec![],
+            }],
+            target_node_count: 3,
+            world_state_schema: &world_schema,
+            player_state_schema: &player_state_schema,
+            available_characters: &available_characters,
+            lorebook_base: None,
+            lorebook_matched: None,
+        })
+        .await
+        .expect("draft continue should be repaired");
+
+    assert_eq!(chunk.nodes[0].id, "s1_n1_dock_choice");
+
+    let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 2, "initial request plus repair request");
+    let repair_request = requests.last().expect("repair request should exist");
+    let repair_user_message = repair_request
+        .messages
+        .iter()
+        .find(|message| matches!(message.role, llm::Role::User))
+        .expect("repair user message should exist");
+    assert!(
+        repair_user_message
+            .content
+            .contains("reused existing graph node id 'start' as a new node")
+    );
+    assert!(
+        repair_user_message
+            .content
+            .contains("existing graph nodes [start] may only be referenced")
+    );
+}

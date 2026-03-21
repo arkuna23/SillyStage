@@ -345,6 +345,7 @@ async fn seed_story_records(store: &InMemoryStore) {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -497,6 +498,7 @@ async fn import_character_card_and_create_resources_via_character_id() {
                 "req-4",
                 None::<String>,
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    display_name: Some("Flooded Harbor Seed".to_owned()),
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec![character_id.clone()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -512,6 +514,7 @@ async fn import_character_card_and_create_resources_via_character_id() {
 
     let resource_id = match created {
         ResponseResult::StoryResourcesCreated(payload) => {
+            assert_eq!(payload.display_name, "Flooded Harbor Seed");
             assert_eq!(payload.character_ids, vec![character_id]);
             assert_eq!(payload.story_concept, "A flooded harbor story.");
             payload.resource_id.clone()
@@ -646,6 +649,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
                 "req-blank-create",
                 None::<String>,
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    display_name: Some("   ".to_owned()),
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec!["merchant".to_owned()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -659,6 +663,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
 
     let resource_id = match created {
         ResponseResult::StoryResourcesCreated(payload) => {
+            assert_eq!(payload.display_name, "A flooded harbor story.");
             assert_eq!(payload.planned_story, None);
             payload.resource_id
         }
@@ -679,6 +684,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
                 None::<String>,
                 RequestParams::StoryResourcesUpdate(UpdateStoryResourcesParams {
                     resource_id,
+                    display_name: Some(" \n ".to_owned()),
                     story_concept: None,
                     character_ids: None,
                     player_schema_id_seed: None,
@@ -692,6 +698,7 @@ async fn story_resources_blank_planned_story_is_normalized_to_none() {
 
     match updated {
         ResponseResult::StoryResourcesUpdated(payload) => {
+            assert_eq!(payload.display_name, "A flooded harbor story.");
             assert_eq!(payload.planned_story, None);
         }
         other => panic!("unexpected response: {other:?}"),
@@ -1186,6 +1193,7 @@ async fn story_and_session_crud_follow_store_objects() {
                 "req-1",
                 None::<String>,
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    display_name: Some("Flooded Harbor Seed".to_owned()),
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec!["merchant".to_owned()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -1200,7 +1208,10 @@ async fn story_and_session_crud_follow_store_objects() {
             .await,
     );
     let resource_id = match created {
-        ResponseResult::StoryResourcesCreated(payload) => payload.resource_id.clone(),
+        ResponseResult::StoryResourcesCreated(payload) => {
+            assert_eq!(payload.display_name, "Flooded Harbor Seed");
+            payload.resource_id.clone()
+        }
         other => panic!("unexpected response: {other:?}"),
     };
 
@@ -1211,7 +1222,7 @@ async fn story_and_session_crud_follow_store_objects() {
                 None::<String>,
                 RequestParams::StoryGenerate(GenerateStoryParams {
                     resource_id,
-                    display_name: Some("Flooded Harbor".to_owned()),
+                    display_name: None,
                     api_group_id: None,
                     preset_id: None,
                     common_variables: None,
@@ -1221,7 +1232,7 @@ async fn story_and_session_crud_follow_store_objects() {
     );
     let story_id = match generated {
         ResponseResult::StoryGenerated(payload) => {
-            assert_eq!(payload.display_name, "Flooded Harbor");
+            assert_eq!(payload.display_name, "Flooded Harbor Seed");
             payload.story_id.clone()
         }
         other => panic!("unexpected response: {other:?}"),
@@ -1321,6 +1332,7 @@ async fn story_create_with_manual_graph_persists_and_can_start_session() {
                 "story-create-resource",
                 None::<String>,
                 RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                    display_name: Some("Flooded Harbor Seed".to_owned()),
                     story_concept: "A flooded harbor story.".to_owned(),
                     character_ids: vec!["merchant".to_owned()],
                     player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -1422,6 +1434,7 @@ async fn story_create_defaults_common_variables_to_empty_when_omitted() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-manual".to_owned(),
+            display_name: Some("Manual Harbor Seed".to_owned()),
             story_concept: "Manual Harbor".to_owned(),
             character_ids: vec![],
             player_schema_id_seed: None,
@@ -1505,6 +1518,7 @@ async fn story_create_rejects_missing_schema() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-manual".to_owned(),
+            display_name: Some("Manual Harbor Seed".to_owned()),
             story_concept: "Manual Harbor".to_owned(),
             character_ids: vec![],
             player_schema_id_seed: None,
@@ -1561,6 +1575,7 @@ async fn story_create_rejects_invalid_graph() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-manual".to_owned(),
+            display_name: Some("Manual Harbor Seed".to_owned()),
             story_concept: "Manual Harbor".to_owned(),
             character_ids: vec![],
             player_schema_id_seed: None,
@@ -1610,6 +1625,7 @@ async fn story_create_rejects_invalid_common_variables() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-manual".to_owned(),
+            display_name: Some("Manual Harbor Seed".to_owned()),
             story_concept: "Manual Harbor".to_owned(),
             character_ids: vec![],
             player_schema_id_seed: None,
@@ -1720,6 +1736,7 @@ async fn story_generate_persists_common_variables() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -1797,6 +1814,7 @@ async fn story_generate_rejects_invalid_common_variables() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -1889,6 +1907,7 @@ async fn story_draft_start_persists_common_variables() {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -3039,6 +3058,7 @@ async fn dashboard_get_returns_counts_global_config_and_recent_lists() {
         store
             .save_story_resources(StoryResourcesRecord {
                 resource_id: format!("resource-{index}"),
+                display_name: Some(format!("Story Resource {index}")),
                 story_concept: format!("Story concept {index}"),
                 character_ids: vec!["merchant".to_owned()],
                 player_schema_id_seed: Some("schema-player-default".to_owned()),

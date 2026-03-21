@@ -127,6 +127,7 @@ pub struct CharacterDeletedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoryResourcesPayload {
     pub resource_id: String,
+    pub display_name: String,
     pub story_concept: String,
     pub character_ids: Vec<String>,
     pub player_schema_id_seed: Option<String>,

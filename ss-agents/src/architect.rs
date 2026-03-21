@@ -1055,10 +1055,18 @@ fn validate_draft_chunk_transitions(
 ) -> Result<(), ArchitectError> {
     let mut returned_node_ids = HashSet::new();
     for node in &bundle.nodes {
+        if existing_node_ids.contains(node.id.as_str()) {
+            return Err(ArchitectError::InvalidDraftOutput(format!(
+                "architect draft reused existing graph node id '{}' as a new node; existing graph nodes [{}] may only be referenced in transition targets or transition_patches",
+                node.id,
+                sorted_ids(existing_node_ids),
+            )));
+        }
         if !returned_node_ids.insert(node.id.as_str()) {
             return Err(ArchitectError::InvalidDraftOutput(format!(
-                "architect draft returned duplicate node id '{}'",
-                node.id
+                "architect draft returned duplicate node id '{}' within this response; returned node ids seen so far [{}]",
+                node.id,
+                sorted_ids(&returned_node_ids),
             )));
         }
     }

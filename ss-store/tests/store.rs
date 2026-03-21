@@ -151,6 +151,7 @@ fn sample_story_graph() -> StoryGraph {
 fn sample_story_resources() -> StoryResourcesRecord {
     StoryResourcesRecord {
         resource_id: "resource-1".to_owned(),
+        display_name: Some("Flooded Harbor Seed".to_owned()),
         story_concept: "A flooded harbor story.".to_owned(),
         character_ids: vec!["merchant".to_owned()],
         player_schema_id_seed: Some("schema-player-default".to_owned()),
@@ -742,4 +743,21 @@ fn story_and_session_records_deserialize_without_timestamps() {
     .expect("legacy session should deserialize");
     assert!(session.created_at_ms.is_none());
     assert!(session.updated_at_ms.is_none());
+}
+
+#[test]
+fn story_resources_record_deserializes_without_display_name() {
+    let resources: StoryResourcesRecord = serde_json::from_value(json!({
+        "resource_id": "resource-legacy",
+        "story_concept": "Legacy resource concept",
+        "character_ids": ["merchant"],
+        "player_schema_id_seed": null,
+        "world_schema_id_seed": null,
+        "lorebook_ids": [],
+        "planned_story": null
+    }))
+    .expect("legacy story resources should deserialize");
+
+    assert_eq!(resources.display_name, None);
+    assert_eq!(resources.effective_display_name(), "Legacy resource concept");
 }

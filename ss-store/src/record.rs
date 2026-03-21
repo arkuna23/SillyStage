@@ -142,6 +142,8 @@ pub struct PresetRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoryResourcesRecord {
     pub resource_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub story_concept: String,
     pub character_ids: Vec<String>,
     pub player_schema_id_seed: Option<String>,
@@ -149,6 +151,24 @@ pub struct StoryResourcesRecord {
     #[serde(default)]
     pub lorebook_ids: Vec<String>,
     pub planned_story: Option<String>,
+}
+
+impl StoryResourcesRecord {
+    pub fn normalize_display_name(display_name: Option<&str>) -> Option<String> {
+        display_name
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    }
+
+    pub fn effective_display_name(&self) -> String {
+        self.display_name
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(self.story_concept.trim())
+            .to_owned()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

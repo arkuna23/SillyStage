@@ -103,6 +103,7 @@ async fn rpc_unary_request_returns_json_rpc_response() {
         "req-1",
         None::<String>,
         RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec![],
             lorebook_ids: vec![],
@@ -337,6 +338,7 @@ async fn rpc_session_suggest_replies_returns_json_rpc_response() {
     store
         .save_story_resources(store::StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             lorebook_ids: vec![],
@@ -524,6 +526,7 @@ async fn rpc_stream_request_returns_sse_with_ack_and_messages() {
             "req-resources",
             None::<String>,
             RequestParams::StoryResourcesCreate(CreateStoryResourcesParams {
+                display_name: Some("Flooded Harbor Seed".to_owned()),
                 story_concept: "A flooded harbor story.".to_owned(),
                 character_ids: vec![character_id],
                 lorebook_ids: vec![],

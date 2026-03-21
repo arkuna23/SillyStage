@@ -336,6 +336,7 @@ async fn seed_story(store: &InMemoryStore) {
     store
         .save_story_resources(StoryResourcesRecord {
             resource_id: "resource-1".to_owned(),
+            display_name: Some("Flooded Harbor Seed".to_owned()),
             story_concept: "A flooded harbor story.".to_owned(),
             character_ids: vec!["merchant".to_owned()],
             player_schema_id_seed: Some("schema-player-default".to_owned()),
