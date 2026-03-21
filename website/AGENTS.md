@@ -25,4 +25,5 @@ This folder contains the documentation and blog website for the project. It is s
 - Prefer editing existing docs structure and config instead of inventing parallel content systems.
 - Keep docs and blog writing concise, factual, and easy to scan.
 - If a task also changes backend APIs or behavior, update the canonical API docs directly under `website/docs/en/api/` and `website/docs/zh/api/`.
+- Temporary screenshots or visual debug captures must use the filename pattern `screenshot-<topic>-<note>.<ext>` and should not be kept as project assets.
 - Preserve the existing site framework and conventions unless the task explicitly asks for a website-level refactor.
