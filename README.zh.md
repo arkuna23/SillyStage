@@ -1,6 +1,6 @@
 # SillyStage
 
-[English](README.md)
+[English](./README.md)
 
 SillyStage 是一个基于 Rust 构建的 AI 交互叙事引擎。它协调多个专门化 AI 智能体，协作生成、导演并执行动态叙事体验。
 

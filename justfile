@@ -61,6 +61,27 @@ frontend-lint:
 frontend-check:
     cd webapp; pnpm check
 
+docs:
+    cd website; pnpm dev
+
+docs-host:
+    cd website; pnpm dev:host
+
+docs-build:
+    cd website; pnpm build
+
+docs-lint:
+    cd website; pnpm lint
+
+docs-check:
+    cd website; pnpm check
+
+docs-preview:
+    cd website; pnpm preview
+
+docs-preview-host:
+    cd website; pnpm preview:host
+
 dev:
     {{dev_cmd}}
 
