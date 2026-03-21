@@ -7,7 +7,9 @@
 
 :root {
   --font-body-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", "PingFang SC", sans-serif;
-  --font-display-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
+  --font-display-stack:
+    "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Baskerville", "Noto Serif CJK SC",
+    "Source Han Serif SC", "Songti SC", "STSong", "SimSun", Georgia, serif;
 
   --color-bg-stage: #0f0f12;
   --color-bg-curtain: #3a2a22;

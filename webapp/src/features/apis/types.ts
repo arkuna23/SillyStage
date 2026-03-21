@@ -141,18 +141,28 @@ export type PresetPromptModuleSummary = {
 }
 
 export type AgentPresetConfig = {
+  actor_private_memory_limit?: number | null
+  actor_shared_history_limit?: number | null
+  director_shared_history_limit?: number | null
   extra?: unknown | null
   max_tokens?: number | null
   modules: PresetPromptModule[]
+  narrator_shared_history_limit?: number | null
+  replyer_session_history_limit?: number | null
   temperature?: number | null
 }
 
 export type AgentPresetConfigSummary = {
+  actor_private_memory_limit?: number | null
+  actor_shared_history_limit?: number | null
+  director_shared_history_limit?: number | null
   entry_count?: number | null
   extra?: unknown | null
   max_tokens?: number | null
   module_count?: number | null
   modules: PresetPromptModuleSummary[]
+  narrator_shared_history_limit?: number | null
+  replyer_session_history_limit?: number | null
   temperature?: number | null
 }
 
@@ -289,6 +299,14 @@ export function hasPresetAgentConfiguration(agent: AnyAgentPresetConfig) {
   return (
     (agent.temperature !== undefined && agent.temperature !== null) ||
     (agent.max_tokens !== undefined && agent.max_tokens !== null) ||
+    (agent.director_shared_history_limit !== undefined &&
+      agent.director_shared_history_limit !== null) ||
+    (agent.actor_shared_history_limit !== undefined && agent.actor_shared_history_limit !== null) ||
+    (agent.actor_private_memory_limit !== undefined && agent.actor_private_memory_limit !== null) ||
+    (agent.narrator_shared_history_limit !== undefined &&
+      agent.narrator_shared_history_limit !== null) ||
+    (agent.replyer_session_history_limit !== undefined &&
+      agent.replyer_session_history_limit !== null) ||
     (agent.extra !== undefined && agent.extra !== null) ||
     getPresetModuleEntryCount(agent) > 0
   )

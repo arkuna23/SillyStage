@@ -18,6 +18,7 @@ import { Select } from '../../components/ui/select'
 import { useToastMessage } from '../../components/ui/toast-context'
 import type { ApiGroup, Preset } from '../apis/types'
 import { generateAndSaveStoryPlan } from './api'
+import { getStoryResourceDisplayName } from './story-resource-display'
 import type { StoryResource } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
@@ -189,9 +190,12 @@ export function GenerateStoryPlanDialog({
               {resource ? (
                 <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
                   <p className="text-xs text-[var(--color-text-muted)]">
-                    {t('storyResources.form.fields.resourceId')}
+                    {t('storyResources.form.fields.displayName')}
                   </p>
                   <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
+                    {getStoryResourceDisplayName(resource)}
+                  </p>
+                  <p className="mt-1 font-mono text-xs leading-6 text-[var(--color-text-muted)]">
                     {resource.resource_id}
                   </p>
                 </div>

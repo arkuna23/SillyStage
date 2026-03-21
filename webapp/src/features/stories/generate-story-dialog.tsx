@@ -21,6 +21,7 @@ import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
+import { getStoryResourceOptionLabel } from '../story-resources/story-resource-display'
 import type { StoryResource } from '../story-resources/types'
 import { continueStoryDraft, finalizeStoryDraft, startStoryDraft } from './api'
 import { getDraftSectionProgress } from './draft-progress'
@@ -191,7 +192,7 @@ export function GenerateStoryDialog({
   const resourceOptions = useMemo(
     () =>
       resources.map((resource) => ({
-        label: resource.resource_id,
+        label: getStoryResourceOptionLabel(resource),
         value: resource.resource_id,
       })),
     [resources],
@@ -253,6 +254,10 @@ export function GenerateStoryDialog({
   function validateBasicStep() {
     if (formState.resourceId.trim().length === 0) {
       return t('stories.form.errors.resourceRequired')
+    }
+
+    if (formState.displayName.trim().length === 0) {
+      return t('stories.form.errors.displayNameRequired')
     }
 
     if (formState.apiGroupId.trim().length === 0) {
@@ -348,6 +353,7 @@ export function GenerateStoryDialog({
     }
 
     let createdDraftId: string | null = null
+    const displayName = formState.displayName.trim()
     setSubmitError(null)
     setIsSubmitting(true)
     setDialogStage('generating')
@@ -360,7 +366,7 @@ export function GenerateStoryDialog({
       const initialDraft = await startStoryDraft({
         api_group_id: formState.apiGroupId.trim(),
         common_variables: serializeStoryCommonVariableDrafts(formState.commonVariables),
-        ...(formState.displayName.trim() ? { display_name: formState.displayName.trim() } : {}),
+        display_name: displayName,
         preset_id: formState.presetId.trim(),
         resource_id: formState.resourceId.trim(),
       })
@@ -561,6 +567,17 @@ export function GenerateStoryDialog({
                   {selectedResource ? (
                     <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
                       <p className="text-xs text-[var(--color-text-muted)]">
+                        {t('stories.form.fields.resourceId')}
+                      </p>
+                      <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
+                        {getStoryResourceOptionLabel(selectedResource)}
+                      </p>
+                    </div>
+                  ) : null}
+
+                  {selectedResource ? (
+                    <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+                      <p className="text-xs text-[var(--color-text-muted)]">
                         {t('stories.form.fields.inputPreview')}
                       </p>
                       <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
@@ -611,8 +628,8 @@ export function GenerateStoryDialog({
                       <p className="text-xs text-[var(--color-text-muted)]">
                         {t('stories.form.fields.resourceId')}
                       </p>
-                      <p className="mt-2 font-mono text-sm leading-6 text-[var(--color-text-primary)]">
-                        {selectedResource.resource_id}
+                      <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
+                        {getStoryResourceOptionLabel(selectedResource)}
                       </p>
                     </div>
                   ) : null}

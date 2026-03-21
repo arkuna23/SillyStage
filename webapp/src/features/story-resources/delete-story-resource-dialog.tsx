@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
+import { getStoryResourceDisplayName } from './story-resource-display'
 import type { StoryResource } from './types'
 
 type DeleteStoryResourceDialogProps = {
@@ -63,11 +64,11 @@ export function DeleteStoryResourceDialog({
               <div className="flex flex-wrap gap-2">
                 {previewTargets.map((target) => (
                   <Badge
-                    className="normal-case px-3 py-1.5"
+                    className="max-w-[14rem] truncate normal-case px-3 py-1.5"
                     key={target.resource_id}
                     variant="subtle"
                   >
-                    {target.resource_id}
+                    {getStoryResourceDisplayName(target)}
                   </Badge>
                 ))}
                 {targets.length > previewTargets.length ? (

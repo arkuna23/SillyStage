@@ -14,6 +14,7 @@ import {
 import { Input } from '../../components/ui/input'
 import { useToastMessage } from '../../components/ui/toast-context'
 import type { CharacterSummary } from '../characters/types'
+import { getStoryResourceOptionLabel } from '../story-resources/story-resource-display'
 import type { StoryResource } from '../story-resources/types'
 import { getStory, updateStory } from './api'
 import {
@@ -126,6 +127,12 @@ export function StoryFormDialog({
         .map((definition) => definition.character_id ?? '') ??
       [],
     [availableResources, initialStory],
+  )
+  const linkedResource = useMemo(
+    () =>
+      availableResources.find((resource) => resource.resource_id === initialStory?.resource_id) ??
+      null,
+    [availableResources, initialStory?.resource_id],
   )
   const commonVariableCharacterIds = useMemo(() => {
     const knownCharacterIds = new Set(resourceCharacterIds)
@@ -242,8 +249,10 @@ export function StoryFormDialog({
                     <p className="text-xs text-[var(--color-text-muted)]">
                       {t('stories.form.fields.resourceId')}
                     </p>
-                    <p className="mt-2 font-mono text-sm leading-6 text-[var(--color-text-primary)]">
-                      {initialStory.resource_id}
+                    <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
+                      {linkedResource
+                        ? getStoryResourceOptionLabel(linkedResource)
+                        : initialStory.resource_id}
                     </p>
                   </div>
                 </div>

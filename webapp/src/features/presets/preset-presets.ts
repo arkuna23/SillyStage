@@ -23,11 +23,32 @@ export function buildPresetTemplateDefinitions(t: TFunction): PresetTemplateDefi
   const defaultAgents = createEmptyPresetAgents()
   defaultAgents.planner = { max_tokens: 8192, modules: [], temperature: 0.55 }
   defaultAgents.architect = { max_tokens: 8192, modules: [], temperature: 0.6 }
-  defaultAgents.director = { max_tokens: 8192, modules: [], temperature: 0.65 }
-  defaultAgents.actor = { max_tokens: 8192, modules: [], temperature: 0.85 }
-  defaultAgents.narrator = { max_tokens: 8192, modules: [], temperature: 0.7 }
+  defaultAgents.director = {
+    director_shared_history_limit: 10,
+    max_tokens: 8192,
+    modules: [],
+    temperature: 0.65,
+  }
+  defaultAgents.actor = {
+    actor_private_memory_limit: 4,
+    actor_shared_history_limit: 12,
+    max_tokens: 8192,
+    modules: [],
+    temperature: 0.85,
+  }
+  defaultAgents.narrator = {
+    max_tokens: 8192,
+    modules: [],
+    narrator_shared_history_limit: 6,
+    temperature: 0.7,
+  }
   defaultAgents.keeper = { max_tokens: 8192, modules: [], temperature: 0.3 }
-  defaultAgents.replyer = { max_tokens: 8192, modules: [], temperature: 0.75 }
+  defaultAgents.replyer = {
+    max_tokens: 8192,
+    modules: [],
+    replyer_session_history_limit: 5,
+    temperature: 0.75,
+  }
 
   return [
     {

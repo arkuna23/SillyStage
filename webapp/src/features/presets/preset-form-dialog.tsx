@@ -84,9 +84,14 @@ type PromptModuleFormState = {
 }
 
 type AgentFormState = {
+  actorPrivateMemoryLimit: string
+  actorSharedHistoryLimit: string
+  directorSharedHistoryLimit: string
   extra: string
   maxTokens: string
   modules: PromptModuleFormState[]
+  narratorSharedHistoryLimit: string
+  replyerSessionHistoryLimit: string
   temperature: string
 }
 
@@ -113,6 +118,21 @@ type PreviewDialogState = {
   scopeLabel?: string
 }
 
+type AgentHistoryLimitFieldKey =
+  | 'actorPrivateMemoryLimit'
+  | 'actorSharedHistoryLimit'
+  | 'directorSharedHistoryLimit'
+  | 'narratorSharedHistoryLimit'
+  | 'replyerSessionHistoryLimit'
+
+type AgentHistoryLimitFieldSpec = {
+  fieldKey: AgentHistoryLimitFieldKey
+  inputIdSuffix: string
+  labelKey: string
+  placeholderKey: string
+  summaryKey: string
+}
+
 const presetModuleOrderStart = 10
 const presetModuleOrderStep = 10
 const presetEntryOrderStart = 1000
@@ -120,6 +140,55 @@ const presetEntryOrderStep = 10
 
 let promptEntryClientIdCounter = 0
 let promptModuleClientIdCounter = 0
+
+const agentHistoryLimitFieldSpecs: Record<AgentRoleKey, AgentHistoryLimitFieldSpec[]> = {
+  actor: [
+    {
+      fieldKey: 'actorSharedHistoryLimit',
+      inputIdSuffix: 'actor-shared-history-limit',
+      labelKey: 'presetsPage.form.fields.actorSharedHistoryLimit',
+      placeholderKey: 'presetsPage.form.placeholders.actorSharedHistoryLimit',
+      summaryKey: 'presetsPage.form.summary.sharedHistory',
+    },
+    {
+      fieldKey: 'actorPrivateMemoryLimit',
+      inputIdSuffix: 'actor-private-memory-limit',
+      labelKey: 'presetsPage.form.fields.actorPrivateMemoryLimit',
+      placeholderKey: 'presetsPage.form.placeholders.actorPrivateMemoryLimit',
+      summaryKey: 'presetsPage.form.summary.privateMemory',
+    },
+  ],
+  architect: [],
+  director: [
+    {
+      fieldKey: 'directorSharedHistoryLimit',
+      inputIdSuffix: 'director-shared-history-limit',
+      labelKey: 'presetsPage.form.fields.directorSharedHistoryLimit',
+      placeholderKey: 'presetsPage.form.placeholders.directorSharedHistoryLimit',
+      summaryKey: 'presetsPage.form.summary.sharedHistory',
+    },
+  ],
+  keeper: [],
+  narrator: [
+    {
+      fieldKey: 'narratorSharedHistoryLimit',
+      inputIdSuffix: 'narrator-shared-history-limit',
+      labelKey: 'presetsPage.form.fields.narratorSharedHistoryLimit',
+      placeholderKey: 'presetsPage.form.placeholders.narratorSharedHistoryLimit',
+      summaryKey: 'presetsPage.form.summary.sharedHistory',
+    },
+  ],
+  planner: [],
+  replyer: [
+    {
+      fieldKey: 'replyerSessionHistoryLimit',
+      inputIdSuffix: 'replyer-session-history-limit',
+      labelKey: 'presetsPage.form.fields.replyerSessionHistoryLimit',
+      placeholderKey: 'presetsPage.form.placeholders.replyerSessionHistoryLimit',
+      summaryKey: 'presetsPage.form.summary.sessionHistory',
+    },
+  ],
+}
 
 function createPromptEntryClientId() {
   promptEntryClientIdCounter += 1
@@ -258,9 +327,14 @@ function createModulesState(
 
 function createEmptyAgentState(t: TranslateFn): AgentFormState {
   return {
+    actorPrivateMemoryLimit: '',
+    actorSharedHistoryLimit: '',
+    directorSharedHistoryLimit: '',
     extra: '',
     maxTokens: '',
     modules: getOrderedModuleIds().map((moduleId) => createBuiltInModuleState(t, moduleId)),
+    narratorSharedHistoryLimit: '',
+    replyerSessionHistoryLimit: '',
     temperature: '',
   }
 }
@@ -312,24 +386,44 @@ function createAgentFormState(
   t: TranslateFn,
 ): AgentFormState {
   return {
+    actorPrivateMemoryLimit: agent.actor_private_memory_limit?.toString() ?? '',
+    actorSharedHistoryLimit: agent.actor_shared_history_limit?.toString() ?? '',
+    directorSharedHistoryLimit: agent.director_shared_history_limit?.toString() ?? '',
     extra:
       agent.extra !== undefined && agent.extra !== null ? JSON.stringify(agent.extra, null, 2) : '',
     maxTokens: agent.max_tokens?.toString() ?? '',
     modules: createModulesState(agent.modules, t),
+    narratorSharedHistoryLimit: agent.narrator_shared_history_limit?.toString() ?? '',
+    replyerSessionHistoryLimit: agent.replyer_session_history_limit?.toString() ?? '',
     temperature: agent.temperature?.toString() ?? '',
   }
 }
 
-function summarizeAgent(agent: AgentFormState, t: TranslateFn, emptyLabel: string) {
+function summarizeAgent(
+  roleKey: AgentRoleKey,
+  agent: AgentFormState,
+  t: TranslateFn,
+  emptyLabel: string,
+) {
   const totalEntries = agent.modules.reduce((count, module) => count + module.entries.length, 0)
   const enabledEntries = agent.modules.reduce(
     (count, module) => count + module.entries.filter((entry) => entry.enabled).length,
     0,
   )
   const nonEmptyModules = agent.modules.filter((module) => module.entries.length > 0).length
+  const historyItems = agentHistoryLimitFieldSpecs[roleKey].flatMap((field) => {
+    const value = agent[field.fieldKey].trim()
+
+    if (!value) {
+      return []
+    }
+
+    return [`${t(field.summaryKey)} ${value}`]
+  })
   const parts = [
     agent.temperature.trim() ? `T ${agent.temperature.trim()}` : null,
     agent.maxTokens.trim() ? `Max ${agent.maxTokens.trim()}` : null,
+    ...historyItems,
     agent.extra.trim() ? t('presetsPage.list.extra') : null,
     totalEntries > 0
       ? t('presetsPage.list.moduleSummary', {
@@ -341,6 +435,22 @@ function summarizeAgent(agent: AgentFormState, t: TranslateFn, emptyLabel: strin
   ].filter((value): value is string => Boolean(value))
 
   return parts.length > 0 ? parts : [emptyLabel]
+}
+
+function parseOptionalPositiveInteger(value: string, errorMessage: string) {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return undefined
+  }
+
+  const parsed = Number(trimmed)
+
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(errorMessage)
+  }
+
+  return parsed
 }
 
 function parseModuleOrder(
@@ -430,6 +540,37 @@ function parseAgentPresetConfig(
     }
     maxTokens = parsed
   }
+
+  const directorSharedHistoryLimit = parseOptionalPositiveInteger(
+    agent.directorSharedHistoryLimit,
+    t('presetsPage.form.errors.directorSharedHistoryLimitInvalid', {
+      role: roleLabels[roleKey],
+    }),
+  )
+  const actorSharedHistoryLimit = parseOptionalPositiveInteger(
+    agent.actorSharedHistoryLimit,
+    t('presetsPage.form.errors.actorSharedHistoryLimitInvalid', {
+      role: roleLabels[roleKey],
+    }),
+  )
+  const actorPrivateMemoryLimit = parseOptionalPositiveInteger(
+    agent.actorPrivateMemoryLimit,
+    t('presetsPage.form.errors.actorPrivateMemoryLimitInvalid', {
+      role: roleLabels[roleKey],
+    }),
+  )
+  const narratorSharedHistoryLimit = parseOptionalPositiveInteger(
+    agent.narratorSharedHistoryLimit,
+    t('presetsPage.form.errors.narratorSharedHistoryLimitInvalid', {
+      role: roleLabels[roleKey],
+    }),
+  )
+  const replyerSessionHistoryLimit = parseOptionalPositiveInteger(
+    agent.replyerSessionHistoryLimit,
+    t('presetsPage.form.errors.replyerSessionHistoryLimitInvalid', {
+      role: roleLabels[roleKey],
+    }),
+  )
 
   const seenModuleIds = new Set<string>()
   const modules = sortModules(
@@ -534,6 +675,21 @@ function parseAgentPresetConfig(
   )
 
   return {
+    ...(directorSharedHistoryLimit !== undefined
+      ? { director_shared_history_limit: directorSharedHistoryLimit }
+      : {}),
+    ...(actorSharedHistoryLimit !== undefined
+      ? { actor_shared_history_limit: actorSharedHistoryLimit }
+      : {}),
+    ...(actorPrivateMemoryLimit !== undefined
+      ? { actor_private_memory_limit: actorPrivateMemoryLimit }
+      : {}),
+    ...(narratorSharedHistoryLimit !== undefined
+      ? { narrator_shared_history_limit: narratorSharedHistoryLimit }
+      : {}),
+    ...(replyerSessionHistoryLimit !== undefined
+      ? { replyer_session_history_limit: replyerSessionHistoryLimit }
+      : {}),
     ...(temperature !== undefined ? { temperature } : {}),
     ...(maxTokens !== undefined ? { max_tokens: maxTokens } : {}),
     ...(extra !== undefined ? { extra } : {}),
@@ -1296,7 +1452,9 @@ export function PresetFormDialog({
                     const agentState = formState.agents[roleKey]
                     const isExpanded = expandedAgents[roleKey]
                     const isModelSettingsExpanded = expandedModelSettings[roleKey]
+                    const historyLimitFields = agentHistoryLimitFieldSpecs[roleKey]
                     const summaryItems = summarizeAgent(
+                      roleKey,
                       agentState,
                       translate,
                       t('presetsPage.list.unset'),
@@ -1460,6 +1618,31 @@ export function PresetFormDialog({
                                               />
                                             </label>
                                           </div>
+
+                                          {historyLimitFields.length > 0 ? (
+                                            <div className="grid gap-4 md:grid-cols-2">
+                                              {historyLimitFields.map((field) => (
+                                                <label className="space-y-2" key={field.fieldKey}>
+                                                  <span className="block text-xs text-[var(--color-text-muted)]">
+                                                    {translate(field.labelKey)}
+                                                  </span>
+                                                  <Input
+                                                    id={`preset-form-${roleKey}-${field.inputIdSuffix}`}
+                                                    name={`${roleKey}_${field.inputIdSuffix}`}
+                                                    onChange={(event) => {
+                                                      updateAgentField(
+                                                        roleKey,
+                                                        field.fieldKey,
+                                                        event.target.value,
+                                                      )
+                                                    }}
+                                                    placeholder={translate(field.placeholderKey)}
+                                                    value={agentState[field.fieldKey]}
+                                                  />
+                                                </label>
+                                              ))}
+                                            </div>
+                                          ) : null}
 
                                           <label className="space-y-2">
                                             <span className="block text-xs text-[var(--color-text-muted)]">

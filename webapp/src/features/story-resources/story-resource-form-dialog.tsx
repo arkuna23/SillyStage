@@ -25,6 +25,7 @@ import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import { generateAndSaveStoryPlan, getStoryResource, updateStoryResource } from './api'
 import { StoryResourceCharacterSelector } from './story-resource-character-selector'
+import { getStoryResourceDisplayName } from './story-resource-display'
 import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
@@ -51,6 +52,7 @@ type StoryResourceFormDialogProps = {
 
 type FormState = {
   characterIds: string[]
+  displayName: string
   lorebookIds: string[]
   plannedStory: string
   playerSchemaIdSeed: string
@@ -61,6 +63,7 @@ type FormState = {
 function createInitialFormState(): FormState {
   return {
     characterIds: [],
+    displayName: '',
     lorebookIds: [],
     plannedStory: '',
     playerSchemaIdSeed: '',
@@ -72,6 +75,7 @@ function createInitialFormState(): FormState {
 function createFormStateFromResource(resource: StoryResource): FormState {
   return {
     characterIds: [...resource.character_ids],
+    displayName: resource.display_name,
     lorebookIds: [...resource.lorebook_ids],
     plannedStory: resource.planned_story ?? '',
     playerSchemaIdSeed: resource.player_schema_id_seed ?? '',
@@ -165,6 +169,7 @@ export function StoryResourceFormDialog({
 
   const fieldIds = {
     apiGroupId: `${fieldIdPrefix}-api-group-id`,
+    displayName: `${fieldIdPrefix}-display-name`,
     plannedStory: `${fieldIdPrefix}-planned-story`,
     presetId: `${fieldIdPrefix}-preset-id`,
     playerSchemaIdSeed: `${fieldIdPrefix}-player-schema-seed`,
@@ -284,6 +289,13 @@ export function StoryResourceFormDialog({
   }
 
   function validateForm(nextFormState: FormState) {
+    if (nextFormState.displayName.trim().length === 0) {
+      return {
+        error: t('storyResources.form.errors.displayNameRequired'),
+        tab: 'basic' as const,
+      }
+    }
+
     if (nextFormState.storyConcept.trim().length === 0) {
       return {
         error: t('storyResources.form.errors.storyConceptRequired'),
@@ -319,6 +331,7 @@ export function StoryResourceFormDialog({
     const nextFormState = {
       ...formState,
       characterIds: [...new Set(formState.characterIds)],
+      displayName: formState.displayName.trim(),
       lorebookIds: [...new Set(formState.lorebookIds)],
       plannedStory: formState.plannedStory.trim(),
       playerSchemaIdSeed: formState.playerSchemaIdSeed.trim(),
@@ -366,6 +379,7 @@ export function StoryResourceFormDialog({
     try {
       const savedResource = await updateStoryResource({
         character_ids: nextFormState.characterIds,
+        display_name: nextFormState.displayName,
         lorebook_ids: nextFormState.lorebookIds,
         planned_story: nextFormState.plannedStory,
         ...(nextFormState.playerSchemaIdSeed
@@ -443,7 +457,9 @@ export function StoryResourceFormDialog({
       >
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>
-            {initialResource?.resource_id ?? t('storyResources.form.editTitle')}
+            {initialResource
+              ? getStoryResourceDisplayName(initialResource)
+              : t('storyResources.form.editTitle')}
           </DialogTitle>
           <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
             {t('storyResources.editPage.description')}
@@ -489,6 +505,25 @@ export function StoryResourceFormDialog({
                         id={fieldIds.resourceId}
                         readOnly
                         value={initialResource.resource_id}
+                      />
+                    </Field>
+
+                    <Field
+                      description={t('storyResources.form.fieldDescriptions.displayName')}
+                      htmlFor={fieldIds.displayName}
+                      label={t('storyResources.form.fields.displayName')}
+                    >
+                      <Input
+                        id={fieldIds.displayName}
+                        name={fieldIds.displayName}
+                        onChange={(event) => {
+                          setFormState((currentFormState) => ({
+                            ...currentFormState,
+                            displayName: event.target.value,
+                          }))
+                        }}
+                        placeholder={t('storyResources.form.placeholders.displayName')}
+                        value={formState.displayName}
                       />
                     </Field>
 

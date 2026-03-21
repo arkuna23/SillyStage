@@ -22,6 +22,7 @@ import { deleteStoryResource, listStoryResources } from './api'
 import { CreateStoryResourceDialog } from './create-story-resource-dialog'
 import { DeleteStoryResourceDialog } from './delete-story-resource-dialog'
 import { GenerateStoryPlanDialog } from './generate-story-plan-dialog'
+import { getStoryResourceDisplayName } from './story-resource-display'
 import { StoryResourceFormDialog } from './story-resource-form-dialog'
 import type { StoryResource } from './types'
 import { useStoryResourceReferences } from './use-story-resource-references'
@@ -433,8 +434,11 @@ export function StoryResourcesPage() {
                         >
                           <div className="min-w-0 space-y-2">
                             <h3 className="truncate font-display text-[1.2rem] leading-tight text-[var(--color-text-primary)]">
-                              {resource.resource_id}
+                              {getStoryResourceDisplayName(resource)}
                             </h3>
+                            <p className="font-mono text-xs leading-6 text-[var(--color-text-muted)]">
+                              {resource.resource_id}
+                            </p>
                             <p className="line-clamp-2 text-sm leading-7 text-[var(--color-text-secondary)]">
                               {summarizeStoryInput(resource)}
                             </p>

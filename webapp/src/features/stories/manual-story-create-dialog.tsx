@@ -21,6 +21,7 @@ import { useToast, useToastMessage } from '../../components/ui/toast-context'
 import type { CharacterSummary } from '../characters/types'
 import { listSchemas } from '../schemas/api'
 import type { SchemaResource } from '../schemas/types'
+import { getStoryResourceOptionLabel } from '../story-resources/story-resource-display'
 import type { StoryResource } from '../story-resources/types'
 import { createStory } from './api'
 import { ManualStoryGraphDialog } from './manual-story-graph-dialog'
@@ -221,7 +222,7 @@ export function ManualStoryCreateDialog({
   const resourceOptions = useMemo(
     () =>
       resources.map((resource) => ({
-        label: resource.resource_id,
+        label: getStoryResourceOptionLabel(resource),
         value: resource.resource_id,
       })),
     [resources],
@@ -320,6 +321,10 @@ export function ManualStoryCreateDialog({
       return t('stories.form.errors.resourceRequired')
     }
 
+    if (formState.displayName.trim().length === 0) {
+      return t('stories.form.errors.displayNameRequired')
+    }
+
     if (formState.playerSchemaId.trim().length === 0) {
       return t('stories.manualCreate.errors.playerSchemaRequired')
     }
@@ -383,13 +388,14 @@ export function ManualStoryCreateDialog({
       return
     }
 
+    const displayName = formState.displayName.trim()
     setSubmitError(null)
     setIsSubmitting(true)
 
     try {
       const result = await createStory({
         common_variables: serializeStoryCommonVariableDrafts(formState.commonVariables),
-        ...(formState.displayName.trim() ? { display_name: formState.displayName.trim() } : {}),
+        display_name: displayName,
         graph: normalizedGraph.graph,
         introduction: formState.introduction.trim(),
         player_schema_id: formState.playerSchemaId.trim(),
@@ -534,6 +540,17 @@ export function ManualStoryCreateDialog({
               </div>
 
               <div className="space-y-4">
+                {selectedResource ? (
+                  <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      {t('stories.form.fields.resourceId')}
+                    </p>
+                    <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
+                      {getStoryResourceOptionLabel(selectedResource)}
+                    </p>
+                  </div>
+                ) : null}
+
                 {selectedResource ? (
                   <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
                     <p className="text-xs text-[var(--color-text-muted)]">

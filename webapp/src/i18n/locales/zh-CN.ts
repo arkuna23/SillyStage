@@ -724,8 +724,11 @@ const zhCN = {
       emptyModuleEntriesCreate: '这个模块还没有条目。需要时先添加第一条自定义提示词。',
       editTitle: '编辑预设',
       errors: {
+        actorPrivateMemoryLimitInvalid: '{{role}} 的私有记忆条数需要是大于 0 的整数。',
+        actorSharedHistoryLimitInvalid: '{{role}} 的共享消息条数需要是大于 0 的整数。',
         customEntryTextRequired: '{{role}} 的 {{module}} 中第 {{index}} 条需要文本内容。',
         displayNameRequired: '请填写显示名称。',
+        directorSharedHistoryLimitInvalid: '{{role}} 的共享消息条数需要是大于 0 的整数。',
         duplicateModuleId: '{{role}} 中存在重复的模块 ID：{{id}}。',
         duplicateEntryId: '{{role}} 的 {{module}} 中存在重复的条目 ID：{{id}}。',
         entryDisplayNameRequired: '{{role}} 的 {{module}} 中第 {{index}} 条需要显示名称。',
@@ -736,14 +739,19 @@ const zhCN = {
         maxTokensInvalid: '{{role}} 的 Max Tokens 需要是大于 0 的整数。',
         moduleIdRequired: '{{role}} 中第 {{index}} 个模块需要模块 ID。',
         moduleOrderInvalid: '{{role}} 中模块 {{id}} 的顺序必须是整数。',
+        narratorSharedHistoryLimitInvalid: '{{role}} 的共享消息条数需要是大于 0 的整数。',
         presetIdDuplicate: '这个预设 ID 已存在。',
         presetIdRequired: '请填写预设 ID。',
+        replyerSessionHistoryLimitInvalid: '{{role}} 的会话消息条数需要是大于 0 的整数。',
         submitFailed: '保存预设失败。',
         temperatureInvalid: '{{role}} 的 Temperature 需要是有效数字。',
       },
       fields: {
+        actorPrivateMemoryLimit: '私有记忆条数',
+        actorSharedHistoryLimit: '共享消息条数',
         displayName: '显示名称',
         contextKey: '上下文键',
+        directorSharedHistoryLimit: '共享消息条数',
         entryDisplayName: '条目标题',
         entryEnabled: '启用',
         entryId: '条目 ID',
@@ -754,8 +762,10 @@ const zhCN = {
         moduleDisplayName: '模块标题',
         moduleId: '模块 ID',
         messageRole: '消息角色',
+        narratorSharedHistoryLimit: '共享消息条数',
         order: '顺序',
         presetId: '预设 ID',
+        replyerSessionHistoryLimit: '会话消息条数',
         temperature: 'Temperature',
       },
       moduleHint:
@@ -764,7 +774,10 @@ const zhCN = {
       newEntry: '新条目',
       newModule: '新模块',
       placeholders: {
+        actorPrivateMemoryLimit: '4',
+        actorSharedHistoryLimit: '12',
         displayName: '高创造力舞台预设',
+        directorSharedHistoryLimit: '10',
         entryDisplayName: '输出风格',
         entryId: 'architect-tone',
         entryText: '让这个模块更明确地约束生成风格、结构和重点。',
@@ -772,9 +785,16 @@ const zhCN = {
         maxTokens: '4096',
         moduleDisplayName: '世界规则',
         moduleId: 'world_rules',
+        narratorSharedHistoryLimit: '6',
         order: '1000',
         presetId: 'preset-stage-main',
+        replyerSessionHistoryLimit: '5',
         temperature: '0.8',
+      },
+      summary: {
+        privateMemory: '记忆',
+        sessionHistory: '会话',
+        sharedHistory: '共享',
       },
       untitledEntry: '未命名条目 {{index}}',
     },
@@ -1259,6 +1279,7 @@ const zhCN = {
       errors: {
         apiGroupRequired: '请先选择一个 API 组。',
         charactersRequired: '至少选择一个角色。',
+        displayNameRequired: '请填写资源名称。',
         presetRequired: '请先选择一个预设。',
         schemaSeedClearUnsupported:
           '当前后端还不支持清空已经保存的状态结构，请保留原值或重新选择。',
@@ -1266,6 +1287,7 @@ const zhCN = {
         submitFailed: '保存剧情输入失败。',
       },
       fieldDescriptions: {
+        displayName: '必填。用于识别这条剧情输入，在列表、选择器和后续创建故事时都会显示。',
         lorebooks: '这些世界书会在规划师和架构师生成时一起注入，用来补充背景设定和关键词命中内容。',
         plannedStory: '如果你交给规划师整理，这里会保存整理后的剧情输入稿；架构师会优先读取它。',
         storyConcept:
@@ -1274,6 +1296,7 @@ const zhCN = {
       fields: {
         apiGroupId: 'API 组',
         characters: '角色',
+        displayName: '资源名称',
         lorebooks: '世界书',
         plannedStory: '规划师整理稿',
         playerSchemaIdSeed: '玩家状态结构',
@@ -1293,6 +1316,7 @@ const zhCN = {
       openPresets: '前往预设',
       placeholders: {
         apiGroupId: '选择这次整理使用的 API 组',
+        displayName: '输入资源名称',
         plannedStory: '如果你交给规划师整理，这里会出现整理后的剧情输入稿，你也可以继续手动调整。',
         presetId: '选择这次整理使用的预设',
         schemaSeedClear: '不使用状态结构',
@@ -1543,7 +1567,7 @@ const zhCN = {
       },
       openSchemas: '前往状态结构',
       placeholders: {
-        displayName: '这条手动创建的故事名称',
+        displayName: '输入故事名称',
         introduction: '简单介绍这条故事的起点、氛围与预期展开。',
         playerSchemaId: '选择玩家状态结构',
         worldSchemaId: '选择世界状态结构',
@@ -1759,7 +1783,7 @@ const zhCN = {
       fields: {
         apiGroupId: 'API 组',
         commonVariables: '常用变量',
-        displayName: '显示名称',
+        displayName: '故事名称',
         inputPreview: '剧情输入摘要',
         introduction: '故事简介',
         playerSchemaId: '玩家状态结构',
@@ -1773,7 +1797,7 @@ const zhCN = {
       openResources: '前往故事资源',
       placeholders: {
         apiGroupId: '选择这次生成使用的 API 组',
-        displayName: '从这条故事资源生成的新故事',
+        displayName: '输入故事名称',
         presetId: '选择这次生成使用的预设',
       },
     },

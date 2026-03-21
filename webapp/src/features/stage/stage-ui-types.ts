@@ -14,6 +14,7 @@ export type TurnWorkerStatus = {
 }
 
 export type StageMessage = {
+  disableEnterAnimation?: boolean
   id: string
   messageId?: string
   speakerId: string

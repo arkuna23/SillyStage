@@ -491,7 +491,7 @@ export function StagePage() {
                   value={panelMode}
                 />
               }
-              title={selectedSession?.display_name ?? copy.stage.title}
+              title={copy.session.title}
               titleClassName="text-[1.95rem]"
             />
 

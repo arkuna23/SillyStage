@@ -10,6 +10,8 @@ import type {
 } from './types'
 
 const stageRoot = '/stage'
+const legacyNarratorStreamIdPattern = /^stream:narrator:(\d+)$/
+const legacyActorStreamIdPattern = /^stream:actor:(\d+):(action|dialogue|thought):(\d+)$/
 
 export function buildStagePath(sessionId?: string) {
   return sessionId ? `${stageRoot}/${encodeURIComponent(sessionId)}` : stageRoot
@@ -38,24 +40,84 @@ export function isScrolledNearBottom(element: HTMLElement, threshold = 56) {
   return distanceFromBottom < threshold
 }
 
+export function buildNarratorStreamMessageId(turnIndex: number, beatIndex: number) {
+  return `stream:narrator:${turnIndex}:${beatIndex}`
+}
+
+export function buildActorStreamMessageId(
+  turnIndex: number,
+  beatIndex: number,
+  kind: 'action' | 'dialogue' | 'thought',
+  segmentIndex: number,
+) {
+  return `stream:actor:${turnIndex}:${beatIndex}:${kind}:${segmentIndex}`
+}
+
+export function buildActorStreamMessagePrefix(turnIndex: number, beatIndex: number) {
+  return `stream:actor:${turnIndex}:${beatIndex}:`
+}
+
+function normalizeLegacyStreamMessageId(messageId: string, turnIndex: number) {
+  const legacyNarratorMatch = legacyNarratorStreamIdPattern.exec(messageId)
+
+  if (legacyNarratorMatch) {
+    const [, beatIndexText] = legacyNarratorMatch
+    return buildNarratorStreamMessageId(turnIndex, Number(beatIndexText))
+  }
+
+  const legacyActorMatch = legacyActorStreamIdPattern.exec(messageId)
+
+  if (legacyActorMatch) {
+    const [, beatIndexText, kind, segmentIndexText] = legacyActorMatch
+    return buildActorStreamMessageId(
+      turnIndex,
+      Number(beatIndexText),
+      kind as 'action' | 'dialogue' | 'thought',
+      Number(segmentIndexText),
+    )
+  }
+
+  return messageId
+}
+
 export function buildPersistedMessages(history: SessionHistoryEntry[]): StageMessage[] {
-  return history.map((entry, index) => ({
-    id: entry.client_id ?? entry.message_id ?? `persisted:${entry.turn_index}:${index}`,
-    messageId: entry.message_id,
-    speakerId: entry.speaker_id,
-    speakerName: entry.speaker_name,
-    text: entry.text,
-    turnIndex: entry.turn_index,
-    updatedAtMs: entry.updated_at_ms,
-    variant:
-      entry.kind === 'player_input'
-        ? 'player'
-        : entry.kind === 'narration'
-          ? 'narration'
-          : entry.kind === 'action'
-            ? 'action'
-            : 'dialogue',
-  }))
+  const seenIds = new Set<string>()
+
+  return history.map((entry, index) => {
+    const fallbackId = `persisted:${entry.turn_index}:${index}`
+    const normalizedBaseId = normalizeLegacyStreamMessageId(
+      entry.client_id ?? entry.message_id ?? fallbackId,
+      entry.turn_index,
+    )
+
+    let nextId = normalizedBaseId
+    let duplicateIndex = 1
+
+    while (seenIds.has(nextId)) {
+      nextId = `${normalizedBaseId}:dup:${duplicateIndex}`
+      duplicateIndex += 1
+    }
+
+    seenIds.add(nextId)
+
+    return {
+      id: nextId,
+      messageId: entry.message_id,
+      speakerId: entry.speaker_id,
+      speakerName: entry.speaker_name,
+      text: entry.text,
+      turnIndex: entry.turn_index,
+      updatedAtMs: entry.updated_at_ms,
+      variant:
+        entry.kind === 'player_input'
+          ? 'player'
+          : entry.kind === 'narration'
+            ? 'narration'
+            : entry.kind === 'action'
+              ? 'action'
+              : 'dialogue',
+    }
+  })
 }
 
 export function normalizeSessionHistory(history: SessionMessageResult[]) {
@@ -161,7 +223,7 @@ export function buildHistoryEntriesFromTurnResult(args: {
   args.result.completed_beats.forEach((beat, beatIndex) => {
     if (beat.type === 'narrator') {
       entries.push({
-        client_id: `stream:narrator:${beatIndex}`,
+        client_id: buildNarratorStreamMessageId(turnIndex, beatIndex),
         kind: 'narration',
         recorded_at_ms: recordedAtMs,
         speaker_id: 'narrator',
@@ -187,7 +249,7 @@ export function buildHistoryEntriesFromTurnResult(args: {
       kindCounts[segmentKind] += 1
 
       entries.push({
-        client_id: `stream:actor:${beatIndex}:${segmentKind}:${kindIndex}`,
+        client_id: buildActorStreamMessageId(turnIndex, beatIndex, segmentKind, kindIndex),
         kind: segmentKind,
         recorded_at_ms: recordedAtMs,
         speaker_id: beat.speaker_id,

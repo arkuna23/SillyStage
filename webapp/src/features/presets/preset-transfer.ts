@@ -12,6 +12,16 @@ export type PresetBundle = {
   version: 2
 }
 
+const optionalNumericPresetConfigKeys = [
+  'temperature',
+  'max_tokens',
+  'director_shared_history_limit',
+  'actor_shared_history_limit',
+  'actor_private_memory_limit',
+  'narrator_shared_history_limit',
+  'replyer_session_history_limit',
+] as const
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
 }
@@ -81,22 +91,15 @@ function isAgentPresetConfig(value: unknown) {
     return false
   }
 
-  if (
-    'temperature' in value &&
-    value.temperature !== undefined &&
-    value.temperature !== null &&
-    typeof value.temperature !== 'number'
-  ) {
-    return false
-  }
-
-  if (
-    'max_tokens' in value &&
-    value.max_tokens !== undefined &&
-    value.max_tokens !== null &&
-    typeof value.max_tokens !== 'number'
-  ) {
-    return false
+  for (const key of optionalNumericPresetConfigKeys) {
+    if (
+      key in value &&
+      value[key] !== undefined &&
+      value[key] !== null &&
+      typeof value[key] !== 'number'
+    ) {
+      return false
+    }
   }
 
   if (

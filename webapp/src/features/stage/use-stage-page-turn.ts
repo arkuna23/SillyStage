@@ -9,7 +9,10 @@ import {
 } from './api'
 import type { StageCopy } from './copy'
 import {
+  buildActorStreamMessageId,
+  buildActorStreamMessagePrefix,
   buildHistoryEntriesFromTurnResult,
+  buildNarratorStreamMessageId,
   buildPersistedMessages,
   createInitialThoughtState,
   getErrorMessage,
@@ -24,6 +27,24 @@ import type {
   SessionSummary,
   StreamEventBody,
 } from './types'
+
+type ActorStreamSegmentKind = 'action' | 'dialogue' | 'thought'
+
+type ActorBeatStreamState = {
+  currentSegment: { index: number; kind: ActorStreamSegmentKind } | null
+  nextIndexByKind: Record<ActorStreamSegmentKind, number>
+}
+
+function createActorBeatStreamState(): ActorBeatStreamState {
+  return {
+    currentSegment: null,
+    nextIndexByKind: {
+      action: 0,
+      dialogue: 0,
+      thought: 0,
+    },
+  }
+}
 
 type UseStagePageTurnArgs = {
   characterMap: Map<string, CharacterSummary>
@@ -61,6 +82,9 @@ export function useStagePageTurn({
 }: UseStagePageTurnArgs) {
   const streamAbortRef = useRef<AbortController | null>(null)
   const suggestionsAbortRef = useRef<AbortController | null>(null)
+  const actorBeatStatesRef = useRef<Map<number, ActorBeatStreamState>>(new Map())
+  const characterMapRef = useRef(characterMap)
+  const sessionCharacterMapRef = useRef(sessionCharacterMap)
   const conversationScrollRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const composerRef = useRef<HTMLTextAreaElement | null>(null)
@@ -101,6 +125,14 @@ export function useStagePageTurn({
   }, [])
 
   useEffect(() => {
+    characterMapRef.current = characterMap
+  }, [characterMap])
+
+  useEffect(() => {
+    sessionCharacterMapRef.current = sessionCharacterMap
+  }, [sessionCharacterMap])
+
+  useEffect(() => {
     if (composerMode !== 'input') {
       return
     }
@@ -119,6 +151,7 @@ export function useStagePageTurn({
     streamAbortRef.current = null
     suggestionsAbortRef.current?.abort()
     suggestionsAbortRef.current = null
+    actorBeatStatesRef.current.clear()
     shouldStickToBottomRef.current = true
     setStreamMessages([])
     setComposerInput('')
@@ -149,8 +182,8 @@ export function useStagePageTurn({
 
   function getSpeakerDisplayName(speakerId: string) {
     return (
-      characterMap.get(speakerId)?.name ??
-      sessionCharacterMap.get(speakerId)?.display_name ??
+      sessionCharacterMapRef.current.get(speakerId)?.display_name ??
+      characterMapRef.current.get(speakerId)?.name ??
       speakerId
     )
   }
@@ -190,54 +223,116 @@ export function useStagePageTurn({
     })
   }
 
+  function getActorBeatStreamState(beatIndex: number) {
+    const existingState = actorBeatStatesRef.current.get(beatIndex)
+
+    if (existingState) {
+      return existingState
+    }
+
+    const nextState = createActorBeatStreamState()
+    actorBeatStatesRef.current.set(beatIndex, nextState)
+    return nextState
+  }
+
+  function beginActorStreamSegment(
+    turnIndex: number,
+    beatIndex: number,
+    kind: ActorStreamSegmentKind,
+  ) {
+    const state = getActorBeatStreamState(beatIndex)
+
+    if (state.currentSegment?.kind === kind) {
+      return {
+        id: buildActorStreamMessageId(turnIndex, beatIndex, kind, state.currentSegment.index),
+        index: state.currentSegment.index,
+      }
+    }
+
+    const nextIndex = state.nextIndexByKind[kind]
+    state.nextIndexByKind[kind] += 1
+    state.currentSegment = { index: nextIndex, kind }
+
+    return {
+      id: buildActorStreamMessageId(turnIndex, beatIndex, kind, nextIndex),
+      index: nextIndex,
+    }
+  }
+
+  function completeActorStreamSegment(
+    turnIndex: number,
+    beatIndex: number,
+    kind: ActorStreamSegmentKind,
+    text: string,
+    messageFactory: (id: string) => StageMessage,
+  ) {
+    const state = getActorBeatStreamState(beatIndex)
+    const nextIndex = state.nextIndexByKind[kind]
+    state.nextIndexByKind[kind] += 1
+    state.currentSegment = { index: nextIndex, kind }
+
+    pushStreamMessage({
+      ...messageFactory(buildActorStreamMessageId(turnIndex, beatIndex, kind, nextIndex)),
+      text,
+    })
+  }
+
   function syncActorCompleted(
     body: Extract<StreamEventBody, { type: 'actor_completed' }>,
     turnIndex: number,
   ) {
-    const kindCounts: Record<'action' | 'dialogue' | 'thought', number> = {
+    const kindCounts: Record<ActorStreamSegmentKind, number> = {
       action: 0,
       dialogue: 0,
       thought: 0,
     }
+    const beatPrefix = buildActorStreamMessagePrefix(turnIndex, body.beat_index)
 
-    body.response.segments.forEach((segment) => {
-      const kindIndex = kindCounts[segment.kind]
-      kindCounts[segment.kind] += 1
-      const id = `stream:actor:${body.beat_index}:${segment.kind}:${kindIndex}`
+    setStreamMessages((current) => {
+      const currentBeatMessages = current.filter((entry) => entry.id.startsWith(beatPrefix))
+      const existingMessagesById = new Map(currentBeatMessages.map((entry) => [entry.id, entry]))
 
-      if (segment.kind === 'thought') {
-        pushStreamMessage({
+      const completedMessages = body.response.segments.map((segment) => {
+        const segmentKind = segment.kind
+        const kindIndex = kindCounts[segmentKind]
+        kindCounts[segmentKind] += 1
+        const id = buildActorStreamMessageId(turnIndex, body.beat_index, segmentKind, kindIndex)
+        const existingMessage = existingMessagesById.get(id)
+
+        return {
+          disableEnterAnimation: existingMessage ? existingMessage.disableEnterAnimation : true,
           id,
           speakerId: body.speaker_id,
           speakerName: body.response.speaker_name,
           text: segment.text,
           turnIndex,
-          variant: 'thought',
-        })
-        return
-      }
-
-      if (segment.kind === 'action') {
-        pushStreamMessage({
-          id,
-          speakerId: body.speaker_id,
-          speakerName: body.response.speaker_name,
-          text: segment.text,
-          turnIndex,
-          variant: 'action',
-        })
-        return
-      }
-
-      pushStreamMessage({
-        id,
-        speakerId: body.speaker_id,
-        speakerName: body.response.speaker_name,
-        text: segment.text,
-        turnIndex,
-        variant: 'dialogue',
+          variant: segmentKind,
+        } satisfies StageMessage
       })
+
+      const nextMessages: StageMessage[] = []
+      let inserted = false
+
+      for (const entry of current) {
+        if (entry.id.startsWith(beatPrefix)) {
+          if (!inserted) {
+            nextMessages.push(...completedMessages)
+            inserted = true
+          }
+          continue
+        }
+
+        nextMessages.push(entry)
+      }
+
+      if (!inserted) {
+        nextMessages.push(...completedMessages)
+      }
+
+      return nextMessages
     })
+
+    actorBeatStatesRef.current.delete(body.beat_index)
   }
 
   function handleEditPlayerMessage(message: StageMessage) {
@@ -447,6 +542,7 @@ export function useStagePageTurn({
     const optimisticPlayerMessageId = `stream:player:${selectedSession.session_id}:${nextTurnIndex}`
     const controller = new AbortController()
     streamAbortRef.current = controller
+    actorBeatStatesRef.current.clear()
     shouldStickToBottomRef.current = conversationScrollRef.current
       ? isScrolledNearBottom(conversationScrollRef.current)
       : shouldStickToBottomRef.current
@@ -512,6 +608,11 @@ export function useStagePageTurn({
 
           if (body.type === 'session_character_created') {
             setLiveSnapshot(body.snapshot)
+            sessionCharacterMapRef.current = new Map(sessionCharacterMapRef.current)
+            sessionCharacterMapRef.current.set(
+              body.session_character.session_character_id,
+              body.session_character,
+            )
             setSessionCharacters((current) => {
               const existingIndex = current.findIndex(
                 (entry) =>
@@ -566,10 +667,11 @@ export function useStagePageTurn({
           }
 
           if (body.type === 'narrator_text_delta') {
+            const messageId = buildNarratorStreamMessageId(nextTurnIndex, body.beat_index)
             appendStreamText(
-              `stream:narrator:${body.beat_index}`,
+              messageId,
               () => ({
-                id: `stream:narrator:${body.beat_index}`,
+                id: messageId,
                 speakerId: 'narrator',
                 speakerName: copy.messages.narrator,
                 text: '',
@@ -583,7 +685,7 @@ export function useStagePageTurn({
 
           if (body.type === 'narrator_completed') {
             pushStreamMessage({
-              id: `stream:narrator:${body.beat_index}`,
+              id: buildNarratorStreamMessageId(nextTurnIndex, body.beat_index),
               speakerId: 'narrator',
               speakerName: copy.messages.narrator,
               text: body.response.text,
@@ -594,6 +696,7 @@ export function useStagePageTurn({
           }
 
           if (body.type === 'actor_started') {
+            actorBeatStatesRef.current.set(body.beat_index, createActorBeatStreamState())
             setActiveSpeakerId(body.speaker_id)
             setTurnWorkerStatus({
               label: copy.statusBar.actor.replace('{name}', getSpeakerDisplayName(body.speaker_id)),
@@ -602,10 +705,11 @@ export function useStagePageTurn({
           }
 
           if (body.type === 'actor_dialogue_delta') {
+            const { id } = beginActorStreamSegment(nextTurnIndex, body.beat_index, 'dialogue')
             appendStreamText(
-              `stream:actor:${body.beat_index}:dialogue:0`,
+              id,
               () => ({
-                id: `stream:actor:${body.beat_index}:dialogue:0`,
+                id,
                 speakerId: body.speaker_id,
                 speakerName: getSpeakerDisplayName(body.speaker_id),
                 text: '',
@@ -618,22 +722,29 @@ export function useStagePageTurn({
           }
 
           if (body.type === 'actor_action_complete') {
-            pushStreamMessage({
-              id: `stream:actor:${body.beat_index}:action:0`,
-              speakerId: body.speaker_id,
-              speakerName: getSpeakerDisplayName(body.speaker_id),
-              text: body.text,
-              turnIndex: nextTurnIndex,
-              variant: 'action',
-            })
+            completeActorStreamSegment(
+              nextTurnIndex,
+              body.beat_index,
+              'action',
+              body.text,
+              (id) => ({
+                id,
+                speakerId: body.speaker_id,
+                speakerName: getSpeakerDisplayName(body.speaker_id),
+                text: '',
+                turnIndex: nextTurnIndex,
+                variant: 'action',
+              }),
+            )
             return
           }
 
           if (body.type === 'actor_thought_delta') {
+            const { id } = beginActorStreamSegment(nextTurnIndex, body.beat_index, 'thought')
             appendStreamText(
-              `stream:actor:${body.beat_index}:thought:0`,
+              id,
               () => ({
-                id: `stream:actor:${body.beat_index}:thought:0`,
+                id,
                 speakerId: body.speaker_id,
                 speakerName: getSpeakerDisplayName(body.speaker_id),
                 text: '',
@@ -701,6 +812,7 @@ export function useStagePageTurn({
       }
     } finally {
       streamAbortRef.current = null
+      actorBeatStatesRef.current.clear()
       setIsRunningTurn(false)
       setActiveSpeakerId(null)
       setTurnWorkerStatus(null)

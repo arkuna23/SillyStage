@@ -16,6 +16,7 @@ import {
 } from '../../components/ui/dialog'
 import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { GenerationLoadingStage } from '../../components/ui/generation-loading-stage'
+import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { useToastMessage } from '../../components/ui/toast-context'
@@ -52,6 +53,7 @@ type CreateStoryResourceDialogProps = {
 type FormState = {
   apiGroupId: string
   characterIds: string[]
+  displayName: string
   lorebookIds: string[]
   presetId: string
   playerSchemaIdSeed: string
@@ -64,6 +66,7 @@ function createInitialFormState(): FormState {
   return {
     apiGroupId: '',
     characterIds: [],
+    displayName: '',
     lorebookIds: [],
     presetId: '',
     playerSchemaIdSeed: '',
@@ -157,6 +160,7 @@ export function CreateStoryResourceDialog({
 
   const fieldIds = {
     apiGroupId: `${fieldIdPrefix}-api-group-id`,
+    displayName: `${fieldIdPrefix}-display-name`,
     presetId: `${fieldIdPrefix}-preset-id`,
     playerSchemaIdSeed: `${fieldIdPrefix}-player-schema-seed`,
     storyConcept: `${fieldIdPrefix}-story-concept`,
@@ -228,6 +232,10 @@ export function CreateStoryResourceDialog({
   }
 
   function validateConceptStep() {
+    if (formState.displayName.trim().length === 0) {
+      return t('storyResources.form.errors.displayNameRequired')
+    }
+
     if (formState.storyConcept.trim().length === 0) {
       return t('storyResources.form.errors.storyConceptRequired')
     }
@@ -296,6 +304,7 @@ export function CreateStoryResourceDialog({
   async function handleCreate() {
     const conceptValidationError = validateConceptStep()
     const charactersValidationError = validateCharactersStep()
+    const displayName = formState.displayName.trim()
 
     setSubmitError(null)
 
@@ -335,6 +344,7 @@ export function CreateStoryResourceDialog({
     try {
       const savedResource = await createStoryResource({
         character_ids: [...new Set(formState.characterIds)],
+        display_name: displayName,
         lorebook_ids: [...new Set(formState.lorebookIds)],
         ...(formState.playerSchemaIdSeed
           ? { player_schema_id_seed: formState.playerSchemaIdSeed.trim() }
@@ -461,11 +471,30 @@ export function CreateStoryResourceDialog({
                 </div>
 
                 <Field
+                  description={t('storyResources.form.fieldDescriptions.displayName')}
+                  htmlFor={fieldIds.displayName}
+                  label={t('storyResources.form.fields.displayName')}
+                >
+                  <Input
+                    autoFocus
+                    id={fieldIds.displayName}
+                    name={fieldIds.displayName}
+                    onChange={(event) => {
+                      setFormState((currentFormState) => ({
+                        ...currentFormState,
+                        displayName: event.target.value,
+                      }))
+                    }}
+                    placeholder={t('storyResources.form.placeholders.displayName')}
+                    value={formState.displayName}
+                  />
+                </Field>
+
+                <Field
                   htmlFor={fieldIds.storyConcept}
                   label={t('storyResources.form.fields.storyConcept')}
                 >
                   <Textarea
-                    autoFocus
                     id={fieldIds.storyConcept}
                     onChange={(event) => {
                       setFormState((currentFormState) => ({

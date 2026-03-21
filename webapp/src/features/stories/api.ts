@@ -33,7 +33,7 @@ export async function generateStory(
   params: {
     api_group_id?: string
     common_variables?: CommonVariableDefinition[]
-    display_name?: string
+    display_name: string
     preset_id?: string
     resource_id: string
   },
@@ -45,7 +45,7 @@ export async function generateStory(
 export async function createStory(
   params: {
     common_variables?: CommonVariableDefinition[]
-    display_name?: string
+    display_name: string
     graph: StoryDetail['graph']
     introduction: string
     player_schema_id: string
@@ -79,7 +79,7 @@ export async function startStoryDraft(
   params: {
     api_group_id?: string
     common_variables?: CommonVariableDefinition[]
-    display_name?: string
+    display_name: string
     preset_id?: string
     resource_id: string
   },

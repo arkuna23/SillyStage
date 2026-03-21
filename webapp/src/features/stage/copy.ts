@@ -151,6 +151,9 @@ const zh = {
     sessionId: '会话 ID',
     title: '修改会话名称',
   },
+  session: {
+    title: '会话',
+  },
   settings: {
     bindings: {
       apiGroup: 'API 组',
@@ -236,6 +239,7 @@ const zh = {
   storyNode: {
     collapse: '收起详情',
     expand: '查看全部',
+    finalNode: '已到终点',
     goal: '当前目标',
     nodeId: '节点 ID',
     scene: '当前场景',
@@ -447,6 +451,9 @@ const en = {
     sessionId: 'Session ID',
     title: 'Rename Session',
   },
+  session: {
+    title: 'Session',
+  },
   settings: {
     bindings: {
       apiGroup: 'API Group',
@@ -538,6 +545,7 @@ const en = {
   storyNode: {
     collapse: 'Collapse',
     expand: 'View More',
+    finalNode: 'Final Node',
     goal: 'Current Goal',
     nodeId: 'Node ID',
     scene: 'Current Scene',

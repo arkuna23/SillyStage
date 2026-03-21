@@ -737,8 +737,14 @@ const en = {
         'No entries in this module yet. Add the first custom entry when needed.',
       editTitle: 'Edit Preset',
       errors: {
+        actorPrivateMemoryLimitInvalid:
+          '{{role}} private memory limit must be an integer greater than 0.',
+        actorSharedHistoryLimitInvalid:
+          '{{role}} shared history limit must be an integer greater than 0.',
         customEntryTextRequired: '{{role}} entry {{index}} in {{module}} needs text.',
         displayNameRequired: 'Display name is required.',
+        directorSharedHistoryLimitInvalid:
+          '{{role}} shared history limit must be an integer greater than 0.',
         duplicateModuleId: 'Duplicate module ID in {{role}}: {{id}}.',
         duplicateEntryId: 'Duplicate entry ID in {{role}} / {{module}}: {{id}}.',
         entryDisplayNameRequired: '{{role}} entry {{index}} in {{module}} needs a display name.',
@@ -749,13 +755,20 @@ const en = {
         maxTokensInvalid: '{{role}} max tokens must be an integer greater than 0.',
         moduleIdRequired: 'Module {{index}} in {{role}} needs a module ID.',
         moduleOrderInvalid: 'Module {{id}} in {{role}} must use an integer order.',
+        narratorSharedHistoryLimitInvalid:
+          '{{role}} shared history limit must be an integer greater than 0.',
         presetIdDuplicate: 'Preset ID already exists.',
         presetIdRequired: 'Preset ID is required.',
+        replyerSessionHistoryLimitInvalid:
+          '{{role}} session history limit must be an integer greater than 0.',
         submitFailed: 'Failed to save the preset.',
         temperatureInvalid: '{{role}} temperature must be a valid number.',
       },
       fields: {
+        actorPrivateMemoryLimit: 'Private Memory Limit',
+        actorSharedHistoryLimit: 'Shared History Limit',
         contextKey: 'Context Key',
+        directorSharedHistoryLimit: 'Shared History Limit',
         displayName: 'Display Name',
         entryDisplayName: 'Entry Title',
         entryEnabled: 'Enabled',
@@ -767,8 +780,10 @@ const en = {
         moduleDisplayName: 'Module Title',
         moduleId: 'Module ID',
         messageRole: 'Message Role',
+        narratorSharedHistoryLimit: 'Shared History Limit',
         order: 'Order',
         presetId: 'Preset ID',
+        replyerSessionHistoryLimit: 'Session History Limit',
         temperature: 'Temperature',
       },
       moduleHint:
@@ -777,7 +792,10 @@ const en = {
       newEntry: 'New entry',
       newModule: 'New module',
       placeholders: {
+        actorPrivateMemoryLimit: '4',
+        actorSharedHistoryLimit: '12',
         displayName: 'High Creativity Stage Preset',
+        directorSharedHistoryLimit: '10',
         entryDisplayName: 'Output Style',
         entryId: 'architect-tone',
         entryText: 'Guide this module toward the desired structure, tone, and focus.',
@@ -785,9 +803,16 @@ const en = {
         maxTokens: '4096',
         moduleDisplayName: 'World Rules',
         moduleId: 'world_rules',
+        narratorSharedHistoryLimit: '6',
         order: '1000',
         presetId: 'preset-stage-main',
+        replyerSessionHistoryLimit: '5',
         temperature: '0.8',
+      },
+      summary: {
+        privateMemory: 'Memory',
+        sessionHistory: 'Session',
+        sharedHistory: 'Shared',
       },
       untitledEntry: 'Untitled Entry {{index}}',
     },
@@ -1285,6 +1310,7 @@ const en = {
       errors: {
         apiGroupRequired: 'Choose an API Group first.',
         charactersRequired: 'Choose at least one character.',
+        displayNameRequired: 'Resource name is required.',
         presetRequired: 'Choose a preset first.',
         schemaSeedClearUnsupported:
           'The backend does not support clearing a saved schema seed yet. Keep the current value or choose another schema.',
@@ -1292,6 +1318,8 @@ const en = {
         submitFailed: 'Failed to save the story input.',
       },
       fieldDescriptions: {
+        displayName:
+          'Required. This name is used to identify the story input in lists, selectors, and later story-creation flows.',
         lorebooks:
           'These lorebooks are injected into Planner and Architect during generation as stable background context and keyword-matched entries.',
         plannedStory:
@@ -1302,6 +1330,7 @@ const en = {
       fields: {
         apiGroupId: 'API Group',
         characters: 'Characters',
+        displayName: 'Resource Name',
         lorebooks: 'Lorebooks',
         plannedStory: 'Planner Refined Input',
         playerSchemaIdSeed: 'Player Schema',
@@ -1323,6 +1352,7 @@ const en = {
       openPresets: 'Open Presets',
       placeholders: {
         apiGroupId: 'Select the API Group for this refinement',
+        displayName: 'Enter a resource name',
         plannedStory:
           'If Planner refines this input, the refined version will appear here and remain editable.',
         presetId: 'Select the preset for this refinement',
@@ -1608,7 +1638,7 @@ const en = {
       },
       openSchemas: 'Open Schemas',
       placeholders: {
-        displayName: 'The name of this manually created story',
+        displayName: 'Enter a story name',
         introduction: 'Summarize the opening, tone, and intended direction of this story.',
         playerSchemaId: 'Select the player schema',
         worldSchemaId: 'Select the world schema',
@@ -1826,7 +1856,7 @@ const en = {
         commonVariablesInvalid: 'Fix the required common-variable fields first.',
         draftSubmitFailed:
           'The draft was created, but generation did not complete. Continue it from the Drafts view.',
-        displayNameRequired: 'Display name is required.',
+        displayNameRequired: 'Story name is required.',
         presetRequired: 'Choose a preset first.',
         resourceRequired: 'Choose a story resource first.',
         submitFailed: 'Failed to save the story.',
@@ -1834,7 +1864,7 @@ const en = {
       fields: {
         apiGroupId: 'API Group',
         commonVariables: 'Common Variables',
-        displayName: 'Display Name',
+        displayName: 'Story Name',
         inputPreview: 'Story Input Preview',
         introduction: 'Introduction',
         playerSchemaId: 'Player Schema',
@@ -1848,7 +1878,7 @@ const en = {
       openResources: 'Open Story Resources',
       placeholders: {
         apiGroupId: 'Select the API Group for this generation',
-        displayName: 'A story generated from this resource',
+        displayName: 'Enter a story name',
         presetId: 'Select the preset for this generation',
       },
     },

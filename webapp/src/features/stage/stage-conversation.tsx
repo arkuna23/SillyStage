@@ -182,7 +182,7 @@ export function StageConversation({
                 animate={{ opacity: 1, y: 0 }}
                 className="flex justify-center"
                 exit={{ opacity: 0, y: -8 }}
-                initial={{ opacity: 0, y: 10 }}
+                initial={message.disableEnterAnimation ? false : { opacity: 0, y: 10 }}
                 key={message.id}
                 transition={
                   prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }
@@ -209,7 +209,7 @@ export function StageConversation({
                 animate={{ opacity: 1, x: 0, y: 0 }}
                 className="flex justify-end"
                 exit={{ opacity: 0, x: 10, y: -6 }}
-                initial={{ opacity: 0, x: 16, y: 10 }}
+                initial={message.disableEnterAnimation ? false : { opacity: 0, x: 16, y: 10 }}
                 key={message.id}
                 transition={
                   prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }
@@ -287,14 +287,14 @@ export function StageConversation({
               animate={{ opacity: 1, x: 0, y: 0 }}
               className="flex items-end gap-3"
               exit={{ opacity: 0, x: -10, y: -6 }}
-              initial={{ opacity: 0, x: -14, y: 10 }}
+              initial={message.disableEnterAnimation ? false : { opacity: 0, x: -14, y: 10 }}
               key={message.id}
               transition={
                 prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }
               }
             >
               <div className="w-10 shrink-0">
-                {!sameAsPrevious ? (
+                {!sameAsNext ? (
                   <CharacterAvatar
                     coverUrl={coverUrl}
                     name={character?.name ?? message.speakerName}

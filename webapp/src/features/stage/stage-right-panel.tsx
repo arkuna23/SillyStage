@@ -18,6 +18,7 @@ const panelEase = [0.16, 1, 0.3, 1] as const
 type StoryNodeSummary = {
   goal?: string | null
   scene?: string | null
+  transitions: ReadonlyArray<{ to: string }>
 }
 
 type StageRightPanelProps = {
@@ -135,7 +136,14 @@ function VariablesPanelContent({
   return (
     <div className="space-y-3">
       <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-        <p className="text-xs text-[var(--color-text-muted)]">{copy.storyNode.goal}</p>
+        <div className="flex min-h-7 flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-[var(--color-text-muted)]">{copy.storyNode.goal}</p>
+          {currentNode && currentNode.transitions.length === 0 ? (
+            <Badge className="normal-case" variant="gold">
+              {copy.storyNode.finalNode}
+            </Badge>
+          ) : null}
+        </div>
         <p className="mt-2 text-sm leading-6 text-[var(--color-text-primary)]">
           {currentNode?.goal ?? '—'}
         </p>
