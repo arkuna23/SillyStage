@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use agents::replyer::{
-    ReplyHistoryKind, ReplyHistoryMessage, ReplyOption, Replyer, ReplyerRequest,
-};
+use agents::replyer::{ReplyHistoryMessage, ReplyOption, Replyer, ReplyerRequest};
 use tracing::{debug, info};
 
+use crate::history::resolve_replyer_session_history_limit;
 use crate::RuntimeState;
 use crate::logging::{json_for_log, summarize_reply_options};
 use crate::lorebook::{LorebookPromptSections, build_lorebook_prompt_sections};
 
-use super::{DEFAULT_REPLY_HISTORY_LIMIT, EngineManager, ManagerError};
+use super::util::build_reply_history;
+use super::{EngineManager, ManagerError};
 
 impl EngineManager {
     pub async fn suggest_replies(
@@ -38,7 +38,14 @@ impl EngineManager {
         let replyer_config = self
             .registry
             .build_replyer_config(&apis.replyer, &preset.agents.replyer)?;
-        let history = self.load_reply_history(session_id).await?;
+        let history = self
+            .load_reply_history(
+                session_id,
+                replyer_config
+                    .session_history_limit
+                    .unwrap_or_else(|| resolve_replyer_session_history_limit(&preset.agents.replyer)),
+            )
+            .await?;
         let current_node = runtime_state.current_node()?;
         let replyer = Replyer::new_with_options(
             Arc::clone(&replyer_config.client),
@@ -81,26 +88,11 @@ impl EngineManager {
     async fn load_reply_history(
         &self,
         session_id: &str,
+        history_limit: usize,
     ) -> Result<Vec<ReplyHistoryMessage>, ManagerError> {
         let mut messages = self.store.list_session_messages(session_id).await?;
         messages.sort_by_key(|message| message.sequence);
-        let start = messages.len().saturating_sub(DEFAULT_REPLY_HISTORY_LIMIT);
-        Ok(messages
-            .into_iter()
-            .skip(start)
-            .map(|message| ReplyHistoryMessage {
-                kind: match message.kind {
-                    store::SessionMessageKind::PlayerInput => ReplyHistoryKind::PlayerInput,
-                    store::SessionMessageKind::Narration => ReplyHistoryKind::Narration,
-                    store::SessionMessageKind::Dialogue => ReplyHistoryKind::Dialogue,
-                    store::SessionMessageKind::Action => ReplyHistoryKind::Action,
-                },
-                turn_index: message.turn_index,
-                speaker_id: message.speaker_id,
-                speaker_name: message.speaker_name,
-                text: message.text,
-            })
-            .collect())
+        Ok(build_reply_history(messages, history_limit))
     }
 }
 

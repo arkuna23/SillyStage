@@ -236,6 +236,11 @@ pub fn sample_preset_record(preset_id: &str, token_base: u32) -> PresetRecord {
     let config = |offset: u32| AgentPresetConfig {
         temperature: Some(0.1 + (offset as f32 * 0.05)),
         max_tokens: Some(token_base + offset * 64),
+        director_shared_history_limit: None,
+        actor_shared_history_limit: None,
+        actor_private_memory_limit: None,
+        narrator_shared_history_limit: None,
+        replyer_session_history_limit: None,
         extra: None,
         modules: Vec::new(),
     };

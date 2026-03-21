@@ -29,6 +29,7 @@ use tracing::{debug, info};
 
 use crate::RuntimeSnapshot;
 use crate::event::{EngineEvent, EngineStage};
+use crate::history::DEFAULT_MESSAGE_HISTORY_LIMIT;
 use crate::logging::{
     json_for_log, summarize_actor_response, summarize_architect_response,
     summarize_director_result, summarize_keeper_response, summarize_narrator_response,
@@ -37,7 +38,6 @@ use crate::logging::{
 use crate::lorebook::{LorebookPromptSections, build_lorebook_prompt_sections};
 use crate::runtime::{RuntimeError, RuntimeState, StoryResources};
 
-const DEFAULT_SHARED_MEMORY_LIMIT: usize = 8;
 const DEFAULT_ARCHITECT_GENERATE_MAX_TOKENS: u32 = 8_192;
 const DEFAULT_ARCHITECT_GENERATE_TEMPERATURE: f32 = 0.0;
 
@@ -49,6 +49,9 @@ pub struct AgentModelConfig {
     pub model: String,
     pub temperature: Option<f32>,
     pub max_tokens: Option<u32>,
+    pub shared_history_limit: Option<usize>,
+    pub private_memory_limit: Option<usize>,
+    pub session_history_limit: Option<usize>,
     pub prompt_profile: PromptProfile,
 }
 
@@ -59,6 +62,9 @@ impl AgentModelConfig {
             model: model.into(),
             temperature: None,
             max_tokens: None,
+            shared_history_limit: None,
+            private_memory_limit: None,
+            session_history_limit: None,
             prompt_profile: PromptProfile::default(),
         }
     }
@@ -70,6 +76,21 @@ impl AgentModelConfig {
 
     pub fn with_max_tokens(mut self, max_tokens: Option<u32>) -> Self {
         self.max_tokens = max_tokens;
+        self
+    }
+
+    pub fn with_shared_history_limit(mut self, limit: Option<usize>) -> Self {
+        self.shared_history_limit = limit;
+        self
+    }
+
+    pub fn with_private_memory_limit(mut self, limit: Option<usize>) -> Self {
+        self.private_memory_limit = limit;
+        self
+    }
+
+    pub fn with_session_history_limit(mut self, limit: Option<usize>) -> Self {
+        self.session_history_limit = limit;
         self
     }
 
@@ -143,6 +164,7 @@ pub struct RuntimeAgentConfigs {
     pub actor: AgentModelConfig,
     pub narrator: AgentModelConfig,
     pub keeper: AgentModelConfig,
+    pub shared_memory_limit: usize,
 }
 
 impl RuntimeAgentConfigs {
@@ -154,6 +176,7 @@ impl RuntimeAgentConfigs {
             actor: AgentModelConfig::new(Arc::clone(&client), model.clone()),
             narrator: AgentModelConfig::new(Arc::clone(&client), model.clone()),
             keeper: AgentModelConfig::new(client, model),
+            shared_memory_limit: DEFAULT_MESSAGE_HISTORY_LIMIT,
         }
     }
 }
@@ -164,6 +187,7 @@ pub struct Engine {
     actor: Actor,
     narrator: Narrator,
     keeper: Keeper,
+    shared_memory_limit: usize,
 }
 
 impl Engine {
@@ -171,6 +195,23 @@ impl Engine {
         agent_configs: RuntimeAgentConfigs,
         runtime_state: RuntimeState,
     ) -> Result<Self, EngineError> {
+        let director_shared_history_limit = agent_configs
+            .director
+            .shared_history_limit
+            .unwrap_or(DEFAULT_MESSAGE_HISTORY_LIMIT);
+        let actor_shared_history_limit = agent_configs
+            .actor
+            .shared_history_limit
+            .unwrap_or(DEFAULT_MESSAGE_HISTORY_LIMIT);
+        let actor_private_memory_limit = agent_configs
+            .actor
+            .private_memory_limit
+            .unwrap_or(DEFAULT_MESSAGE_HISTORY_LIMIT);
+        let narrator_shared_history_limit = agent_configs
+            .narrator
+            .shared_history_limit
+            .unwrap_or(DEFAULT_MESSAGE_HISTORY_LIMIT);
+
         Ok(Self {
             runtime_state,
             director: Director::new_with_options(
@@ -179,6 +220,7 @@ impl Engine {
                 agent_configs.director.temperature,
                 agent_configs.director.max_tokens,
             )?
+            .with_shared_history_limit(director_shared_history_limit)
             .with_prompt_profile(agent_configs.director.prompt_profile.clone()),
             actor: Actor::new_with_options(
                 agent_configs.actor.client,
@@ -186,6 +228,8 @@ impl Engine {
                 agent_configs.actor.temperature,
                 agent_configs.actor.max_tokens,
             )?
+            .with_shared_history_limit(actor_shared_history_limit)
+            .with_private_memory_limit(actor_private_memory_limit)
             .with_prompt_profile(agent_configs.actor.prompt_profile.clone()),
             narrator: Narrator::new_with_options(
                 agent_configs.narrator.client,
@@ -193,6 +237,7 @@ impl Engine {
                 agent_configs.narrator.temperature,
                 agent_configs.narrator.max_tokens,
             )?
+            .with_shared_history_limit(narrator_shared_history_limit)
             .with_prompt_profile(agent_configs.narrator.prompt_profile.clone()),
             keeper: Keeper::new_with_options(
                 agent_configs.keeper.client,
@@ -201,6 +246,7 @@ impl Engine {
                 agent_configs.keeper.max_tokens,
             )?
             .with_prompt_profile(agent_configs.keeper.prompt_profile.clone()),
+            shared_memory_limit: agent_configs.shared_memory_limit,
         })
     }
 
@@ -243,7 +289,11 @@ impl Engine {
                 player_input: player_input.clone(),
             };
 
-            let recorded_entry = record_player_input(self.runtime_state.world_state_mut(), &player_input);
+            let recorded_entry = record_player_input(
+                self.runtime_state.world_state_mut(),
+                &player_input,
+                self.shared_memory_limit,
+            );
             yield EngineEvent::PlayerInputRecorded {
                 entry: recorded_entry,
                 snapshot: Box::new(self.runtime_state.snapshot()),
@@ -509,7 +559,6 @@ impl Engine {
                                                                     player_description: parts.player_description,
                                                                     purpose: purpose.clone(),
                                                                     node: current_node,
-                                                                    memory_limit: None,
                                                                 },
                                                                 parts.world_state,
                                                             )
@@ -911,7 +960,7 @@ impl Engine {
             .actor_shared_history()
             .iter()
             .rev()
-            .take(DEFAULT_SHARED_MEMORY_LIMIT)
+            .take(self.shared_memory_limit)
             .map(|entry| entry.text.as_str())
             .collect::<Vec<_>>();
         let mut match_inputs = Vec::with_capacity(node_texts.len() + history_texts.len() + 1);
@@ -1191,14 +1240,18 @@ pub async fn generate_story_graph(
         .map_err(EngineError::from)
 }
 
-fn record_player_input(world_state: &mut WorldState, player_input: &str) -> ActorMemoryEntry {
+fn record_player_input(
+    world_state: &mut WorldState,
+    player_input: &str,
+    shared_memory_limit: usize,
+) -> ActorMemoryEntry {
     let entry = ActorMemoryEntry {
         speaker_id: "player".to_owned(),
         speaker_name: "Player".to_owned(),
         kind: ActorMemoryKind::PlayerInput,
         text: player_input.to_owned(),
     };
-    world_state.push_actor_shared_history(entry.clone(), DEFAULT_SHARED_MEMORY_LIMIT);
+    world_state.push_actor_shared_history(entry.clone(), shared_memory_limit);
     entry
 }
 

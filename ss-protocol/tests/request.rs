@@ -62,6 +62,11 @@ fn sample_preset_agents() -> ss_protocol::PresetAgentPayloads {
     let config = |max_tokens| AgentPresetConfigPayload {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
+        director_shared_history_limit: None,
+        actor_shared_history_limit: None,
+        actor_private_memory_limit: None,
+        narrator_shared_history_limit: None,
+        replyer_session_history_limit: None,
         extra: None,
         modules: Vec::new(),
     };

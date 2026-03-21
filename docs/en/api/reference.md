@@ -85,6 +85,11 @@ The currently implemented fields are:
 
 - `temperature`
 - `max_tokens`
+- optional `director_shared_history_limit`
+- optional `actor_shared_history_limit`
+- optional `actor_private_memory_limit`
+- optional `narrator_shared_history_limit`
+- optional `replyer_session_history_limit`
 - optional `extra`
 - `modules`
 
@@ -140,6 +145,10 @@ Behavior notes:
 - `message_role` controls whether a module is emitted into the system message or the user message
 - The compiled prompt keeps module section titles, but omits entry ids and entry display names
 - `context_key` is only used by `built_in_context_ref`; `custom_text` uses `text`
+- The history-limit fields only affect the agents that actually consume message history; omitted
+  values use backend defaults
+- `replyer_session_history_limit` controls the recent session-message window; inside that window,
+  `replyer` keeps narration from only the latest narrated turn and keeps other message kinds as-is
 - `preset_preview.template` renders unresolved `context_ref` entries as placeholders such as
   `<context:story_concept>`
 - `preset_preview.runtime` returns real compiled entry text; `module_id` is optional and limits

@@ -176,6 +176,11 @@ Each agent entry currently supports:
 
 - `temperature`
 - `max_tokens`
+- optional `director_shared_history_limit`
+- optional `actor_shared_history_limit`
+- optional `actor_private_memory_limit`
+- optional `narrator_shared_history_limit`
+- optional `replyer_session_history_limit`
 - optional `extra`
 - `modules`
 
@@ -242,6 +247,10 @@ Notes:
 - Enabled entries are compiled into one system message and one user message
 - `message_role` decides whether a module is placed into the system message or the user message
 - The compiled prompt keeps module section titles, but omits entry ids and entry display names
+- History-limit fields are optional and only apply to agents that read message history; omitted
+  values use backend defaults
+- `replyer_session_history_limit` applies to the recent session-message window; inside that window,
+  narration is reduced to the latest narrated turn while other message kinds stay unchanged
 - `preset_preview.template` renders the compiled prompt while unresolved `context_ref` items stay as
   placeholders such as `<context:story_concept>`
 - `preset_preview.runtime` renders structured compiled entry text for either the full prompt or

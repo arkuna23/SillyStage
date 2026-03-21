@@ -298,24 +298,14 @@ const DIRECTOR_TEMPLATES: [BuiltInEntryTemplate; 10] = [
     ),
 ];
 
-const DIRECTOR_TEMPLATES_TAIL: [BuiltInEntryTemplate; 2] = [
-    context_entry(
-        PromptModuleId::DynamicContext,
-        "director_player_input",
-        "Player Input",
-        40,
-        true,
-        "player_input",
-    ),
-    text_entry(
+const DIRECTOR_TEMPLATES_TAIL: [BuiltInEntryTemplate; 1] = [text_entry(
         PromptModuleId::Output,
         "director_output_core",
         "Output Contract",
         10,
         true,
         DIRECTOR_OUTPUT_CONTRACT,
-    ),
-];
+    )];
 
 const ACTOR_TEMPLATES: [BuiltInEntryTemplate; 10] = [
     text_entry(
@@ -537,7 +527,7 @@ const NARRATOR_TEMPLATES_TAIL: [BuiltInEntryTemplate; 3] = [
     ),
 ];
 
-const KEEPER_TEMPLATES: [BuiltInEntryTemplate; 14] = [
+const KEEPER_TEMPLATES: [BuiltInEntryTemplate; 13] = [
     text_entry(
         PromptModuleId::Role,
         "keeper_role_core",
@@ -636,17 +626,9 @@ const KEEPER_TEMPLATES: [BuiltInEntryTemplate; 14] = [
     ),
     context_entry(
         PromptModuleId::DynamicContext,
-        "keeper_shared_history",
-        "Shared History",
-        30,
-        true,
-        "shared_history",
-    ),
-    context_entry(
-        PromptModuleId::DynamicContext,
         "keeper_player_input",
         "Player Input",
-        40,
+        30,
         true,
         "player_input",
     ),

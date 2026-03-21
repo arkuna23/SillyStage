@@ -83,6 +83,11 @@
 
 - `temperature`
 - `max_tokens`
+- 可选 `director_shared_history_limit`
+- 可选 `actor_shared_history_limit`
+- 可选 `actor_private_memory_limit`
+- 可选 `narrator_shared_history_limit`
+- 可选 `replyer_session_history_limit`
 - 可选 `extra`
 - `modules`
 
@@ -134,6 +139,9 @@
 - `message_role` 用于决定模块进入 system 还是 user message
 - 最终 prompt 会保留模块标题，但不会输出 entry id 和 entry 显示名
 - `context_key` 只用于 `built_in_context_ref`；`custom_text` 使用 `text`
+- 历史条数字段只对真正读取消息历史的 agent 生效；省略时使用后端默认值
+- `replyer_session_history_limit` 控制 replyer 读取的最近 session 消息窗口；在这个窗口内，
+  narration 只保留最新一个有 narration 的 turn，其他消息类型保持原样
 - `preset_preview.template` 会把未解析的 `context_ref` 渲染成 `<context:story_concept>` 这种占位符
 - `preset_preview.runtime` 会返回真实编译后的 entry 文本；如果传了 `module_id`，则只预览该模块，不返回完整 system/user 组合
 - `preset_preview.runtime` 的上下文来源规则：

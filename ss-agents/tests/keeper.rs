@@ -360,7 +360,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
     assert!(user_message.contains("NODE_CHANGE"));
     assert!(user_message.contains("PROGRESSION_HINTS"));
     assert!(user_message.contains("COMPLETED_BEATS"));
-    assert!(user_message.contains("shared_history"));
+    assert!(!user_message.contains("shared_history"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
     assert!(!user_message.contains("on_enter_updates"));
     assert!(!user_message.contains("entered_market"));
@@ -399,7 +399,7 @@ async fn keeper_prompt_includes_shared_history_but_not_private_memory() {
             .content
             .contains("If NODE_CHANGE says `transitioned=true`, consider")
     );
-    assert!(user_message.contains("We'll reach the canal gate before the tide turns."));
+    assert!(!user_message.contains("We'll reach the canal gate before the tide turns."));
     assert!(user_message.contains("I agree to follow the guide toward the canal gate."));
     assert!(
         user_message

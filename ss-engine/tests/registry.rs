@@ -26,6 +26,11 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
     AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
+        director_shared_history_limit: None,
+        actor_shared_history_limit: None,
+        actor_private_memory_limit: None,
+        narrator_shared_history_limit: None,
+        replyer_session_history_limit: None,
         extra: None,
         modules: vec![AgentPromptModuleConfig {
             module_id: PromptModuleId::Task,
@@ -75,7 +80,12 @@ fn registry_builds_story_generation_and_runtime_configs_for_group() {
     let narrator_api = sample_api_record("api-narrator", "narrator-model");
     let keeper_api = sample_api_record("api-keeper", "keeper-model");
     let replyer_api = sample_api_record("api-replyer", "replyer-model");
-    let preset = sample_preset();
+    let mut preset = sample_preset();
+    preset.agents.director.director_shared_history_limit = Some(10);
+    preset.agents.actor.actor_shared_history_limit = Some(12);
+    preset.agents.actor.actor_private_memory_limit = Some(4);
+    preset.agents.narrator.narrator_shared_history_limit = Some(6);
+    preset.agents.replyer.replyer_session_history_limit = Some(5);
     let registry = LlmApiRegistry::new()
         .register(
             "api-planner",
@@ -154,6 +164,12 @@ fn registry_builds_story_generation_and_runtime_configs_for_group() {
             .system_prompt
             .contains("Keep replies under 256 tokens when practical.")
     );
+    assert_eq!(runtime.director.shared_history_limit, Some(10));
+    assert_eq!(runtime.actor.shared_history_limit, Some(12));
+    assert_eq!(runtime.actor.private_memory_limit, Some(4));
+    assert_eq!(runtime.narrator.shared_history_limit, Some(6));
+    assert_eq!(runtime.shared_memory_limit, 12);
+    assert_eq!(replyer.session_history_limit, Some(5));
 }
 
 #[test]

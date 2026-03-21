@@ -137,7 +137,6 @@ pub struct ActorRequest<'a> {
     pub player_description: &'a str,
     pub purpose: ActorPurpose,
     pub node: &'a NarrativeNode,
-    pub memory_limit: Option<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,6 +176,8 @@ pub struct Actor {
     prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    shared_history_limit: usize,
+    private_memory_limit: usize,
 }
 
 impl Actor {
@@ -196,11 +197,23 @@ impl Actor {
             prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
+            shared_history_limit: DEFAULT_MEMORY_LIMIT,
+            private_memory_limit: DEFAULT_MEMORY_LIMIT,
         })
     }
 
     pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
         self.prompt_profile = prompt_profile;
+        self
+    }
+
+    pub fn with_shared_history_limit(mut self, limit: usize) -> Self {
+        self.shared_history_limit = limit;
+        self
+    }
+
+    pub fn with_private_memory_limit(mut self, limit: usize) -> Self {
+        self.private_memory_limit = limit;
         self
     }
 
@@ -254,7 +267,8 @@ impl Actor {
             llm_stream: stream,
             parser: ActorStreamParser::new(request.character),
             world_state,
-            memory_limit: request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT),
+            shared_history_limit: self.shared_history_limit,
+            private_memory_limit: self.private_memory_limit,
             llm_finished: false,
             memory_persisted: false,
             terminated: false,
@@ -384,7 +398,6 @@ impl Actor {
         world_state: &WorldState,
     ) -> Result<(String, String), ActorError> {
         let purpose = compact_json(&request.purpose).map_err(ActorError::SerializePromptData)?;
-        let memory_limit = request.memory_limit.unwrap_or(DEFAULT_MEMORY_LIMIT);
         let current_cast = render_character_summaries(
             &self.current_cast_summaries(request, world_state)?,
             request.player_name,
@@ -402,10 +415,13 @@ impl Actor {
                 "current_node" => Some(render_node(request.node)),
                 "world_state" => Some(render_actor_world_state(world_state)),
                 "shared_history" => Some(render_actor_history(
-                    &world_state.recent_actor_shared_history(memory_limit),
+                    &world_state.recent_actor_shared_history(self.shared_history_limit),
                 )),
                 "private_memory" => Some(render_actor_history(
-                    &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
+                    &world_state.recent_actor_private_memory(
+                        &request.character.id,
+                        self.private_memory_limit,
+                    ),
                 )),
                 "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
@@ -424,10 +440,13 @@ impl Actor {
                 "current_node" => Some(render_node(request.node)),
                 "world_state" => Some(render_actor_world_state(world_state)),
                 "shared_history" => Some(render_actor_history(
-                    &world_state.recent_actor_shared_history(memory_limit),
+                    &world_state.recent_actor_shared_history(self.shared_history_limit),
                 )),
                 "private_memory" => Some(render_actor_history(
-                    &world_state.recent_actor_private_memory(&request.character.id, memory_limit),
+                    &world_state.recent_actor_private_memory(
+                        &request.character.id,
+                        self.private_memory_limit,
+                    ),
                 )),
                 "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
@@ -480,7 +499,8 @@ struct ActorEventStreamState<'a> {
     llm_stream: llm::ChatStream,
     parser: ActorStreamParser,
     world_state: &'a mut WorldState,
-    memory_limit: usize,
+    shared_history_limit: usize,
+    private_memory_limit: usize,
     llm_finished: bool,
     memory_persisted: bool,
     terminated: bool,
@@ -496,7 +516,12 @@ impl ActorEventStreamState<'_> {
             return Ok(());
         };
 
-        persist_actor_memory(self.world_state, &response, self.memory_limit);
+        persist_actor_memory(
+            self.world_state,
+            &response,
+            self.shared_history_limit,
+            self.private_memory_limit,
+        );
         self.memory_persisted = true;
         Ok(())
     }
@@ -516,7 +541,8 @@ struct ActorStreamParser {
 fn persist_actor_memory(
     world_state: &mut WorldState,
     response: &ActorResponse,
-    memory_limit: usize,
+    shared_history_limit: usize,
+    private_memory_limit: usize,
 ) {
     for segment in &response.segments {
         let entry = ActorMemoryEntry {
@@ -530,9 +556,13 @@ fn persist_actor_memory(
             segment.kind,
             ActorSegmentKind::Dialogue | ActorSegmentKind::Action
         ) {
-            world_state.push_actor_shared_history(entry, memory_limit);
+            world_state.push_actor_shared_history(entry, shared_history_limit);
         } else if matches!(segment.kind, ActorSegmentKind::Thought) {
-            world_state.push_actor_private_memory(response.speaker_id.clone(), entry, memory_limit);
+            world_state.push_actor_private_memory(
+                response.speaker_id.clone(),
+                entry,
+                private_memory_limit,
+            );
         }
     }
 }

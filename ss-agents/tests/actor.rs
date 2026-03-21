@@ -65,7 +65,6 @@ fn sample_request<'a>(
         player_description: "A cautious courier carrying a sealed satchel and speaking plainly.",
         purpose: ActorPurpose::AdvanceGoal,
         node,
-        memory_limit: None,
     }
 }
 
@@ -466,7 +465,10 @@ async fn perform_stream_uses_user_fallback_for_character_templates() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_shared_history_limit(2)
+        .with_private_memory_limit(2);
     let mut world_state = sample_world_state();
     let mut character = sample_card();
     character.system_prompt = "Speak to {{user}} as {{char}}.".to_owned();
@@ -508,7 +510,10 @@ async fn perform_stream_renders_character_schema_templates_from_runtime_state() 
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_shared_history_limit(2)
+        .with_private_memory_limit(2);
     let mut world_state = sample_world_state();
     world_state.set_character_state("merchant", "trust", json!(3));
     world_state.set_character_state("merchant", "inventory", json!(["lantern", "rope"]));
@@ -562,7 +567,10 @@ async fn llm_stream_errors_surface_through_actor() {
     let llm = Arc::new(MockLlm::with_stream_chunks(vec![Err(
         LlmError::RateLimited,
     )]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_shared_history_limit(2)
+        .with_private_memory_limit(2);
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -602,7 +610,10 @@ async fn perform_respects_memory_limit_and_only_shares_visible_segments() {
             usage: None,
         }),
     ]));
-    let actor = Actor::new(llm.clone(), "test-model").expect("actor should build");
+    let actor = Actor::new(llm.clone(), "test-model")
+        .expect("actor should build")
+        .with_shared_history_limit(2)
+        .with_private_memory_limit(2);
     let mut world_state = sample_world_state();
     let character = sample_card();
     let cast = vec![character.clone()];
@@ -627,10 +638,8 @@ async fn perform_respects_memory_limit_and_only_shares_visible_segments() {
         2,
     );
 
-    let mut request = sample_request(&character, &cast, &node);
-    request.memory_limit = Some(2);
     let response = actor
-        .perform(request, &mut world_state)
+        .perform(sample_request(&character, &cast, &node), &mut world_state)
         .await
         .expect("perform should work");
 

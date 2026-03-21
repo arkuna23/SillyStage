@@ -222,6 +222,7 @@ fn runtime_agent_configs(llm: Arc<QueuedMockLlm>) -> RuntimeAgentConfigs {
             .with_prompt_profile(profile(PromptAgentKind::Narrator)),
         keeper: AgentModelConfig::new(llm_api, "test-model")
             .with_prompt_profile(profile(PromptAgentKind::Keeper)),
+        shared_memory_limit: 8,
     }
 }
 

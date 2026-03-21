@@ -74,6 +74,9 @@ pub fn normalize_agent_preset_config(
         module.order = incoming_module.order;
 
         for entry in incoming_module.entries {
+            if is_removed_built_in_entry(agent, &entry) {
+                continue;
+            }
             let normalized_entry =
                 normalize_entry(agent, &module_id, entry, &pending_built_in_entries)?;
             if !seen_entry_ids.insert(normalized_entry.entry_id.clone()) {
@@ -122,6 +125,11 @@ pub fn normalize_agent_preset_config(
     Ok(AgentPresetConfig {
         temperature: incoming.temperature,
         max_tokens: incoming.max_tokens,
+        director_shared_history_limit: incoming.director_shared_history_limit,
+        actor_shared_history_limit: incoming.actor_shared_history_limit,
+        actor_private_memory_limit: incoming.actor_private_memory_limit,
+        narrator_shared_history_limit: incoming.narrator_shared_history_limit,
+        replyer_session_history_limit: incoming.replyer_session_history_limit,
         extra: incoming.extra,
         modules,
     })
@@ -199,9 +207,26 @@ pub fn compact_agent_preset_config(
     Ok(AgentPresetConfig {
         temperature: normalized.temperature,
         max_tokens: normalized.max_tokens,
+        director_shared_history_limit: normalized.director_shared_history_limit,
+        actor_shared_history_limit: normalized.actor_shared_history_limit,
+        actor_private_memory_limit: normalized.actor_private_memory_limit,
+        narrator_shared_history_limit: normalized.narrator_shared_history_limit,
+        replyer_session_history_limit: normalized.replyer_session_history_limit,
         extra: normalized.extra,
         modules,
     })
+}
+
+fn is_removed_built_in_entry(agent: PromptAgentKind, entry: &AgentPromptModuleEntryConfig) -> bool {
+    if entry.kind == PromptEntryKind::CustomText {
+        return false;
+    }
+
+    matches!(
+        (agent, entry.entry_id.as_str()),
+        (PromptAgentKind::Director, "director_player_input")
+            | (PromptAgentKind::Keeper, "keeper_shared_history")
+    )
 }
 
 fn normalize_module_id(module_id: PromptModuleId) -> Result<PromptModuleId, PromptConfigError> {
@@ -301,4 +326,38 @@ fn built_in_entry_matches_default(
     entry.display_name == default_entry.display_name
         && entry.enabled == default_entry.enabled
         && entry.order == default_entry.order
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_drops_removed_director_builtin_entry() {
+        let mut config = default_agent_preset_config(PromptAgentKind::Director);
+        let module = config
+            .modules
+            .iter_mut()
+            .find(|module| module.module_id == PromptModuleId::DynamicContext)
+            .expect("dynamic context module should exist");
+        module.entries.push(AgentPromptModuleEntryConfig {
+            entry_id: "director_player_input".to_owned(),
+            display_name: "Player Input".to_owned(),
+            kind: PromptEntryKind::BuiltInContextRef,
+            enabled: true,
+            order: 40,
+            required: true,
+            text: None,
+            context_key: Some("player_input".to_owned()),
+        });
+
+        let normalized = normalize_agent_preset_config(PromptAgentKind::Director, config)
+            .expect("normalization should succeed");
+
+        assert!(!normalized
+            .modules
+            .iter()
+            .flat_map(|module| module.entries.iter())
+            .any(|entry| entry.entry_id == "director_player_input"));
+    }
 }

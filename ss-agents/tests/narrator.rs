@@ -374,7 +374,7 @@ async fn narrator_prompt_includes_shared_history_but_not_private_memory() {
     assert!(!system_message.content.contains("PRESET_PROMPT_ENTRIES"));
     assert!(user_message.contains("CURRENT_NODE"));
     assert!(user_message.contains("PREVIOUS_NODE"));
-    assert!(user_message.contains("shared_history"));
+    assert!(user_message.contains("SHARED_HISTORY"));
     assert!(user_message.contains("PLAYER_STATE_SCHEMA"));
     assert!(!user_message.contains("on_enter_updates"));
     assert!(!user_message.contains("entered_market"));

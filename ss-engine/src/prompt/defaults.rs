@@ -10,6 +10,11 @@ pub fn default_agent_preset_config(agent: PromptAgentKind) -> AgentPresetConfig 
     AgentPresetConfig {
         temperature: None,
         max_tokens: None,
+        director_shared_history_limit: None,
+        actor_shared_history_limit: None,
+        actor_private_memory_limit: None,
+        narrator_shared_history_limit: None,
+        replyer_session_history_limit: None,
         extra: None,
         modules: built_in_module_templates()
             .iter()

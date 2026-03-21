@@ -14,6 +14,8 @@ use state::{PlayerStateSchema, WorldState};
 use story::node::NarrativeNode;
 use story::runtime_graph::RuntimeStoryGraph;
 
+const DEFAULT_SHARED_HISTORY_LIMIT: usize = 8;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectorResult {
     pub previous_node_id: String,
@@ -98,6 +100,7 @@ pub struct Director {
     prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    shared_history_limit: usize,
 }
 
 impl Director {
@@ -117,11 +120,17 @@ impl Director {
             prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
+            shared_history_limit: DEFAULT_SHARED_HISTORY_LIMIT,
         })
     }
 
     pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
         self.prompt_profile = prompt_profile;
+        self
+    }
+
+    pub fn with_shared_history_limit(mut self, limit: usize) -> Self {
+        self.shared_history_limit = limit;
         self
     }
 
@@ -342,7 +351,9 @@ impl Director {
                 "transitioned_this_turn" => Some(transitioned_this_turn.clone()),
                 "world_state" => Some(render_director_world_state(world_state)),
                 "lorebook_matched" => lorebook_matched.map(str::to_owned),
-                "shared_history" => Some(render_actor_history(world_state.actor_shared_history())),
+                "shared_history" => Some(render_actor_history(
+                    &world_state.recent_actor_shared_history(self.shared_history_limit),
+                )),
                 _ => None,
             });
         let system_prompt = merge_system_prompt(&self.prompt_profile.system_prompt, &system_prompt);
@@ -362,7 +373,9 @@ impl Director {
                 "transitioned_this_turn" => Some(transitioned_this_turn.clone()),
                 "world_state" => Some(render_director_world_state(world_state)),
                 "lorebook_matched" => lorebook_matched.map(str::to_owned),
-                "shared_history" => Some(render_actor_history(world_state.actor_shared_history())),
+                "shared_history" => Some(render_actor_history(
+                    &world_state.recent_actor_shared_history(self.shared_history_limit),
+                )),
                 _ => None,
             });
 

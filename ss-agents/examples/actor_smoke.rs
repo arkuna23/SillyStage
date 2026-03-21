@@ -38,7 +38,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
     )?;
 
     let client: Arc<dyn llm::LlmApi> = Arc::new(client);
-    let actor = Actor::new(Arc::clone(&client), model.clone())?;
+    let actor = Actor::new(Arc::clone(&client), model.clone())?
+        .with_shared_history_limit(6)
+        .with_private_memory_limit(6);
     let (character, cast) = sample_cast();
     let mut world_state = sample_world_state();
 
@@ -190,7 +192,6 @@ fn sample_request<'a>(
         player_description: "A stubborn courier carrying medicine and trying to judge who is worth trusting.",
         purpose: ActorPurpose::AdvanceGoal,
         node,
-        memory_limit: Some(6),
     }
 }
 

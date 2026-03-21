@@ -42,6 +42,11 @@ fn sample_agent_preset_config(max_tokens: u32) -> AgentPresetConfig {
     AgentPresetConfig {
         temperature: Some(0.1),
         max_tokens: Some(max_tokens),
+        director_shared_history_limit: None,
+        actor_shared_history_limit: None,
+        actor_private_memory_limit: None,
+        narrator_shared_history_limit: None,
+        replyer_session_history_limit: None,
         extra: None,
         modules: vec![AgentPromptModuleConfig {
             module_id: PromptModuleId::Task,

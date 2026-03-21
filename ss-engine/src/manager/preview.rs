@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, HashMap};
 
 use agents::actor::CharacterCard;
-use agents::replyer::{ReplyHistoryKind, ReplyHistoryMessage};
+use agents::replyer::ReplyHistoryMessage;
 use serde::Serialize;
 use serde_json::Value;
 use state::{ActorMemoryEntry, ActorMemoryKind, StateFieldSchema};
-use store::{AgentPresetConfig, PromptModuleId, SessionMessageKind, StoryDraftRecord};
+use store::{AgentPresetConfig, PromptModuleId, StoryDraftRecord};
 use story::{Condition, ConditionOperator, ConditionScope, NarrativeNode, Transition};
 
 use crate::lorebook::build_lorebook_prompt_sections;
@@ -18,11 +18,14 @@ use crate::prompt::{
 };
 use crate::registry::RegistryError;
 use crate::{RuntimeError, RuntimeState, StoryResources};
-
-use super::util::{build_graph_summary, truncate_text};
-use super::{
-    DEFAULT_ARCHITECT_CHUNK_NODE_COUNT, DEFAULT_REPLY_HISTORY_LIMIT, EngineManager, ManagerError,
+use crate::history::{
+    resolve_actor_private_memory_limit, resolve_actor_shared_history_limit,
+    resolve_director_shared_history_limit, resolve_narrator_shared_history_limit,
+    resolve_replyer_session_history_limit, resolve_runtime_shared_memory_limit,
 };
+
+use super::util::{build_graph_summary, build_reply_history, truncate_text};
+use super::{DEFAULT_ARCHITECT_CHUNK_NODE_COUNT, EngineManager, ManagerError};
 
 impl EngineManager {
     pub async fn preview_prompt_template(
@@ -151,14 +154,43 @@ impl EngineManager {
         let runtime_state = self
             .build_runtime_state_from_session(&story, &session)
             .await?;
+        let shared_memory_limit = resolve_runtime_shared_memory_limit(
+            &preset.agents.director,
+            &preset.agents.actor,
+            &preset.agents.narrator,
+        );
 
         let context = match agent {
-            PromptAgentKind::Director => director_context(&runtime_state, &options)?,
-            PromptAgentKind::Actor => actor_context(&runtime_state, &options)?,
-            PromptAgentKind::Narrator => narrator_context(&runtime_state, &options)?,
-            PromptAgentKind::Keeper => keeper_context(&runtime_state, &options)?,
+            PromptAgentKind::Director => {
+                director_context(
+                    &runtime_state,
+                    &preset.agents.director,
+                    &options,
+                    shared_memory_limit,
+                )?
+            }
+            PromptAgentKind::Actor => actor_context(
+                &runtime_state,
+                &preset.agents.actor,
+                &options,
+                shared_memory_limit,
+            )?,
+            PromptAgentKind::Narrator => {
+                narrator_context(
+                    &runtime_state,
+                    &preset.agents.narrator,
+                    &options,
+                    shared_memory_limit,
+                )?
+            }
+            PromptAgentKind::Keeper => keeper_context(&runtime_state, &options, shared_memory_limit)?,
             PromptAgentKind::Replyer => {
-                let history = self.load_reply_history_for_preview(session_id).await?;
+                let history = self
+                    .load_reply_history_for_preview(
+                        session_id,
+                        resolve_replyer_session_history_limit(&preset.agents.replyer),
+                    )
+                    .await?;
                 replyer_context(&runtime_state, &history, &options)?
             }
             PromptAgentKind::Planner | PromptAgentKind::Architect => {
@@ -181,27 +213,11 @@ impl EngineManager {
     async fn load_reply_history_for_preview(
         &self,
         session_id: &str,
+        history_limit: usize,
     ) -> Result<Vec<ReplyHistoryMessage>, ManagerError> {
         let mut messages = self.store.list_session_messages(session_id).await?;
         messages.sort_by_key(|message| message.sequence);
-        let start = messages.len().saturating_sub(DEFAULT_REPLY_HISTORY_LIMIT);
-
-        Ok(messages
-            .into_iter()
-            .skip(start)
-            .map(|message| ReplyHistoryMessage {
-                kind: match message.kind {
-                    SessionMessageKind::PlayerInput => ReplyHistoryKind::PlayerInput,
-                    SessionMessageKind::Narration => ReplyHistoryKind::Narration,
-                    SessionMessageKind::Dialogue => ReplyHistoryKind::Dialogue,
-                    SessionMessageKind::Action => ReplyHistoryKind::Action,
-                },
-                turn_index: message.turn_index,
-                speaker_id: message.speaker_id,
-                speaker_name: message.speaker_name,
-                text: message.text,
-            })
-            .collect())
+        Ok(build_reply_history(messages, history_limit))
     }
 }
 
@@ -467,13 +483,16 @@ async fn architect_draft_continue_context(
 
 fn director_context(
     runtime_state: &RuntimeState,
+    config: &AgentPresetConfig,
     options: &RuntimePromptPreviewOptions,
+    shared_memory_limit: usize,
 ) -> Result<HashMap<String, String>, ManagerError> {
     let current_node = runtime_state.current_node()?;
     let lorebook_sections = runtime_lorebook_sections(
         runtime_state,
         &current_node.id,
         options.player_input.as_deref().unwrap_or(""),
+        shared_memory_limit,
     );
     let mut context = HashMap::new();
     context.insert(
@@ -502,7 +521,11 @@ fn director_context(
     );
     context.insert(
         "shared_history".to_owned(),
-        render_actor_history(runtime_state.world_state().actor_shared_history()),
+        render_actor_history(
+            &runtime_state
+                .world_state()
+                .recent_actor_shared_history(resolve_director_shared_history_limit(config)),
+        ),
     );
     insert_optional(&mut context, "lorebook_base", lorebook_sections.base);
     insert_optional(&mut context, "lorebook_matched", lorebook_sections.matched);
@@ -511,7 +534,9 @@ fn director_context(
 
 fn actor_context(
     runtime_state: &RuntimeState,
+    config: &AgentPresetConfig,
     options: &RuntimePromptPreviewOptions,
+    shared_memory_limit: usize,
 ) -> Result<HashMap<String, String>, ManagerError> {
     let current_node = runtime_state.current_node()?;
     let character_id = options.character_id.as_deref().ok_or_else(|| {
@@ -525,6 +550,7 @@ fn actor_context(
         runtime_state,
         &current_node.id,
         options.player_input.as_deref().unwrap_or(""),
+        shared_memory_limit,
     );
     let mut context = HashMap::new();
     context.insert(
@@ -559,7 +585,7 @@ fn actor_context(
         render_actor_history(
             &runtime_state
                 .world_state()
-                .recent_actor_shared_history(DEFAULT_REPLY_HISTORY_LIMIT),
+                .recent_actor_shared_history(resolve_actor_shared_history_limit(config)),
         ),
     );
     context.insert(
@@ -567,7 +593,10 @@ fn actor_context(
         render_actor_history(
             &runtime_state
                 .world_state()
-                .recent_actor_private_memory(&character.id, DEFAULT_REPLY_HISTORY_LIMIT),
+                .recent_actor_private_memory(
+                    &character.id,
+                    resolve_actor_private_memory_limit(config),
+                ),
         ),
     );
     insert_optional(&mut context, "lorebook_base", lorebook_sections.base);
@@ -577,7 +606,9 @@ fn actor_context(
 
 fn narrator_context(
     runtime_state: &RuntimeState,
+    config: &AgentPresetConfig,
     options: &RuntimePromptPreviewOptions,
+    shared_memory_limit: usize,
 ) -> Result<HashMap<String, String>, ManagerError> {
     let current_node = runtime_state.current_node()?;
     let purpose = options
@@ -588,6 +619,7 @@ fn narrator_context(
         runtime_state,
         &current_node.id,
         options.player_input.as_deref().unwrap_or(""),
+        shared_memory_limit,
     );
     let mut context = HashMap::new();
     context.insert(
@@ -632,7 +664,11 @@ fn narrator_context(
     );
     context.insert(
         "shared_history".to_owned(),
-        render_actor_history(runtime_state.world_state().actor_shared_history()),
+        render_actor_history(
+            &runtime_state
+                .world_state()
+                .recent_actor_shared_history(resolve_narrator_shared_history_limit(config)),
+        ),
     );
     insert_optional(&mut context, "lorebook_base", lorebook_sections.base);
     insert_optional(&mut context, "lorebook_matched", lorebook_sections.matched);
@@ -642,6 +678,7 @@ fn narrator_context(
 fn keeper_context(
     runtime_state: &RuntimeState,
     options: &RuntimePromptPreviewOptions,
+    shared_memory_limit: usize,
 ) -> Result<HashMap<String, String>, ManagerError> {
     let current_node = runtime_state.current_node()?;
     let previous_node = previous_node(runtime_state, options.previous_node_id.as_deref())?;
@@ -649,6 +686,7 @@ fn keeper_context(
         runtime_state,
         &current_node.id,
         options.player_input.as_deref().unwrap_or(""),
+        shared_memory_limit,
     );
     let mut context = HashMap::new();
     context.insert(
@@ -789,6 +827,7 @@ fn runtime_lorebook_sections(
     runtime_state: &RuntimeState,
     current_node_id: &str,
     player_input: &str,
+    shared_memory_limit: usize,
 ) -> crate::lorebook::LorebookPromptSections {
     let node_texts = runtime_state
         .runtime_graph()
@@ -801,7 +840,7 @@ fn runtime_lorebook_sections(
         .actor_shared_history()
         .iter()
         .rev()
-        .take(DEFAULT_REPLY_HISTORY_LIMIT)
+        .take(shared_memory_limit)
         .map(|entry| entry.text.as_str())
         .collect::<Vec<_>>();
     let mut match_inputs = Vec::with_capacity(node_texts.len() + history_texts.len() + 1);
@@ -1163,10 +1202,6 @@ fn render_observable_world_state(world_state: &state::WorldState) -> String {
         (
             "character_state",
             render_character_state(&world_state.character_state),
-        ),
-        (
-            "shared_history",
-            render_actor_history(world_state.actor_shared_history()),
         ),
     ])
 }

@@ -325,10 +325,6 @@ pub(crate) fn render_observable_world_state(world_state: &WorldState) -> String 
             "character_state",
             render_character_state(&world_state.character_state),
         ),
-        (
-            "shared_history",
-            render_actor_history(world_state.actor_shared_history()),
-        ),
     ])
 }
 

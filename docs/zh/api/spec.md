@@ -176,6 +176,11 @@ JSON-RPC envelope。
 
 - `temperature`
 - `max_tokens`
+- 可选 `director_shared_history_limit`
+- 可选 `actor_shared_history_limit`
+- 可选 `actor_private_memory_limit`
+- 可选 `narrator_shared_history_limit`
+- 可选 `replyer_session_history_limit`
 - 可选 `extra`
 - `modules`
 
@@ -239,6 +244,9 @@ JSON-RPC envelope。
 - 启用条目会被编译成一条 system message 和一条 user message
 - `message_role` 用于决定模块进入 system 还是 user message
 - 最终 prompt 会保留模块标题，但不会输出 entry id 和 entry 显示名
+- 历史条数字段是可选的，只对会读取消息历史的 agent 生效；省略时使用后端默认值
+- `replyer_session_history_limit` 作用于最近 session 消息窗口；在该窗口内，
+  narration 会被压缩为只保留最新一个带 narration 的 turn，其他消息类型保持不变
 - `preset_preview.template` 会渲染编译后的提示词，并把未解析的 `context_ref` 保留成
   `<context:story_concept>` 这种占位符
 - `preset_preview.runtime` 会渲染结构化的真实 entry 文本；传 `module_id` 时只返回单个模块的编译结果

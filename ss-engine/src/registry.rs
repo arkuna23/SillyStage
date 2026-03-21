@@ -7,6 +7,11 @@ use store::{AgentPresetConfig, ApiRecord, LlmProvider, PresetRecord};
 use crate::engine::{
     AgentModelConfig, ArchitectModelConfig, RuntimeAgentConfigs, StoryGenerationAgentConfigs,
 };
+use crate::history::{
+    resolve_actor_private_memory_limit, resolve_actor_shared_history_limit,
+    resolve_director_shared_history_limit, resolve_narrator_shared_history_limit,
+    resolve_replyer_session_history_limit, resolve_runtime_shared_memory_limit,
+};
 use crate::prompt::{PromptAgentKind, compile_architect_prompt_profiles, compile_prompt_profile};
 
 #[derive(Clone)]
@@ -90,22 +95,39 @@ impl LlmApiRegistry {
                 apis.director,
                 &preset.agents.director,
                 PromptAgentKind::Director,
-            )?,
+            )?
+            .with_shared_history_limit(Some(resolve_director_shared_history_limit(
+                &preset.agents.director,
+            ))),
             actor: self.build_agent_model_config(
                 apis.actor,
                 &preset.agents.actor,
                 PromptAgentKind::Actor,
-            )?,
+            )?
+            .with_shared_history_limit(Some(resolve_actor_shared_history_limit(
+                &preset.agents.actor,
+            )))
+            .with_private_memory_limit(Some(resolve_actor_private_memory_limit(
+                &preset.agents.actor,
+            ))),
             narrator: self.build_agent_model_config(
                 apis.narrator,
                 &preset.agents.narrator,
                 PromptAgentKind::Narrator,
-            )?,
+            )?
+            .with_shared_history_limit(Some(resolve_narrator_shared_history_limit(
+                &preset.agents.narrator,
+            ))),
             keeper: self.build_agent_model_config(
                 apis.keeper,
                 &preset.agents.keeper,
                 PromptAgentKind::Keeper,
             )?,
+            shared_memory_limit: resolve_runtime_shared_memory_limit(
+                &preset.agents.director,
+                &preset.agents.actor,
+                &preset.agents.narrator,
+            ),
         })
     }
 
@@ -114,7 +136,11 @@ impl LlmApiRegistry {
         api: &ApiRecord,
         preset: &AgentPresetConfig,
     ) -> Result<AgentModelConfig, RegistryError> {
-        self.build_agent_model_config(api, preset, PromptAgentKind::Replyer)
+        Ok(self
+            .build_agent_model_config(api, preset, PromptAgentKind::Replyer)?
+            .with_session_history_limit(Some(resolve_replyer_session_history_limit(
+                preset,
+            ))))
     }
 
     pub async fn list_models(

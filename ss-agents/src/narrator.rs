@@ -17,6 +17,8 @@ use crate::prompt::{
 use state::{PlayerStateSchema, WorldState};
 use story::NarrativeNode;
 
+const DEFAULT_SHARED_HISTORY_LIMIT: usize = 8;
+
 pub type NarratorEventStream<'a> =
     Pin<Box<dyn Stream<Item = Result<NarratorStreamEvent, NarratorError>> + Send + 'a>>;
 
@@ -54,6 +56,7 @@ pub struct Narrator {
     prompt_profile: PromptProfile,
     temperature: Option<f32>,
     max_tokens: Option<u32>,
+    shared_history_limit: usize,
 }
 
 impl Narrator {
@@ -73,11 +76,17 @@ impl Narrator {
             prompt_profile: PromptProfile::default(),
             temperature,
             max_tokens,
+            shared_history_limit: DEFAULT_SHARED_HISTORY_LIMIT,
         })
     }
 
     pub fn with_prompt_profile(mut self, prompt_profile: PromptProfile) -> Self {
         self.prompt_profile = prompt_profile;
+        self
+    }
+
+    pub fn with_shared_history_limit(mut self, limit: usize) -> Self {
+        self.shared_history_limit = limit;
         self
     }
 
@@ -258,7 +267,9 @@ impl Narrator {
                 )),
                 "world_state" => Some(render_observable_world_state(request.world_state)),
                 "shared_history" => Some(render_actor_history(
-                    request.world_state.actor_shared_history(),
+                    &request
+                        .world_state
+                        .recent_actor_shared_history(self.shared_history_limit),
                 )),
                 "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,
@@ -282,7 +293,9 @@ impl Narrator {
                 )),
                 "world_state" => Some(render_observable_world_state(request.world_state)),
                 "shared_history" => Some(render_actor_history(
-                    request.world_state.actor_shared_history(),
+                    &request
+                        .world_state
+                        .recent_actor_shared_history(self.shared_history_limit),
                 )),
                 "lorebook_matched" => request.lorebook_matched.as_deref().map(str::to_owned),
                 _ => None,

@@ -162,6 +162,16 @@ pub struct AgentPresetConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub director_shared_history_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_shared_history_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor_private_memory_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub narrator_shared_history_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replyer_session_history_limit: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub extra: Option<Value>,
     #[serde(default)]
     pub modules: Vec<AgentPromptModuleConfig>,

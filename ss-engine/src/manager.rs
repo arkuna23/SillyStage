@@ -21,7 +21,6 @@ const DEFAULT_ARCHITECT_CHUNK_NODE_COUNT: usize = 4;
 const DEFAULT_ARCHITECT_INIT_MAX_TOKENS: u32 = 8_192;
 const DEFAULT_ARCHITECT_CONTINUE_MAX_TOKENS: u32 = 4_096;
 const DEFAULT_ARCHITECT_TEMPERATURE: f32 = 0.0;
-const DEFAULT_REPLY_HISTORY_LIMIT: usize = 8;
 
 pub type ManagedTurnStream<'a> =
     Pin<Box<dyn Stream<Item = Result<EngineEvent, ManagerError>> + Send + 'a>>;

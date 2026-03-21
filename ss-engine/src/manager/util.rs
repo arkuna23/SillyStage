@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use agents::actor::ActorSegmentKind;
 use agents::architect::{GraphSummaryNode, NodeTransitionPatch};
+use agents::replyer::{ReplyHistoryKind, ReplyHistoryMessage};
 use state::StateFieldSchema;
 use store::{
     SessionCharacterRecord, SessionMessageKind, SessionMessageRecord, SessionRecord,
@@ -118,6 +119,55 @@ pub(super) fn truncate_text(text: &str, max_chars: usize) -> String {
         out.push(ch);
     }
     out
+}
+
+pub(super) fn build_reply_history(
+    messages: Vec<SessionMessageRecord>,
+    history_limit: usize,
+) -> Vec<ReplyHistoryMessage> {
+    let start = messages.len().saturating_sub(history_limit);
+    filter_replyer_history_to_latest_narration_turn(
+        messages
+            .into_iter()
+            .skip(start)
+            .map(session_message_to_reply_history)
+            .collect(),
+    )
+}
+
+pub(super) fn filter_replyer_history_to_latest_narration_turn(
+    history: Vec<ReplyHistoryMessage>,
+) -> Vec<ReplyHistoryMessage> {
+    let latest_narration_turn = history
+        .iter()
+        .filter(|message| matches!(message.kind, ReplyHistoryKind::Narration))
+        .map(|message| message.turn_index)
+        .max();
+
+    history
+        .into_iter()
+        .filter(|message| {
+            !matches!(message.kind, ReplyHistoryKind::Narration)
+                || latest_narration_turn == Some(message.turn_index)
+        })
+        .collect()
+}
+
+pub(super) fn session_message_to_reply_history(
+    message: SessionMessageRecord,
+) -> ReplyHistoryMessage {
+    ReplyHistoryMessage {
+        kind: match message.kind {
+            SessionMessageKind::PlayerInput => ReplyHistoryKind::PlayerInput,
+            SessionMessageKind::Narration => ReplyHistoryKind::Narration,
+            SessionMessageKind::Dialogue => ReplyHistoryKind::Dialogue,
+            SessionMessageKind::Action => ReplyHistoryKind::Action,
+        },
+        turn_index: message.turn_index,
+        speaker_id: message.speaker_id,
+        speaker_name: message.speaker_name,
+        text: message.text,
+    }
 }
 
 pub(super) fn merge_story_chunk(
@@ -312,4 +362,76 @@ pub(super) fn validate_schema_fields(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session_message(
+        sequence: u64,
+        turn_index: u64,
+        kind: SessionMessageKind,
+        text: &str,
+    ) -> SessionMessageRecord {
+        SessionMessageRecord {
+            message_id: format!("message-{sequence}"),
+            session_id: "session-1".to_owned(),
+            kind,
+            sequence,
+            turn_index,
+            recorded_at_ms: 0,
+            created_at_ms: 0,
+            updated_at_ms: 0,
+            speaker_id: "speaker".to_owned(),
+            speaker_name: "Speaker".to_owned(),
+            text: text.to_owned(),
+        }
+    }
+
+    #[test]
+    fn build_reply_history_keeps_only_latest_turn_narration() {
+        let history = build_reply_history(
+            vec![
+                session_message(0, 1, SessionMessageKind::PlayerInput, "Where is the gate?"),
+                session_message(1, 1, SessionMessageKind::Narration, "The square is crowded."),
+                session_message(2, 1, SessionMessageKind::Dialogue, "This way."),
+                session_message(3, 2, SessionMessageKind::PlayerInput, "Lead on."),
+                session_message(4, 2, SessionMessageKind::Narration, "Rain starts to fall."),
+                session_message(5, 2, SessionMessageKind::Narration, "The torches hiss."),
+                session_message(6, 2, SessionMessageKind::Action, "The guide raises a lamp."),
+            ],
+            7,
+        );
+
+        assert_eq!(history.len(), 6);
+        assert!(history.iter().any(|message| {
+            message.kind == ReplyHistoryKind::Narration
+                && message.turn_index == 2
+                && message.text == "Rain starts to fall."
+        }));
+        assert!(history.iter().any(|message| {
+            message.kind == ReplyHistoryKind::Narration
+                && message.turn_index == 2
+                && message.text == "The torches hiss."
+        }));
+        assert!(!history.iter().any(|message| {
+            message.kind == ReplyHistoryKind::Narration && message.turn_index == 1
+        }));
+    }
+
+    #[test]
+    fn build_reply_history_honors_zero_limit() {
+        let history = build_reply_history(
+            vec![session_message(
+                0,
+                1,
+                SessionMessageKind::Narration,
+                "A bell rings in the distance.",
+            )],
+            0,
+        );
+
+        assert!(history.is_empty());
+    }
 }

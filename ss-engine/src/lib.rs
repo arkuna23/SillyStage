@@ -1,5 +1,6 @@
 pub mod engine;
 pub mod event;
+mod history;
 mod logging;
 mod lorebook;
 pub mod manager;

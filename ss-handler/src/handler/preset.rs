@@ -598,6 +598,11 @@ fn compact_preset_config_from_payload(
         AgentPresetConfig {
             temperature: payload.temperature,
             max_tokens: payload.max_tokens,
+            director_shared_history_limit: payload.director_shared_history_limit,
+            actor_shared_history_limit: payload.actor_shared_history_limit,
+            actor_private_memory_limit: payload.actor_private_memory_limit,
+            narrator_shared_history_limit: payload.narrator_shared_history_limit,
+            replyer_session_history_limit: payload.replyer_session_history_limit,
             extra: payload.extra,
             modules: payload
                 .modules
@@ -875,6 +880,11 @@ fn payload_from_config(config: &AgentPresetConfig) -> AgentPresetConfigPayload {
     AgentPresetConfigPayload {
         temperature: config.temperature,
         max_tokens: config.max_tokens,
+        director_shared_history_limit: config.director_shared_history_limit,
+        actor_shared_history_limit: config.actor_shared_history_limit,
+        actor_private_memory_limit: config.actor_private_memory_limit,
+        narrator_shared_history_limit: config.narrator_shared_history_limit,
+        replyer_session_history_limit: config.replyer_session_history_limit,
         extra: config.extra.clone(),
         modules: config
             .modules
@@ -933,6 +943,11 @@ fn summary_payload_from_config(
     protocol::AgentPresetConfigSummaryPayload {
         temperature: config.temperature,
         max_tokens: config.max_tokens,
+        director_shared_history_limit: config.director_shared_history_limit,
+        actor_shared_history_limit: config.actor_shared_history_limit,
+        actor_private_memory_limit: config.actor_private_memory_limit,
+        narrator_shared_history_limit: config.narrator_shared_history_limit,
+        replyer_session_history_limit: config.replyer_session_history_limit,
         extra: config.extra.clone(),
         module_count: config.modules.len(),
         entry_count: config
