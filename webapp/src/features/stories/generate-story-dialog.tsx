@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
@@ -21,23 +21,19 @@ import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
-import {
-  continueStoryDraft,
-  finalizeStoryDraft,
-  startStoryDraft,
-} from './api'
+import type { StoryResource } from '../story-resources/types'
+import { continueStoryDraft, finalizeStoryDraft, startStoryDraft } from './api'
+import { getDraftSectionProgress } from './draft-progress'
 import {
   createStoryCommonVariableDrafts,
-  serializeStoryCommonVariableDrafts,
   type StoryCommonVariableDraft,
   type StoryCommonVariableDraftErrors,
+  serializeStoryCommonVariableDrafts,
   validateStoryCommonVariableDrafts,
 } from './story-common-variable-drafts'
 import { useStoryCommonVariableSchemaCatalog } from './story-common-variable-schema-catalog'
-import { getDraftSectionProgress } from './draft-progress'
 import { StoryCommonVariablesEditor } from './story-common-variables-editor'
 import type { StoryDetail, StoryDraftDetail } from './types'
-import type { StoryResource } from '../story-resources/types'
 
 type GenerateStoryDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>
@@ -90,7 +86,10 @@ function Field({
   return (
     <div className="space-y-2.5">
       {htmlFor ? (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)]" htmlFor={htmlFor}>
+        <label
+          className="block text-sm font-medium text-[var(--color-text-primary)]"
+          htmlFor={htmlFor}
+        >
           {label}
         </label>
       ) : (
@@ -101,15 +100,7 @@ function Field({
   )
 }
 
-function StepChip({
-  active,
-  index,
-  label,
-}: {
-  active: boolean
-  index: number
-  label: string
-}) {
+function StepChip({ active, index, label }: { active: boolean; index: number; label: string }) {
   return (
     <div
       className={cn(
@@ -369,9 +360,7 @@ export function GenerateStoryDialog({
       const initialDraft = await startStoryDraft({
         api_group_id: formState.apiGroupId.trim(),
         common_variables: serializeStoryCommonVariableDrafts(formState.commonVariables),
-        ...(formState.displayName.trim()
-          ? { display_name: formState.displayName.trim() }
-          : {}),
+        ...(formState.displayName.trim() ? { display_name: formState.displayName.trim() } : {}),
         preset_id: formState.presetId.trim(),
         resource_id: formState.resourceId.trim(),
       })
@@ -434,7 +423,12 @@ export function GenerateStoryDialog({
           {canGenerate && dialogStage !== 'generating' ? (
             <div className="grid gap-2 pt-2 md:grid-cols-2">
               {wizardStepLabels.map((label, index) => (
-                <StepChip active={index <= wizardStepIndex} index={index + 1} key={label} label={label} />
+                <StepChip
+                  active={index <= wizardStepIndex}
+                  index={index + 1}
+                  key={label}
+                  label={label}
+                />
               ))}
             </div>
           ) : null}
@@ -528,7 +522,10 @@ export function GenerateStoryDialog({
                   </Field>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field htmlFor={fieldIds.apiGroupId} label={t('stories.form.fields.apiGroupId')}>
+                    <Field
+                      htmlFor={fieldIds.apiGroupId}
+                      label={t('stories.form.fields.apiGroupId')}
+                    >
                       <Select
                         items={apiGroupOptions}
                         placeholder={t('stories.form.placeholders.apiGroupId')}
@@ -572,7 +569,10 @@ export function GenerateStoryDialog({
                     </div>
                   ) : null}
 
-                  <Field htmlFor={fieldIds.displayName} label={t('stories.form.fields.displayName')}>
+                  <Field
+                    htmlFor={fieldIds.displayName}
+                    label={t('stories.form.fields.displayName')}
+                  >
                     <Input
                       id={fieldIds.displayName}
                       name={fieldIds.displayName}

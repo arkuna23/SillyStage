@@ -91,9 +91,7 @@ export async function deleteLorebookEntry(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, LorebookEntryDeletedResult>(
-    'lorebook_entry.delete',
-    params,
-    { signal },
-  )
+  return rpcRequest<typeof params, LorebookEntryDeletedResult>('lorebook_entry.delete', params, {
+    signal,
+  })
 }

@@ -2,13 +2,13 @@ import { rpcRequest } from '../../lib/rpc'
 
 import type {
   CommonVariableDefinition,
+  StoriesListedResult,
+  StoryDeletedResult,
+  StoryDetail,
   StoryDraftDeletedResult,
   StoryDraftDetail,
   StoryDraftsListedResult,
-  StoryDeletedResult,
-  StoryDetail,
   StoryGeneratedResult,
-  StoriesListedResult,
 } from './types'
 
 export async function listStories(signal?: AbortSignal) {

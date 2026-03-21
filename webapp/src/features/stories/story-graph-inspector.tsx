@@ -4,7 +4,7 @@ import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramPro
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -16,9 +16,9 @@ import { cn } from '../../lib/cn'
 import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildConditionDraftKey,
-  getGraphNodeLabel,
   type GraphConditionDrafts,
   type GraphOnEnterUpdateDrafts,
+  getGraphNodeLabel,
 } from './story-graph-editor-utils'
 import { StoryGraphOnEnterUpdatesEditor } from './story-graph-on-enter-updates-editor'
 import type {
@@ -74,10 +74,7 @@ type StoryGraphInspectorProps = {
   selectedTransitionIndex: number | null
 }
 
-type SelectedNodeInspectorContentProps = Omit<
-  StoryGraphInspectorProps,
-  'selectedNodeId'
-> & {
+type SelectedNodeInspectorContentProps = Omit<StoryGraphInspectorProps, 'selectedNodeId'> & {
   activeTab: InspectorTab
   onActiveTabChange: (nextValue: InspectorTab) => void
   selectedNode: StoryGraphNode
@@ -109,13 +106,7 @@ function buildOnEnterUpdateExpansionKey(nodeId: string, operationIndex: number) 
   return `${nodeId}:op:${operationIndex}`
 }
 
-function Field({
-  children,
-  label,
-}: {
-  children: ReactNode
-  label: string
-}) {
+function Field({ children, label }: { children: ReactNode; label: string }) {
   return (
     <label className="block space-y-2">
       <span className="text-xs text-[var(--color-text-muted)]">{label}</span>
@@ -195,10 +186,9 @@ function SelectedNodeInspectorContent({
   const [expandedTransitionKeys, setExpandedTransitionKeys] = useState<Set<string>>(new Set())
   const [expandedOnEnterUpdateKeys, setExpandedOnEnterUpdateKeys] = useState<Set<string>>(new Set())
 
-  const duplicateId =
-    newNodeIds.has(selectedNode.id)
-      ? graph.nodes.filter((node) => node.id === selectedNode.id).length > 1
-      : false
+  const duplicateId = newNodeIds.has(selectedNode.id)
+    ? graph.nodes.filter((node) => node.id === selectedNode.id).length > 1
+    : false
 
   const targetItems = graph.nodes.map((node) => ({
     label: `${getGraphNodeLabel(node)} (${node.id})`,
@@ -327,7 +317,9 @@ function SelectedNodeInspectorContent({
       <div className="mt-4 rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0 flex-1 self-center">
-            <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{activeTabTitle}</h4>
+            <h4 className="text-sm font-medium text-[var(--color-text-primary)]">
+              {activeTabTitle}
+            </h4>
             <p className="mt-1 text-xs leading-6 text-[var(--color-text-muted)]">
               {activeTabSubtitle}
             </p>
@@ -456,12 +448,19 @@ function SelectedNodeInspectorContent({
 
                   <div className="space-y-4">
                     {selectedNode.transitions.map((transition, transitionIndex) => {
-                      const transitionDraftKey = buildConditionDraftKey(selectedNode.id, transitionIndex)
-                      const transitionCardKey = buildTransitionExpansionKey(selectedNode.id, transitionIndex)
+                      const transitionDraftKey = buildConditionDraftKey(
+                        selectedNode.id,
+                        transitionIndex,
+                      )
+                      const transitionCardKey = buildTransitionExpansionKey(
+                        selectedNode.id,
+                        transitionIndex,
+                      )
                       const conditionDraft =
                         conditionDrafts[transitionDraftKey] ??
                         JSON.stringify(transition.condition?.value ?? '', null, 2)
-                      const targetNode = graph.nodes.find((node) => node.id === transition.to) ?? null
+                      const targetNode =
+                        graph.nodes.find((node) => node.id === transition.to) ?? null
                       const conditionValueError =
                         transition.condition && conditionDraft
                           ? (() => {
@@ -514,9 +513,9 @@ function SelectedNodeInspectorContent({
                           open={expandedTransitionKeys.has(transitionCardKey)}
                           subtitle={
                             <span className="block truncate">
-                              {(targetNode
+                              {targetNode
                                 ? `${getGraphNodeLabel(targetNode)} (${targetNode.id})`
-                                : transition.to || '—')}{' '}
+                                : transition.to || '—'}{' '}
                               ·{' '}
                               {transition.condition
                                 ? t('stories.graph.conditionEnabled')
@@ -580,9 +579,13 @@ function SelectedNodeInspectorContent({
                                       value: item.value,
                                     }))}
                                     onValueChange={(nextValue) => {
-                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                        scope: nextValue as ConditionScope,
-                                      })
+                                      onUpdateTransitionCondition(
+                                        selectedNode.id,
+                                        transitionIndex,
+                                        {
+                                          scope: nextValue as ConditionScope,
+                                        },
+                                      )
                                     }}
                                     textAlign="start"
                                     value={transition.condition.scope ?? 'global'}
@@ -593,9 +596,13 @@ function SelectedNodeInspectorContent({
                                     disabled={readOnly}
                                     items={conditionOperatorItems}
                                     onValueChange={(nextValue) => {
-                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                        op: nextValue as ConditionOperator,
-                                      })
+                                      onUpdateTransitionCondition(
+                                        selectedNode.id,
+                                        transitionIndex,
+                                        {
+                                          op: nextValue as ConditionOperator,
+                                        },
+                                      )
                                     }}
                                     textAlign="start"
                                     value={transition.condition.op}
@@ -609,9 +616,13 @@ function SelectedNodeInspectorContent({
                                     id={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
                                     name={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
                                     onChange={(event) => {
-                                      onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                        character: event.target.value,
-                                      })
+                                      onUpdateTransitionCondition(
+                                        selectedNode.id,
+                                        transitionIndex,
+                                        {
+                                          character: event.target.value,
+                                        },
+                                      )
                                     }}
                                     placeholder={t('stories.graph.conditionCharacterPlaceholder')}
                                     readOnly={readOnly}

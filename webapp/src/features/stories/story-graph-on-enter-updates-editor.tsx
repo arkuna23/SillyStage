@@ -10,9 +10,9 @@ import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildOnEnterUpdateDraftKey,
   editableGraphStateOpTypes,
+  type GraphOnEnterUpdateDrafts,
   isEditableGraphStateOpType,
   isGraphStateValueOpType,
-  type GraphOnEnterUpdateDrafts,
 } from './story-graph-editor-utils'
 import type { StoryGraphNode, StoryGraphStateOpType } from './types'
 
@@ -42,13 +42,7 @@ function buildOperationExpansionKey(nodeId: string, operationIndex: number) {
   return `${nodeId}:op:${operationIndex}`
 }
 
-function Field({
-  children,
-  label,
-}: {
-  children: ReactNode
-  label: string
-}) {
+function Field({ children, label }: { children: ReactNode; label: string }) {
   return (
     <label className="block space-y-2">
       <span className="text-xs text-[var(--color-text-muted)]">{label}</span>
@@ -253,9 +247,7 @@ export function StoryGraphOnEnterUpdatesEditor({
                       </Field>
                     ) : null}
                     {valueError ? (
-                      <p className="text-xs text-[var(--color-state-error-text)]">
-                        {valueError}
-                      </p>
+                      <p className="text-xs text-[var(--color-state-error-text)]">{valueError}</p>
                     ) : null}
                   </div>
                 )}

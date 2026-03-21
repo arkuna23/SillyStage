@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
 import {
   Dialog,
   DialogBody,
@@ -10,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
-import { Button } from '../../components/ui/button'
 import type { Preset } from '../apis/types'
 
 type PresetDeleteTarget = Pick<Preset, 'display_name' | 'preset_id'>

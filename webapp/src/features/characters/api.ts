@@ -1,19 +1,19 @@
-import { rpcRequest } from '../../lib/rpc'
 import {
   createObjectUrl,
   downloadBinaryResource,
   triggerBlobDownload,
   uploadBinaryResource,
 } from '../../lib/binary-resource'
+import { rpcRequest } from '../../lib/rpc'
 import { buildCharacterSummaryFromArchive, parseCharacterArchive } from './character-archive'
 import type {
   CharacterCardContent,
+  CharacterCoverMimeType,
   CharacterCreateResult,
   CharacterDeletedResult,
   CharacterSchemaResult,
-  CharactersListedResult,
   CharacterSummary,
-  CharacterCoverMimeType,
+  CharactersListedResult,
   ResourceFilePayload,
 } from './types'
 
@@ -164,10 +164,7 @@ export async function deleteCharacter(characterId: string, signal?: AbortSignal)
   )
 }
 
-export function withUpdatedCoverSummary(
-  summary: CharacterSummary,
-  cover: ResourceFilePayload,
-) {
+export function withUpdatedCoverSummary(summary: CharacterSummary, cover: ResourceFilePayload) {
   return {
     ...summary,
     cover_file_name: cover.file_name,

@@ -1,13 +1,12 @@
 import { type PropsWithChildren, useEffect, useState } from 'react'
-
-import { ThemeContext } from '../theme/context'
 import {
   resolveInitialThemePreference,
   resolveTheme,
   syncDocumentTheme,
-  themeStorageKey,
   type ThemePreference,
+  themeStorageKey,
 } from '../theme/config'
+import { ThemeContext } from '../theme/context'
 import { useSystemTheme } from '../theme/use-system-theme'
 
 const initialThemePreference = resolveInitialThemePreference()
@@ -15,9 +14,7 @@ const initialThemePreference = resolveInitialThemePreference()
 syncDocumentTheme(resolveTheme(initialThemePreference), initialThemePreference)
 
 export function ThemeProvider({ children }: PropsWithChildren) {
-  const [themePreference, setThemePreference] = useState<ThemePreference>(
-    initialThemePreference,
-  )
+  const [themePreference, setThemePreference] = useState<ThemePreference>(initialThemePreference)
   const systemTheme = useSystemTheme()
   const resolvedTheme = resolveTheme(themePreference, systemTheme)
 

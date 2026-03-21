@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { SectionHeader } from '../../components/ui/section-header'
@@ -38,13 +37,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function DashboardMetric({
-  label,
-  value,
-}: {
-  label: string
-  value: number | string
-}) {
+function DashboardMetric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
       <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
@@ -119,13 +112,7 @@ function EmptySection({ label }: { label: string }) {
   )
 }
 
-function BindingSummaryCard({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
+function BindingSummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
       <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
@@ -152,8 +139,7 @@ export function DashboardPage() {
   )
 
   const currentDashboard = dashboard ?? emptyDashboard
-  const healthLabel =
-    dashboard?.health.status === 'ok' ? t('dashboard.health.ok') : '—'
+  const healthLabel = dashboard?.health.status === 'ok' ? t('dashboard.health.ok') : '—'
   const totalResourceCount =
     currentDashboard.counts.characters_total +
     currentDashboard.counts.story_resources_total +
@@ -236,7 +222,7 @@ export function DashboardPage() {
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <WorkspacePanelShell className="h-full min-h-0">
-          <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
+        <Card className="flex h-full min-h-0 flex-col overflow-hidden border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] shadow-none">
           <CardHeader className="border-b border-[var(--color-border-subtle)] md:min-h-[92px]">
             <SectionHeader
               actions={<DashboardDataPackageActions onImported={() => refreshDashboard()} />}
@@ -287,7 +273,9 @@ export function DashboardPage() {
 
                     <div className="rounded-[1.5rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-5 py-5">
                       <div className="space-y-2">
-                        <CardTitle className="text-2xl">{t('dashboard.sections.defaults')}</CardTitle>
+                        <CardTitle className="text-2xl">
+                          {t('dashboard.sections.defaults')}
+                        </CardTitle>
                         <CardDescription>{t('dashboard.config.description')}</CardDescription>
                       </div>
                       <div className="mt-4 grid gap-3 md:grid-cols-2">
@@ -359,10 +347,14 @@ export function DashboardPage() {
                             </div>
                             <div className="flex flex-wrap gap-2">
                               <Badge variant="subtle">
-                                {t('dashboard.recentSessions.storyPrefix', { id: session.story_id })}
+                                {t('dashboard.recentSessions.storyPrefix', {
+                                  id: session.story_id,
+                                })}
                               </Badge>
                               <Badge variant="subtle">
-                                {t('dashboard.recentSessions.turnPrefix', { turn: session.turn_index })}
+                                {t('dashboard.recentSessions.turnPrefix', {
+                                  turn: session.turn_index,
+                                })}
                               </Badge>
                             </div>
                           </div>

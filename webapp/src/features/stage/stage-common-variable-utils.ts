@@ -1,7 +1,7 @@
 import type { CommonVariableDefinition, StoryDetail } from '../stories/types'
 import type { StageCommonVariable } from './stage-ui-types'
-import type { RuntimeSnapshot } from './types'
 import { serializeVariableValue } from './stage-variable-utils'
+import type { RuntimeSnapshot } from './types'
 
 function getCommonVariableValue(
   definition: CommonVariableDefinition,
@@ -35,11 +35,7 @@ function formatCommonVariableValue(value: unknown) {
     return value.length > 0 ? value : '""'
   }
 
-  if (
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    typeof value === 'bigint'
-  ) {
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
     return String(value)
   }
 

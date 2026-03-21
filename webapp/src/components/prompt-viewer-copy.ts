@@ -21,22 +21,21 @@ export function buildPromptViewerCopyText(args: {
         const moduleHeader = `${args.moduleLabel}: ${module.moduleLabel} (${module.moduleId})`
 
         if (args.showEntryMarkers) {
-          const entryBodies = module.entries.length > 0
-            ? module.entries.map((entry) => {
-              const entryHeader = `${args.entryLabel}: ${entry.entryLabel} (${entry.entryId})`
+          const entryBodies =
+            module.entries.length > 0
+              ? module.entries.map((entry) => {
+                  const entryHeader = `${args.entryLabel}: ${entry.entryLabel} (${entry.entryId})`
 
-              return `${entryHeader}\n${entry.text.trim() || args.noEntryContentLabel}`
-            })
-            : [args.noEntryContentLabel]
+                  return `${entryHeader}\n${entry.text.trim() || args.noEntryContentLabel}`
+                })
+              : [args.noEntryContentLabel]
 
           return [moduleHeader, ...entryBodies].join('\n\n')
         }
 
         const moduleBody = getPromptViewerModuleText(module)
 
-        return moduleBody
-          ? `${module.moduleLabel}:\n${moduleBody}`
-          : `${module.moduleLabel}:`
+        return moduleBody ? `${module.moduleLabel}:\n${moduleBody}` : `${module.moduleLabel}:`
       })
 
       return [message.label, ...sections].join('\n\n')

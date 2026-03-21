@@ -234,9 +234,7 @@ export function PlayerProfileFormDialog({
       >
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>
-            {isEditMode
-              ? t('playerProfiles.form.editTitle')
-              : t('playerProfiles.form.createTitle')}
+            {isEditMode ? t('playerProfiles.form.editTitle') : t('playerProfiles.form.createTitle')}
           </DialogTitle>
         </DialogHeader>
 

@@ -81,11 +81,7 @@ export function DeleteCharacterDialog({
             </Button>
           </DialogClose>
 
-          <Button
-            disabled={deleting}
-            onClick={onConfirm}
-            variant="danger"
-          >
+          <Button disabled={deleting} onClick={onConfirm} variant="danger">
             {deleting
               ? t('characters.actions.deleting')
               : isBulk

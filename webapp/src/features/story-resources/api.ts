@@ -69,11 +69,7 @@ export async function generateStoryPlan(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, StoryPlannedResult>(
-    'story.generate_plan',
-    params,
-    { signal },
-  )
+  return rpcRequest<typeof params, StoryPlannedResult>('story.generate_plan', params, { signal })
 }
 
 export async function generateAndSaveStoryPlan(

@@ -1,18 +1,11 @@
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import {
-  type PropsWithChildren,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { type PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { cn } from '../../lib/cn'
-import { toastContext, type ToastInput } from './toast-context'
+import { type ToastInput, toastContext } from './toast-context'
 
 type ToastRecord = ToastInput & {
   id: string
@@ -24,19 +17,16 @@ const TOAST_DISMISS_MS = {
   warning: 5200,
 } as const
 
-function ToastCard({
-  onDismiss,
-  toast,
-}: {
-  onDismiss: (id: string) => void
-  toast: ToastRecord
-}) {
+function ToastCard({ onDismiss, toast }: { onDismiss: (id: string) => void; toast: ToastRecord }) {
   const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      onDismiss(toast.id)
-    }, TOAST_DISMISS_MS[toast.tone ?? 'success'])
+    const timeoutId = window.setTimeout(
+      () => {
+        onDismiss(toast.id)
+      },
+      TOAST_DISMISS_MS[toast.tone ?? 'success'],
+    )
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -54,21 +44,11 @@ function ToastCard({
             ? 'border-[var(--color-state-warning-line)] bg-[color-mix(in_srgb,var(--color-state-warning-soft)_90%,var(--color-bg-panel))] text-[var(--color-text-primary)]'
             : 'border-[var(--color-state-error-line)] bg-[color-mix(in_srgb,var(--color-state-error-soft)_90%,var(--color-bg-panel))] text-[var(--color-text-primary)]',
       )}
-      exit={
-        prefersReducedMotion
-          ? { opacity: 0 }
-          : { opacity: 0, y: -10, scale: 0.98 }
-      }
-      initial={
-        prefersReducedMotion
-          ? { opacity: 0 }
-          : { opacity: 0, y: -14, scale: 0.97 }
-      }
+      exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
+      initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: -14, scale: 0.97 }}
       layout
       transition={
-        prefersReducedMotion
-          ? { duration: 0.14 }
-          : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+        prefersReducedMotion ? { duration: 0.14 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
       }
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">

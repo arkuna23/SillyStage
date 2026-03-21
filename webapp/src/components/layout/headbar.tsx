@@ -3,8 +3,8 @@ import { faTableCellsLarge } from '@fortawesome/free-solid-svg-icons/faTableCell
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TFunction } from 'i18next'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 
 import { appPaths } from '../../app/paths'
 import {
@@ -12,10 +12,10 @@ import {
   STAGE_API_AVAILABILITY_REFRESH_EVENT,
   type StageAccessStatus,
 } from '../../features/stage/stage-access'
+import { cn } from '../../lib/cn'
 import { HeadbarMenu } from '../headbar-menu'
 import { SegmentedSelector } from '../ui/segmented-selector'
 import { useToast } from '../ui/toast-context'
-import { cn } from '../../lib/cn'
 
 type HeadbarStageAccessStatus = StageAccessStatus | 'checking'
 
@@ -82,10 +82,7 @@ export function Headbar() {
 
       setStageAccessStatus(nextStatus)
 
-      if (
-        lastStageAccessStatusRef.current !== nextStatus &&
-        nextStatus !== 'ready'
-      ) {
+      if (lastStageAccessStatusRef.current !== nextStatus && nextStatus !== 'ready') {
         pushToast({
           message: getStageUnavailableMessage(nextStatus, t),
           tone: 'warning',
@@ -116,10 +113,7 @@ export function Headbar() {
 
         setStageAccessStatus(nextStatus)
 
-        if (
-          lastStageAccessStatusRef.current !== nextStatus &&
-          nextStatus !== 'ready'
-        ) {
+        if (lastStageAccessStatusRef.current !== nextStatus && nextStatus !== 'ready') {
           pushToast({
             message: getStageUnavailableMessage(nextStatus, t),
             tone: 'warning',
@@ -180,9 +174,7 @@ export function Headbar() {
               },
               {
                 ariaLabel: t('stage.headbar.label'),
-                disabled:
-                  stageAccessStatus !== 'checking' &&
-                  stageAccessStatus !== 'ready',
+                disabled: stageAccessStatus !== 'checking' && stageAccessStatus !== 'ready',
                 icon: <FontAwesomeIcon fixedWidth icon={faMasksTheater} />,
                 label: <span>{t('stage.headbar.label')}</span>,
                 value: appPaths.stage,
@@ -193,10 +185,7 @@ export function Headbar() {
                 return
               }
 
-              if (
-                stageAccessStatus === 'checking' ||
-                stageAccessStatus === 'ready'
-              ) {
+              if (stageAccessStatus === 'checking' || stageAccessStatus === 'ready') {
                 return
               }
 

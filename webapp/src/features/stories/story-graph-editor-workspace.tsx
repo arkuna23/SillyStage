@@ -1,9 +1,9 @@
 import { StoryGraphCanvas } from './story-graph-canvas'
+import type { StoryGraphEditorController } from './story-graph-editor-controller'
+import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM, GRAPH_ZOOM_STEP } from './story-graph-editor-utils'
 import { StoryGraphInspector } from './story-graph-inspector'
 import { StoryGraphToolbar } from './story-graph-toolbar'
-import type { StoryGraphEditorController } from './story-graph-editor-controller'
 import type { StoryGraph } from './types'
-import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM, GRAPH_ZOOM_STEP } from './story-graph-editor-utils'
 
 type StoryGraphEditorWorkspaceProps = {
   controller: StoryGraphEditorController

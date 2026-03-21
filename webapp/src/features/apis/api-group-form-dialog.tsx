@@ -15,12 +15,12 @@ import { Select } from '../../components/ui/select'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { createApiGroup, getApiGroup, updateApiGroup } from './api'
 import {
-  agentRoleKeys,
-  getAgentBindingKey,
   type AgentRoleKey,
   type ApiConfig,
   type ApiGroup,
   type ApiGroupBindings,
+  agentRoleKeys,
+  getAgentBindingKey,
 } from './types'
 
 type ApiGroupFormDialogProps = {
@@ -79,7 +79,9 @@ export function ApiGroupFormDialog({
   open,
 }: ApiGroupFormDialogProps) {
   const { t } = useTranslation()
-  const [formState, setFormState] = useState<FormState>(() => createInitialState(apis[0]?.api_id ?? ''))
+  const [formState, setFormState] = useState<FormState>(() =>
+    createInitialState(apis[0]?.api_id ?? ''),
+  )
   const [isLoading, setIsLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
@@ -135,7 +137,10 @@ export function ApiGroupFormDialog({
         setFormState({
           apiGroupId: result.api_group_id,
           bindings: Object.fromEntries(
-            agentRoleKeys.map((roleKey) => [roleKey, result.bindings[getAgentBindingKey(roleKey)] ?? '']),
+            agentRoleKeys.map((roleKey) => [
+              roleKey,
+              result.bindings[getAgentBindingKey(roleKey)] ?? '',
+            ]),
           ) as FormState['bindings'],
           displayName: result.display_name,
         })
@@ -251,7 +256,10 @@ export function ApiGroupFormDialog({
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 4 }).map((_, index) => (
-                <div className="h-16 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]" key={index} />
+                <div
+                  className="h-16 animate-pulse rounded-[1.35rem] bg-[var(--color-bg-elevated)]"
+                  key={index}
+                />
               ))}
             </div>
           ) : (
@@ -309,7 +317,6 @@ export function ApiGroupFormDialog({
                   </label>
                 ))}
               </div>
-
             </>
           )}
         </DialogBody>
@@ -318,7 +325,10 @@ export function ApiGroupFormDialog({
           <Button onClick={() => onOpenChange(false)} variant="ghost">
             {t('apis.actions.cancel')}
           </Button>
-          <Button disabled={isLoading || isSubmitting || apis.length === 0} onClick={() => void handleSubmit()}>
+          <Button
+            disabled={isLoading || isSubmitting || apis.length === 0}
+            onClick={() => void handleSubmit()}
+          >
             {isSubmitting ? t('apis.actions.saving') : t('apis.actions.save')}
           </Button>
         </DialogFooter>

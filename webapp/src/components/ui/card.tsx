@@ -30,10 +30,7 @@ export function CardTitle({ className, ...props }: HTMLAttributes<HTMLHeadingEle
   )
 }
 
-export function CardDescription({
-  className,
-  ...props
-}: HTMLAttributes<HTMLParagraphElement>) {
+export function CardDescription({ className, ...props }: HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
       className={cn('text-sm leading-7 text-[var(--color-text-secondary)]', className)}

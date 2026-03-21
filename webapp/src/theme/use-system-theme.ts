@@ -21,9 +21,5 @@ function getServerSnapshot(): ResolvedTheme {
 }
 
 export function useSystemTheme() {
-  return useSyncExternalStore(
-    subscribeToSystemTheme,
-    getSystemTheme,
-    getServerSnapshot,
-  )
+  return useSyncExternalStore(subscribeToSystemTheme, getSystemTheme, getServerSnapshot)
 }

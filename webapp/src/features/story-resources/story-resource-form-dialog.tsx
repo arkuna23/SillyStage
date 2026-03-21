@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useCallback, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
@@ -17,17 +17,13 @@ import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { Input } from '../../components/ui/input'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { Select } from '../../components/ui/select'
-import { useToastMessage } from '../../components/ui/toast-context'
 import { Textarea } from '../../components/ui/textarea'
+import { useToastMessage } from '../../components/ui/toast-context'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
-import {
-  generateAndSaveStoryPlan,
-  getStoryResource,
-  updateStoryResource,
-} from './api'
+import { generateAndSaveStoryPlan, getStoryResource, updateStoryResource } from './api'
 import { StoryResourceCharacterSelector } from './story-resource-character-selector'
 import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
@@ -102,13 +98,14 @@ function Field({
   return (
     <div className="space-y-2.5">
       {htmlFor ? (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)]" htmlFor={htmlFor}>
+        <label
+          className="block text-sm font-medium text-[var(--color-text-primary)]"
+          htmlFor={htmlFor}
+        >
           {label}
         </label>
       ) : (
-        <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-          {label}
-        </span>
+        <span className="block text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
       )}
       {children}
       {description ? (
@@ -488,7 +485,11 @@ export function StoryResourceFormDialog({
                       htmlFor={fieldIds.resourceId}
                       label={t('storyResources.form.fields.resourceId')}
                     >
-                      <Input id={fieldIds.resourceId} readOnly value={initialResource.resource_id} />
+                      <Input
+                        id={fieldIds.resourceId}
+                        readOnly
+                        value={initialResource.resource_id}
+                      />
                     </Field>
 
                     <Field
@@ -650,7 +651,9 @@ export function StoryResourceFormDialog({
                               onRequestClose={() => {
                                 onOpenChange(false)
                               }}
-                              to={availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets}
+                              to={
+                                availableApiGroups.length === 0 ? appPaths.apis : appPaths.presets
+                              }
                               variant="secondary"
                             >
                               {availableApiGroups.length === 0

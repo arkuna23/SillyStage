@@ -43,10 +43,7 @@ export function GenerationLoadingStage({
     }
   }, [startedAtMs])
 
-  const elapsedText = useMemo(
-    () => formatElapsedTime(nowMs - startedAtMs),
-    [nowMs, startedAtMs],
-  )
+  const elapsedText = useMemo(() => formatElapsedTime(nowMs - startedAtMs), [nowMs, startedAtMs])
 
   return (
     <div className="flex min-h-[24rem] flex-col items-center justify-center gap-6 py-4 text-center">

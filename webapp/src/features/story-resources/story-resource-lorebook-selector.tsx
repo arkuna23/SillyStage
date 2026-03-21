@@ -33,9 +33,7 @@ export function StoryResourceLorebookSelector({
       lorebooks.map((lorebook) => [lorebook.lorebook_id, lorebook.display_name]),
     )
 
-    return selectedLorebookIds.map(
-      (lorebookId) => lorebookLookup.get(lorebookId) ?? lorebookId,
-    )
+    return selectedLorebookIds.map((lorebookId) => lorebookLookup.get(lorebookId) ?? lorebookId)
   }, [lorebooks, selectedLorebookIds])
 
   if (lorebooks.length === 0) {

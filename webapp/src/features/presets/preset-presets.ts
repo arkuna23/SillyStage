@@ -1,9 +1,6 @@
 import type { TFunction } from 'i18next'
 
-import {
-  agentRoleKeys,
-  type PresetAgentConfigs,
-} from '../apis/types'
+import { agentRoleKeys, type PresetAgentConfigs } from '../apis/types'
 
 export type PresetTemplateKind = 'default'
 

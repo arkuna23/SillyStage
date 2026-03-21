@@ -1,23 +1,22 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
 import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
-import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { faUpload } from '@fortawesome/free-solid-svg-icons/faUpload'
+import { faWandMagicSparkles } from '@fortawesome/free-solid-svg-icons/faWandMagicSparkles'
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
-import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
 import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
@@ -27,8 +26,8 @@ import { DeletePresetDialog } from './delete-preset-dialog'
 import { PresetFormDialog } from './preset-form-dialog'
 import { getOrderedAgentRoleKeys } from './preset-labels'
 import { buildPresetTemplateDefinitions } from './preset-presets'
-import { createPresetBundle, isPresetBundle } from './preset-transfer'
 import { PresetTemplateDialog } from './preset-template-dialog'
+import { createPresetBundle, isPresetBundle } from './preset-transfer'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 
@@ -154,7 +153,6 @@ export function PresetManagementPage() {
     if (editPresetId !== null && !availablePresetIds.has(editPresetId)) {
       setEditPresetId(null)
     }
-
   }, [editPresetId, presets])
 
   useLayoutEffect(() => {
@@ -203,7 +201,6 @@ export function PresetManagementPage() {
         if (editPresetId !== null && deletedIds.has(editPresetId)) {
           setEditPresetId(null)
         }
-
       }
 
       if (result.failed.length === 0) {
@@ -602,7 +599,9 @@ export function PresetManagementPage() {
                           <p className="font-medium text-[var(--color-text-primary)]">
                             {preset.display_name}
                           </p>
-                          <p className="text-xs text-[var(--color-text-muted)]">{preset.preset_id}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {preset.preset_id}
+                          </p>
                         </div>
 
                         <div className="flex justify-start gap-2 lg:justify-end">

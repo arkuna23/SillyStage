@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
 import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
@@ -10,10 +9,10 @@ import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
@@ -24,9 +23,9 @@ import {
   PopupMenuItem,
   PopupMenuTrigger,
 } from '../../components/ui/popup-menu'
-import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
-import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { SectionHeader } from '../../components/ui/section-header'
+import { SegmentedSelector } from '../../components/ui/segmented-selector'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
 import { cn } from '../../lib/cn'
@@ -44,13 +43,13 @@ import {
   listStories,
   listStoryDrafts,
 } from './api'
-import { getDraftSectionProgress } from './draft-progress'
-import { DeleteStoryDraftDialog } from './delete-story-draft-dialog'
 import { DeleteStoryDialog } from './delete-story-dialog'
+import { DeleteStoryDraftDialog } from './delete-story-draft-dialog'
+import { getDraftSectionProgress } from './draft-progress'
 import { GenerateStoryDialog } from './generate-story-dialog'
 import { ManualStoryCreateDialog } from './manual-story-create-dialog'
-import { StoryDraftDetailsDialog } from './story-draft-details-dialog'
 import { StoryDetailsDialog } from './story-details-dialog'
+import { StoryDraftDetailsDialog } from './story-draft-details-dialog'
 import { StoryFormDialog } from './story-form-dialog'
 import type { StoryDraftDetail, StoryDraftSummary, StorySummary } from './types'
 
@@ -407,7 +406,15 @@ export function StoriesPage() {
     return () => {
       setRailContent(null)
     }
-  }, [distinctResourceCount, drafts.length, readyDraftCount, setRailContent, stories.length, t, viewMode])
+  }, [
+    distinctResourceCount,
+    drafts.length,
+    readyDraftCount,
+    setRailContent,
+    stories.length,
+    t,
+    viewMode,
+  ])
 
   async function handleDeleteStory() {
     if (deleteTargets.length === 0) {
@@ -585,7 +592,9 @@ export function StoriesPage() {
           message:
             result.deleted.length > 1
               ? t('stories.drafts.feedback.deletedMany', { count: result.deleted.length })
-              : t('stories.drafts.feedback.deleted', { name: result.deleted[0]?.display_name ?? '' }),
+              : t('stories.drafts.feedback.deleted', {
+                  name: result.deleted[0]?.display_name ?? '',
+                }),
           tone: 'success',
         })
 
@@ -851,7 +860,9 @@ export function StoriesPage() {
               <section className="space-y-5">
                 <div className="space-y-2">
                   <CardTitle className="text-[1.85rem]">
-                    {viewMode === 'stories' ? t('stories.list.title') : t('stories.drafts.list.title')}
+                    {viewMode === 'stories'
+                      ? t('stories.list.title')
+                      : t('stories.drafts.list.title')}
                   </CardTitle>
                 </div>
 
@@ -859,110 +870,110 @@ export function StoriesPage() {
                   isLoading ? (
                     <StoriesListSkeleton />
                   ) : stories.length === 0 ? (
-                  <div className="py-12 text-center">
-                    <h3 className="font-display text-3xl text-[var(--color-text-primary)]">
-                      {t('stories.empty.title')}
-                    </h3>
+                    <div className="py-12 text-center">
+                      <h3 className="font-display text-3xl text-[var(--color-text-primary)]">
+                        {t('stories.empty.title')}
+                      </h3>
 
-                    <p className="mt-3 text-sm leading-7 text-[var(--color-text-secondary)]">
-                      {t('stories.empty.description')}
-                    </p>
+                      <p className="mt-3 text-sm leading-7 text-[var(--color-text-secondary)]">
+                        {t('stories.empty.description')}
+                      </p>
 
-                    <div className="mt-7 flex justify-center">
-                      <StoryCreateMenu
-                        onOpenManualCreate={() => {
-                          setIsManualCreateDialogOpen(true)
-                        }}
-                        onOpenResourceGenerate={() => {
-                          setIsCreateDialogOpen(true)
-                        }}
-                      />
+                      <div className="mt-7 flex justify-center">
+                        <StoryCreateMenu
+                          onOpenManualCreate={() => {
+                            setIsManualCreateDialogOpen(true)
+                          }}
+                          onOpenResourceGenerate={() => {
+                            setIsCreateDialogOpen(true)
+                          }}
+                        />
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-[var(--color-border-subtle)]">
-                    {stories.map((story) => (
-                      <div
-                        className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)_auto] lg:items-center"
-                        key={story.story_id}
-                      >
-                        <div className="min-w-0 space-y-2">
-                          <div className="space-y-1">
-                            <h3 className="truncate font-display text-[1.2rem] leading-tight text-[var(--color-text-primary)]">
-                              {story.display_name}
-                            </h3>
-                            <p className="truncate font-mono text-[0.76rem] leading-5 text-[var(--color-text-muted)]">
-                              {story.story_id}
+                  ) : (
+                    <div className="divide-y divide-[var(--color-border-subtle)]">
+                      {stories.map((story) => (
+                        <div
+                          className="grid gap-4 py-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)_auto] lg:items-center"
+                          key={story.story_id}
+                        >
+                          <div className="min-w-0 space-y-2">
+                            <div className="space-y-1">
+                              <h3 className="truncate font-display text-[1.2rem] leading-tight text-[var(--color-text-primary)]">
+                                {story.display_name}
+                              </h3>
+                              <p className="truncate font-mono text-[0.76rem] leading-5 text-[var(--color-text-muted)]">
+                                {story.story_id}
+                              </p>
+                            </div>
+                            <p className="line-clamp-2 text-sm leading-7 text-[var(--color-text-secondary)]">
+                              {summarizeIntroduction(story.introduction)}
                             </p>
                           </div>
-                          <p className="line-clamp-2 text-sm leading-7 text-[var(--color-text-secondary)]">
-                            {summarizeIntroduction(story.introduction)}
-                          </p>
-                        </div>
 
-                        <div className="flex flex-wrap gap-2">
-                          <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                            {t('stories.list.resourcePrefix', { id: story.resource_id })}
-                          </Badge>
-                          <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                            {t('stories.list.playerSchemaPrefix', { id: story.player_schema_id })}
-                          </Badge>
-                          <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                            {t('stories.list.worldSchemaPrefix', { id: story.world_schema_id })}
-                          </Badge>
-                        </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                              {t('stories.list.resourcePrefix', { id: story.resource_id })}
+                            </Badge>
+                            <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                              {t('stories.list.playerSchemaPrefix', { id: story.player_schema_id })}
+                            </Badge>
+                            <Badge className="normal-case px-3 py-1.5" variant="subtle">
+                              {t('stories.list.worldSchemaPrefix', { id: story.world_schema_id })}
+                            </Badge>
+                          </div>
 
-                        <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
-                          {selectionMode ? (
-                            <SelectionToggleButton
-                              label={
-                                selectedStoryIds.includes(story.story_id)
-                                  ? t('stories.actions.deselect')
-                                  : t('stories.actions.select')
-                              }
-                              onClick={() => {
-                                toggleStorySelection(story.story_id)
-                              }}
-                              selected={selectedStoryIds.includes(story.story_id)}
-                            />
-                          ) : (
-                            <>
-                              <Button
+                          <div className="flex flex-wrap items-center justify-start gap-2 lg:justify-end">
+                            {selectionMode ? (
+                              <SelectionToggleButton
+                                label={
+                                  selectedStoryIds.includes(story.story_id)
+                                    ? t('stories.actions.deselect')
+                                    : t('stories.actions.select')
+                                }
                                 onClick={() => {
-                                  setDetailsStoryId(story.story_id)
+                                  toggleStorySelection(story.story_id)
                                 }}
-                                size="sm"
-                                variant="ghost"
-                              >
-                                <FontAwesomeIcon icon={faEye} />
-                                {t('stories.actions.view')}
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  setEditStoryId(story.story_id)
-                                }}
-                                size="sm"
-                                variant="secondary"
-                              >
-                                <FontAwesomeIcon icon={faPen} />
-                                {t('stories.actions.edit')}
-                              </Button>
-                              <Button
-                                onClick={() => {
-                                  setDeleteTargetIds([story.story_id])
-                                }}
-                                size="sm"
-                                variant="danger"
-                              >
-                                <FontAwesomeIcon icon={faTrashCan} />
-                                {t('stories.actions.delete')}
-                              </Button>
-                            </>
-                          )}
+                                selected={selectedStoryIds.includes(story.story_id)}
+                              />
+                            ) : (
+                              <>
+                                <Button
+                                  onClick={() => {
+                                    setDetailsStoryId(story.story_id)
+                                  }}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  <FontAwesomeIcon icon={faEye} />
+                                  {t('stories.actions.view')}
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setEditStoryId(story.story_id)
+                                  }}
+                                  size="sm"
+                                  variant="secondary"
+                                >
+                                  <FontAwesomeIcon icon={faPen} />
+                                  {t('stories.actions.edit')}
+                                </Button>
+                                <Button
+                                  onClick={() => {
+                                    setDeleteTargetIds([story.story_id])
+                                  }}
+                                  size="sm"
+                                  variant="danger"
+                                >
+                                  <FontAwesomeIcon icon={faTrashCan} />
+                                  {t('stories.actions.delete')}
+                                </Button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
                   )
                 ) : isDraftsLoading ? (
                   <StoryDraftsListSkeleton />
@@ -1060,7 +1071,10 @@ export function StoriesPage() {
                                     size="sm"
                                     variant="secondary"
                                   >
-                                    <FontAwesomeIcon className={cn(isWorking ? 'animate-spin' : '')} icon={faRotateRight} />
+                                    <FontAwesomeIcon
+                                      className={cn(isWorking ? 'animate-spin' : '')}
+                                      icon={faRotateRight}
+                                    />
                                     {t('stories.actions.continueDraft')}
                                   </Button>
                                 ) : null}

@@ -33,7 +33,10 @@ export function StoryGraphToolbar({
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--color-border-subtle)] px-6 py-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge className="normal-case px-3 py-1.5" variant={graphType === 'draft' ? 'info' : 'subtle'}>
+        <Badge
+          className="normal-case px-3 py-1.5"
+          variant={graphType === 'draft' ? 'info' : 'subtle'}
+        >
           {graphType === 'draft' ? t('stories.graph.partialGraph') : t('stories.graph.finalGraph')}
         </Badge>
         <Badge className="normal-case px-3 py-1.5" variant="subtle">

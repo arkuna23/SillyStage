@@ -6,10 +6,8 @@
 }
 
 :root {
-  --font-body-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", "PingFang SC",
-    sans-serif;
-  --font-display-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua",
-    Georgia, serif;
+  --font-body-stack: "Avenir Next", "Segoe UI", "Helvetica Neue", "PingFang SC", sans-serif;
+  --font-display-stack: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
 
   --color-bg-stage: #0f0f12;
   --color-bg-curtain: #3a2a22;
@@ -86,7 +84,7 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-html[data-theme='light'] {
+html[data-theme="light"] {
   --color-bg-stage: #f5f3f0;
   --color-bg-curtain: #8b6a56;
   --color-bg-panel: rgba(255, 255, 255, 0.84);
@@ -124,18 +122,10 @@ html[data-theme='light'] {
   --color-ghost-bg: rgba(139, 106, 86, 0.09);
   --color-ghost-bg-hover: rgba(139, 106, 86, 0.14);
   --color-ghost-border: rgba(139, 106, 86, 0.16);
-  --shadow-surface:
-    0 22px 58px rgba(83, 58, 42, 0.1),
-    0 3px 14px rgba(83, 58, 42, 0.05);
-  --shadow-floating:
-    0 18px 52px rgba(83, 58, 42, 0.12),
-    0 4px 16px rgba(83, 58, 42, 0.05);
-  --shadow-dialog:
-    0 28px 72px rgba(83, 58, 42, 0.14),
-    0 6px 22px rgba(83, 58, 42, 0.06);
-  --shadow-select:
-    0 20px 58px rgba(83, 58, 42, 0.13),
-    0 4px 18px rgba(83, 58, 42, 0.05);
+  --shadow-surface: 0 22px 58px rgba(83, 58, 42, 0.1), 0 3px 14px rgba(83, 58, 42, 0.05);
+  --shadow-floating: 0 18px 52px rgba(83, 58, 42, 0.12), 0 4px 16px rgba(83, 58, 42, 0.05);
+  --shadow-dialog: 0 28px 72px rgba(83, 58, 42, 0.14), 0 6px 22px rgba(83, 58, 42, 0.06);
+  --shadow-select: 0 20px 58px rgba(83, 58, 42, 0.13), 0 4px 18px rgba(83, 58, 42, 0.05);
   --surface-blur: 0px;
   --stage-backdrop:
     radial-gradient(circle at 50% -12%, rgba(157, 59, 79, 0.11), transparent 24%),
@@ -381,43 +371,43 @@ select {
   animation-direction: reverse;
 }
 
-.popup-menu-content[data-state='open'][data-side='bottom'] {
+.popup-menu-content[data-state="open"][data-side="bottom"] {
   animation: popup-menu-in-bottom 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.popup-menu-content[data-state='open'][data-side='top'] {
+.popup-menu-content[data-state="open"][data-side="top"] {
   animation: popup-menu-in-top 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.popup-menu-content[data-state='closed'] {
+.popup-menu-content[data-state="closed"] {
   animation: popup-menu-out 160ms ease-out;
 }
 
-.select-content[data-state='open'][data-side='bottom'] {
+.select-content[data-state="open"][data-side="bottom"] {
   animation: popup-menu-in-bottom 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.select-content[data-state='open'][data-side='top'] {
+.select-content[data-state="open"][data-side="top"] {
   animation: popup-menu-in-top 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.select-content[data-state='closed'] {
+.select-content[data-state="closed"] {
   animation: popup-menu-out 160ms ease-out;
 }
 
-.dialog-overlay[data-state='open'] {
+.dialog-overlay[data-state="open"] {
   animation: dialog-overlay-in 180ms ease-out;
 }
 
-.dialog-overlay[data-state='closed'] {
+.dialog-overlay[data-state="closed"] {
   animation: dialog-overlay-out 140ms ease-in;
 }
 
-.dialog-content[data-state='open'] > .dialog-surface {
+.dialog-content[data-state="open"] > .dialog-surface {
   animation: dialog-content-in 240ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.dialog-content[data-state='closed'] > .dialog-surface {
+.dialog-content[data-state="closed"] > .dialog-surface {
   animation: dialog-content-out 170ms ease-in;
 }
 

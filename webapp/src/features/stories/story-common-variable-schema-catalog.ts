@@ -54,10 +54,7 @@ function createInitialCatalog(args: {
 }): StoryCommonVariableSchemaCatalog {
   return {
     characterByCharacterId: Object.fromEntries(
-      args.characterIds.map((characterId) => [
-        characterId,
-        createKeySource('loading'),
-      ]),
+      args.characterIds.map((characterId) => [characterId, createKeySource('loading')]),
     ),
     player: createKeySource(args.playerSchemaId?.trim() ? 'loading' : 'missing'),
     world: createKeySource(args.worldSchemaId?.trim() ? 'loading' : 'missing'),
@@ -224,7 +221,13 @@ export function useStoryCommonVariableSchemaCatalog({
     return () => {
       controller.abort()
     }
-  }, [enabled, normalizedCharacterIds, normalizedPlayerSchemaId, normalizedWorldSchemaId, requestKey])
+  }, [
+    enabled,
+    normalizedCharacterIds,
+    normalizedPlayerSchemaId,
+    normalizedWorldSchemaId,
+    requestKey,
+  ])
 
   return resolvedCatalogState?.key === requestKey ? resolvedCatalogState.catalog : fallbackCatalog
 }

@@ -1,10 +1,6 @@
 import { rpcRequest } from '../../lib/rpc'
 import type { StateFieldSchema } from '../../lib/state-schema'
-import type {
-  SchemaDeletedResult,
-  SchemaResource,
-  SchemasListedResult,
-} from './types'
+import type { SchemaDeletedResult, SchemaResource, SchemasListedResult } from './types'
 
 export async function listSchemas(signal?: AbortSignal) {
   const result = await rpcRequest<Record<string, never>, SchemasListedResult>(

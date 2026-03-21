@@ -1,4 +1,3 @@
-import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faGripVertical } from '@fortawesome/free-solid-svg-icons/faGripVertical'
@@ -6,6 +5,7 @@ import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import { type DragEvent, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -23,11 +23,10 @@ import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { Switch } from '../../components/ui/switch'
 import { Textarea } from '../../components/ui/textarea'
-import { useToastMessage, useToastNotice, type ToastInput } from '../../components/ui/toast-context'
+import { type ToastInput, useToastMessage, useToastNotice } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { createPreset, getPreset, updatePreset } from '../apis/api'
 import {
-  promptMessageRoles,
   type AgentPresetConfig,
   type AgentRoleKey,
   type PresetAgentConfigs,
@@ -36,16 +35,17 @@ import {
   type PresetModuleEntry,
   type PromptMessageRole,
   type PromptModuleId,
+  promptMessageRoles,
 } from '../apis/types'
 import {
   createPresetRoleLabels,
   getBuiltInPromptModuleDefinition,
   getOrderedAgentRoleKeys,
   getOrderedModuleIds,
+  getPresetEntryKindLabel,
   getPromptMessageRoleLabel,
   getPromptModuleDefaultDisplayName,
   getPromptModuleLabel,
-  getPresetEntryKindLabel,
   isBuiltInPromptModuleId,
 } from './preset-labels'
 import { PresetPromptPreviewDialog } from './preset-prompt-preview-dialog'
@@ -200,10 +200,7 @@ function createPromptEntryState(entry?: PresetModuleEntry): PromptEntryFormState
   }
 }
 
-function createBuiltInModuleState(
-  t: TranslateFn,
-  moduleId: PromptModuleId,
-): PromptModuleFormState {
+function createBuiltInModuleState(t: TranslateFn, moduleId: PromptModuleId): PromptModuleFormState {
   if (!isBuiltInPromptModuleId(moduleId)) {
     return {
       clientId: createPromptModuleClientId(),
@@ -270,10 +267,13 @@ function createEmptyAgentState(t: TranslateFn): AgentFormState {
 
 function createInitialState(t: TranslateFn): FormState {
   return {
-    agents: getOrderedAgentRoleKeys().reduce<FormState['agents']>((agents, roleKey) => {
-      agents[roleKey] = createEmptyAgentState(t)
-      return agents
-    }, {} as FormState['agents']),
+    agents: getOrderedAgentRoleKeys().reduce<FormState['agents']>(
+      (agents, roleKey) => {
+        agents[roleKey] = createEmptyAgentState(t)
+        return agents
+      },
+      {} as FormState['agents'],
+    ),
     displayName: '',
     presetId: '',
   }
@@ -307,7 +307,10 @@ function createExpandedEntryIdsState() {
   return [] as string[]
 }
 
-function createAgentFormState(agent: PresetDetail['agents'][AgentRoleKey], t: TranslateFn): AgentFormState {
+function createAgentFormState(
+  agent: PresetDetail['agents'][AgentRoleKey],
+  t: TranslateFn,
+): AgentFormState {
   return {
     extra:
       agent.extra !== undefined && agent.extra !== null ? JSON.stringify(agent.extra, null, 2) : '',
@@ -317,11 +320,7 @@ function createAgentFormState(agent: PresetDetail['agents'][AgentRoleKey], t: Tr
   }
 }
 
-function summarizeAgent(
-  agent: AgentFormState,
-  t: TranslateFn,
-  emptyLabel: string,
-) {
+function summarizeAgent(agent: AgentFormState, t: TranslateFn, emptyLabel: string) {
   const totalEntries = agent.modules.reduce((count, module) => count + module.entries.length, 0)
   const enabledEntries = agent.modules.reduce(
     (count, module) => count + module.entries.filter((entry) => entry.enabled).length,
@@ -355,10 +354,7 @@ function parseModuleOrder(
   if (!Number.isInteger(parsed)) {
     throw new Error(
       t('presetsPage.form.errors.moduleOrderInvalid', {
-        id:
-          module.moduleId.trim() ||
-          module.displayName.trim() ||
-          t('presetsPage.form.newModule'),
+        id: module.moduleId.trim() || module.displayName.trim() || t('presetsPage.form.newModule'),
         role: roleLabels[roleKey],
       }),
     )
@@ -528,8 +524,7 @@ function parseAgentPresetConfig(
 
       return {
         display_name:
-          module.displayName.trim() ||
-          getPromptModuleDefaultDisplayName(t, moduleId, undefined),
+          module.displayName.trim() || getPromptModuleDefaultDisplayName(t, moduleId, undefined),
         entries,
         message_role: module.messageRole,
         module_id: moduleId,
@@ -586,8 +581,7 @@ export function PresetFormDialog({
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
   const translate = useCallback(
-    (key: string, options?: Record<string, unknown>) =>
-      String(t(key as never, options as never)),
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
     [t],
   )
   const roleLabels = useMemo(() => createPresetRoleLabels(translate), [translate])
@@ -822,7 +816,8 @@ export function PresetFormDialog({
     }))
     setExpandedEntryIds((current) => {
       const removedEntryIds =
-        formState.agents[roleKey].modules.find((module) => module.clientId === moduleClientId)?.entries ?? []
+        formState.agents[roleKey].modules.find((module) => module.clientId === moduleClientId)
+          ?.entries ?? []
 
       if (removedEntryIds.length === 0) {
         return current
@@ -871,7 +866,11 @@ export function PresetFormDialog({
     roleKey: AgentRoleKey,
     clientId: string,
   ) {
-    if (!draggedModule || draggedModule.roleKey !== roleKey || draggedModule.clientId === clientId) {
+    if (
+      !draggedModule ||
+      draggedModule.roleKey !== roleKey ||
+      draggedModule.clientId === clientId
+    ) {
       return
     }
 
@@ -944,7 +943,9 @@ export function PresetFormDialog({
   }
 
   function addCustomEntry(roleKey: AgentRoleKey, moduleClientId: string) {
-    const module = formState.agents[roleKey].modules.find((item) => item.clientId === moduleClientId)
+    const module = formState.agents[roleKey].modules.find(
+      (item) => item.clientId === moduleClientId,
+    )
 
     if (!module) {
       return
@@ -1232,7 +1233,9 @@ export function PresetFormDialog({
         >
           <DialogHeader className="border-b border-[var(--color-border-subtle)]">
             <DialogTitle>
-              {mode === 'create' ? t('presetsPage.form.createTitle') : t('presetsPage.form.editTitle')}
+              {mode === 'create'
+                ? t('presetsPage.form.createTitle')
+                : t('presetsPage.form.editTitle')}
             </DialogTitle>
           </DialogHeader>
 
@@ -1310,752 +1313,845 @@ export function PresetFormDialog({
                             : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
                         }
                       >
-                      <button
-                        aria-expanded={isExpanded}
-                        className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
-                        onClick={() => {
-                          toggleAgent(roleKey)
-                        }}
-                        type="button"
-                      >
-                        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
-                          <p className="shrink-0 text-sm font-medium text-[var(--color-text-primary)]">
-                            {roleLabels[roleKey]}
-                          </p>
-                          <div className="flex min-w-0 flex-wrap items-center gap-2">
-                            {summaryItems.map((item) => (
-                              <Badge key={`${roleKey}-${item}`} variant="subtle">
-                                {item}
-                              </Badge>
-                            ))}
-                          </div>
-                        </div>
-
-                        <motion.span
-                          animate={{ rotate: isExpanded ? 180 : 0 }}
-                          className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
-                          transition={
-                            prefersReducedMotion
-                              ? { duration: 0 }
-                              : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-                          }
+                        <button
+                          aria-expanded={isExpanded}
+                          className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
+                          onClick={() => {
+                            toggleAgent(roleKey)
+                          }}
+                          type="button"
                         >
-                          <FontAwesomeIcon icon={faChevronDown} />
-                        </motion.span>
-                      </button>
+                          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5">
+                            <p className="shrink-0 text-sm font-medium text-[var(--color-text-primary)]">
+                              {roleLabels[roleKey]}
+                            </p>
+                            <div className="flex min-w-0 flex-wrap items-center gap-2">
+                              {summaryItems.map((item) => (
+                                <Badge key={`${roleKey}-${item}`} variant="subtle">
+                                  {item}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
 
-                      <AnimatePresence initial={false}>
-                        {isExpanded ? (
-                          <motion.div
-                            animate={{ height: 'auto', opacity: 1, y: 0 }}
-                            className="overflow-hidden"
-                            exit={{
-                              height: 0,
-                              opacity: 0,
-                              y: prefersReducedMotion ? 0 : -8,
-                            }}
-                            initial={{
-                              height: 0,
-                              opacity: 0,
-                              y: prefersReducedMotion ? 0 : -8,
-                            }}
+                          <motion.span
+                            animate={{ rotate: isExpanded ? 180 : 0 }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
                             transition={
                               prefersReducedMotion
                                 ? { duration: 0 }
                                 : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
                             }
                           >
-                            <div className="space-y-5 border-t border-[var(--color-border-subtle)] px-4 py-4">
-                              <div className="overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)]">
-                                <button
-                                  aria-expanded={isModelSettingsExpanded}
-                                  className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
-                                  onClick={() => {
-                                    toggleModelSettings(roleKey)
-                                  }}
-                                  type="button"
-                                >
-                                  <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                                    {t('presetsPage.form.fields.modelSettings')}
-                                  </p>
+                            <FontAwesomeIcon icon={faChevronDown} />
+                          </motion.span>
+                        </button>
 
-                                  <motion.span
-                                    animate={{ rotate: isModelSettingsExpanded ? 180 : 0 }}
-                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
-                                    transition={
-                                      prefersReducedMotion
-                                        ? { duration: 0 }
-                                        : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
-                                    }
+                        <AnimatePresence initial={false}>
+                          {isExpanded ? (
+                            <motion.div
+                              animate={{ height: 'auto', opacity: 1, y: 0 }}
+                              className="overflow-hidden"
+                              exit={{
+                                height: 0,
+                                opacity: 0,
+                                y: prefersReducedMotion ? 0 : -8,
+                              }}
+                              initial={{
+                                height: 0,
+                                opacity: 0,
+                                y: prefersReducedMotion ? 0 : -8,
+                              }}
+                              transition={
+                                prefersReducedMotion
+                                  ? { duration: 0 }
+                                  : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
+                              }
+                            >
+                              <div className="space-y-5 border-t border-[var(--color-border-subtle)] px-4 py-4">
+                                <div className="overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)]">
+                                  <button
+                                    aria-expanded={isModelSettingsExpanded}
+                                    className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition duration-200 hover:bg-white/5"
+                                    onClick={() => {
+                                      toggleModelSettings(roleKey)
+                                    }}
+                                    type="button"
                                   >
-                                    <FontAwesomeIcon icon={faChevronDown} />
-                                  </motion.span>
-                                </button>
+                                    <p className="text-sm font-medium text-[var(--color-text-primary)]">
+                                      {t('presetsPage.form.fields.modelSettings')}
+                                    </p>
 
-                                <AnimatePresence initial={false}>
-                                  {isModelSettingsExpanded ? (
-                                    <motion.div
-                                      animate={{ height: 'auto', opacity: 1, y: 0 }}
-                                      className="overflow-hidden"
-                                      exit={{
-                                        height: 0,
-                                        opacity: 0,
-                                        y: prefersReducedMotion ? 0 : -8,
-                                      }}
-                                      initial={{
-                                        height: 0,
-                                        opacity: 0,
-                                        y: prefersReducedMotion ? 0 : -8,
-                                      }}
+                                    <motion.span
+                                      animate={{ rotate: isModelSettingsExpanded ? 180 : 0 }}
+                                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
                                       transition={
                                         prefersReducedMotion
                                           ? { duration: 0 }
                                           : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
                                       }
                                     >
-                                      <div className="space-y-4 border-t border-[var(--color-border-subtle)] px-4 py-4">
-                                        <div className="grid gap-4 md:grid-cols-2">
-                                          <label className="space-y-2">
-                                            <span className="block text-xs text-[var(--color-text-muted)]">
-                                              {t('presetsPage.form.fields.temperature')}
-                                            </span>
-                                            <Input
-                                              id={`preset-form-${roleKey}-temperature`}
-                                              name={`${roleKey}_temperature`}
-                                              onChange={(event) => {
-                                                updateAgentField(roleKey, 'temperature', event.target.value)
-                                              }}
-                                              placeholder={t('presetsPage.form.placeholders.temperature')}
-                                              value={agentState.temperature}
-                                            />
-                                          </label>
+                                      <FontAwesomeIcon icon={faChevronDown} />
+                                    </motion.span>
+                                  </button>
+
+                                  <AnimatePresence initial={false}>
+                                    {isModelSettingsExpanded ? (
+                                      <motion.div
+                                        animate={{ height: 'auto', opacity: 1, y: 0 }}
+                                        className="overflow-hidden"
+                                        exit={{
+                                          height: 0,
+                                          opacity: 0,
+                                          y: prefersReducedMotion ? 0 : -8,
+                                        }}
+                                        initial={{
+                                          height: 0,
+                                          opacity: 0,
+                                          y: prefersReducedMotion ? 0 : -8,
+                                        }}
+                                        transition={
+                                          prefersReducedMotion
+                                            ? { duration: 0 }
+                                            : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+                                        }
+                                      >
+                                        <div className="space-y-4 border-t border-[var(--color-border-subtle)] px-4 py-4">
+                                          <div className="grid gap-4 md:grid-cols-2">
+                                            <label className="space-y-2">
+                                              <span className="block text-xs text-[var(--color-text-muted)]">
+                                                {t('presetsPage.form.fields.temperature')}
+                                              </span>
+                                              <Input
+                                                id={`preset-form-${roleKey}-temperature`}
+                                                name={`${roleKey}_temperature`}
+                                                onChange={(event) => {
+                                                  updateAgentField(
+                                                    roleKey,
+                                                    'temperature',
+                                                    event.target.value,
+                                                  )
+                                                }}
+                                                placeholder={t(
+                                                  'presetsPage.form.placeholders.temperature',
+                                                )}
+                                                value={agentState.temperature}
+                                              />
+                                            </label>
+
+                                            <label className="space-y-2">
+                                              <span className="block text-xs text-[var(--color-text-muted)]">
+                                                {t('presetsPage.form.fields.maxTokens')}
+                                              </span>
+                                              <Input
+                                                id={`preset-form-${roleKey}-max-tokens`}
+                                                name={`${roleKey}_max_tokens`}
+                                                onChange={(event) => {
+                                                  updateAgentField(
+                                                    roleKey,
+                                                    'maxTokens',
+                                                    event.target.value,
+                                                  )
+                                                }}
+                                                placeholder={t(
+                                                  'presetsPage.form.placeholders.maxTokens',
+                                                )}
+                                                value={agentState.maxTokens}
+                                              />
+                                            </label>
+                                          </div>
 
                                           <label className="space-y-2">
                                             <span className="block text-xs text-[var(--color-text-muted)]">
-                                              {t('presetsPage.form.fields.maxTokens')}
+                                              {t('presetsPage.form.fields.extra')}
                                             </span>
-                                            <Input
-                                              id={`preset-form-${roleKey}-max-tokens`}
-                                              name={`${roleKey}_max_tokens`}
+                                            <Textarea
+                                              className="min-h-[8rem]"
+                                              id={`preset-form-${roleKey}-extra`}
+                                              name={`${roleKey}_extra`}
                                               onChange={(event) => {
-                                                updateAgentField(roleKey, 'maxTokens', event.target.value)
+                                                updateAgentField(
+                                                  roleKey,
+                                                  'extra',
+                                                  event.target.value,
+                                                )
                                               }}
-                                              placeholder={t('presetsPage.form.placeholders.maxTokens')}
-                                              value={agentState.maxTokens}
+                                              placeholder={t('presetsPage.form.placeholders.extra')}
+                                              value={agentState.extra}
                                             />
                                           </label>
                                         </div>
+                                      </motion.div>
+                                    ) : null}
+                                  </AnimatePresence>
+                                </div>
 
-                                        <label className="space-y-2">
-                                          <span className="block text-xs text-[var(--color-text-muted)]">
-                                            {t('presetsPage.form.fields.extra')}
-                                          </span>
-                                          <Textarea
-                                            className="min-h-[8rem]"
-                                            id={`preset-form-${roleKey}-extra`}
-                                            name={`${roleKey}_extra`}
-                                            onChange={(event) => {
-                                              updateAgentField(roleKey, 'extra', event.target.value)
-                                            }}
-                                            placeholder={t('presetsPage.form.placeholders.extra')}
-                                            value={agentState.extra}
-                                          />
-                                        </label>
-                                      </div>
-                                    </motion.div>
-                                  ) : null}
-                                </AnimatePresence>
-                              </div>
-
-                              <div className="space-y-3">
-                                <div className="flex flex-wrap items-start justify-between gap-3">
-                                  <p className="text-xs leading-6 text-[var(--color-text-muted)]">
-                                    {t('presetsPage.form.moduleHint')}
-                                  </p>
-                                  <div className="flex flex-wrap items-center justify-end gap-2">
-                                    {mode === 'edit' && loadedPreset ? (
+                                <div className="space-y-3">
+                                  <div className="flex flex-wrap items-start justify-between gap-3">
+                                    <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                                      {t('presetsPage.form.moduleHint')}
+                                    </p>
+                                    <div className="flex flex-wrap items-center justify-end gap-2">
+                                      {mode === 'edit' && loadedPreset ? (
+                                        <Button
+                                          onClick={() => {
+                                            openAgentPreview(roleKey)
+                                          }}
+                                          size="sm"
+                                          variant="secondary"
+                                        >
+                                          <FontAwesomeIcon icon={faEye} />
+                                          {t('presetsPage.actions.previewPrompt')}
+                                        </Button>
+                                      ) : null}
                                       <Button
                                         onClick={() => {
-                                          openAgentPreview(roleKey)
+                                          addCustomModule(roleKey)
                                         }}
                                         size="sm"
                                         variant="secondary"
                                       >
-                                        <FontAwesomeIcon icon={faEye} />
-                                        {t('presetsPage.actions.previewPrompt')}
+                                        <FontAwesomeIcon icon={faPlus} />
+                                        {t('presetsPage.actions.addModule')}
                                       </Button>
-                                    ) : null}
-                                    <Button
-                                      onClick={() => {
-                                        addCustomModule(roleKey)
-                                      }}
-                                      size="sm"
-                                      variant="secondary"
-                                    >
-                                      <FontAwesomeIcon icon={faPlus} />
-                                      {t('presetsPage.actions.addModule')}
-                                    </Button>
+                                    </div>
                                   </div>
-                                </div>
 
-                                {agentState.modules.map((module) => {
-                                  const isModuleExpanded = expandedModules[roleKey].includes(module.clientId)
-                                  const enabledCount = module.entries.filter((entry) => entry.enabled).length
-                                  const isModuleDragged =
-                                    draggedModule?.clientId === module.clientId &&
-                                    draggedModule.roleKey === roleKey
-                                  const isModuleDropTarget =
-                                    moduleDropTarget?.clientId === module.clientId &&
-                                    moduleDropTarget.roleKey === roleKey &&
-                                    !isModuleDragged
-                                  const moduleLabel = createModuleLabel(module, translate)
+                                  {agentState.modules.map((module) => {
+                                    const isModuleExpanded = expandedModules[roleKey].includes(
+                                      module.clientId,
+                                    )
+                                    const enabledCount = module.entries.filter(
+                                      (entry) => entry.enabled,
+                                    ).length
+                                    const isModuleDragged =
+                                      draggedModule?.clientId === module.clientId &&
+                                      draggedModule.roleKey === roleKey
+                                    const isModuleDropTarget =
+                                      moduleDropTarget?.clientId === module.clientId &&
+                                      moduleDropTarget.roleKey === roleKey &&
+                                      !isModuleDragged
+                                    const moduleLabel = createModuleLabel(module, translate)
 
-                                  return (
-                                    <div
-                                      className={cn(
-                                        'overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] transition duration-200',
-                                        isModuleDragged && 'opacity-55',
-                                        isModuleDropTarget &&
-                                          'border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]',
-                                      )}
-                                      key={module.clientId}
-                                      onDragOver={(event) => {
-                                        handleModuleDragOver(event, roleKey, module.clientId)
-                                      }}
-                                      onDrop={(event) => {
-                                        handleModuleDrop(event, roleKey, module.clientId)
-                                      }}
-                                    >
-                                      <div className="flex items-center gap-3 px-4 py-4">
-                                        <button
-                                          aria-label={t('presetsPage.actions.dragModule')}
-                                          className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] transition duration-200 hover:text-[var(--color-text-primary)] active:cursor-grabbing"
-                                          draggable
-                                          onDragEnd={handleModuleDragEnd}
-                                          onDragStart={(event) => {
-                                            event.dataTransfer.effectAllowed = 'move'
-                                            event.dataTransfer.setData('text/plain', module.clientId)
-                                            handleModuleDragStart(roleKey, module.clientId)
-                                          }}
-                                          type="button"
-                                        >
-                                          <FontAwesomeIcon icon={faGripVertical} />
-                                        </button>
+                                    return (
+                                      <div
+                                        className={cn(
+                                          'overflow-hidden rounded-[1.2rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_72%,transparent)] transition duration-200',
+                                          isModuleDragged && 'opacity-55',
+                                          isModuleDropTarget &&
+                                            'border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]',
+                                        )}
+                                        key={module.clientId}
+                                        onDragOver={(event) => {
+                                          handleModuleDragOver(event, roleKey, module.clientId)
+                                        }}
+                                        onDrop={(event) => {
+                                          handleModuleDrop(event, roleKey, module.clientId)
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-3 px-4 py-4">
+                                          <button
+                                            aria-label={t('presetsPage.actions.dragModule')}
+                                            className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] transition duration-200 hover:text-[var(--color-text-primary)] active:cursor-grabbing"
+                                            draggable
+                                            onDragEnd={handleModuleDragEnd}
+                                            onDragStart={(event) => {
+                                              event.dataTransfer.effectAllowed = 'move'
+                                              event.dataTransfer.setData(
+                                                'text/plain',
+                                                module.clientId,
+                                              )
+                                              handleModuleDragStart(roleKey, module.clientId)
+                                            }}
+                                            type="button"
+                                          >
+                                            <FontAwesomeIcon icon={faGripVertical} />
+                                          </button>
 
-                                        <button
-                                          aria-expanded={isModuleExpanded}
-                                          className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left transition duration-200"
-                                          onClick={() => {
-                                            toggleModule(roleKey, module.clientId)
-                                          }}
-                                          type="button"
-                                        >
-                                          <div className="min-w-0 space-y-1">
-                                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                                              <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-                                                {moduleLabel}
+                                          <button
+                                            aria-expanded={isModuleExpanded}
+                                            className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left transition duration-200"
+                                            onClick={() => {
+                                              toggleModule(roleKey, module.clientId)
+                                            }}
+                                            type="button"
+                                          >
+                                            <div className="min-w-0 space-y-1">
+                                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                                <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                                  {moduleLabel}
+                                                </p>
+                                                <Badge variant="subtle">
+                                                  {getPromptMessageRoleLabel(
+                                                    translate,
+                                                    module.messageRole,
+                                                  )}
+                                                </Badge>
+                                                {module.moduleId.trim() ? (
+                                                  <Badge variant="subtle">
+                                                    {module.moduleId.trim()}
+                                                  </Badge>
+                                                ) : null}
+                                              </div>
+                                              <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                                                {t('presetsPage.form.moduleSummary', {
+                                                  count: module.entries.length,
+                                                  enabled: enabledCount,
+                                                })}
                                               </p>
-                                              <Badge variant="subtle">
-                                                {getPromptMessageRoleLabel(translate, module.messageRole)}
-                                              </Badge>
-                                              {module.moduleId.trim() ? (
-                                                <Badge variant="subtle">{module.moduleId.trim()}</Badge>
-                                              ) : null}
                                             </div>
-                                            <p className="text-xs leading-6 text-[var(--color-text-muted)]">
-                                              {t('presetsPage.form.moduleSummary', {
-                                                count: module.entries.length,
-                                                enabled: enabledCount,
-                                              })}
-                                            </p>
-                                          </div>
 
-                                          <div className="flex items-center gap-2">
-                                            {!module.isBuiltIn ? (
-                                              <IconButton
-                                                icon={<FontAwesomeIcon icon={faTrashCan} />}
-                                                label={t('presetsPage.actions.removeModule')}
-                                                onClick={(event) => {
-                                                  event.stopPropagation()
-                                                  removeModule(roleKey, module.clientId)
-                                                }}
-                                                size="sm"
-                                                variant="danger"
-                                              />
-                                            ) : null}
-                                            <motion.span
-                                              animate={{ rotate: isModuleExpanded ? 180 : 0 }}
-                                              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
+                                            <div className="flex items-center gap-2">
+                                              {!module.isBuiltIn ? (
+                                                <IconButton
+                                                  icon={<FontAwesomeIcon icon={faTrashCan} />}
+                                                  label={t('presetsPage.actions.removeModule')}
+                                                  onClick={(event) => {
+                                                    event.stopPropagation()
+                                                    removeModule(roleKey, module.clientId)
+                                                  }}
+                                                  size="sm"
+                                                  variant="danger"
+                                                />
+                                              ) : null}
+                                              <motion.span
+                                                animate={{ rotate: isModuleExpanded ? 180 : 0 }}
+                                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)]"
+                                                transition={
+                                                  prefersReducedMotion
+                                                    ? { duration: 0 }
+                                                    : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
+                                                }
+                                              >
+                                                <FontAwesomeIcon icon={faChevronDown} />
+                                              </motion.span>
+                                            </div>
+                                          </button>
+                                        </div>
+
+                                        <AnimatePresence initial={false}>
+                                          {isModuleExpanded ? (
+                                            <motion.div
+                                              animate={{ height: 'auto', opacity: 1, y: 0 }}
+                                              className="overflow-hidden"
+                                              exit={{
+                                                height: 0,
+                                                opacity: 0,
+                                                y: prefersReducedMotion ? 0 : -8,
+                                              }}
+                                              initial={{
+                                                height: 0,
+                                                opacity: 0,
+                                                y: prefersReducedMotion ? 0 : -8,
+                                              }}
                                               transition={
                                                 prefersReducedMotion
                                                   ? { duration: 0 }
                                                   : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
                                               }
                                             >
-                                              <FontAwesomeIcon icon={faChevronDown} />
-                                            </motion.span>
-                                          </div>
-                                        </button>
-                                      </div>
+                                              <div className="space-y-4 border-t border-[var(--color-border-subtle)] px-4 py-4">
+                                                <div className="grid gap-4 md:grid-cols-2">
+                                                  <label className="space-y-2">
+                                                    <span className="block text-xs text-[var(--color-text-muted)]">
+                                                      {t('presetsPage.form.fields.moduleId')}
+                                                    </span>
+                                                    <Input
+                                                      disabled={module.isBuiltIn}
+                                                      id={`preset-form-${roleKey}-${module.clientId}-module-id`}
+                                                      name={`${roleKey}_module_id_${module.clientId}`}
+                                                      onChange={(event) => {
+                                                        updateModuleField(
+                                                          roleKey,
+                                                          module.clientId,
+                                                          'moduleId',
+                                                          event.target.value,
+                                                        )
+                                                      }}
+                                                      placeholder={t(
+                                                        'presetsPage.form.placeholders.moduleId',
+                                                      )}
+                                                      value={module.moduleId}
+                                                    />
+                                                  </label>
 
-                                      <AnimatePresence initial={false}>
-                                        {isModuleExpanded ? (
-                                          <motion.div
-                                            animate={{ height: 'auto', opacity: 1, y: 0 }}
-                                            className="overflow-hidden"
-                                            exit={{
-                                              height: 0,
-                                              opacity: 0,
-                                              y: prefersReducedMotion ? 0 : -8,
-                                            }}
-                                            initial={{
-                                              height: 0,
-                                              opacity: 0,
-                                              y: prefersReducedMotion ? 0 : -8,
-                                            }}
-                                            transition={
-                                              prefersReducedMotion
-                                                ? { duration: 0 }
-                                                : { duration: 0.2, ease: [0.22, 1, 0.36, 1] }
-                                            }
-                                          >
-                                            <div className="space-y-4 border-t border-[var(--color-border-subtle)] px-4 py-4">
-                                              <div className="grid gap-4 md:grid-cols-2">
-                                                <label className="space-y-2">
-                                                  <span className="block text-xs text-[var(--color-text-muted)]">
-                                                    {t('presetsPage.form.fields.moduleId')}
-                                                  </span>
-                                                  <Input
-                                                    disabled={module.isBuiltIn}
-                                                    id={`preset-form-${roleKey}-${module.clientId}-module-id`}
-                                                    name={`${roleKey}_module_id_${module.clientId}`}
-                                                    onChange={(event) => {
-                                                      updateModuleField(
-                                                        roleKey,
-                                                        module.clientId,
-                                                        'moduleId',
-                                                        event.target.value,
-                                                      )
-                                                    }}
-                                                    placeholder={t('presetsPage.form.placeholders.moduleId')}
-                                                    value={module.moduleId}
-                                                  />
-                                                </label>
+                                                  <label className="space-y-2">
+                                                    <span className="block text-xs text-[var(--color-text-muted)]">
+                                                      {t(
+                                                        'presetsPage.form.fields.moduleDisplayName',
+                                                      )}
+                                                    </span>
+                                                    <Input
+                                                      id={`preset-form-${roleKey}-${module.clientId}-display-name`}
+                                                      name={`${roleKey}_module_display_name_${module.clientId}`}
+                                                      onChange={(event) => {
+                                                        updateModuleField(
+                                                          roleKey,
+                                                          module.clientId,
+                                                          'displayName',
+                                                          event.target.value,
+                                                        )
+                                                      }}
+                                                      placeholder={t(
+                                                        'presetsPage.form.placeholders.moduleDisplayName',
+                                                      )}
+                                                      value={module.displayName}
+                                                    />
+                                                  </label>
 
-                                                <label className="space-y-2">
-                                                  <span className="block text-xs text-[var(--color-text-muted)]">
-                                                    {t('presetsPage.form.fields.moduleDisplayName')}
-                                                  </span>
-                                                  <Input
-                                                    id={`preset-form-${roleKey}-${module.clientId}-display-name`}
-                                                    name={`${roleKey}_module_display_name_${module.clientId}`}
-                                                    onChange={(event) => {
-                                                      updateModuleField(
-                                                        roleKey,
-                                                        module.clientId,
-                                                        'displayName',
-                                                        event.target.value,
-                                                      )
-                                                    }}
-                                                    placeholder={t(
-                                                      'presetsPage.form.placeholders.moduleDisplayName',
-                                                    )}
-                                                    value={module.displayName}
-                                                  />
-                                                </label>
+                                                  <label className="space-y-2">
+                                                    <span className="block text-xs text-[var(--color-text-muted)]">
+                                                      {t('presetsPage.form.fields.messageRole')}
+                                                    </span>
+                                                    <Select
+                                                      items={messageRoleItems}
+                                                      onValueChange={(nextValue) => {
+                                                        updateModuleField(
+                                                          roleKey,
+                                                          module.clientId,
+                                                          'messageRole',
+                                                          nextValue,
+                                                        )
+                                                      }}
+                                                      textAlign="start"
+                                                      value={module.messageRole}
+                                                    />
+                                                  </label>
 
-                                                <label className="space-y-2">
-                                                  <span className="block text-xs text-[var(--color-text-muted)]">
-                                                    {t('presetsPage.form.fields.messageRole')}
-                                                  </span>
-                                                  <Select
-                                                    items={messageRoleItems}
-                                                    onValueChange={(nextValue) => {
-                                                      updateModuleField(
-                                                        roleKey,
-                                                        module.clientId,
-                                                        'messageRole',
-                                                        nextValue,
-                                                      )
-                                                    }}
-                                                    textAlign="start"
-                                                    value={module.messageRole}
-                                                  />
-                                                </label>
+                                                  <label className="space-y-2">
+                                                    <span className="block text-xs text-[var(--color-text-muted)]">
+                                                      {t('presetsPage.form.fields.order')}
+                                                    </span>
+                                                    <Input
+                                                      id={`preset-form-${roleKey}-${module.clientId}-order`}
+                                                      name={`${roleKey}_module_order_${module.clientId}`}
+                                                      onChange={(event) => {
+                                                        updateModuleField(
+                                                          roleKey,
+                                                          module.clientId,
+                                                          'order',
+                                                          event.target.value,
+                                                        )
+                                                      }}
+                                                      placeholder={t(
+                                                        'presetsPage.form.placeholders.order',
+                                                      )}
+                                                      value={module.order}
+                                                    />
+                                                  </label>
+                                                </div>
 
-                                                <label className="space-y-2">
-                                                  <span className="block text-xs text-[var(--color-text-muted)]">
-                                                    {t('presetsPage.form.fields.order')}
-                                                  </span>
-                                                  <Input
-                                                    id={`preset-form-${roleKey}-${module.clientId}-order`}
-                                                    name={`${roleKey}_module_order_${module.clientId}`}
-                                                    onChange={(event) => {
-                                                      updateModuleField(
-                                                        roleKey,
-                                                        module.clientId,
-                                                        'order',
-                                                        event.target.value,
-                                                      )
-                                                    }}
-                                                    placeholder={t('presetsPage.form.placeholders.order')}
-                                                    value={module.order}
-                                                  />
-                                                </label>
-                                              </div>
-
-                                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                                <p className="text-xs leading-6 text-[var(--color-text-muted)]">
-                                                  {t('presetsPage.form.moduleHint')}
-                                                </p>
-                                                <div className="flex flex-wrap items-center justify-end gap-2">
-                                                  {mode === 'edit' && loadedPreset ? (
+                                                <div className="flex flex-wrap items-start justify-between gap-3">
+                                                  <p className="text-xs leading-6 text-[var(--color-text-muted)]">
+                                                    {t('presetsPage.form.moduleHint')}
+                                                  </p>
+                                                  <div className="flex flex-wrap items-center justify-end gap-2">
+                                                    {mode === 'edit' && loadedPreset ? (
+                                                      <Button
+                                                        onClick={() => {
+                                                          openModulePreview(roleKey, module)
+                                                        }}
+                                                        size="sm"
+                                                        variant="secondary"
+                                                      >
+                                                        <FontAwesomeIcon icon={faEye} />
+                                                        {t('presetsPage.actions.previewPrompt')}
+                                                      </Button>
+                                                    ) : null}
                                                     <Button
                                                       onClick={() => {
-                                                        openModulePreview(roleKey, module)
+                                                        addCustomEntry(roleKey, module.clientId)
                                                       }}
                                                       size="sm"
                                                       variant="secondary"
                                                     >
-                                                      <FontAwesomeIcon icon={faEye} />
-                                                      {t('presetsPage.actions.previewPrompt')}
+                                                      <FontAwesomeIcon icon={faPlus} />
+                                                      {t('presetsPage.actions.addCustomEntry')}
                                                     </Button>
-                                                  ) : null}
-                                                  <Button
-                                                    onClick={() => {
-                                                      addCustomEntry(roleKey, module.clientId)
-                                                    }}
-                                                    size="sm"
-                                                    variant="secondary"
-                                                  >
-                                                    <FontAwesomeIcon icon={faPlus} />
-                                                    {t('presetsPage.actions.addCustomEntry')}
-                                                  </Button>
+                                                  </div>
                                                 </div>
-                                              </div>
 
-                                              {module.entries.length > 0 ? (
-                                                <div className="space-y-3">
-                                                  {module.entries.map((entry, entryIndex) => {
-                                                    const isExpanded = expandedEntryIds.includes(entry.clientId)
-                                                    const isDragged =
-                                                      draggedEntry?.clientId === entry.clientId &&
-                                                      draggedEntry.roleKey === roleKey &&
-                                                      draggedEntry.moduleClientId === module.clientId
-                                                    const isDropTarget =
-                                                      dropTarget?.clientId === entry.clientId &&
-                                                      dropTarget.roleKey === roleKey &&
-                                                      dropTarget.moduleClientId === module.clientId &&
-                                                      !isDragged
-                                                    const canEditText = entry.kind === 'custom_text'
-                                                    const canEditDisplayName = entry.kind === 'custom_text'
-                                                    const canEditEntryId = entry.kind === 'custom_text'
-                                                    const canRemove = entry.kind === 'custom_text'
+                                                {module.entries.length > 0 ? (
+                                                  <div className="space-y-3">
+                                                    {module.entries.map((entry, entryIndex) => {
+                                                      const isExpanded = expandedEntryIds.includes(
+                                                        entry.clientId,
+                                                      )
+                                                      const isDragged =
+                                                        draggedEntry?.clientId === entry.clientId &&
+                                                        draggedEntry.roleKey === roleKey &&
+                                                        draggedEntry.moduleClientId ===
+                                                          module.clientId
+                                                      const isDropTarget =
+                                                        dropTarget?.clientId === entry.clientId &&
+                                                        dropTarget.roleKey === roleKey &&
+                                                        dropTarget.moduleClientId ===
+                                                          module.clientId &&
+                                                        !isDragged
+                                                      const canEditText =
+                                                        entry.kind === 'custom_text'
+                                                      const canEditDisplayName =
+                                                        entry.kind === 'custom_text'
+                                                      const canEditEntryId =
+                                                        entry.kind === 'custom_text'
+                                                      const canRemove = entry.kind === 'custom_text'
 
-                                                    return (
-                                                      <motion.div
-                                                        layout
-                                                        className={cn(
-                                                          'rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 transition duration-200',
-                                                          isDragged && 'opacity-55',
-                                                          isDropTarget &&
-                                                            'border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]',
-                                                        )}
-                                                        key={entry.clientId}
-                                                        onDragOver={(event) => {
-                                                          handleEntryDragOver(
-                                                            event,
-                                                            roleKey,
-                                                            module.clientId,
-                                                            entry.clientId,
-                                                          )
-                                                        }}
-                                                        onDrop={(event) => {
-                                                          handleEntryDrop(
-                                                            event,
-                                                            roleKey,
-                                                            module.clientId,
-                                                            entry.clientId,
-                                                          )
-                                                        }}
-                                                        transition={
-                                                          prefersReducedMotion
-                                                            ? { duration: 0 }
-                                                            : {
-                                                                duration: 0.22,
-                                                                ease: [0.22, 1, 0.36, 1],
-                                                              }
-                                                        }
-                                                      >
-                                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                                          <div className="flex min-w-0 items-center gap-3">
-                                                            <button
-                                                              aria-label={t('presetsPage.actions.dragEntry')}
-                                                              className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] transition duration-200 hover:text-[var(--color-text-primary)] active:cursor-grabbing"
-                                                              draggable
-                                                              onDragEnd={handleEntryDragEnd}
-                                                              onDragStart={(event) => {
-                                                                event.dataTransfer.effectAllowed = 'move'
-                                                                event.dataTransfer.setData('text/plain', entry.clientId)
-                                                                handleEntryDragStart(
-                                                                  roleKey,
-                                                                  module.clientId,
-                                                                  entry.clientId,
-                                                                )
-                                                              }}
-                                                              type="button"
-                                                            >
-                                                              <FontAwesomeIcon icon={faGripVertical} />
-                                                            </button>
-
-                                                            <button
-                                                              aria-expanded={isExpanded}
-                                                              className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5 text-left"
-                                                              onClick={() => {
-                                                                toggleEntry(entry.clientId)
-                                                              }}
-                                                              type="button"
-                                                            >
-                                                              <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
-                                                                {createModuleEntryLabel(
-                                                                  entry,
-                                                                  translate,
-                                                                  entryIndex + 1,
+                                                      return (
+                                                        <motion.div
+                                                          layout
+                                                          className={cn(
+                                                            'rounded-[1.1rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4 transition duration-200',
+                                                            isDragged && 'opacity-55',
+                                                            isDropTarget &&
+                                                              'border-[var(--color-accent-gold-line)] shadow-[0_0_0_1px_var(--color-accent-gold-line)]',
+                                                          )}
+                                                          key={entry.clientId}
+                                                          onDragOver={(event) => {
+                                                            handleEntryDragOver(
+                                                              event,
+                                                              roleKey,
+                                                              module.clientId,
+                                                              entry.clientId,
+                                                            )
+                                                          }}
+                                                          onDrop={(event) => {
+                                                            handleEntryDrop(
+                                                              event,
+                                                              roleKey,
+                                                              module.clientId,
+                                                              entry.clientId,
+                                                            )
+                                                          }}
+                                                          transition={
+                                                            prefersReducedMotion
+                                                              ? { duration: 0 }
+                                                              : {
+                                                                  duration: 0.22,
+                                                                  ease: [0.22, 1, 0.36, 1],
+                                                                }
+                                                          }
+                                                        >
+                                                          <div className="flex flex-wrap items-center justify-between gap-3">
+                                                            <div className="flex min-w-0 items-center gap-3">
+                                                              <button
+                                                                aria-label={t(
+                                                                  'presetsPage.actions.dragEntry',
                                                                 )}
-                                                              </p>
-                                                              <Badge variant="subtle">
-                                                                {getPresetEntryKindLabel(translate, entry.kind)}
-                                                              </Badge>
-                                                              <Badge variant="subtle">
-                                                                {entry.entryId.trim() ||
-                                                                  t('presetsPage.form.newEntry')}
-                                                              </Badge>
-                                                              {entry.required ? (
-                                                                <Badge variant="info">
-                                                                  {t('presetsPage.details.required')}
-                                                                </Badge>
-                                                              ) : null}
-                                                            </button>
-                                                          </div>
-
-                                                          <div className="flex items-center gap-2">
-                                                            <IconButton
-                                                              icon={
-                                                                <motion.span
-                                                                  animate={{ rotate: isExpanded ? 180 : 0 }}
-                                                                  transition={
-                                                                    prefersReducedMotion
-                                                                      ? { duration: 0 }
-                                                                      : {
-                                                                          duration: 0.2,
-                                                                          ease: [0.22, 1, 0.36, 1],
-                                                                        }
-                                                                  }
-                                                                >
-                                                                  <FontAwesomeIcon icon={faChevronDown} />
-                                                                </motion.span>
-                                                              }
-                                                              label={
-                                                                isExpanded
-                                                                  ? t('presetsPage.actions.collapseEntry')
-                                                                  : t('presetsPage.actions.expandEntry')
-                                                              }
-                                                              onClick={() => {
-                                                                toggleEntry(entry.clientId)
-                                                              }}
-                                                              size="sm"
-                                                              variant="secondary"
-                                                            />
-                                                            <span className="text-xs text-[var(--color-text-muted)]">
-                                                              {t('presetsPage.form.fields.entryEnabled')}
-                                                            </span>
-                                                            <Switch
-                                                              checked={entry.enabled}
-                                                              onCheckedChange={(enabled) => {
-                                                                updateEntryEnabled(
-                                                                  roleKey,
-                                                                  module.clientId,
-                                                                  entry.clientId,
-                                                                  enabled,
-                                                                )
-                                                              }}
-                                                              size="sm"
-                                                            />
-                                                            {canRemove ? (
-                                                              <IconButton
-                                                                icon={<FontAwesomeIcon icon={faTrashCan} />}
-                                                                label={t('presetsPage.actions.removeEntry')}
-                                                                onClick={() => {
-                                                                  removeEntry(
+                                                                className="inline-flex h-9 w-9 shrink-0 cursor-grab items-center justify-center rounded-full border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] text-[var(--color-text-secondary)] transition duration-200 hover:text-[var(--color-text-primary)] active:cursor-grabbing"
+                                                                draggable
+                                                                onDragEnd={handleEntryDragEnd}
+                                                                onDragStart={(event) => {
+                                                                  event.dataTransfer.effectAllowed =
+                                                                    'move'
+                                                                  event.dataTransfer.setData(
+                                                                    'text/plain',
+                                                                    entry.clientId,
+                                                                  )
+                                                                  handleEntryDragStart(
                                                                     roleKey,
                                                                     module.clientId,
                                                                     entry.clientId,
                                                                   )
                                                                 }}
-                                                                size="sm"
-                                                                variant="danger"
-                                                              />
-                                                            ) : null}
-                                                          </div>
-                                                        </div>
+                                                                type="button"
+                                                              >
+                                                                <FontAwesomeIcon
+                                                                  icon={faGripVertical}
+                                                                />
+                                                              </button>
 
-                                                        <AnimatePresence initial={false}>
-                                                          {isExpanded ? (
-                                                            <motion.div
-                                                              animate={{ height: 'auto', opacity: 1, y: 0 }}
-                                                              className="overflow-hidden"
-                                                              exit={{
-                                                                height: 0,
-                                                                opacity: 0,
-                                                                y: prefersReducedMotion ? 0 : -8,
-                                                              }}
-                                                              initial={{
-                                                                height: 0,
-                                                                opacity: 0,
-                                                                y: prefersReducedMotion ? 0 : -8,
-                                                              }}
-                                                              transition={
-                                                                prefersReducedMotion
-                                                                  ? { duration: 0 }
-                                                                  : {
-                                                                      duration: 0.2,
-                                                                      ease: [0.22, 1, 0.36, 1],
-                                                                    }
-                                                              }
-                                                            >
-                                                              <div className="mt-4 space-y-4 border-t border-[var(--color-border-subtle)] pt-4">
-                                                                <div className="grid gap-4 md:grid-cols-2">
-                                                                  <label className="space-y-2">
-                                                                    <span className="block text-xs text-[var(--color-text-muted)]">
-                                                                      {t('presetsPage.form.fields.entryId')}
-                                                                    </span>
-                                                                    <Input
-                                                                      disabled={!canEditEntryId}
-                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-id`}
-                                                                      name={`${roleKey}_${module.clientId}_entry_id_${entryIndex}`}
-                                                                      onChange={(event) => {
-                                                                        updateEntryField(
-                                                                          roleKey,
-                                                                          module.clientId,
-                                                                          entry.clientId,
-                                                                          'entryId',
-                                                                          event.target.value,
-                                                                        )
-                                                                      }}
-                                                                      placeholder={t('presetsPage.form.placeholders.entryId')}
-                                                                      value={entry.entryId}
-                                                                    />
-                                                                  </label>
-
-                                                                  <label className="space-y-2">
-                                                                    <span className="block text-xs text-[var(--color-text-muted)]">
-                                                                      {t('presetsPage.form.fields.order')}
-                                                                    </span>
-                                                                    <Input
-                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-order`}
-                                                                      name={`${roleKey}_${module.clientId}_entry_order_${entryIndex}`}
-                                                                      onChange={(event) => {
-                                                                        updateEntryField(
-                                                                          roleKey,
-                                                                          module.clientId,
-                                                                          entry.clientId,
-                                                                          'order',
-                                                                          event.target.value,
-                                                                        )
-                                                                      }}
-                                                                      placeholder={t('presetsPage.form.placeholders.order')}
-                                                                      value={entry.order}
-                                                                    />
-                                                                  </label>
-                                                                </div>
-
-                                                                <label className="space-y-2">
-                                                                  <span className="block text-xs text-[var(--color-text-muted)]">
-                                                                    {t('presetsPage.form.fields.entryDisplayName')}
-                                                                  </span>
-                                                                  <Input
-                                                                    disabled={!canEditDisplayName}
-                                                                    id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-display-name`}
-                                                                    name={`${roleKey}_${module.clientId}_entry_display_name_${entryIndex}`}
-                                                                    onChange={(event) => {
-                                                                      updateEntryField(
-                                                                        roleKey,
-                                                                        module.clientId,
-                                                                        entry.clientId,
-                                                                        'displayName',
-                                                                        event.target.value,
-                                                                      )
-                                                                    }}
-                                                                    placeholder={t(
-                                                                      'presetsPage.form.placeholders.entryDisplayName',
+                                                              <button
+                                                                aria-expanded={isExpanded}
+                                                                className="flex min-w-0 flex-1 flex-wrap items-center gap-2.5 text-left"
+                                                                onClick={() => {
+                                                                  toggleEntry(entry.clientId)
+                                                                }}
+                                                                type="button"
+                                                              >
+                                                                <p className="truncate text-sm font-medium text-[var(--color-text-primary)]">
+                                                                  {createModuleEntryLabel(
+                                                                    entry,
+                                                                    translate,
+                                                                    entryIndex + 1,
+                                                                  )}
+                                                                </p>
+                                                                <Badge variant="subtle">
+                                                                  {getPresetEntryKindLabel(
+                                                                    translate,
+                                                                    entry.kind,
+                                                                  )}
+                                                                </Badge>
+                                                                <Badge variant="subtle">
+                                                                  {entry.entryId.trim() ||
+                                                                    t('presetsPage.form.newEntry')}
+                                                                </Badge>
+                                                                {entry.required ? (
+                                                                  <Badge variant="info">
+                                                                    {t(
+                                                                      'presetsPage.details.required',
                                                                     )}
-                                                                    value={entry.displayName}
-                                                                  />
-                                                                </label>
+                                                                  </Badge>
+                                                                ) : null}
+                                                              </button>
+                                                            </div>
 
-                                                                {entry.kind === 'built_in_context_ref' ? (
-                                                                  <div className="space-y-2">
-                                                                    <span className="block text-xs text-[var(--color-text-muted)]">
-                                                                      {t('presetsPage.form.fields.contextKey')}
-                                                                    </span>
-                                                                    <div className="rounded-[1rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
-                                                                      {entry.contextKey || '—'}
-                                                                    </div>
+                                                            <div className="flex items-center gap-2">
+                                                              <IconButton
+                                                                icon={
+                                                                  <motion.span
+                                                                    animate={{
+                                                                      rotate: isExpanded ? 180 : 0,
+                                                                    }}
+                                                                    transition={
+                                                                      prefersReducedMotion
+                                                                        ? { duration: 0 }
+                                                                        : {
+                                                                            duration: 0.2,
+                                                                            ease: [
+                                                                              0.22, 1, 0.36, 1,
+                                                                            ],
+                                                                          }
+                                                                    }
+                                                                  >
+                                                                    <FontAwesomeIcon
+                                                                      icon={faChevronDown}
+                                                                    />
+                                                                  </motion.span>
+                                                                }
+                                                                label={
+                                                                  isExpanded
+                                                                    ? t(
+                                                                        'presetsPage.actions.collapseEntry',
+                                                                      )
+                                                                    : t(
+                                                                        'presetsPage.actions.expandEntry',
+                                                                      )
+                                                                }
+                                                                onClick={() => {
+                                                                  toggleEntry(entry.clientId)
+                                                                }}
+                                                                size="sm"
+                                                                variant="secondary"
+                                                              />
+                                                              <span className="text-xs text-[var(--color-text-muted)]">
+                                                                {t(
+                                                                  'presetsPage.form.fields.entryEnabled',
+                                                                )}
+                                                              </span>
+                                                              <Switch
+                                                                checked={entry.enabled}
+                                                                onCheckedChange={(enabled) => {
+                                                                  updateEntryEnabled(
+                                                                    roleKey,
+                                                                    module.clientId,
+                                                                    entry.clientId,
+                                                                    enabled,
+                                                                  )
+                                                                }}
+                                                                size="sm"
+                                                              />
+                                                              {canRemove ? (
+                                                                <IconButton
+                                                                  icon={
+                                                                    <FontAwesomeIcon
+                                                                      icon={faTrashCan}
+                                                                    />
+                                                                  }
+                                                                  label={t(
+                                                                    'presetsPage.actions.removeEntry',
+                                                                  )}
+                                                                  onClick={() => {
+                                                                    removeEntry(
+                                                                      roleKey,
+                                                                      module.clientId,
+                                                                      entry.clientId,
+                                                                    )
+                                                                  }}
+                                                                  size="sm"
+                                                                  variant="danger"
+                                                                />
+                                                              ) : null}
+                                                            </div>
+                                                          </div>
+
+                                                          <AnimatePresence initial={false}>
+                                                            {isExpanded ? (
+                                                              <motion.div
+                                                                animate={{
+                                                                  height: 'auto',
+                                                                  opacity: 1,
+                                                                  y: 0,
+                                                                }}
+                                                                className="overflow-hidden"
+                                                                exit={{
+                                                                  height: 0,
+                                                                  opacity: 0,
+                                                                  y: prefersReducedMotion ? 0 : -8,
+                                                                }}
+                                                                initial={{
+                                                                  height: 0,
+                                                                  opacity: 0,
+                                                                  y: prefersReducedMotion ? 0 : -8,
+                                                                }}
+                                                                transition={
+                                                                  prefersReducedMotion
+                                                                    ? { duration: 0 }
+                                                                    : {
+                                                                        duration: 0.2,
+                                                                        ease: [0.22, 1, 0.36, 1],
+                                                                      }
+                                                                }
+                                                              >
+                                                                <div className="mt-4 space-y-4 border-t border-[var(--color-border-subtle)] pt-4">
+                                                                  <div className="grid gap-4 md:grid-cols-2">
+                                                                    <label className="space-y-2">
+                                                                      <span className="block text-xs text-[var(--color-text-muted)]">
+                                                                        {t(
+                                                                          'presetsPage.form.fields.entryId',
+                                                                        )}
+                                                                      </span>
+                                                                      <Input
+                                                                        disabled={!canEditEntryId}
+                                                                        id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-id`}
+                                                                        name={`${roleKey}_${module.clientId}_entry_id_${entryIndex}`}
+                                                                        onChange={(event) => {
+                                                                          updateEntryField(
+                                                                            roleKey,
+                                                                            module.clientId,
+                                                                            entry.clientId,
+                                                                            'entryId',
+                                                                            event.target.value,
+                                                                          )
+                                                                        }}
+                                                                        placeholder={t(
+                                                                          'presetsPage.form.placeholders.entryId',
+                                                                        )}
+                                                                        value={entry.entryId}
+                                                                      />
+                                                                    </label>
+
+                                                                    <label className="space-y-2">
+                                                                      <span className="block text-xs text-[var(--color-text-muted)]">
+                                                                        {t(
+                                                                          'presetsPage.form.fields.order',
+                                                                        )}
+                                                                      </span>
+                                                                      <Input
+                                                                        id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-order`}
+                                                                        name={`${roleKey}_${module.clientId}_entry_order_${entryIndex}`}
+                                                                        onChange={(event) => {
+                                                                          updateEntryField(
+                                                                            roleKey,
+                                                                            module.clientId,
+                                                                            entry.clientId,
+                                                                            'order',
+                                                                            event.target.value,
+                                                                          )
+                                                                        }}
+                                                                        placeholder={t(
+                                                                          'presetsPage.form.placeholders.order',
+                                                                        )}
+                                                                        value={entry.order}
+                                                                      />
+                                                                    </label>
                                                                   </div>
-                                                                ) : (
-                                                                  <label className="block space-y-2">
+
+                                                                  <label className="space-y-2">
                                                                     <span className="block text-xs text-[var(--color-text-muted)]">
-                                                                      {t('presetsPage.form.fields.entryText')}
+                                                                      {t(
+                                                                        'presetsPage.form.fields.entryDisplayName',
+                                                                      )}
                                                                     </span>
-                                                                    <Textarea
-                                                                      className="min-h-[8rem]"
-                                                                      disabled={!canEditText}
-                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-text`}
-                                                                      name={`${roleKey}_${module.clientId}_entry_text_${entryIndex}`}
+                                                                    <Input
+                                                                      disabled={!canEditDisplayName}
+                                                                      id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-display-name`}
+                                                                      name={`${roleKey}_${module.clientId}_entry_display_name_${entryIndex}`}
                                                                       onChange={(event) => {
                                                                         updateEntryField(
                                                                           roleKey,
                                                                           module.clientId,
                                                                           entry.clientId,
-                                                                          'text',
+                                                                          'displayName',
                                                                           event.target.value,
                                                                         )
                                                                       }}
                                                                       placeholder={t(
-                                                                        'presetsPage.form.placeholders.entryText',
+                                                                        'presetsPage.form.placeholders.entryDisplayName',
                                                                       )}
-                                                                      value={entry.text}
+                                                                      value={entry.displayName}
                                                                     />
                                                                   </label>
-                                                                )}
-                                                              </div>
-                                                            </motion.div>
-                                                          ) : null}
-                                                        </AnimatePresence>
-                                                      </motion.div>
-                                                    )
-                                                  })}
-                                                </div>
-                                              ) : (
-                                                <div className="rounded-[1.1rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_62%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
-                                                  {mode === 'create'
-                                                    ? t('presetsPage.form.emptyModuleEntriesCreate')
-                                                    : t('presetsPage.form.emptyModuleEntries')}
-                                                </div>
-                                              )}
-                                            </div>
-                                          </motion.div>
-                                        ) : null}
-                                      </AnimatePresence>
-                                    </div>
-                                  )
-                                })}
+
+                                                                  {entry.kind ===
+                                                                  'built_in_context_ref' ? (
+                                                                    <div className="space-y-2">
+                                                                      <span className="block text-xs text-[var(--color-text-muted)]">
+                                                                        {t(
+                                                                          'presetsPage.form.fields.contextKey',
+                                                                        )}
+                                                                      </span>
+                                                                      <div className="rounded-[1rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_72%,transparent)] px-4 py-3 text-sm text-[var(--color-text-primary)]">
+                                                                        {entry.contextKey || '—'}
+                                                                      </div>
+                                                                    </div>
+                                                                  ) : (
+                                                                    <label className="block space-y-2">
+                                                                      <span className="block text-xs text-[var(--color-text-muted)]">
+                                                                        {t(
+                                                                          'presetsPage.form.fields.entryText',
+                                                                        )}
+                                                                      </span>
+                                                                      <Textarea
+                                                                        className="min-h-[8rem]"
+                                                                        disabled={!canEditText}
+                                                                        id={`preset-form-${roleKey}-${module.clientId}-${entry.clientId}-text`}
+                                                                        name={`${roleKey}_${module.clientId}_entry_text_${entryIndex}`}
+                                                                        onChange={(event) => {
+                                                                          updateEntryField(
+                                                                            roleKey,
+                                                                            module.clientId,
+                                                                            entry.clientId,
+                                                                            'text',
+                                                                            event.target.value,
+                                                                          )
+                                                                        }}
+                                                                        placeholder={t(
+                                                                          'presetsPage.form.placeholders.entryText',
+                                                                        )}
+                                                                        value={entry.text}
+                                                                      />
+                                                                    </label>
+                                                                  )}
+                                                                </div>
+                                                              </motion.div>
+                                                            ) : null}
+                                                          </AnimatePresence>
+                                                        </motion.div>
+                                                      )
+                                                    })}
+                                                  </div>
+                                                ) : (
+                                                  <div className="rounded-[1.1rem] border border-dashed border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_62%,transparent)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
+                                                    {mode === 'create'
+                                                      ? t(
+                                                          'presetsPage.form.emptyModuleEntriesCreate',
+                                                        )
+                                                      : t('presetsPage.form.emptyModuleEntries')}
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </motion.div>
+                                          ) : null}
+                                        </AnimatePresence>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          </motion.div>
-                        ) : null}
-                      </AnimatePresence>
-                    </motion.section>
+                            </motion.div>
+                          ) : null}
+                        </AnimatePresence>
+                      </motion.section>
                     )
                   })}
                 </motion.div>

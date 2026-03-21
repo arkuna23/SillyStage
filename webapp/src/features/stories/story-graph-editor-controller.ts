@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
-
-import type { StoryGraph, StoryGraphStateOp, StoryGraphStateOpType } from './types'
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from 'react'
 import {
   buildConditionDraftKey,
   buildInitialNodePositions,
@@ -12,13 +10,14 @@ import {
   createOnEnterUpdateDrafts,
   createUniqueNodeId,
   GRAPH_STAGE_PADDING,
-  mergeNodePositions,
-  normalizeGraphForSave,
   type GraphConditionDrafts,
   type GraphNodePosition,
   type GraphOnEnterUpdateDrafts,
   type GraphViewport,
+  mergeNodePositions,
+  normalizeGraphForSave,
 } from './story-graph-editor-utils'
+import type { StoryGraph, StoryGraphStateOp, StoryGraphStateOpType } from './types'
 
 export const INITIAL_STORY_GRAPH_VIEWPORT: GraphViewport = {
   x: 36,
@@ -325,7 +324,7 @@ export function useStoryGraphEditorController({
 
     setSelectedNodeId((currentSelectedNodeId) =>
       currentSelectedNodeId === nodeId
-        ? graphDraft.nodes.find((node) => node.id !== nodeId)?.id ?? null
+        ? (graphDraft.nodes.find((node) => node.id !== nodeId)?.id ?? null)
         : currentSelectedNodeId,
     )
     setSelectedTransitionIndex(null)
@@ -596,7 +595,7 @@ export function useStoryGraphEditorController({
 
                 return {
                   ...transition,
-                  condition: enabled ? transition.condition ?? createDefaultCondition() : null,
+                  condition: enabled ? (transition.condition ?? createDefaultCondition()) : null,
                 }
               }),
             }
@@ -793,7 +792,7 @@ export function useStoryGraphEditorController({
                       nextOperation = {
                         characters:
                           'characters' in patch
-                            ? (patch as { characters?: string[] }).characters ?? []
+                            ? ((patch as { characters?: string[] }).characters ?? [])
                             : 'characters' in operation
                               ? operation.characters
                               : [],
@@ -804,7 +803,7 @@ export function useStoryGraphEditorController({
                       nextOperation = {
                         node_id:
                           'node_id' in patch
-                            ? (patch as { node_id?: string }).node_id ?? ''
+                            ? ((patch as { node_id?: string }).node_id ?? '')
                             : 'node_id' in operation
                               ? operation.node_id
                               : '',

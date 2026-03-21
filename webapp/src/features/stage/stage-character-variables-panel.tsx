@@ -7,6 +7,7 @@ import { useToastNotice } from '../../components/ui/toast-context'
 import type { CharacterSummary } from '../characters/types'
 import { getSessionVariables, updateSessionVariables } from './api'
 import type { StageCopy } from './copy'
+import { VariableRows } from './stage-variable-editor'
 import {
   areVariableValuesEqual,
   cloneSessionVariables,
@@ -16,7 +17,6 @@ import {
   rowsFromVariableMap,
   type VariableRowDraft,
 } from './stage-variable-utils'
-import { VariableRows } from './stage-variable-editor'
 import type { RuntimeSnapshot, SessionVariables, StateUpdate, VariableStateOp } from './types'
 
 type Notice = {
@@ -90,7 +90,10 @@ export function StageCharacterVariablesPanel({
   useToastNotice(notice)
 
   const snapshotCharacterState = useMemo(
-    () => cloneCharacterState(runtimeSnapshot?.world_state.character_state[character.character_id] ?? {}),
+    () =>
+      cloneCharacterState(
+        runtimeSnapshot?.world_state.character_state[character.character_id] ?? {},
+      ),
     [character.character_id, runtimeSnapshot],
   )
   const snapshotSignature = useMemo(
@@ -196,7 +199,11 @@ export function StageCharacterVariablesPanel({
       return
     }
 
-    const update = buildCharacterStateUpdate(character.character_id, originalValues, parsedRows.values)
+    const update = buildCharacterStateUpdate(
+      character.character_id,
+      originalValues,
+      parsedRows.values,
+    )
 
     if (update.ops.length === 0) {
       return
@@ -278,7 +285,9 @@ export function StageCharacterVariablesPanel({
             {copy.variables.reset}
           </Button>
           <Button
-            disabled={!isDirty || isSaving || !parsedRows || Object.keys(parsedRows.errors).length > 0}
+            disabled={
+              !isDirty || isSaving || !parsedRows || Object.keys(parsedRows.errors).length > 0
+            }
             onClick={() => void handleSave()}
             size="sm"
           >
@@ -295,9 +304,7 @@ export function StageCharacterVariablesPanel({
 
       <section className="space-y-4 rounded-[1.45rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
         <div className="space-y-1">
-          <p className="text-sm font-medium text-[var(--color-text-primary)]">
-            {character.name}
-          </p>
+          <p className="text-sm font-medium text-[var(--color-text-primary)]">{character.name}</p>
           <p className="text-xs text-[var(--color-text-muted)]">{character.character_id}</p>
         </div>
         <VariableRows
@@ -310,13 +317,16 @@ export function StageCharacterVariablesPanel({
             setDraftRows((current) => [...(current ?? []), createVariableRow()])
           }}
           onChangeKey={(rowId, value) => {
-            setDraftRows((current) =>
-              current?.map((row) => (row.id === rowId ? { ...row, key: value } : row)) ?? current,
+            setDraftRows(
+              (current) =>
+                current?.map((row) => (row.id === rowId ? { ...row, key: value } : row)) ?? current,
             )
           }}
           onChangeValue={(rowId, value) => {
-            setDraftRows((current) =>
-              current?.map((row) => (row.id === rowId ? { ...row, valueText: value } : row)) ?? current,
+            setDraftRows(
+              (current) =>
+                current?.map((row) => (row.id === rowId ? { ...row, valueText: value } : row)) ??
+                current,
             )
           }}
           onRemoveRow={(rowId) => {

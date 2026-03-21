@@ -2,35 +2,35 @@ import { backendPaths } from '../../app/paths'
 import { rpcRequest } from '../../lib/rpc'
 
 import type {
-  SessionCharacterActionParams,
+  DeleteSessionMessageParams,
+  PlayerDescriptionUpdatedResult,
+  RuntimeSnapshotResult,
   SessionCharacter,
+  SessionCharacterActionParams,
   SessionCharacterDeletedResult,
   SessionCharactersListedResult,
-  DeleteSessionMessageParams,
-  SessionMessageDeletedResult,
-  SessionMessagesListedResult,
-  PlayerDescriptionUpdatedResult,
   SessionConfig,
   SessionDeletedResult,
   SessionDetail,
+  SessionMessageDeletedResult,
   SessionMessageResult,
+  SessionMessagesListedResult,
   SessionStartedResult,
   SessionStreamMessage,
   SessionsListedResult,
-  SuggestedRepliesResult,
-  SuggestRepliesParams,
+  SessionVariablesResult,
+  SetPlayerProfileParams,
   StartSessionInput,
   StreamAckEnvelope,
+  SuggestedRepliesResult,
+  SuggestRepliesParams,
   TurnCompletedResult,
   TurnStreamAcceptedResult,
-  SetPlayerProfileParams,
-  RuntimeSnapshotResult,
   UpdatePlayerDescriptionParams,
   UpdateSessionCharacterParams,
+  UpdateSessionConfigParams,
   UpdateSessionMessageParams,
   UpdateSessionParams,
-  UpdateSessionConfigParams,
-  SessionVariablesResult,
   UpdateSessionVariablesParams,
 } from './types'
 
@@ -181,10 +181,14 @@ export async function updateSessionCharacter(
   params: UpdateSessionCharacterParams,
   signal?: AbortSignal,
 ) {
-  return rpcRequest<UpdateSessionCharacterParams, SessionCharacter>('session_character.update', params, {
-    signal,
-    sessionId,
-  })
+  return rpcRequest<UpdateSessionCharacterParams, SessionCharacter>(
+    'session_character.update',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
 }
 
 export async function deleteSessionCharacter(
@@ -207,10 +211,14 @@ export async function enterSessionCharacterScene(
   params: SessionCharacterActionParams,
   signal?: AbortSignal,
 ) {
-  return rpcRequest<SessionCharacterActionParams, SessionCharacter>('session_character.enter_scene', params, {
-    signal,
-    sessionId,
-  })
+  return rpcRequest<SessionCharacterActionParams, SessionCharacter>(
+    'session_character.enter_scene',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
 }
 
 export async function leaveSessionCharacterScene(
@@ -218,10 +226,14 @@ export async function leaveSessionCharacterScene(
   params: SessionCharacterActionParams,
   signal?: AbortSignal,
 ) {
-  return rpcRequest<SessionCharacterActionParams, SessionCharacter>('session_character.leave_scene', params, {
-    signal,
-    sessionId,
-  })
+  return rpcRequest<SessionCharacterActionParams, SessionCharacter>(
+    'session_character.leave_scene',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
 }
 
 export async function updateSessionMessage(
@@ -229,10 +241,14 @@ export async function updateSessionMessage(
   params: UpdateSessionMessageParams,
   signal?: AbortSignal,
 ) {
-  return rpcRequest<UpdateSessionMessageParams, SessionMessageResult>('session_message.update', params, {
-    signal,
-    sessionId,
-  })
+  return rpcRequest<UpdateSessionMessageParams, SessionMessageResult>(
+    'session_message.update',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
 }
 
 export async function deleteSessionMessage(
@@ -337,10 +353,14 @@ export async function suggestSessionReplies(
   params: SuggestRepliesParams,
   signal?: AbortSignal,
 ) {
-  return rpcRequest<SuggestRepliesParams, SuggestedRepliesResult>('session.suggest_replies', params, {
-    signal,
-    sessionId,
-  })
+  return rpcRequest<SuggestRepliesParams, SuggestedRepliesResult>(
+    'session.suggest_replies',
+    params,
+    {
+      signal,
+      sessionId,
+    },
+  )
 }
 
 export async function startSessionFromStory(params: StartSessionInput, signal?: AbortSignal) {

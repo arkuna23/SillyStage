@@ -36,8 +36,7 @@ export function PresetPromptPreviewDialog({
 }: PresetPromptPreviewDialogProps) {
   const { t } = useTranslation()
   const translate = useCallback(
-    (key: string, options?: Record<string, unknown>) =>
-      String(t(key as never, options as never)),
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
     [t],
   )
   const roleLabels = useMemo(() => createPresetRoleLabels(translate), [translate])
@@ -58,9 +57,7 @@ export function PresetPromptPreviewDialog({
                 </Badge>
               ) : null}
             </div>
-            <DialogDescription>
-              {t('presetsPage.preview.description')}
-            </DialogDescription>
+            <DialogDescription>{t('presetsPage.preview.description')}</DialogDescription>
           </div>
         </DialogHeader>
 
@@ -78,9 +75,7 @@ export function PresetPromptPreviewDialog({
 
         <DialogFooter className="justify-start">
           <DialogClose asChild>
-            <Button variant="secondary">
-              {t('presetsPage.preview.actions.close')}
-            </Button>
+            <Button variant="secondary">{t('presetsPage.preview.actions.close')}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

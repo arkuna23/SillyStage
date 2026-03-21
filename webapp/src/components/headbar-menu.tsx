@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next'
 
 import { normalizeLocale } from '../i18n/config'
 import { cn } from '../lib/cn'
-import { themePreferences, type ThemePreference } from '../theme/config'
+import { type ThemePreference, themePreferences } from '../theme/config'
 import { useTheme } from '../theme/use-theme'
 import {
   PopupMenu,

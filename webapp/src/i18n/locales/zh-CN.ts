@@ -98,7 +98,8 @@ const zhCN = {
       fields: {
         mode: '会话 API 模式',
       },
-      modeHint: '跟随全局会直接继承当前默认 API；切到会话自定义后，可以分别指定每个 agent 在这场会话里使用的 API。',
+      modeHint:
+        '跟随全局会直接继承当前默认 API；切到会话自定义后，可以分别指定每个 agent 在这场会话里使用的 API。',
       title: 'Session API',
       usingGlobal: '当前会话正在沿用全局默认 API 配置。',
     },
@@ -240,8 +241,7 @@ const zhCN = {
           title: '导出数据包',
         },
         import: {
-          conflictHint:
-            '导入会原子应用整个数据包；如果包内任一 id 已存在，整包都会失败。',
+          conflictHint: '导入会原子应用整个数据包；如果包内任一 id 已存在，整包都会失败。',
           description: '确认后会把这个 ZIP 数据包导入到当前工作台。',
           fileName: '文件名',
           fileSize: '文件大小',
@@ -548,7 +548,8 @@ const zhCN = {
       imported: '已导入 {{count}} 本世界书。',
       importFailed: '导入世界书失败。',
       importInvalid: '导入文件不是有效的世界书包。',
-      importedPartial: '世界书已部分导入。成功 {{success}} 本，跳过 {{skipped}} 本，失败 {{failed}} 本。',
+      importedPartial:
+        '世界书已部分导入。成功 {{success}} 本，跳过 {{skipped}} 本，失败 {{failed}} 本。',
       importSkipped: '导入文件中的 {{count}} 本世界书已存在，已跳过。',
       loadFailed: '加载世界书列表失败。',
       loadLorebookFailed: '加载世界书详情失败。',
@@ -707,7 +708,8 @@ const zhCN = {
       imported: '已导入 {{count}} 个预设。',
       importFailed: '导入预设失败。',
       importInvalid: '导入文件不是有效的预设包。',
-      importedPartial: '预设已部分导入。成功 {{success}} 个，跳过 {{skipped}} 个，失败 {{failed}} 个。',
+      importedPartial:
+        '预设已部分导入。成功 {{success}} 个，跳过 {{skipped}} 个，失败 {{failed}} 个。',
       importSkipped: '导入文件中的 {{count}} 个预设已存在，已跳过。',
       loadListFailed: '加载预设列表失败。',
       loadPresetFailed: '加载预设详情失败。',
@@ -756,7 +758,8 @@ const zhCN = {
         presetId: '预设 ID',
         temperature: 'Temperature',
       },
-      moduleHint: '内置模块不能修改模块 ID；内置条目只能调整启用状态和顺序，自定义条目可以编辑标题和文本。',
+      moduleHint:
+        '内置模块不能修改模块 ID；内置条目只能调整启用状态和顺序，自定义条目可以编辑标题和文本。',
       moduleSummary: '{{enabled}} / {{count}} 条已启用',
       newEntry: '新条目',
       newModule: '新模块',
@@ -980,7 +983,8 @@ const zhCN = {
       imported: '已导入 {{count}} 个状态结构。',
       importFailed: '导入状态结构失败。',
       importInvalid: '导入文件不是有效的状态结构包。',
-      importedPartial: '状态结构已部分导入。成功 {{success}} 个，跳过 {{skipped}} 个，失败 {{failed}} 个。',
+      importedPartial:
+        '状态结构已部分导入。成功 {{success}} 个，跳过 {{skipped}} 个，失败 {{failed}} 个。',
       importSkipped: '导入文件中的 {{count}} 个状态结构已存在，已跳过。',
       loadFailed: '加载状态结构列表失败。',
       loadSchemaFailed: '加载状态结构详情失败。',
@@ -1248,21 +1252,24 @@ const zhCN = {
       createTransitionTitle: '准备故事资源',
       editTitle: '编辑故事资源',
       emptyCharacters: '还没有可用角色。先去「角色管理」里创建或导入角色卡。',
-      emptyLorebooks: '还没有可用世界书。可以先去「世界书」页准备背景设定，再回来绑定到这条故事资源。',
+      emptyLorebooks:
+        '还没有可用世界书。可以先去「世界书」页准备背景设定，再回来绑定到这条故事资源。',
       emptyLorebookSelection: '暂时不绑定世界书。',
       emptySelection: '至少选择一个角色。',
       errors: {
         apiGroupRequired: '请先选择一个 API 组。',
         charactersRequired: '至少选择一个角色。',
         presetRequired: '请先选择一个预设。',
-        schemaSeedClearUnsupported: '当前后端还不支持清空已经保存的状态结构，请保留原值或重新选择。',
+        schemaSeedClearUnsupported:
+          '当前后端还不支持清空已经保存的状态结构，请保留原值或重新选择。',
         storyConceptRequired: '请填写原始剧情输入。',
         submitFailed: '保存剧情输入失败。',
       },
       fieldDescriptions: {
         lorebooks: '这些世界书会在规划师和架构师生成时一起注入，用来补充背景设定和关键词命中内容。',
         plannedStory: '如果你交给规划师整理，这里会保存整理后的剧情输入稿；架构师会优先读取它。',
-        storyConcept: '这是最原始的剧情输入。即使后面交给规划师整理，它也仍然是整条输入链路的起点。',
+        storyConcept:
+          '这是最原始的剧情输入。即使后面交给规划师整理，它也仍然是整条输入链路的起点。',
       },
       fields: {
         apiGroupId: 'API 组',
@@ -1276,7 +1283,8 @@ const zhCN = {
         storyConcept: '原始剧情输入',
         worldSchemaIdSeed: '世界状态结构',
       },
-      generationBindingsDescription: '只有先明确这次整理要用的 API 组和预设，才能把剧情输入交给规划师处理。',
+      generationBindingsDescription:
+        '只有先明确这次整理要用的 API 组和预设，才能把剧情输入交给规划师处理。',
       generationBindingsTitle: '整理执行配置',
       emptyApiGroups: '还没有可用的 API 组。先去「API 管理」里准备一组可用绑定。',
       emptyPresets: '还没有可用的预设。先去「预设」页创建至少一套预设。',
@@ -1510,7 +1518,8 @@ const zhCN = {
         basic: '先绑定故事资源、状态结构与简介，再补上这条故事需要固定查看的常用变量。',
         graph: '接着手动绘制完整剧情图。后续舞台会直接使用这里的节点与跳转结构。',
       },
-      emptySchemas: '还没有可用的状态结构。先去「状态结构」页准备玩家和世界结构，再回来手动创建故事。',
+      emptySchemas:
+        '还没有可用的状态结构。先去「状态结构」页准备玩家和世界结构，再回来手动创建故事。',
       errors: {
         introductionRequired: '请填写故事简介。',
         loadSchemasFailed: '加载状态结构失败。',
@@ -1665,7 +1674,8 @@ const zhCN = {
       onEnterUpdateValuePlaceholder: '例如 "ready"、3、true 或 {"flag":true}',
       onEnterUpdatesHint: '这些更新会在进入当前节点时执行，保存前会按最新协议校验。',
       onEnterUpdatesCount: '{{count}} 条进入节点更新',
-      onEnterUpdatesUnsupported: '当前包含不受图编辑器支持的 op：{{type}}。请先在后端清理后再保存这张图。',
+      onEnterUpdatesUnsupported:
+        '当前包含不受图编辑器支持的 op：{{type}}。请先在后端清理后再保存这张图。',
       onEnterUpdatesTitle: '进入节点更新',
       addOnEnterUpdate: '新增更新',
       removeOnEnterUpdate: '删除更新',
@@ -1772,7 +1782,8 @@ const zhCN = {
       draftProgress: '规划中的故事草稿正在推进第 {{current}} / {{total}} 段，请稍候。',
       draftProgressUnknown: '规划中的故事草稿正在继续推进，请稍候。',
       description: '架构师正在根据当前故事资源整理故事结构与状态节点，这个过程可能要一点时间。',
-      descriptionWithResource: '架构师正在根据故事资源 {{id}} 整理故事结构与状态节点，这个过程可能要一点时间。',
+      descriptionWithResource:
+        '架构师正在根据故事资源 {{id}} 整理故事结构与状态节点，这个过程可能要一点时间。',
       elapsed: '已用时间',
       finalizing: '正在把草稿整理成最终故事。',
       progressLabel: '当前进度',
@@ -1890,15 +1901,13 @@ const zhCN = {
         folder: '例如 东方 / 博丽神社 / 主角组',
         folderSelect: '从已有文件夹中选择',
         name: '博丽灵梦',
-        personality:
-          '直率、警觉、嫌麻烦，但在关键时刻总会站出来处理异变。',
+        personality: '直率、警觉、嫌麻烦，但在关键时刻总会站出来处理异变。',
         schemaId: '选择一个已创建的状态结构',
         stateDefault: 'true、1、3.14、["secret"] 或 {"mood":"cold"}',
         stateDescription: '这个字段记录当前异变的处理进度',
         stateKey: 'incident_status',
         style: '说话干脆，不绕弯子，带一点不耐烦，但总能稳住场面。',
-        systemPrompt:
-          '始终以博丽神社巫女的身份行动，先判断异变和来意，再用简洁直接的口吻回应。',
+        systemPrompt: '始终以博丽神社巫女的身份行动，先判断异变和来意，再用简洁直接的口吻回应。',
         tags: '巫女, 主角, 东方, 高机动',
       },
       stateTypes: {
@@ -1946,8 +1955,7 @@ const zhCN = {
     feedback: {
       coverAttachFailed: '封面附加失败。',
       created: '已将 {{name}} 加入角色库。',
-      createdWithCoverWarning:
-        '{{name}} 已创建成功，但封面还需要再上传一次。',
+      createdWithCoverWarning: '{{name}} 已创建成功，但封面还需要再上传一次。',
       deleteFailed: '删除所选角色失败。',
       demoSchemaMissing: '示例角色所需的 actor 状态结构不可用。',
       deleted: '已删除 {{name}}。',
@@ -2011,7 +2019,8 @@ const zhCN = {
       title: '文件夹',
     },
     folderDeleteDialog: {
-      message: '确定要删除文件夹 {{folder}} 吗？其中的 {{count}} 个角色也会一起删除，这个操作不能撤回。',
+      message:
+        '确定要删除文件夹 {{folder}} 吗？其中的 {{count}} 个角色也会一起删除，这个操作不能撤回。',
       more: '还有 {{count}} 个角色',
       title: '删除文件夹',
     },

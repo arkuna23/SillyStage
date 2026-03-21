@@ -2,12 +2,11 @@ import { faDatabase } from '@fortawesome/free-solid-svg-icons/faDatabase'
 import { faSliders } from '@fortawesome/free-solid-svg-icons/faSliders'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
-
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { cn } from '../../lib/cn'
 import type { StageCopy } from './copy'
 import { CharacterAvatar, RightPanelSection, StagePanelHeader } from './stage-panel-shared'
@@ -196,11 +195,7 @@ function StatusPanelContent({
   )
 }
 
-function IntroPanelContent({
-  visibleStoryIntroduction,
-}: {
-  visibleStoryIntroduction: string
-}) {
+function IntroPanelContent({ visibleStoryIntroduction }: { visibleStoryIntroduction: string }) {
   return (
     <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-6 text-[var(--color-text-secondary)]">
       {visibleStoryIntroduction}
@@ -268,8 +263,16 @@ export function StageRightPanel({
               <motion.div
                 animate={{ opacity: 1, x: 0 }}
                 className="space-y-3"
-                exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0, x: railTab === 'variables' ? 10 : -10 }}
-                initial={prefersReducedMotion ? { opacity: 1, x: 0 } : { opacity: 0, x: railTab === 'variables' ? -10 : 10 }}
+                exit={
+                  prefersReducedMotion
+                    ? { opacity: 1 }
+                    : { opacity: 0, x: railTab === 'variables' ? 10 : -10 }
+                }
+                initial={
+                  prefersReducedMotion
+                    ? { opacity: 1, x: 0 }
+                    : { opacity: 0, x: railTab === 'variables' ? -10 : 10 }
+                }
                 key={`stage-rail-${railTab}`}
                 transition={
                   prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }

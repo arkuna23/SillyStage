@@ -1,9 +1,9 @@
 import {
-  agentRoleKeys,
-  presetEntryKinds,
   type AgentRoleKey,
+  agentRoleKeys,
   type PresetDetail,
   type PromptMessageRole,
+  presetEntryKinds,
 } from '../apis/types'
 
 export type PresetBundle = {
@@ -99,7 +99,11 @@ function isAgentPresetConfig(value: unknown) {
     return false
   }
 
-  if (!('modules' in value) || !Array.isArray(value.modules) || !value.modules.every(isPresetModule)) {
+  if (
+    !('modules' in value) ||
+    !Array.isArray(value.modules) ||
+    !value.modules.every(isPresetModule)
+  ) {
     return false
   }
 

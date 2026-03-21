@@ -46,17 +46,13 @@ export function StoryResourceCharacterSelector({
   const [folderListFilter, setFolderListFilter] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
 
-  const selectedCharacterSet = useMemo(
-    () => new Set(selectedCharacterIds),
-    [selectedCharacterIds],
-  )
+  const selectedCharacterSet = useMemo(() => new Set(selectedCharacterIds), [selectedCharacterIds])
   const characterLookup = useMemo(
     () => new Map(characters.map((character) => [character.character_id, character])),
     [characters],
   )
   const selectedCharacters = useMemo(
-    () =>
-      selectedCharacterIds.map((characterId) => characterLookup.get(characterId) ?? null),
+    () => selectedCharacterIds.map((characterId) => characterLookup.get(characterId) ?? null),
     [characterLookup, selectedCharacterIds],
   )
   const folderOptions = useMemo(
@@ -301,8 +297,7 @@ export function StoryResourceCharacterSelector({
             <div className="grid gap-2 sm:grid-cols-2">
               {filteredCharacters.map((character) => {
                 const isSelected = selectedCharacterSet.has(character.character_id)
-                const folderLabel =
-                  normalizeCharacterFolder(character.folder) || unfiledLabel
+                const folderLabel = normalizeCharacterFolder(character.folder) || unfiledLabel
 
                 return (
                   <button

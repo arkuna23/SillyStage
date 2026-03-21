@@ -45,10 +45,7 @@ async function readBinaryErrorBody(response: Response) {
     try {
       const payload = (await response.json()) as Partial<ErrorPayload>
 
-      if (
-        typeof payload.code === 'number' &&
-        typeof payload.message === 'string'
-      ) {
+      if (typeof payload.code === 'number' && typeof payload.message === 'string') {
         return new RpcError({
           code: payload.code,
           data: payload.data,
@@ -61,9 +58,7 @@ async function readBinaryErrorBody(response: Response) {
   }
 
   const fallbackMessage = await response.text().catch(() => '')
-  return new Error(
-    fallbackMessage.trim() || `Binary request failed with status ${response.status}`,
-  )
+  return new Error(fallbackMessage.trim() || `Binary request failed with status ${response.status}`)
 }
 
 export async function uploadBinaryResource<TResult>(args: {
@@ -119,9 +114,7 @@ export async function downloadBinaryResource(args: {
   return {
     blob,
     contentType: response.headers.get('content-type') ?? blob.type,
-    fileName: parseContentDispositionFileName(
-      response.headers.get('content-disposition'),
-    ),
+    fileName: parseContentDispositionFileName(response.headers.get('content-disposition')),
   } satisfies BinaryDownloadResult
 }
 
@@ -137,10 +130,7 @@ export function revokeObjectUrl(objectUrl: string | null | undefined) {
   URL.revokeObjectURL(objectUrl)
 }
 
-export function triggerBlobDownload(args: {
-  blob: Blob
-  fileName: string
-}) {
+export function triggerBlobDownload(args: { blob: Blob; fileName: string }) {
   const objectUrl = createObjectUrl(args.blob)
   const anchor = document.createElement('a')
 

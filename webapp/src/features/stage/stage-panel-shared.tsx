@@ -1,10 +1,6 @@
 import type { ReactNode } from 'react'
 
-import {
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '../../components/ui/card'
+import { CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { cn } from '../../lib/cn'
 
 const COVER_OBJECT_POSITION = 'center 26%'
@@ -13,13 +9,7 @@ function getCharacterMonogram(name: string) {
   return Array.from(name.trim())[0] ?? '?'
 }
 
-export function CharacterAvatar({
-  coverUrl,
-  name,
-}: {
-  coverUrl?: string | null
-  name: string
-}) {
+export function CharacterAvatar({ coverUrl, name }: { coverUrl?: string | null; name: string }) {
   const monogram = getCharacterMonogram(name)
 
   return (
@@ -62,7 +52,10 @@ export function ConversationSkeleton() {
   return (
     <div className="space-y-5">
       {Array.from({ length: 6 }).map((_, index) => (
-        <div className={cn('flex gap-3', index % 3 === 1 ? 'justify-center' : 'justify-start')} key={index}>
+        <div
+          className={cn('flex gap-3', index % 3 === 1 ? 'justify-center' : 'justify-start')}
+          key={index}
+        >
           {index % 3 === 1 ? null : (
             <div className="size-10 rounded-full bg-[var(--color-bg-elevated)]" />
           )}

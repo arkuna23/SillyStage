@@ -98,7 +98,10 @@ export function getStoryNode(story: StoryDetail | null, snapshot: RuntimeSnapsho
   return story.graph.nodes.find((node) => node.id === snapshot.world_state.current_node) ?? null
 }
 
-export function patchSnapshotVariables(snapshot: RuntimeSnapshot, variables: SessionVariables): RuntimeSnapshot {
+export function patchSnapshotVariables(
+  snapshot: RuntimeSnapshot,
+  variables: SessionVariables,
+): RuntimeSnapshot {
   return {
     ...snapshot,
     world_state: {

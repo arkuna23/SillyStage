@@ -55,12 +55,18 @@ export function DeleteStoryResourceDialog({
               <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
                 {isBulk
                   ? t('storyResources.deleteDialog.messageMany', { count: targets.length })
-                  : t('storyResources.deleteDialog.message', { id: targets[0]?.resource_id ?? '—' })}
+                  : t('storyResources.deleteDialog.message', {
+                      id: targets[0]?.resource_id ?? '—',
+                    })}
               </p>
 
               <div className="flex flex-wrap gap-2">
                 {previewTargets.map((target) => (
-                  <Badge className="normal-case px-3 py-1.5" key={target.resource_id} variant="subtle">
+                  <Badge
+                    className="normal-case px-3 py-1.5"
+                    key={target.resource_id}
+                    variant="subtle"
+                  >
                     {target.resource_id}
                   </Badge>
                 ))}

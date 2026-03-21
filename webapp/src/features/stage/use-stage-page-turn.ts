@@ -1,7 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import type { CharacterSummary } from '../characters/types'
-import { deleteSessionMessage, runSessionTurnStream, suggestSessionReplies, updateSessionMessage } from './api'
+import {
+  deleteSessionMessage,
+  runSessionTurnStream,
+  suggestSessionReplies,
+  updateSessionMessage,
+} from './api'
 import type { StageCopy } from './copy'
 import {
   buildHistoryEntriesFromTurnResult,
@@ -26,7 +31,12 @@ type UseStagePageTurnArgs = {
   routeSessionId?: string
   selectedSession: SessionDetail | null
   sessionCharacterMap: Map<string, SessionCharacter>
-  setLiveSnapshot: (snapshot: RuntimeSnapshot | null | ((current: RuntimeSnapshot | null) => RuntimeSnapshot | null)) => void
+  setLiveSnapshot: (
+    snapshot:
+      | RuntimeSnapshot
+      | null
+      | ((current: RuntimeSnapshot | null) => RuntimeSnapshot | null),
+  ) => void
   setNotice: (notice: Notice | null) => void
   setSelectedSession: (
     value: SessionDetail | null | ((current: SessionDetail | null) => SessionDetail | null),
@@ -65,14 +75,18 @@ export function useStagePageTurn({
   const [editingPlayerDraft, setEditingPlayerDraft] = useState('')
   const [savingPlayerMessageId, setSavingPlayerMessageId] = useState<string | null>(null)
   const [deletingPlayerMessageId, setDeletingPlayerMessageId] = useState<string | null>(null)
-  const [expandedThoughtIds, setExpandedThoughtIds] = useState<Set<string>>(createInitialThoughtState)
+  const [expandedThoughtIds, setExpandedThoughtIds] =
+    useState<Set<string>>(createInitialThoughtState)
   const [isRunningTurn, setIsRunningTurn] = useState(false)
   const [activeSpeakerId, setActiveSpeakerId] = useState<string | null>(null)
   const [beatSpeakerIds, setBeatSpeakerIds] = useState<string[]>([])
   const [turnWorkerStatus, setTurnWorkerStatus] = useState<TurnWorkerStatus | null>(null)
 
   const sessionMessages = useMemo(
-    () => [...(selectedSession ? buildPersistedMessages(selectedSession.history) : []), ...streamMessages],
+    () => [
+      ...(selectedSession ? buildPersistedMessages(selectedSession.history) : []),
+      ...streamMessages,
+    ],
     [selectedSession, streamMessages],
   )
   const overlayStatus = isSuggestingReplies
@@ -134,7 +148,11 @@ export function useStagePageTurn({
   }, [routeSessionId, sessionMessages])
 
   function getSpeakerDisplayName(speakerId: string) {
-    return characterMap.get(speakerId)?.name ?? sessionCharacterMap.get(speakerId)?.display_name ?? speakerId
+    return (
+      characterMap.get(speakerId)?.name ??
+      sessionCharacterMap.get(speakerId)?.display_name ??
+      speakerId
+    )
   }
 
   function pushStreamMessage(message: StageMessage) {
@@ -172,7 +190,10 @@ export function useStagePageTurn({
     })
   }
 
-  function syncActorCompleted(body: Extract<StreamEventBody, { type: 'actor_completed' }>, turnIndex: number) {
+  function syncActorCompleted(
+    body: Extract<StreamEventBody, { type: 'actor_completed' }>,
+    turnIndex: number,
+  ) {
     const kindCounts: Record<'action' | 'dialogue' | 'thought', number> = {
       action: 0,
       dialogue: 0,
@@ -493,7 +514,8 @@ export function useStagePageTurn({
             setLiveSnapshot(body.snapshot)
             setSessionCharacters((current) => {
               const existingIndex = current.findIndex(
-                (entry) => entry.session_character_id === body.session_character.session_character_id,
+                (entry) =>
+                  entry.session_character_id === body.session_character.session_character_id,
               )
 
               if (existingIndex === -1) {

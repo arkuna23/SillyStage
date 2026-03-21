@@ -11,11 +11,16 @@ import { getStory, listStories } from '../stories/api'
 import type { StoryDetail, StorySummary } from '../stories/types'
 import { getSession, listSessionCharacters, listSessions } from './api'
 import type { StageCopy } from './copy'
-import { getErrorMessage, buildCharacterMap, getStoryNode, normalizeSessionHistory } from './stage-page-utils'
+import type { StageAccessStatus } from './stage-access'
 import { buildStageCommonVariables } from './stage-common-variable-utils'
+import {
+  buildCharacterMap,
+  getErrorMessage,
+  getStoryNode,
+  normalizeSessionHistory,
+} from './stage-page-utils'
 import type { CoverCache, Notice, StageCommonVariable } from './stage-ui-types'
 import type { RuntimeSnapshot, SessionCharacter, SessionDetail, SessionSummary } from './types'
-import type { StageAccessStatus } from './stage-access'
 
 type StageAccessStatusState = StageAccessStatus | 'checking'
 
@@ -83,12 +88,16 @@ export function useStagePageData({ copy, routeSessionId, setNotice }: UseStagePa
 
   const characterMap = useMemo(() => buildCharacterMap(characters), [characters])
   const sessionCharacterMap = useMemo(
-    () => new Map(sessionCharacters.map((character) => [character.session_character_id, character])),
+    () =>
+      new Map(sessionCharacters.map((character) => [character.session_character_id, character])),
     [sessionCharacters],
   )
-  const storiesById = useMemo(() => new Map(stories.map((story) => [story.story_id, story])), [stories])
+  const storiesById = useMemo(
+    () => new Map(stories.map((story) => [story.story_id, story])),
+    [stories],
+  )
   const selectedStoryDetail = useMemo(
-    () => (selectedSession ? storyDetails[selectedSession.story_id] ?? null : null),
+    () => (selectedSession ? (storyDetails[selectedSession.story_id] ?? null) : null),
     [selectedSession, storyDetails],
   )
   const currentSnapshot = liveSnapshot ?? selectedSession?.snapshot ?? null
@@ -106,16 +115,23 @@ export function useStagePageData({ copy, routeSessionId, setNotice }: UseStagePa
       setIsListLoading(true)
       setStageAccessStatus('checking')
 
-      const [sessionsResult, storiesResult, charactersResult, profilesResult, apisResult, apiGroupsResult, presetsResult] =
-        await Promise.allSettled([
-          listSessions(signal),
-          listStories(signal),
-          listCharacters(signal),
-          listPlayerProfiles(signal),
-          listApis(signal),
-          listApiGroups(signal),
-          listPresets(signal),
-        ])
+      const [
+        sessionsResult,
+        storiesResult,
+        charactersResult,
+        profilesResult,
+        apisResult,
+        apiGroupsResult,
+        presetsResult,
+      ] = await Promise.allSettled([
+        listSessions(signal),
+        listStories(signal),
+        listCharacters(signal),
+        listPlayerProfiles(signal),
+        listApis(signal),
+        listApiGroups(signal),
+        listPresets(signal),
+      ])
 
       if (sessionsResult.status === 'fulfilled') {
         setSessions(sessionsResult.value)

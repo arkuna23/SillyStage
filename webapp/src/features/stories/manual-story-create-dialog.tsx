@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useState, type ReactNode } from 'react'
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
@@ -26,21 +26,18 @@ import { createStory } from './api'
 import { ManualStoryGraphDialog } from './manual-story-graph-dialog'
 import {
   createStoryCommonVariableDrafts,
-  serializeStoryCommonVariableDrafts,
   type StoryCommonVariableDraft,
   type StoryCommonVariableDraftErrors,
+  serializeStoryCommonVariableDrafts,
   validateStoryCommonVariableDrafts,
 } from './story-common-variable-drafts'
 import { useStoryCommonVariableSchemaCatalog } from './story-common-variable-schema-catalog'
+import { StoryCommonVariablesEditor } from './story-common-variables-editor'
 import {
   normalizeControlledStoryGraph,
   useStoryGraphEditorController,
 } from './story-graph-editor-controller'
-import { StoryCommonVariablesEditor } from './story-common-variables-editor'
-import {
-  createDefaultStoryGraph,
-  getStoryGraphValidationMessage,
-} from './story-graph-editor-utils'
+import { createDefaultStoryGraph, getStoryGraphValidationMessage } from './story-graph-editor-utils'
 import type { StoryDetail, StoryGraph } from './types'
 
 type ManualStoryCreateDialogProps = {
@@ -71,13 +68,11 @@ function createInitialFormState(resource?: StoryResource): FormState {
   }
 }
 
-function createInitialManualGraph(
-  defaults: {
-    goal: string
-    scene: string
-    title: string
-  },
-): StoryGraph {
+function createInitialManualGraph(defaults: {
+  goal: string
+  scene: string
+  title: string
+}): StoryGraph {
   const graph = createDefaultStoryGraph()
   const firstNode = graph.nodes[0]
 
@@ -195,7 +190,10 @@ export function ManualStoryCreateDialog({
     () => resources.find((resource) => resource.resource_id === formState.resourceId) ?? null,
     [formState.resourceId, resources],
   )
-  const resourceCharacterIds = useMemo(() => selectedResource?.character_ids ?? [], [selectedResource])
+  const resourceCharacterIds = useMemo(
+    () => selectedResource?.character_ids ?? [],
+    [selectedResource],
+  )
   const commonVariableCharacterIds = useMemo(() => {
     const knownCharacterIds = new Set(resourceCharacterIds)
 
@@ -303,9 +301,7 @@ export function ManualStoryCreateDialog({
       })
       .catch((error) => {
         if (!controller.signal.aborted) {
-          setSubmitError(
-            getErrorMessage(error, t('stories.manualCreate.errors.loadSchemasFailed')),
-          )
+          setSubmitError(getErrorMessage(error, t('stories.manualCreate.errors.loadSchemasFailed')))
         }
       })
       .finally(() => {
@@ -393,9 +389,7 @@ export function ManualStoryCreateDialog({
     try {
       const result = await createStory({
         common_variables: serializeStoryCommonVariableDrafts(formState.commonVariables),
-        ...(formState.displayName.trim()
-          ? { display_name: formState.displayName.trim() }
-          : {}),
+        ...(formState.displayName.trim() ? { display_name: formState.displayName.trim() } : {}),
         graph: normalizedGraph.graph,
         introduction: formState.introduction.trim(),
         player_schema_id: formState.playerSchemaId.trim(),

@@ -32,16 +32,9 @@ export const promptPreviewNarratorPurposes = [
   'describe_scene',
   'describe_result',
 ] as const
-export const promptPreviewKeeperPhases = [
-  'after_player_input',
-  'after_turn_outputs',
-] as const
+export const promptPreviewKeeperPhases = ['after_player_input', 'after_turn_outputs'] as const
 
-export const presetEntryKinds = [
-  'built_in_text',
-  'built_in_context_ref',
-  'custom_text',
-] as const
+export const presetEntryKinds = ['built_in_text', 'built_in_context_ref', 'custom_text'] as const
 export const promptPreviewEntrySources = ['preset', 'synthetic'] as const
 
 export type LlmProvider = (typeof llmProviders)[number]
@@ -275,13 +268,13 @@ export function getPresetModules(agent: AnyAgentPresetConfig) {
 
 export function getPresetModuleCount(agent: AnyAgentPresetConfig) {
   return typeof (agent as AgentPresetConfigSummary).module_count === 'number'
-    ? (agent as AgentPresetConfigSummary).module_count ?? 0
+    ? ((agent as AgentPresetConfigSummary).module_count ?? 0)
     : getPresetModules(agent).length
 }
 
 export function getPresetModuleEntryCount(agent: AnyAgentPresetConfig) {
   return typeof (agent as AgentPresetConfigSummary).entry_count === 'number'
-    ? (agent as AgentPresetConfigSummary).entry_count ?? 0
+    ? ((agent as AgentPresetConfigSummary).entry_count ?? 0)
     : getPresetModules(agent).reduce((count, module) => count + module.entries.length, 0)
 }
 
@@ -294,15 +287,11 @@ export function getEnabledPresetModuleEntryCount(agent: AnyAgentPresetConfig) {
 
 export function hasPresetAgentConfiguration(agent: AnyAgentPresetConfig) {
   return (
-    agent.temperature !== undefined &&
-    agent.temperature !== null
-  ) || (
-    agent.max_tokens !== undefined &&
-    agent.max_tokens !== null
-  ) || (
-    agent.extra !== undefined &&
-    agent.extra !== null
-  ) || getPresetModuleEntryCount(agent) > 0
+    (agent.temperature !== undefined && agent.temperature !== null) ||
+    (agent.max_tokens !== undefined && agent.max_tokens !== null) ||
+    (agent.extra !== undefined && agent.extra !== null) ||
+    getPresetModuleEntryCount(agent) > 0
+  )
 }
 
 export function getAgentBindingKey(roleKey: AgentRoleKey): AgentBindingKey {

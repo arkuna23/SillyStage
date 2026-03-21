@@ -87,29 +87,20 @@ export const DialogDescription = forwardRef<
   )
 })
 
-export function DialogHeader({
-  className,
-  ...props
-}: ComponentPropsWithoutRef<'div'>) {
+export function DialogHeader({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
   return <div className={cn('space-y-3 p-6 md:p-7', className)} {...props} />
 }
 
 export function DialogBody({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
   return (
     <div
-      className={cn(
-        'scrollbar-none min-h-0 overflow-y-auto px-6 pb-6 md:px-7 md:pb-7',
-        className,
-      )}
+      className={cn('scrollbar-none min-h-0 overflow-y-auto px-6 pb-6 md:px-7 md:pb-7', className)}
       {...props}
     />
   )
 }
 
-export function DialogFooter({
-  className,
-  ...props
-}: ComponentPropsWithoutRef<'div'>) {
+export function DialogFooter({ className, ...props }: ComponentPropsWithoutRef<'div'>) {
   return (
     <div
       className={cn(

@@ -1,5 +1,6 @@
 import { rpcRequest } from '../../lib/rpc'
 import type {
+  AgentRoleKey,
   ApiConfig,
   ApiConfigInput,
   ApiDeletedResult,
@@ -10,9 +11,9 @@ import type {
   ApiModelsListedResult,
   ApisListedResult,
   GlobalConfigResult,
-  PresetDetail,
   PresetAgentConfigs,
   PresetDeletedResult,
+  PresetDetail,
   PresetEntryDeletedResult,
   PresetEntryMutationResult,
   PresetPreviewRuntimeParams,
@@ -20,7 +21,6 @@ import type {
   PresetPromptPreview,
   PresetsListedResult,
   PromptModuleId,
-  AgentRoleKey,
 } from './types'
 
 export async function listApis(signal?: AbortSignal) {
@@ -76,7 +76,11 @@ export async function updateApi(
 }
 
 export async function deleteApi(apiId: string, signal?: AbortSignal) {
-  return rpcRequest<{ api_id: string }, ApiDeletedResult>('api.delete', { api_id: apiId }, { signal })
+  return rpcRequest<{ api_id: string }, ApiDeletedResult>(
+    'api.delete',
+    { api_id: apiId },
+    { signal },
+  )
 }
 
 export async function listApiGroups(signal?: AbortSignal) {
@@ -180,11 +184,9 @@ export async function createPresetEntry(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, PresetEntryMutationResult>(
-    'preset_entry.create',
-    params,
-    { signal },
-  )
+  return rpcRequest<typeof params, PresetEntryMutationResult>('preset_entry.create', params, {
+    signal,
+  })
 }
 
 export async function updatePresetEntry(
@@ -200,11 +202,9 @@ export async function updatePresetEntry(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, PresetEntryMutationResult>(
-    'preset_entry.update',
-    params,
-    { signal },
-  )
+  return rpcRequest<typeof params, PresetEntryMutationResult>('preset_entry.update', params, {
+    signal,
+  })
 }
 
 export async function deletePresetEntry(
@@ -216,11 +216,9 @@ export async function deletePresetEntry(
   },
   signal?: AbortSignal,
 ) {
-  return rpcRequest<typeof params, PresetEntryDeletedResult>(
-    'preset_entry.delete',
-    params,
-    { signal },
-  )
+  return rpcRequest<typeof params, PresetEntryDeletedResult>('preset_entry.delete', params, {
+    signal,
+  })
 }
 
 export async function deletePreset(presetId: string, signal?: AbortSignal) {

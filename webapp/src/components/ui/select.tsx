@@ -1,5 +1,5 @@
 import * as SelectPrimitive from '@radix-ui/react-select'
-import { useMemo, type ComponentPropsWithoutRef } from 'react'
+import { type ComponentPropsWithoutRef, useMemo } from 'react'
 
 import { cn } from '../../lib/cn'
 

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -64,7 +64,9 @@ function PresetCard({
               {preset.schemaId}
             </p>
           </div>
-          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">{preset.description}</p>
+          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+            {preset.description}
+          </p>
         </div>
 
         <span

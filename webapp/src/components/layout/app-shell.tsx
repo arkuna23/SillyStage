@@ -32,7 +32,7 @@ export function AppShell() {
     ? appPaths.workspaceRoot
     : isStageRoute
       ? appPaths.stageRoot
-    : location.pathname
+      : location.pathname
 
   return (
     <div
@@ -63,17 +63,11 @@ export function AppShell() {
                 ? 'flex h-full min-h-0 flex-1 overflow-visible'
                 : 'flex h-full min-h-0 flex-1 overflow-hidden'
             }
-            exit={
-              prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }
-            }
-            initial={
-              prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }
-            }
+            exit={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
+            initial={prefersReducedMotion ? { opacity: 1 } : { opacity: 0 }}
             key={routeTransitionKey}
             transition={
-              prefersReducedMotion
-                ? { duration: 0 }
-                : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
+              prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
             }
           >
             <div

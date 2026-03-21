@@ -13,11 +13,13 @@ import { Card, CardContent } from '../../components/ui/card'
 import { SegmentedSelector } from '../../components/ui/segmented-selector'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { CharacterDetailsDialog } from '../characters/character-details-dialog'
+import { getStageCopy } from './copy'
 import { SessionCharacterDialog } from './session-character-dialog'
 import { SessionDeleteDialog } from './session-delete-dialog'
 import { SessionRenameDialog } from './session-rename-dialog'
 import { SessionStartDialog } from './session-start-dialog'
-import { getStageCopy } from './copy'
+import { StageCharacterVariablesPanel } from './stage-character-variables-panel'
+import { StageDialoguePanel } from './stage-dialogue-panel'
 import {
   buildStagePath,
   determineActiveCastOrder,
@@ -26,8 +28,6 @@ import {
   patchSnapshotVariables,
   summarizeText,
 } from './stage-page-utils'
-import { StageCharacterVariablesPanel } from './stage-character-variables-panel'
-import { StageDialoguePanel } from './stage-dialogue-panel'
 import { StagePanelHeader } from './stage-panel-shared'
 import { StageRightPanel } from './stage-right-panel'
 import { StageSessionListPanel } from './stage-session-list-panel'
@@ -170,13 +170,13 @@ export function StagePage() {
   })
 
   const selectedStageCharacter = useMemo(
-    () => (detailsCharacterId ? characterMap.get(detailsCharacterId) ?? null : null),
+    () => (detailsCharacterId ? (characterMap.get(detailsCharacterId) ?? null) : null),
     [characterMap, detailsCharacterId],
   )
   const selectedSessionCharacter = useMemo(
     () =>
       detailsSessionCharacterId
-        ? sessionCharacterMap.get(detailsSessionCharacterId) ?? null
+        ? (sessionCharacterMap.get(detailsSessionCharacterId) ?? null)
         : null,
     [detailsSessionCharacterId, sessionCharacterMap],
   )
@@ -263,7 +263,13 @@ export function StagePage() {
     }
 
     return options
-  }, [characterMap, copy.cast.sessionCharacterBadge, currentSnapshot, selectedStoryDetail, sessionCharacters])
+  }, [
+    characterMap,
+    copy.cast.sessionCharacterBadge,
+    currentSnapshot,
+    selectedStoryDetail,
+    sessionCharacters,
+  ])
 
   const storyIntroduction = selectedStoryDetail?.introduction?.trim() ?? ''
   const storyIntroNeedsExpand = isTextLong(storyIntroduction, 140)
@@ -388,7 +394,7 @@ export function StagePage() {
       />
 
       <CharacterDetailsDialog
-        coverUrl={detailsCharacterId ? coverCache[detailsCharacterId] ?? undefined : undefined}
+        coverUrl={detailsCharacterId ? (coverCache[detailsCharacterId] ?? undefined) : undefined}
         exporting={false}
         onOpenChange={(open) => {
           if (!open) {

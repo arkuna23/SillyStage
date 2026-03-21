@@ -19,13 +19,13 @@ import {
   normalizeControlledStoryGraph,
   useStoryGraphEditorController,
 } from './story-graph-editor-controller'
-import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
 import {
-  getStoryGraphValidationMessage,
   GRAPH_MAX_ZOOM,
   GRAPH_MIN_ZOOM,
   GRAPH_ZOOM_STEP,
+  getStoryGraphValidationMessage,
 } from './story-graph-editor-utils'
+import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
 import type { StoryGraph } from './types'
 
 type StoryGraphEditorDialogProps = {
@@ -67,11 +67,10 @@ export function StoryGraphEditorDialog({
     readOnly,
   })
 
-  const title = graphType === 'draft' ? t('stories.graph.editDraftTitle') : t('stories.graph.editStoryTitle')
+  const title =
+    graphType === 'draft' ? t('stories.graph.editDraftTitle') : t('stories.graph.editStoryTitle')
   const subtitle =
-    graphType === 'draft'
-      ? t('stories.graph.draftSubtitle')
-      : t('stories.graph.storySubtitle')
+    graphType === 'draft' ? t('stories.graph.draftSubtitle') : t('stories.graph.storySubtitle')
 
   useEffect(() => {
     if (!open) {
@@ -185,9 +184,7 @@ export function StoryGraphEditorDialog({
         aria-describedby={undefined}
         contentClassName={cn(
           'motion-safe:transition-[top,right,bottom,left,width,height,max-height,transform] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)] motion-safe:will-change-[top,right,bottom,left,width,height,transform]',
-          isFullscreen
-            ? '!h-screen !w-screen !max-h-none'
-            : undefined,
+          isFullscreen ? '!h-screen !w-screen !max-h-none' : undefined,
         )}
         className={cn(
           'motion-safe:transition-[width,height,max-height,border-radius,border-color,box-shadow] motion-safe:duration-300 motion-safe:ease-[cubic-bezier(0.22,1,0.36,1)]',

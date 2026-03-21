@@ -61,7 +61,11 @@ export function DeleteSchemaDialog({
 
               <div className="flex flex-wrap gap-2">
                 {previewTargets.map((target) => (
-                  <Badge className="normal-case px-3 py-1.5" key={target.schema_id} variant="subtle">
+                  <Badge
+                    className="normal-case px-3 py-1.5"
+                    key={target.schema_id}
+                    variant="subtle"
+                  >
                     {target.display_name}
                   </Badge>
                 ))}

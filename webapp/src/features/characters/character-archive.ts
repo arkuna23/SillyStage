@@ -107,16 +107,10 @@ async function extractZipEntry(bytes: Uint8Array, entry: ZipEntry) {
     return inflateRaw(compressedBytes)
   }
 
-  throw new Error(
-    `Unsupported compression method ${entry.compressionMethod} in character archive.`,
-  )
+  throw new Error(`Unsupported compression method ${entry.compressionMethod} in character archive.`)
 }
 
-async function readZipJsonEntry<T>(
-  bytes: Uint8Array,
-  entries: ZipEntry[],
-  entryName: string,
-) {
+async function readZipJsonEntry<T>(bytes: Uint8Array, entries: ZipEntry[], entryName: string) {
   const entry = entries.find((candidate) => candidate.fileName === entryName)
 
   if (!entry) {
@@ -201,11 +195,7 @@ export async function parseCharacterArchive(file: File) {
 
   const bytes = new Uint8Array(await file.arrayBuffer())
   const entries = readZipEntries(bytes)
-  const manifest = await readZipJsonEntry<CharacterArchiveManifest>(
-    bytes,
-    entries,
-    'manifest.json',
-  )
+  const manifest = await readZipJsonEntry<CharacterArchiveManifest>(bytes, entries, 'manifest.json')
 
   validateManifest(manifest)
 

@@ -1,9 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  type ComponentPropsWithoutRef,
-  type ElementRef,
-  forwardRef,
-} from 'react'
+import { type ComponentPropsWithoutRef, type ElementRef, forwardRef } from 'react'
 
 import { cn } from '../../lib/cn'
 

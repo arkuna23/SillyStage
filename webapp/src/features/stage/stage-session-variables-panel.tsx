@@ -16,6 +16,7 @@ import type {
 } from '../stories/types'
 import { getSessionVariables, updateSessionVariables } from './api'
 import type { StageCopy } from './copy'
+import { VariableRows } from './stage-variable-editor'
 import {
   areVariableValuesEqual,
   cloneSessionVariables,
@@ -26,15 +27,7 @@ import {
   serializeVariableValue,
   type VariableRowDraft,
 } from './stage-variable-utils'
-import {
-  VariableRows,
-} from './stage-variable-editor'
-import type {
-  RuntimeSnapshot,
-  SessionVariables,
-  StateUpdate,
-  VariableStateOp,
-} from './types'
+import type { RuntimeSnapshot, SessionVariables, StateUpdate, VariableStateOp } from './types'
 
 type StageSessionVariablesPanelProps = {
   characterMap: Map<string, CharacterSummary>
@@ -194,8 +187,13 @@ function includesValue(actual: unknown, expected: unknown) {
     return actual.includes(expected)
   }
 
-  if (actual && typeof actual === 'object' && !Array.isArray(actual) && typeof expected === 'string') {
-    return Object.prototype.hasOwnProperty.call(actual, expected)
+  if (
+    actual &&
+    typeof actual === 'object' &&
+    !Array.isArray(actual) &&
+    typeof expected === 'string'
+  ) {
+    return Object.hasOwn(actual, expected)
   }
 
   return false
@@ -256,7 +254,7 @@ function getConditionScopeLabel(
 
   if (scope === 'character') {
     const characterName = condition.character
-      ? characterMap.get(condition.character)?.name ?? condition.character
+      ? (characterMap.get(condition.character)?.name ?? condition.character)
       : null
 
     return characterName
@@ -365,7 +363,9 @@ export function StageSessionVariablesPanel({
       return null
     }
 
-    return story.graph.nodes.find((node) => node.id === runtimeSnapshot.world_state.current_node) ?? null
+    return (
+      story.graph.nodes.find((node) => node.id === runtimeSnapshot.world_state.current_node) ?? null
+    )
   }, [runtimeSnapshot, story])
 
   const storyNodeMap = useMemo(
@@ -667,7 +667,9 @@ export function StageSessionVariablesPanel({
                             <p className="text-sm text-[var(--color-text-primary)]">
                               {targetNode?.title ?? transition.to}
                             </p>
-                            <p className="text-xs text-[var(--color-text-muted)]">{transition.to}</p>
+                            <p className="text-xs text-[var(--color-text-muted)]">
+                              {transition.to}
+                            </p>
                           </div>
                           <Badge variant="info">{copy.variables.conditions.noCondition}</Badge>
                         </div>
@@ -720,11 +722,17 @@ export function StageSessionVariablesPanel({
                           </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-[var(--color-text-muted)]">{copy.variables.operator}</p>
-                          <p className="font-mono text-sm text-[var(--color-text-primary)]">{condition.op}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {copy.variables.operator}
+                          </p>
+                          <p className="font-mono text-sm text-[var(--color-text-primary)]">
+                            {condition.op}
+                          </p>
                         </div>
                         <div className="space-y-1">
-                          <p className="text-xs text-[var(--color-text-muted)]">{copy.variables.value}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {copy.variables.value}
+                          </p>
                           <p className="font-mono text-sm leading-6 text-[var(--color-text-primary)]">
                             {serializeVariableValue(condition.value)}
                           </p>
@@ -734,7 +742,9 @@ export function StageSessionVariablesPanel({
                             {copy.variables.conditions.currentValue}
                           </p>
                           <p className="font-mono text-sm leading-6 text-[var(--color-text-primary)]">
-                            {typeof actualValue === 'undefined' ? '—' : serializeVariableValue(actualValue)}
+                            {typeof actualValue === 'undefined'
+                              ? '—'
+                              : serializeVariableValue(actualValue)}
                           </p>
                         </div>
                       </div>

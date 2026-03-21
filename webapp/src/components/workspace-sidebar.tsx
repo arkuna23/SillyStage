@@ -14,10 +14,7 @@ type WorkspaceSidebarProps = {
   items: ReadonlyArray<WorkspaceSidebarItem>
 }
 
-export function WorkspaceSidebar({
-  ariaLabel,
-  items,
-}: WorkspaceSidebarProps) {
+export function WorkspaceSidebar({ ariaLabel, items }: WorkspaceSidebarProps) {
   return (
     <aside className="h-full min-h-0">
       <nav
@@ -53,9 +50,7 @@ export function WorkspaceSidebar({
                       {item.icon}
                     </span>
                   ) : null}
-                  <span className="truncate text-sm font-medium leading-5">
-                    {item.label}
-                  </span>
+                  <span className="truncate text-sm font-medium leading-5">{item.label}</span>
                 </div>
                 <span
                   aria-hidden="true"

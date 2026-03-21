@@ -1,8 +1,4 @@
-export const characterCoverMimeTypes = [
-  'image/png',
-  'image/jpeg',
-  'image/webp',
-] as const
+export const characterCoverMimeTypes = ['image/png', 'image/jpeg', 'image/webp'] as const
 
 export type CharacterCoverMimeType = (typeof characterCoverMimeTypes)[number]
 

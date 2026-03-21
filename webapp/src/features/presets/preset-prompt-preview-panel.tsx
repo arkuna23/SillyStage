@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
 import { faCopy } from '@fortawesome/free-solid-svg-icons/faCopy'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { PromptViewer } from '../../components/prompt-viewer'
 import { buildPromptViewerCopyText } from '../../components/prompt-viewer-copy'
@@ -17,16 +17,16 @@ import type {
   PresetPromptPreview,
 } from '../apis/types'
 import {
+  createPresetRoleLabels,
+  getOrderedAgentRoleKeys,
+  getPromptModuleLabel,
+} from './preset-labels'
+import {
   buildPromptPreviewViewerMessages,
   getPromptPreviewArchitectModeLabel,
   getPromptPreviewRoleLabel,
   type PromptPreviewTranslateFn,
 } from './prompt-preview-shared'
-import {
-  createPresetRoleLabels,
-  getOrderedAgentRoleKeys,
-  getPromptModuleLabel,
-} from './preset-labels'
 
 type Notice = {
   message: string
@@ -88,7 +88,7 @@ export function PresetPromptPreviewPanel({
   const selectedModule = useMemo(
     () =>
       selectedModuleId
-        ? agentModules.find((module) => module.module_id === selectedModuleId) ?? null
+        ? (agentModules.find((module) => module.module_id === selectedModuleId) ?? null)
         : null,
     [agentModules, selectedModuleId],
   )
@@ -191,7 +191,10 @@ export function PresetPromptPreviewPanel({
       <div className="space-y-4">
         <div className={`grid gap-4 ${agent === 'architect' ? 'grid-cols-3' : 'grid-cols-2'}`}>
           <div className="min-w-0 space-y-2">
-            <label className="text-xs text-[var(--color-text-muted)]" htmlFor="preset-preview-agent">
+            <label
+              className="text-xs text-[var(--color-text-muted)]"
+              htmlFor="preset-preview-agent"
+            >
               {t('presetsPage.preview.fields.agent')}
             </label>
             <Select
@@ -205,7 +208,10 @@ export function PresetPromptPreviewPanel({
           </div>
 
           <div className="min-w-0 space-y-2">
-            <label className="text-xs text-[var(--color-text-muted)]" htmlFor="preset-preview-module">
+            <label
+              className="text-xs text-[var(--color-text-muted)]"
+              htmlFor="preset-preview-module"
+            >
               {t('presetsPage.preview.fields.module')}
             </label>
             <Select
@@ -221,7 +227,10 @@ export function PresetPromptPreviewPanel({
 
           {agent === 'architect' ? (
             <div className="min-w-0 space-y-2">
-              <label className="text-xs text-[var(--color-text-muted)]" htmlFor="preset-preview-architect-mode">
+              <label
+                className="text-xs text-[var(--color-text-muted)]"
+                htmlFor="preset-preview-architect-mode"
+              >
                 {t('presetsPage.preview.fields.architectMode')}
               </label>
               <Select

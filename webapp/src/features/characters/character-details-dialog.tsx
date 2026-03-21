@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { type ReactNode, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -39,13 +39,7 @@ function getCharacterMonogram(name: string) {
   return Array.from(name.trim())[0] ?? '?'
 }
 
-function DetailSection({
-  children,
-  title,
-}: {
-  children: ReactNode
-  title: string
-}) {
+function DetailSection({ children, title }: { children: ReactNode; title: string }) {
   return (
     <div className="space-y-2.5">
       <p className="text-[0.72rem] uppercase text-[var(--color-text-muted)]">{title}</p>
@@ -152,11 +146,8 @@ export function CharacterDetailsDialog({
         </DetailSection>
 
         <DetailSection title={t('characters.card.style')}>
-          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">
-            {summary?.style}
-          </p>
+          <p className="text-sm leading-7 text-[var(--color-text-secondary)]">{summary?.style}</p>
         </DetailSection>
-
       </div>
     </div>
   )
@@ -207,12 +198,7 @@ export function CharacterDetailsDialog({
                     {exporting ? t('characters.actions.exporting') : t('characters.actions.export')}
                   </Button>
 
-                  <Button
-                    disabled={deleting}
-                    onClick={onDelete}
-                    size="md"
-                    variant="danger"
-                  >
+                  <Button disabled={deleting} onClick={onDelete} size="md" variant="danger">
                     {deleting ? t('characters.actions.deleting') : t('characters.actions.delete')}
                   </Button>
                 </div>

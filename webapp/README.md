@@ -50,6 +50,7 @@ pnpm install
 pnpm dev
 pnpm check
 pnpm lint
+pnpm format
 pnpm build
 ```
 

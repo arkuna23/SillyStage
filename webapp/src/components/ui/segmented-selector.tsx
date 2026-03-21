@@ -1,12 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion'
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { cn } from '../../lib/cn'
 

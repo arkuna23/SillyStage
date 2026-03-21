@@ -1,11 +1,11 @@
 import {
-  agentRoleKeys,
-  promptModuleIds,
   type AgentRoleKey,
+  agentRoleKeys,
   type BuiltInPromptModuleId,
   type PresetEntryKind,
   type PromptMessageRole,
   type PromptModuleId,
+  promptModuleIds,
 } from '../apis/types'
 
 type TranslateLike = (key: string, options?: Record<string, unknown>) => string
@@ -17,41 +17,39 @@ type BuiltInPromptModuleDefinition = {
   translationKey: string
 }
 
-const builtInPromptModuleDefinitions: Record<
-  BuiltInPromptModuleId,
-  BuiltInPromptModuleDefinition
-> = {
-  dynamic_context: {
-    defaultDisplayName: 'Dynamic Context',
-    messageRole: 'user',
-    order: 40,
-    translationKey: 'presetsPage.modules.dynamicContext',
-  },
-  output: {
-    defaultDisplayName: 'Output',
-    messageRole: 'system',
-    order: 50,
-    translationKey: 'presetsPage.modules.output',
-  },
-  role: {
-    defaultDisplayName: 'Role',
-    messageRole: 'system',
-    order: 10,
-    translationKey: 'presetsPage.modules.role',
-  },
-  static_context: {
-    defaultDisplayName: 'Static Context',
-    messageRole: 'user',
-    order: 30,
-    translationKey: 'presetsPage.modules.staticContext',
-  },
-  task: {
-    defaultDisplayName: 'Task',
-    messageRole: 'system',
-    order: 20,
-    translationKey: 'presetsPage.modules.task',
-  },
-}
+const builtInPromptModuleDefinitions: Record<BuiltInPromptModuleId, BuiltInPromptModuleDefinition> =
+  {
+    dynamic_context: {
+      defaultDisplayName: 'Dynamic Context',
+      messageRole: 'user',
+      order: 40,
+      translationKey: 'presetsPage.modules.dynamicContext',
+    },
+    output: {
+      defaultDisplayName: 'Output',
+      messageRole: 'system',
+      order: 50,
+      translationKey: 'presetsPage.modules.output',
+    },
+    role: {
+      defaultDisplayName: 'Role',
+      messageRole: 'system',
+      order: 10,
+      translationKey: 'presetsPage.modules.role',
+    },
+    static_context: {
+      defaultDisplayName: 'Static Context',
+      messageRole: 'user',
+      order: 30,
+      translationKey: 'presetsPage.modules.staticContext',
+    },
+    task: {
+      defaultDisplayName: 'Task',
+      messageRole: 'system',
+      order: 20,
+      translationKey: 'presetsPage.modules.task',
+    },
+  }
 
 export function createPresetRoleLabels(t: TranslateLike): Record<AgentRoleKey, string> {
   return {
@@ -65,7 +63,9 @@ export function createPresetRoleLabels(t: TranslateLike): Record<AgentRoleKey, s
   }
 }
 
-export function isBuiltInPromptModuleId(moduleId: PromptModuleId): moduleId is BuiltInPromptModuleId {
+export function isBuiltInPromptModuleId(
+  moduleId: PromptModuleId,
+): moduleId is BuiltInPromptModuleId {
   return promptModuleIds.includes(moduleId as BuiltInPromptModuleId)
 }
 
@@ -83,10 +83,7 @@ export function getPromptModuleDefaultDisplayName(
   if (isBuiltInPromptModuleId(moduleId)) {
     const definition = getBuiltInPromptModuleDefinition(moduleId)
 
-    if (
-      !normalizedDisplayName ||
-      normalizedDisplayName === definition.defaultDisplayName
-    ) {
+    if (!normalizedDisplayName || normalizedDisplayName === definition.defaultDisplayName) {
       return t(definition.translationKey)
     }
   }

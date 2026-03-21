@@ -7,8 +7,8 @@ import {
   deleteSessionCharacter,
   enterSessionCharacterScene,
   getRuntimeSnapshot,
-  listSessions,
   leaveSessionCharacterScene,
+  listSessions,
   setSessionPlayerProfile,
   updateSessionCharacter,
   updateSessionConfig,
@@ -40,7 +40,12 @@ type UseStagePageSessionActionsArgs = {
   selectedSession: SessionDetail | null
   setDeleteTarget: (target: SessionSummary | null) => void
   setDetailsSessionCharacterId: (sessionCharacterId: string | null) => void
-  setLiveSnapshot: (snapshot: RuntimeSnapshot | null | ((current: RuntimeSnapshot | null) => RuntimeSnapshot | null)) => void
+  setLiveSnapshot: (
+    snapshot:
+      | RuntimeSnapshot
+      | null
+      | ((current: RuntimeSnapshot | null) => RuntimeSnapshot | null),
+  ) => void
   setNotice: (notice: Notice | null) => void
   setSelectedSession: (
     value: SessionDetail | null | ((current: SessionDetail | null) => SessionDetail | null),
@@ -198,7 +203,9 @@ export function useStagePageSessionActions({
 
       setSessionCharacters((current) =>
         current.map((entry) =>
-          entry.session_character_id === updatedCharacter.session_character_id ? updatedCharacter : entry,
+          entry.session_character_id === updatedCharacter.session_character_id
+            ? updatedCharacter
+            : entry,
         ),
       )
       setNotice({
@@ -229,7 +236,9 @@ export function useStagePageSessionActions({
 
       setSessionCharacters((current) =>
         current.map((entry) =>
-          entry.session_character_id === updatedCharacter.session_character_id ? updatedCharacter : entry,
+          entry.session_character_id === updatedCharacter.session_character_id
+            ? updatedCharacter
+            : entry,
         ),
       )
       setSelectedSession((current) =>
@@ -247,7 +256,9 @@ export function useStagePageSessionActions({
       setNotice({
         message: getErrorMessage(
           error,
-          inScene ? copy.notice.sessionCharacterEnterFailed : copy.notice.sessionCharacterLeaveFailed,
+          inScene
+            ? copy.notice.sessionCharacterEnterFailed
+            : copy.notice.sessionCharacterLeaveFailed,
         ),
         tone: 'error',
       })

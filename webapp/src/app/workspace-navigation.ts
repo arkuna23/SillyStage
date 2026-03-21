@@ -1,12 +1,12 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core'
 import { faBookAtlas } from '@fortawesome/free-solid-svg-icons/faBookAtlas'
+import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
 import { faDiagramProject } from '@fortawesome/free-solid-svg-icons/faDiagramProject'
 import { faFileLines } from '@fortawesome/free-solid-svg-icons/faFileLines'
 import { faGaugeHigh } from '@fortawesome/free-solid-svg-icons/faGaugeHigh'
 import { faIdCard } from '@fortawesome/free-solid-svg-icons/faIdCard'
 import { faPlug } from '@fortawesome/free-solid-svg-icons/faPlug'
 import { faSliders } from '@fortawesome/free-solid-svg-icons/faSliders'
-import { faBookOpen } from '@fortawesome/free-solid-svg-icons/faBookOpen'
 import { faUserGroup } from '@fortawesome/free-solid-svg-icons/faUserGroup'
 import type { TFunction } from 'i18next'
 

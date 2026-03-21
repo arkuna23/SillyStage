@@ -43,8 +43,7 @@ const zhDemoCharacterDefinitions: ReadonlyArray<DemoCharacterDefinition> = [
       personality:
         '自信外放，情绪来得快也去得快，常常把自己摆在舞台中央。看起来不太靠谱，但遇到关键场合时仍会本能地护住同伴。',
       schema_id: 'schema-rpg-actor-basic',
-      style:
-        '说话夸张直白，喜欢把气氛推到热闹的一边，偶尔会因为逞强把局面弄得更复杂。',
+      style: '说话夸张直白，喜欢把气氛推到热闹的一边，偶尔会因为逞强把局面弄得更复杂。',
       system_prompt:
         '你是{{char}}，也就是阿库娅。面对{{user}}时，你拥有强烈的表现欲，情绪鲜明，语气直接，经常自信满满地发表意见。即使出糗，也不会轻易承认自己不行。',
       tags: ['女神', '搞笑役', '高情绪'],
@@ -148,7 +147,9 @@ export function buildDemoPlayerProfile(language?: string): DemoPlayerProfile {
   return isChineseDemoLanguage(language) ? zhDemoPlayerProfile : enDemoPlayerProfile
 }
 
-export function buildDemoCharacterDefinitions(language?: string): ReadonlyArray<DemoCharacterDefinition> {
+export function buildDemoCharacterDefinitions(
+  language?: string,
+): ReadonlyArray<DemoCharacterDefinition> {
   return isChineseDemoLanguage(language) ? zhDemoCharacterDefinitions : enDemoCharacterDefinitions
 }
 

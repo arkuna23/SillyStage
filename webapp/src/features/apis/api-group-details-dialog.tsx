@@ -13,7 +13,13 @@ import {
 } from '../../components/ui/dialog'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { getApiGroup } from './api'
-import { agentRoleKeys, getAgentBindingKey, type AgentRoleKey, type ApiConfig, type ApiGroup } from './types'
+import {
+  type AgentRoleKey,
+  type ApiConfig,
+  type ApiGroup,
+  agentRoleKeys,
+  getAgentBindingKey,
+} from './types'
 
 type ApiGroupDetailsDialogProps = {
   apiGroupId: string | null
@@ -89,10 +95,18 @@ export function ApiGroupDetailsDialog({
           {apiGroup ? (
             <>
               <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{t('apis.groupForm.fields.apiGroupId')}</p>
-                <p className="mt-2 font-medium text-[var(--color-text-primary)]">{apiGroup.api_group_id}</p>
-                <p className="mt-4 text-xs text-[var(--color-text-muted)]">{t('apis.groupForm.fields.displayName')}</p>
-                <p className="mt-2 text-sm text-[var(--color-text-primary)]">{apiGroup.display_name}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {t('apis.groupForm.fields.apiGroupId')}
+                </p>
+                <p className="mt-2 font-medium text-[var(--color-text-primary)]">
+                  {apiGroup.api_group_id}
+                </p>
+                <p className="mt-4 text-xs text-[var(--color-text-muted)]">
+                  {t('apis.groupForm.fields.displayName')}
+                </p>
+                <p className="mt-2 text-sm text-[var(--color-text-primary)]">
+                  {apiGroup.display_name}
+                </p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">

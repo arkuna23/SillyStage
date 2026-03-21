@@ -1,13 +1,13 @@
-import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faChevronUp } from '@fortawesome/free-solid-svg-icons/faChevronUp'
+import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faTags } from '@fortawesome/free-solid-svg-icons/faTags'
 import { faThumbtack } from '@fortawesome/free-solid-svg-icons/faThumbtack'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -292,10 +292,7 @@ export function LorebookFormDialog({
     }
   }, [lorebookId, mode, open, t])
 
-  function updateEntry(
-    index: number,
-    update: Partial<LorebookEntryFormState>,
-  ) {
+  function updateEntry(index: number, update: Partial<LorebookEntryFormState>) {
     setFormState((current) => ({
       ...current,
       entries: current.entries.map((entry, entryIndex) =>
@@ -349,10 +346,7 @@ export function LorebookFormDialog({
       return t('lorebooks.form.errors.lorebookIdRequired')
     }
 
-    if (
-      !isEditMode &&
-      existingLorebookIds.some((existingId) => existingId === nextLorebookId)
-    ) {
+    if (!isEditMode && existingLorebookIds.some((existingId) => existingId === nextLorebookId)) {
       return t('lorebooks.form.errors.lorebookIdDuplicate')
     }
 
@@ -513,9 +507,7 @@ export function LorebookFormDialog({
       >
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>
-            {isEditMode
-              ? t('lorebooks.form.editTitle')
-              : t('lorebooks.form.createTitle')}
+            {isEditMode ? t('lorebooks.form.editTitle') : t('lorebooks.form.createTitle')}
           </DialogTitle>
         </DialogHeader>
 
@@ -594,8 +586,7 @@ export function LorebookFormDialog({
                         const isExpanded = expandedEntryIds.includes(entry.clientId)
                         const entryIdLabel =
                           entry.entryId.trim() || t('lorebooks.list.emptyEntryId')
-                        const titleLabel =
-                          entry.title.trim() || t('lorebooks.list.emptyEntryTitle')
+                        const titleLabel = entry.title.trim() || t('lorebooks.list.emptyEntryTitle')
 
                         return (
                           <motion.div

@@ -122,7 +122,6 @@ export function SessionRenameDialog({
               value={displayName}
             />
           </div>
-
         </DialogBody>
 
         <DialogFooter className="justify-end">

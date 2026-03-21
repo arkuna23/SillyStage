@@ -12,12 +12,9 @@ import {
 } from '../../components/ui/dialog'
 import { cn } from '../../lib/cn'
 import type { StoryGraphEditorController } from './story-graph-editor-controller'
-import {
-  INITIAL_STORY_GRAPH_VIEWPORT,
-  isEditableTarget,
-} from './story-graph-editor-controller'
-import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
+import { INITIAL_STORY_GRAPH_VIEWPORT, isEditableTarget } from './story-graph-editor-controller'
 import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM, GRAPH_ZOOM_STEP } from './story-graph-editor-utils'
+import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
 
 type ManualStoryGraphDialogProps = {
   controller: StoryGraphEditorController

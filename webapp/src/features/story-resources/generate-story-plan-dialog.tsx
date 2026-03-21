@@ -232,7 +232,6 @@ export function GenerateStoryPlanDialog({
                   />
                 </div>
               </div>
-
             </>
           )}
         </DialogBody>
@@ -246,7 +245,9 @@ export function GenerateStoryPlanDialog({
             </DialogClose>
             {!bindingsUnavailable ? (
               <Button
-                disabled={isSubmitting || apiGroupId.trim().length === 0 || presetId.trim().length === 0}
+                disabled={
+                  isSubmitting || apiGroupId.trim().length === 0 || presetId.trim().length === 0
+                }
                 onClick={() => {
                   void handleSubmit()
                 }}

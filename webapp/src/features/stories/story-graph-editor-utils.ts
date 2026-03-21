@@ -145,8 +145,7 @@ export function buildGraphLayout(graph: StoryGraph | null): GraphLayoutResult {
   const levels = new Map<string, number>()
   const queue: string[] = []
 
-  const startNodeId =
-    nodesById.has(graph.start_node) ? graph.start_node : graph.nodes[0]?.id
+  const startNodeId = nodesById.has(graph.start_node) ? graph.start_node : graph.nodes[0]?.id
 
   if (startNodeId) {
     levels.set(startNodeId, 0)
@@ -286,10 +285,7 @@ export function buildInitialNodePositions(graph: StoryGraph) {
   return positions
 }
 
-export function mergeNodePositions(
-  graph: StoryGraph,
-  existing: Record<string, GraphNodePosition>,
-) {
+export function mergeNodePositions(graph: StoryGraph, existing: Record<string, GraphNodePosition>) {
   const nextPositions = { ...existing }
   const layoutPositions = buildInitialNodePositions(graph)
   const validIds = new Set(graph.nodes.map((node) => node.id))
@@ -302,7 +298,10 @@ export function mergeNodePositions(
 
   graph.nodes.forEach((node) => {
     if (!nextPositions[node.id]) {
-      nextPositions[node.id] = layoutPositions[node.id] ?? { x: GRAPH_STAGE_PADDING, y: GRAPH_STAGE_PADDING }
+      nextPositions[node.id] = layoutPositions[node.id] ?? {
+        x: GRAPH_STAGE_PADDING,
+        y: GRAPH_STAGE_PADDING,
+      }
     }
   })
 
@@ -401,7 +400,8 @@ export function normalizeGraphForSave(
       }
 
       const draftKey = buildConditionDraftKey(node.id, transitionIndex)
-      const valueDraft = conditionDrafts[draftKey] ?? serializeConditionValue(transition.condition.value)
+      const valueDraft =
+        conditionDrafts[draftKey] ?? serializeConditionValue(transition.condition.value)
 
       try {
         transition.condition.value = JSON.parse(valueDraft)
@@ -432,7 +432,8 @@ export function normalizeGraphForSave(
       const valueDraft = onEnterUpdateDrafts[draftKey] ?? serializeStateOpValue(operation)
 
       try {
-        ;(operation as Extract<StoryGraphStateOp, { value: unknown }>).value = JSON.parse(valueDraft)
+        ;(operation as Extract<StoryGraphStateOp, { value: unknown }>).value =
+          JSON.parse(valueDraft)
       } catch {
         errors.push(`invalid_on_enter_update_value:${node.id}:${operationIndex}`)
       }

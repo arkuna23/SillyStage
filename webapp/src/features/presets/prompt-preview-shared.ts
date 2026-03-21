@@ -1,13 +1,11 @@
+import type { PromptViewerMessage } from '../../components/prompt-viewer'
 import type {
   ArchitectPromptMode,
+  PresetPromptPreview,
   PresetPromptPreviewEntry,
   PresetPromptPreviewModule,
-  PresetPromptPreview,
   PromptPreviewMessageRole,
 } from '../apis/types'
-import type {
-  PromptViewerMessage,
-} from '../../components/prompt-viewer'
 import { getPromptMessageRoleLabel, getPromptModuleLabel } from './preset-labels'
 
 export type PromptPreviewTranslateFn = (key: string, options?: Record<string, unknown>) => string
@@ -53,11 +51,7 @@ export function buildPromptPreviewViewerMessages(args: {
       })),
       id: `preview:${message.role}:${module.module_id}:${moduleIndex}`,
       moduleId: module.module_id,
-      moduleLabel: getPromptModuleLabel(
-        args.t,
-        module.module_id,
-        module.display_name,
-      ),
+      moduleLabel: getPromptModuleLabel(args.t, module.module_id, module.display_name),
     })),
   }))
 }

@@ -51,9 +51,7 @@ export function useStoryResourceReferences({
         }
       } catch (error) {
         if (!signal?.aborted) {
-          onLoadError?.(
-            getErrorMessage(error, t('storyResources.feedback.loadReferencesFailed')),
-          )
+          onLoadError?.(getErrorMessage(error, t('storyResources.feedback.loadReferencesFailed')))
         }
       } finally {
         if (!signal?.aborted) {

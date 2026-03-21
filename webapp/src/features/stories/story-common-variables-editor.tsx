@@ -11,16 +11,16 @@ import { Select, type SelectOption } from '../../components/ui/select'
 import { Switch } from '../../components/ui/switch'
 import { cn } from '../../lib/cn'
 import type { CharacterSummary } from '../characters/types'
-import type {
-  StoryCommonVariableKeySource,
-  StoryCommonVariableSchemaCatalog,
-} from './story-common-variable-schema-catalog'
-import type { CommonVariableScope } from './types'
 import {
   createStoryCommonVariableDraft,
   type StoryCommonVariableDraft,
   type StoryCommonVariableDraftErrors,
 } from './story-common-variable-drafts'
+import type {
+  StoryCommonVariableKeySource,
+  StoryCommonVariableSchemaCatalog,
+} from './story-common-variable-schema-catalog'
+import type { CommonVariableScope } from './types'
 
 type StoryCommonVariablesEditorProps = {
   characters: ReadonlyArray<CharacterSummary>
@@ -111,10 +111,12 @@ export function StoryCommonVariablesEditor({
 
   function getKeySource(draft: StoryCommonVariableDraft): StoryCommonVariableKeySource {
     if (draft.scope === 'character') {
-      return schemaCatalog.characterByCharacterId[draft.character_id.trim()] ?? {
-        items: [],
-        status: 'missing',
-      }
+      return (
+        schemaCatalog.characterByCharacterId[draft.character_id.trim()] ?? {
+          items: [],
+          status: 'missing',
+        }
+      )
     }
 
     return draft.scope === 'player' ? schemaCatalog.player : schemaCatalog.world
@@ -136,7 +138,10 @@ export function StoryCommonVariablesEditor({
     ]
   }
 
-  function getKeyPlaceholder(draft: StoryCommonVariableDraft, keySource: StoryCommonVariableKeySource) {
+  function getKeyPlaceholder(
+    draft: StoryCommonVariableDraft,
+    keySource: StoryCommonVariableKeySource,
+  ) {
     if (draft.scope === 'character' && draft.character_id.trim().length === 0) {
       return t('stories.commonVariables.placeholders.keyCharacterFirst')
     }
@@ -410,8 +415,7 @@ export function StoryCommonVariablesEditor({
                         updateDraft(draft.id, (currentDraft) => ({
                           ...currentDraft,
                           character_id: characterId,
-                          key:
-                            characterId === currentDraft.character_id ? currentDraft.key : '',
+                          key: characterId === currentDraft.character_id ? currentDraft.key : '',
                         }))
                       }}
                     />

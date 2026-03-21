@@ -1,7 +1,7 @@
-import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
-import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
+import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
+import { faPlus } from '@fortawesome/free-solid-svg-icons/faPlus'
 import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { faUpload } from '@fortawesome/free-solid-svg-icons/faUpload'
@@ -10,21 +10,20 @@ import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
-import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
 import { createJsonExportFileName, downloadJsonFile, readJsonFile } from '../../lib/json-transfer'
 import { isRpcConflict } from '../../lib/rpc'
-import { buildDemoLorebook } from '../demo-content/lorebook-sample-data'
 import { InsertSampleDialog } from '../demo-content/insert-sample-dialog'
+import { buildDemoLorebook } from '../demo-content/lorebook-sample-data'
 import { createLorebook, deleteLorebook, listLorebooks } from './api'
 import { DeleteLorebookDialog } from './delete-lorebook-dialog'
 import { LorebookFormDialog } from './lorebook-form-dialog'
@@ -117,20 +116,13 @@ export function LorebookManagementPage() {
     () => lorebooks.map((lorebook) => lorebook.lorebook_id),
     [lorebooks],
   )
-  const demoLorebook = useMemo(
-    () => buildDemoLorebook(sampleLanguage),
-    [sampleLanguage],
-  )
+  const demoLorebook = useMemo(() => buildDemoLorebook(sampleLanguage), [sampleLanguage])
   const totalEntryCount = useMemo(
     () => lorebooks.reduce((total, lorebook) => total + lorebook.entries.length, 0),
     [lorebooks],
   )
   const totalAlwaysIncludeCount = useMemo(
-    () =>
-      lorebooks.reduce(
-        (total, lorebook) => total + countAlwaysIncludeEntries(lorebook),
-        0,
-      ),
+    () => lorebooks.reduce((total, lorebook) => total + countAlwaysIncludeEntries(lorebook), 0),
     [lorebooks],
   )
   const sampleLorebookExists = useMemo(
@@ -212,13 +204,7 @@ export function LorebookManagementPage() {
     return () => {
       setRailContent(null)
     }
-  }, [
-    lorebooks.length,
-    setRailContent,
-    t,
-    totalAlwaysIncludeCount,
-    totalEntryCount,
-  ])
+  }, [lorebooks.length, setRailContent, t, totalAlwaysIncludeCount, totalEntryCount])
 
   async function handleDeleteLorebook() {
     if (deleteTargets.length === 0) {
@@ -577,7 +563,11 @@ export function LorebookManagementPage() {
                       <IconButton
                         disabled={isImporting}
                         icon={<FontAwesomeIcon icon={faUpload} />}
-                        label={isImporting ? t('lorebooks.actions.importing') : t('lorebooks.actions.import')}
+                        label={
+                          isImporting
+                            ? t('lorebooks.actions.importing')
+                            : t('lorebooks.actions.import')
+                        }
                         onClick={() => {
                           importInputRef.current?.click()
                         }}
@@ -654,9 +644,7 @@ export function LorebookManagementPage() {
                 </div>
               ) : (
                 <div className="space-y-5">
-                  <CardTitle className="text-[1.85rem]">
-                    {t('lorebooks.list.title')}
-                  </CardTitle>
+                  <CardTitle className="text-[1.85rem]">{t('lorebooks.list.title')}</CardTitle>
 
                   <div className="divide-y divide-[var(--color-border-subtle)]">
                     {lorebooks.map((lorebook) => (

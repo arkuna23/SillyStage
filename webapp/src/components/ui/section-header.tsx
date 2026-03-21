@@ -26,9 +26,7 @@ export function SectionHeader({
     >
       <div className="min-w-0 space-y-2">
         {eyebrow ? (
-          <p className="text-xs uppercase text-[var(--color-accent-copper)]">
-            {eyebrow}
-          </p>
+          <p className="text-xs uppercase text-[var(--color-accent-copper)]">{eyebrow}</p>
         ) : null}
         <div className="min-w-0 space-y-2">
           <h2 className="font-display text-3xl leading-tight text-[var(--color-text-primary)] sm:text-[2.2rem] md:truncate md:whitespace-nowrap">

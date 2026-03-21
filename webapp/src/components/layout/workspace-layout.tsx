@@ -1,18 +1,18 @@
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { motion, useReducedMotion } from 'framer-motion'
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useLocation, useOutlet } from 'react-router-dom'
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useLocation, useOutlet } from 'react-router-dom'
 
 import { appPaths } from '../../app/paths'
 import { getWorkspaceNavigationItems } from '../../app/workspace-navigation'
-import { WorkspacePanelShell } from './workspace-panel-shell'
-import { WorkspaceRail, WorkspaceRailSkeleton } from '../workspace-rail'
 import { Button } from '../ui/button'
 import { Card } from '../ui/card'
+import { WorkspaceRail, WorkspaceRailSkeleton } from '../workspace-rail'
 import { WorkspaceSidebar } from '../workspace-sidebar'
 import type { WorkspaceRailContent } from './workspace-context'
+import { WorkspacePanelShell } from './workspace-panel-shell'
 
 function shouldShowWorkspaceRail(pathname: string) {
   return (
@@ -63,7 +63,10 @@ function DashboardContentFallback() {
                 <div className="h-6 w-32 animate-pulse rounded-full bg-[var(--color-bg-panel)]" />
                 <div className="mt-4 space-y-3">
                   {Array.from({ length: index === 0 ? 2 : 6 }).map((__, rowIndex) => (
-                    <div className="h-10 rounded-[1rem] bg-[var(--color-bg-panel)]" key={rowIndex} />
+                    <div
+                      className="h-10 rounded-[1rem] bg-[var(--color-bg-panel)]"
+                      key={rowIndex}
+                    />
                   ))}
                 </div>
               </div>
@@ -166,21 +169,15 @@ export function WorkspaceLayout() {
   const prefersReducedMotion = useReducedMotion()
   const [openRailPath, setOpenRailPath] = useState<string | null>(null)
   const [railContent, setRailContent] = useState<WorkspaceRailContent | null>(null)
-  const workspaceNavigationItems = useMemo(
-    () => getWorkspaceNavigationItems(t),
-    [t],
-  )
+  const workspaceNavigationItems = useMemo(() => getWorkspaceNavigationItems(t), [t])
   const [activeWorkspacePath, setActiveWorkspacePath] = useState(
-    location.pathname.startsWith(appPaths.workspaceRoot)
-      ? location.pathname
-      : appPaths.workspace,
+    location.pathname.startsWith(appPaths.workspaceRoot) ? location.pathname : appPaths.workspace,
   )
 
   useEffect(() => {
     if (location.pathname.startsWith(appPaths.workspaceRoot)) {
       // Keep the last workspace child route stable while the root shell exits,
       // otherwise the layout re-evaluates against "/" mid-transition and visibly reflows.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActiveWorkspacePath(location.pathname)
     }
   }, [location.pathname])
@@ -223,7 +220,6 @@ export function WorkspaceLayout() {
 
     // Freeze the currently displayed workspace panel until its exit animation finishes,
     // otherwise React Router swaps the outlet immediately and the new panel fades in late.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPendingStage({
       outlet,
       path: activeWorkspacePath,
@@ -238,7 +234,6 @@ export function WorkspaceLayout() {
 
     // Keep the rail content in sync with the currently displayed page only after
     // the page switch has committed, so the old rail stays stable during exit.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDisplayedRailContent(railContent)
   }, [railContent, stagePhase])
 
@@ -332,7 +327,9 @@ export function WorkspaceLayout() {
                   : { opacity: 1, x: 0, y: 0 }
             }
             className="flex h-full min-h-0 min-w-0 flex-col space-y-4"
-            initial={prefersReducedMotion ? { opacity: 1, x: 0, y: 0 } : { opacity: 0, x: 18, y: 14 }}
+            initial={
+              prefersReducedMotion ? { opacity: 1, x: 0, y: 0 } : { opacity: 0, x: 18, y: 14 }
+            }
             key={mainStageKey}
             onAnimationComplete={() => {
               if (isExitingStage) {
@@ -406,7 +403,9 @@ export function WorkspaceLayout() {
                     handleEnterAnimationComplete()
                   }
                 }}
-                transition={isExitingStage ? { duration: 0.24, ease: panelEase } : railEnterTransition}
+                transition={
+                  isExitingStage ? { duration: 0.24, ease: panelEase } : railEnterTransition
+                }
               >
                 <WorkspaceRail className="xl:h-full xl:min-h-0" content={displayedRailContent} />
               </motion.div>
@@ -431,7 +430,9 @@ export function WorkspaceLayout() {
                     handleEnterAnimationComplete()
                   }
                 }}
-                transition={isExitingStage ? { duration: 0.24, ease: panelEase } : railEnterTransition}
+                transition={
+                  isExitingStage ? { duration: 0.24, ease: panelEase } : railEnterTransition
+                }
               >
                 <WorkspaceRailSkeleton className="xl:h-full xl:min-h-0" />
               </motion.div>

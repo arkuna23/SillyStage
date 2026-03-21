@@ -14,13 +14,7 @@ const iconSizeClasses = {
   sm: 'w-9 px-0',
 } as const
 
-export function IconButton({
-  className,
-  icon,
-  label,
-  size = 'md',
-  ...props
-}: IconButtonProps) {
+export function IconButton({ className, icon, label, size = 'md', ...props }: IconButtonProps) {
   return (
     <Button
       aria-label={label}

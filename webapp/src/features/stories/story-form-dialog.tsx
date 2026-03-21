@@ -16,16 +16,16 @@ import { useToastMessage } from '../../components/ui/toast-context'
 import type { CharacterSummary } from '../characters/types'
 import type { StoryResource } from '../story-resources/types'
 import { getStory, updateStory } from './api'
-import type { StoryDetail } from './types'
 import {
   createStoryCommonVariableDrafts,
-  serializeStoryCommonVariableDrafts,
   type StoryCommonVariableDraft,
   type StoryCommonVariableDraftErrors,
+  serializeStoryCommonVariableDrafts,
   validateStoryCommonVariableDrafts,
 } from './story-common-variable-drafts'
 import { useStoryCommonVariableSchemaCatalog } from './story-common-variable-schema-catalog'
 import { StoryCommonVariablesEditor } from './story-common-variables-editor'
+import type { StoryDetail } from './types'
 
 type StoryFormDialogProps = {
   availableCharacters: ReadonlyArray<CharacterSummary>

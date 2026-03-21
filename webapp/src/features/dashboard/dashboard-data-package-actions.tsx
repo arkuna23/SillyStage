@@ -1,10 +1,10 @@
-import type { ChangeEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { faDownload } from '@fortawesome/free-solid-svg-icons/faDownload'
 import { faRotateRight } from '@fortawesome/free-solid-svg-icons/faRotateRight'
 import { faUpload } from '@fortawesome/free-solid-svg-icons/faUpload'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import type { TFunction } from 'i18next'
+import type { ChangeEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -26,8 +26,8 @@ import { useToast } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { listPresets } from '../apis/api'
 import type { Preset } from '../apis/types'
-import { normalizeCharacterFolderRegistryName } from '../characters/folder-registry'
 import { listCharacters } from '../characters/api'
+import { normalizeCharacterFolderRegistryName } from '../characters/folder-registry'
 import type { CharacterSummary } from '../characters/types'
 import { listLorebooks } from '../lorebooks/api'
 import type { Lorebook } from '../lorebooks/types'
@@ -46,10 +46,7 @@ import {
   prepareDataPackageImport,
   uploadDataPackageArchive,
 } from './api'
-import type {
-  DataPackageContents,
-  DataPackageExportPrepareParams,
-} from './types'
+import type { DataPackageContents, DataPackageExportPrepareParams } from './types'
 
 type DataPackageGroupKind = keyof DataPackageContents
 
@@ -188,9 +185,9 @@ function buildExportCatalog(args: {
         label: trimSingleLine(character.name) || character.character_id,
         meta: character.character_id,
         searchText: buildCharacterExportSearchText(character),
-        tags: Array.from(new Set(character.tags.map((tag) => trimSingleLine(tag)).filter(Boolean))).sort(
-          compareTextItems,
-        ),
+        tags: Array.from(
+          new Set(character.tags.map((tag) => trimSingleLine(tag)).filter(Boolean)),
+        ).sort(compareTextItems),
       }))
       .sort(compareCatalogItems),
     story_resources: args.storyResources
@@ -519,7 +516,9 @@ function CharacterExportGroupPanel({
 
           <div className="space-y-3 rounded-[1.15rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-panel)_78%,transparent)] p-4">
             <div className="space-y-1">
-              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">{folderTitle}</h4>
+              <h4 className="text-sm font-medium text-[var(--color-text-primary)]">
+                {folderTitle}
+              </h4>
             </div>
 
             <Input
@@ -770,17 +769,14 @@ export function DashboardDataPackageActions({
   const [isImporting, setIsImporting] = useState(false)
   const [pendingImportFile, setPendingImportFile] = useState<File | null>(null)
   const [activeExportTab, setActiveExportTab] = useState<DataPackageGroupKind>('presets')
-  const [activeCharacterFolder, setActiveCharacterFolder] = useState<string>(allCharacterFolderValue)
+  const [activeCharacterFolder, setActiveCharacterFolder] =
+    useState<string>(allCharacterFolderValue)
   const [characterFolderListFilter, setCharacterFolderListFilter] = useState('')
   const [characterSearchQuery, setCharacterSearchQuery] = useState('')
   const [selectedCharacterTags, setSelectedCharacterTags] = useState<string[]>([])
 
   const selectedExportCount = useMemo(
-    () =>
-      dataPackageGroupOrder.reduce(
-        (count, group) => count + selectedItems[group].length,
-        0,
-      ),
+    () => dataPackageGroupOrder.reduce((count, group) => count + selectedItems[group].length, 0),
     [selectedItems],
   )
 
@@ -790,23 +786,16 @@ export function DashboardDataPackageActions({
       setCatalogError(null)
 
       try {
-        const [
-          presets,
-          schemas,
-          lorebooks,
-          playerProfiles,
-          characters,
-          storyResources,
-          stories,
-        ] = await Promise.all([
-          listPresets(signal),
-          listSchemas(signal),
-          listLorebooks(signal),
-          listPlayerProfiles(signal),
-          listCharacters(signal),
-          listStoryResources(signal),
-          listStories(signal),
-        ])
+        const [presets, schemas, lorebooks, playerProfiles, characters, storyResources, stories] =
+          await Promise.all([
+            listPresets(signal),
+            listSchemas(signal),
+            listLorebooks(signal),
+            listPlayerProfiles(signal),
+            listCharacters(signal),
+            listStoryResources(signal),
+            listStories(signal),
+          ])
 
         if (signal?.aborted) {
           return
@@ -823,9 +812,7 @@ export function DashboardDataPackageActions({
         })
 
         setCatalog(nextCatalog)
-        setSelectedItems((currentSelection) =>
-          pruneSelectionState(currentSelection, nextCatalog),
-        )
+        setSelectedItems((currentSelection) => pruneSelectionState(currentSelection, nextCatalog))
       } catch (error) {
         if (signal?.aborted) {
           return
@@ -869,9 +856,7 @@ export function DashboardDataPackageActions({
     () =>
       Array.from(
         new Set(
-          characterItems
-            .map((item) => item.folder ?? '')
-            .filter((folder) => folder.length > 0),
+          characterItems.map((item) => item.folder ?? '').filter((folder) => folder.length > 0),
         ),
       ).sort(compareTextItems),
     [characterItems],
@@ -879,9 +864,7 @@ export function DashboardDataPackageActions({
   const characterTagOptions = useMemo(
     () =>
       Array.from(
-        new Set(
-          characterItems.flatMap((item) => item.tags ?? []).filter((tag) => tag.length > 0),
-        ),
+        new Set(characterItems.flatMap((item) => item.tags ?? []).filter((tag) => tag.length > 0)),
       ).sort(compareTextItems),
     [characterItems],
   )
@@ -909,9 +892,7 @@ export function DashboardDataPackageActions({
 
   useEffect(() => {
     const availableTags = new Set(characterTagOptions)
-    setSelectedCharacterTags((currentTags) =>
-      currentTags.filter((tag) => availableTags.has(tag)),
-    )
+    setSelectedCharacterTags((currentTags) => currentTags.filter((tag) => availableTags.has(tag)))
   }, [characterTagOptions])
 
   useEffect(() => {
@@ -996,9 +977,7 @@ export function DashboardDataPackageActions({
     } catch (error) {
       pushToast({
         message:
-          error instanceof Error
-            ? error.message
-            : t('dashboard.dataPackage.feedback.exportFailed'),
+          error instanceof Error ? error.message : t('dashboard.dataPackage.feedback.exportFailed'),
         tone: 'error',
       })
     } finally {
@@ -1055,9 +1034,7 @@ export function DashboardDataPackageActions({
       setPendingImportFile(null)
       pushToast({
         message:
-          error instanceof Error
-            ? error.message
-            : t('dashboard.dataPackage.feedback.importFailed'),
+          error instanceof Error ? error.message : t('dashboard.dataPackage.feedback.importFailed'),
         tone: 'error',
       })
     } finally {
@@ -1180,7 +1157,9 @@ export function DashboardDataPackageActions({
                     emptyTagsLabel={t('dashboard.dataPackage.filters.tagsEmpty')}
                     filteredCharacterCount={filteredCharacters.length}
                     filteredCharacters={filteredCharacters}
-                    folderSearchPlaceholder={t('dashboard.dataPackage.filters.folderSearchPlaceholder')}
+                    folderSearchPlaceholder={t(
+                      'dashboard.dataPackage.filters.folderSearchPlaceholder',
+                    )}
                     folderListFilter={characterFolderListFilter}
                     folderTitle={t('dashboard.dataPackage.filters.folderTitle')}
                     hasUnfiledCharacters={hasUnfiledCharacters}

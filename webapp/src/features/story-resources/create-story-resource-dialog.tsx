@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
@@ -17,16 +17,16 @@ import {
 import { DialogRouteButton } from '../../components/ui/dialog-route-button'
 import { GenerationLoadingStage } from '../../components/ui/generation-loading-stage'
 import { Select } from '../../components/ui/select'
-import { useToastMessage } from '../../components/ui/toast-context'
 import { Textarea } from '../../components/ui/textarea'
+import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { CharacterSummary } from '../characters/types'
 import type { Lorebook } from '../lorebooks/types'
 import type { SchemaResource } from '../schemas/types'
 import { createStoryResource, generateAndSaveStoryPlan } from './api'
-import { StoryResourceCharacterSelector } from './story-resource-character-selector'
 import { StoryInputFlowCard } from './story-input-flow-card'
+import { StoryResourceCharacterSelector } from './story-resource-character-selector'
 import { StoryResourceLorebookSelector } from './story-resource-lorebook-selector'
 import type { StoryResource } from './types'
 
@@ -91,13 +91,14 @@ function Field({
   return (
     <div className="space-y-2.5">
       {htmlFor ? (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)]" htmlFor={htmlFor}>
+        <label
+          className="block text-sm font-medium text-[var(--color-text-primary)]"
+          htmlFor={htmlFor}
+        >
           {label}
         </label>
       ) : (
-        <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-          {label}
-        </span>
+        <span className="block text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
       )}
       {children}
       {description ? (
@@ -107,15 +108,7 @@ function Field({
   )
 }
 
-function StepChip({
-  active,
-  index,
-  label,
-}: {
-  active: boolean
-  index: number
-  label: string
-}) {
+function StepChip({ active, index, label }: { active: boolean; index: number; label: string }) {
   return (
     <div
       className={cn(
@@ -408,18 +401,13 @@ export function CreateStoryResourceDialog({
     t('storyResources.createWizard.steps.planner'),
   ]
   const activeStepIndex =
-    activeStep === 'concept'
-      ? 0
-      : activeStep === 'characters'
-        ? 1
-        : activeStep === 'seeds'
-          ? 2
-          : 3
+    activeStep === 'concept' ? 0 : activeStep === 'characters' ? 1 : activeStep === 'seeds' ? 2 : 3
   const generatingDescription =
     generatingPhase === 'creating'
       ? t('storyResources.createWizard.loading.preparing')
       : t('storyResources.createWizard.loading.generating')
-  const plannerBindingsUnavailable = availableApiGroups.length === 0 || availablePresets.length === 0
+  const plannerBindingsUnavailable =
+    availableApiGroups.length === 0 || availablePresets.length === 0
 
   return (
     <Dialog onOpenChange={handleOpenChange} open={open}>
@@ -442,7 +430,12 @@ export function CreateStoryResourceDialog({
           {activeStep !== 'generating' ? (
             <div className="grid gap-2 pt-2 md:grid-cols-4">
               {stepLabels.map((label, index) => (
-                <StepChip active={index <= activeStepIndex} index={index + 1} key={label} label={label} />
+                <StepChip
+                  active={index <= activeStepIndex}
+                  index={index + 1}
+                  key={label}
+                  label={label}
+                />
               ))}
             </div>
           ) : null}
@@ -467,7 +460,10 @@ export function CreateStoryResourceDialog({
                   </p>
                 </div>
 
-                <Field htmlFor={fieldIds.storyConcept} label={t('storyResources.form.fields.storyConcept')}>
+                <Field
+                  htmlFor={fieldIds.storyConcept}
+                  label={t('storyResources.form.fields.storyConcept')}
+                >
                   <Textarea
                     autoFocus
                     id={fieldIds.storyConcept}
@@ -828,12 +824,7 @@ export function CreateStoryResourceDialog({
 
             <div className="flex flex-col-reverse gap-3 sm:ml-auto sm:flex-row">
               {activeStep !== 'concept' ? (
-                <Button
-                  disabled={isSubmitting}
-                  onClick={goBack}
-                  size="md"
-                  variant="secondary"
-                >
+                <Button disabled={isSubmitting} onClick={goBack} size="md" variant="secondary">
                   {t('storyResources.actions.back')}
                 </Button>
               ) : null}
@@ -842,8 +833,7 @@ export function CreateStoryResourceDialog({
                 <Button
                   disabled={
                     isSubmitting ||
-                    (referencesLoading &&
-                      (activeStep === 'characters' || activeStep === 'seeds'))
+                    (referencesLoading && (activeStep === 'characters' || activeStep === 'seeds'))
                   }
                   onClick={goNext}
                   size="md"

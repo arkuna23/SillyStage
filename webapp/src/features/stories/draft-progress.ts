@@ -1,6 +1,9 @@
 import type { StoryDraftDetail, StoryDraftSummary } from './types'
 
-type DraftProgressSource = Pick<StoryDraftDetail | StoryDraftSummary, 'next_section_index' | 'total_sections'>
+type DraftProgressSource = Pick<
+  StoryDraftDetail | StoryDraftSummary,
+  'next_section_index' | 'total_sections'
+>
 
 export type DraftSectionProgress = {
   current: number
@@ -13,7 +16,9 @@ export function getDraftSectionProgress(draft: DraftProgressSource): DraftSectio
       ? draft.next_section_index
       : null
   const totalSections =
-    typeof draft.total_sections === 'number' && Number.isFinite(draft.total_sections) && draft.total_sections > 0
+    typeof draft.total_sections === 'number' &&
+    Number.isFinite(draft.total_sections) &&
+    draft.total_sections > 0
       ? draft.total_sections
       : null
 

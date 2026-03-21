@@ -1,9 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
 import type { ComponentPropsWithoutRef, ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-
-import { DIALOG_EXIT_DURATION_MS } from './dialog'
 import { Button } from './button'
+import { DIALOG_EXIT_DURATION_MS } from './dialog'
 
 type DialogRouteButtonProps = Omit<
   ComponentPropsWithoutRef<typeof Button>,

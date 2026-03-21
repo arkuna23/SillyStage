@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { faCheckDouble } from '@fortawesome/free-solid-svg-icons/faCheckDouble'
 import { faEye } from '@fortawesome/free-solid-svg-icons/faEye'
 import { faPen } from '@fortawesome/free-solid-svg-icons/faPen'
@@ -7,26 +6,26 @@ import { faSquareCheck } from '@fortawesome/free-solid-svg-icons/faSquareCheck'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { faXmark } from '@fortawesome/free-solid-svg-icons/faXmark'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { useWorkspaceLayoutContext } from '../../components/layout/workspace-context'
-import { dispatchStageApiAvailabilityRefresh } from '../stage/stage-access'
+import { WorkspacePanelShell } from '../../components/layout/workspace-panel-shell'
 import { Badge } from '../../components/ui/badge'
 import { Card, CardContent, CardHeader } from '../../components/ui/card'
 import { IconButton } from '../../components/ui/icon-button'
-import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { SectionHeader } from '../../components/ui/section-header'
+import { SelectionToggleButton } from '../../components/ui/selection-toggle-button'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { runBatchDelete } from '../../lib/batch-delete'
+import { dispatchStageApiAvailabilityRefresh } from '../stage/stage-access'
+import { deleteApi, deleteApiGroup, listApiGroups, listApis } from './api'
 import { ApiDetailsDialog } from './api-details-dialog'
 import { ApiFormDialog } from './api-form-dialog'
 import { ApiGroupDetailsDialog } from './api-group-details-dialog'
 import { ApiGroupFormDialog } from './api-group-form-dialog'
-import { deleteApi, deleteApiGroup, listApiGroups, listApis } from './api'
 import { DeleteApiDialog } from './delete-api-dialog'
 import { DeleteApiGroupDialog } from './delete-api-group-dialog'
-import { agentRoleKeys, getAgentBindingKey, type ApiConfig, type ApiGroup } from './types'
+import { type ApiConfig, type ApiGroup, agentRoleKeys, getAgentBindingKey } from './types'
 
 type NoticeTone = 'error' | 'success' | 'warning'
 
@@ -167,7 +166,9 @@ export function ApiManagementPage() {
     const availableApiIds = new Set(apis.map((apiConfig) => apiConfig.api_id))
     const availableGroupIds = new Set(apiGroups.map((apiGroup) => apiGroup.api_group_id))
 
-    setSelectedApiIds((currentSelection) => currentSelection.filter((apiId) => availableApiIds.has(apiId)))
+    setSelectedApiIds((currentSelection) =>
+      currentSelection.filter((apiId) => availableApiIds.has(apiId)),
+    )
     setDeleteApiTargetIds((currentSelection) =>
       currentSelection.filter((apiId) => availableApiIds.has(apiId)),
     )
@@ -576,12 +577,16 @@ export function ApiManagementPage() {
                           <p className="font-medium text-[var(--color-text-primary)]">
                             {apiConfig.display_name}
                           </p>
-                          <p className="text-xs text-[var(--color-text-muted)]">{apiConfig.api_id}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {apiConfig.api_id}
+                          </p>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="subtle">
-                            {apiConfig.provider === 'open_ai' ? t('apis.providers.open_ai') : apiConfig.provider}
+                            {apiConfig.provider === 'open_ai'
+                              ? t('apis.providers.open_ai')
+                              : apiConfig.provider}
                           </Badge>
                         </div>
 
@@ -652,7 +657,9 @@ export function ApiManagementPage() {
                             icon={<FontAwesomeIcon icon={faCheckDouble} />}
                             label={t('apis.actions.selectAll')}
                             onClick={() => {
-                              setSelectedGroupIds(apiGroups.map((apiGroup) => apiGroup.api_group_id))
+                              setSelectedGroupIds(
+                                apiGroups.map((apiGroup) => apiGroup.api_group_id),
+                              )
                             }}
                             variant="secondary"
                           />

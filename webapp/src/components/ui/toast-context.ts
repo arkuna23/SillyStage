@@ -38,10 +38,7 @@ export function useToastNotice<T extends ToastInput | null>(notice: T) {
 }
 
 export function useToastMessage(message: string | null, tone: ToastTone = 'error') {
-  const notice = useMemo(
-    () => (message ? { message, tone } : null),
-    [message, tone],
-  )
+  const notice = useMemo(() => (message ? { message, tone } : null), [message, tone])
 
   useToastNotice(notice)
 }

@@ -1,5 +1,5 @@
-import { useEffect, useId, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { appPaths } from '../../app/paths'
@@ -21,24 +21,24 @@ import { Textarea } from '../../components/ui/textarea'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import { listSchemas } from '../schemas/api'
-import { listCharacters } from './api'
-import {
-  loadCharacterFolderRegistry,
-  normalizeCharacterFolderRegistryName,
-} from './folder-registry'
 import type { SchemaResource } from '../schemas/types'
 import {
   createCharacter,
   getCharacter,
+  listCharacters,
   setCharacterCover,
   updateCharacter,
   withUpdatedCoverSummary,
 } from './api'
 import {
-  characterCoverMimeTypes,
+  loadCharacterFolderRegistry,
+  normalizeCharacterFolderRegistryName,
+} from './folder-registry'
+import {
   type CharacterCardContent,
   type CharacterSchemaResult,
   type CharacterSummary,
+  characterCoverMimeTypes,
 } from './types'
 
 type NoticeTone = 'success' | 'warning'
@@ -159,9 +159,7 @@ function Field({
           {label}
         </label>
       ) : (
-        <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-          {label}
-        </span>
+        <span className="block text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
       )}
       {children}
       {description ? (
@@ -327,11 +325,8 @@ export function CharacterFormDialog({
             new Set(
               [
                 ...loadCharacterFolderRegistry(),
-                ...characters.map((item) =>
-                  normalizeCharacterFolderRegistryName(item.folder),
-                ),
-              ]
-                .filter((folder) => folder.length > 0),
+                ...characters.map((item) => normalizeCharacterFolderRegistryName(item.folder)),
+              ].filter((folder) => folder.length > 0),
             ),
           ).sort((left, right) => left.localeCompare(right)),
         )
@@ -765,10 +760,7 @@ export function CharacterFormDialog({
                       </Field>
                     </div>
 
-                    <Field
-                      htmlFor={fieldIds.folder}
-                      label={t('characters.create.fields.folder')}
-                    >
+                    <Field htmlFor={fieldIds.folder} label={t('characters.create.fields.folder')}>
                       <div className="space-y-3">
                         <div className="flex flex-wrap gap-2">
                           {(['existing', 'new'] as const).map((mode) => (
@@ -988,7 +980,7 @@ export function CharacterFormDialog({
                   ? t('characters.actions.saveChanges')
                   : isLastStep
                     ? t('characters.actions.create')
-                  : t('characters.actions.next')}
+                    : t('characters.actions.next')}
             </Button>
           </div>
         </DialogFooter>

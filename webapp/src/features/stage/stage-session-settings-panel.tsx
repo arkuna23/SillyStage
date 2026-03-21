@@ -9,9 +9,14 @@ import { Textarea } from '../../components/ui/textarea'
 import { useToastNotice } from '../../components/ui/toast-context'
 import type { ApiGroup, Preset } from '../apis/types'
 import type { PlayerProfile } from '../player-profiles/types'
-import { StagePromptPreviewDialog } from './stage-prompt-preview-dialog'
-import type { RuntimeSnapshot, SessionCharacter, SessionConfig, UpdateSessionConfigParams } from './types'
 import type { StageCopy } from './copy'
+import { StagePromptPreviewDialog } from './stage-prompt-preview-dialog'
+import type {
+  RuntimeSnapshot,
+  SessionCharacter,
+  SessionConfig,
+  UpdateSessionConfigParams,
+} from './types'
 
 const NO_PLAYER_PROFILE_OPTION_VALUE = '__none__'
 
@@ -35,7 +40,10 @@ type StageSessionSettingsPanelProps = {
   onSaveSessionConfig: (params: UpdateSessionConfigParams) => Promise<void>
   onSessionCharacterDelete: (sessionCharacterId: string) => Promise<void> | void
   onSessionCharacterOpen: (sessionCharacterId: string) => void
-  onSessionCharacterToggleScene: (sessionCharacterId: string, inScene: boolean) => Promise<void> | void
+  onSessionCharacterToggleScene: (
+    sessionCharacterId: string,
+    inScene: boolean,
+  ) => Promise<void> | void
   playerProfiles: ReadonlyArray<PlayerProfile>
   presets: ReadonlyArray<Preset>
   runtimeSnapshot: RuntimeSnapshot | null
@@ -67,7 +75,9 @@ export function StageSessionSettingsPanel({
   const [selectedPlayerProfileId, setSelectedPlayerProfileId] = useState(
     currentPlayerProfileId ?? NO_PLAYER_PROFILE_OPTION_VALUE,
   )
-  const [manualDescription, setManualDescription] = useState(runtimeSnapshot?.player_description ?? '')
+  const [manualDescription, setManualDescription] = useState(
+    runtimeSnapshot?.player_description ?? '',
+  )
   const [notice, setNotice] = useState<Notice | null>(null)
   const [isSavingConfig, setIsSavingConfig] = useState(false)
   const [isSavingPlayerProfile, setIsSavingPlayerProfile] = useState(false)
@@ -134,7 +144,9 @@ export function StageSessionSettingsPanel({
     () =>
       selectedPlayerProfileId === NO_PLAYER_PROFILE_OPTION_VALUE
         ? null
-        : playerProfiles.find((profile) => profile.player_profile_id === selectedPlayerProfileId) ?? null,
+        : (playerProfiles.find(
+            (profile) => profile.player_profile_id === selectedPlayerProfileId,
+          ) ?? null),
     [playerProfiles, selectedPlayerProfileId],
   )
 
@@ -326,13 +338,17 @@ export function StageSessionSettingsPanel({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.bindings.currentApiGroup}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.bindings.currentApiGroup}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
                   {selectedApiGroup?.display_name ?? copy.settings.bindings.missing}
                 </p>
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.bindings.currentPreset}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.bindings.currentPreset}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
                   {selectedPreset?.display_name ?? copy.settings.bindings.missing}
                 </p>
@@ -373,7 +389,9 @@ export function StageSessionSettingsPanel({
 
             {selectedPlayerProfile ? (
               <div className="mt-2 rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.playerProfile.preview}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.playerProfile.preview}
+                </p>
                 <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
                   {selectedPlayerProfile.description}
                 </p>
@@ -385,8 +403,14 @@ export function StageSessionSettingsPanel({
             )}
 
             <div className="flex justify-end">
-              <Button disabled={isSavingPlayerProfile} onClick={() => void handleSavePlayerProfile()} variant="secondary">
-                {isSavingPlayerProfile ? copy.settings.playerProfile.saving : copy.settings.playerProfile.save}
+              <Button
+                disabled={isSavingPlayerProfile}
+                onClick={() => void handleSavePlayerProfile()}
+                variant="secondary"
+              >
+                {isSavingPlayerProfile
+                  ? copy.settings.playerProfile.saving
+                  : copy.settings.playerProfile.save}
               </Button>
             </div>
           </section>
@@ -413,8 +437,14 @@ export function StageSessionSettingsPanel({
             />
 
             <div className="flex justify-end">
-              <Button disabled={isSavingDescription} onClick={() => void handleSavePlayerDescription()} variant="secondary">
-                {isSavingDescription ? copy.settings.playerDescription.saving : copy.settings.playerDescription.save}
+              <Button
+                disabled={isSavingDescription}
+                onClick={() => void handleSavePlayerDescription()}
+                variant="secondary"
+              >
+                {isSavingDescription
+                  ? copy.settings.playerDescription.saving
+                  : copy.settings.playerDescription.save}
               </Button>
             </div>
           </section>
@@ -510,7 +540,12 @@ export function StageSessionSettingsPanel({
                 </p>
               </div>
               <IconButton
-                icon={<FontAwesomeIcon className={isRefreshingSnapshot ? 'animate-spin' : ''} icon={faRotateRight} />}
+                icon={
+                  <FontAwesomeIcon
+                    className={isRefreshingSnapshot ? 'animate-spin' : ''}
+                    icon={faRotateRight}
+                  />
+                }
                 label={copy.settings.snapshot.refresh}
                 onClick={() => void handleRefreshSnapshot()}
                 size="sm"
@@ -520,33 +555,45 @@ export function StageSessionSettingsPanel({
 
             <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.turnIndex}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.snapshot.turnIndex}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
                   {runtimeSnapshot?.turn_index ?? '—'}
                 </p>
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.currentNode}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.snapshot.currentNode}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
                   {runtimeSnapshot?.world_state.current_node || '—'}
                 </p>
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.activeCharacters}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.snapshot.activeCharacters}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
                   {runtimeSnapshot?.world_state.active_characters.length ?? 0}
                 </p>
               </div>
               <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-                <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.playerStateKeys}</p>
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  {copy.settings.snapshot.playerStateKeys}
+                </p>
                 <p className="mt-2 text-sm text-[var(--color-text-primary)]">
-                  {runtimeSnapshot ? Object.keys(runtimeSnapshot.world_state.player_state).length : '—'}
+                  {runtimeSnapshot
+                    ? Object.keys(runtimeSnapshot.world_state.player_state).length
+                    : '—'}
                 </p>
               </div>
             </div>
 
             <div className="rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel)] px-4 py-4">
-              <p className="text-xs text-[var(--color-text-muted)]">{copy.settings.snapshot.playerDescription}</p>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                {copy.settings.snapshot.playerDescription}
+              </p>
               <p className="mt-2 text-sm leading-7 text-[var(--color-text-primary)]">
                 {runtimeSnapshot?.player_description?.trim() || '—'}
               </p>

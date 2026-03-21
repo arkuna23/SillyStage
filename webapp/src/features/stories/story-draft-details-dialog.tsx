@@ -27,13 +27,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-3.5">
       <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
@@ -94,7 +88,9 @@ export function StoryDraftDetailsDialog({
     return {
       nodeCount: visibleDraft.partial_graph.nodes.length,
       startNode: visibleDraft.partial_graph.start_node,
-      terminalCount: visibleDraft.partial_graph.nodes.filter((node) => node.transitions.length === 0).length,
+      terminalCount: visibleDraft.partial_graph.nodes.filter(
+        (node) => node.transitions.length === 0,
+      ).length,
     }
   }, [visibleDraft])
 
@@ -156,7 +152,10 @@ export function StoryDraftDetailsDialog({
                 </p>
                 <div className="mt-3 space-y-2">
                   {visibleDraft.outline_sections.map((section, index) => (
-                    <p className="text-sm leading-7 text-[var(--color-text-primary)]" key={`${index}:${section}`}>
+                    <p
+                      className="text-sm leading-7 text-[var(--color-text-primary)]"
+                      key={`${index}:${section}`}
+                    >
                       {index + 1}. {section}
                     </p>
                   ))}
@@ -170,7 +169,10 @@ export function StoryDraftDetailsDialog({
                   </p>
                   <div className="mt-3 space-y-2">
                     {visibleDraft.section_summaries.map((summary, index) => (
-                      <p className="text-sm leading-7 text-[var(--color-text-primary)]" key={`${index}:${summary}`}>
+                      <p
+                        className="text-sm leading-7 text-[var(--color-text-primary)]"
+                        key={`${index}:${summary}`}
+                      >
                         {index + 1}. {summary}
                       </p>
                     ))}
@@ -193,7 +195,9 @@ export function StoryDraftDetailsDialog({
                           {t('stories.details.startNode', { id: partialGraphSummary.startNode })}
                         </Badge>
                         <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                          {t('stories.details.terminalCount', { count: partialGraphSummary.terminalCount })}
+                          {t('stories.details.terminalCount', {
+                            count: partialGraphSummary.terminalCount,
+                          })}
                         </Badge>
                       </div>
                     </div>

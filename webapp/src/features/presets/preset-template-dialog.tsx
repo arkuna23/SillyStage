@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
@@ -77,7 +77,9 @@ function PresetCard({
               {preset.presetId}
             </p>
           </div>
-          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">{preset.description}</p>
+          <p className="text-sm leading-6 text-[var(--color-text-secondary)]">
+            {preset.description}
+          </p>
         </div>
 
         <span
@@ -225,7 +227,9 @@ export function PresetTemplateDialog({
           <div className="flex flex-col-reverse gap-3 sm:ml-auto sm:flex-row sm:items-center">
             {!allExisting ? (
               <span className="text-sm text-[var(--color-text-muted)]">
-                {t('presetsPage.templateDialog.selectedCount', { count: selectedPresetKinds.length })}
+                {t('presetsPage.templateDialog.selectedCount', {
+                  count: selectedPresetKinds.length,
+                })}
               </span>
             ) : null}
             <Button

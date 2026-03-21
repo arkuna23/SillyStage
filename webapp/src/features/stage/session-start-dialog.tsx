@@ -222,7 +222,11 @@ export function SessionStartDialog({
             <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
               <p>{copy.createSession.emptyApis}</p>
               <div className="mt-4">
-                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.apis} variant="secondary">
+                <DialogRouteButton
+                  onRequestClose={() => onOpenChange(false)}
+                  to={appPaths.apis}
+                  variant="secondary"
+                >
                   {copy.createSession.configureApis}
                 </DialogRouteButton>
               </div>
@@ -233,7 +237,11 @@ export function SessionStartDialog({
             <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
               <p>{copy.createSession.emptyApiGroups}</p>
               <div className="mt-4">
-                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.apis} variant="secondary">
+                <DialogRouteButton
+                  onRequestClose={() => onOpenChange(false)}
+                  to={appPaths.apis}
+                  variant="secondary"
+                >
                   {copy.createSession.configureApiGroups}
                 </DialogRouteButton>
               </div>
@@ -244,7 +252,11 @@ export function SessionStartDialog({
             <div className="rounded-[1.35rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-4 text-sm leading-7 text-[var(--color-text-secondary)]">
               <p>{copy.createSession.emptyPresets}</p>
               <div className="mt-4">
-                <DialogRouteButton onRequestClose={() => onOpenChange(false)} to={appPaths.presets} variant="secondary">
+                <DialogRouteButton
+                  onRequestClose={() => onOpenChange(false)}
+                  to={appPaths.presets}
+                  variant="secondary"
+                >
                   {copy.createSession.configurePresets}
                 </DialogRouteButton>
               </div>
@@ -351,7 +363,6 @@ export function SessionStartDialog({
               ) : null}
             </>
           ) : null}
-
         </DialogBody>
 
         <DialogFooter className="justify-end">

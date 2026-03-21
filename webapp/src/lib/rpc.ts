@@ -72,9 +72,7 @@ async function readErrorBody(response: Response) {
   }
 
   const fallbackMessage = await response.text().catch(() => '')
-  return new Error(
-    fallbackMessage.trim() || `RPC request failed with status ${response.status}`,
-  )
+  return new Error(fallbackMessage.trim() || `RPC request failed with status ${response.status}`)
 }
 
 export async function rpcRequest<TParams, TResult>(

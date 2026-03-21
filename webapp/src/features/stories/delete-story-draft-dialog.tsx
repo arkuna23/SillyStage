@@ -37,7 +37,9 @@ export function DeleteStoryDraftDialog({
       <DialogContent aria-describedby={undefined} className="w-[min(92vw,30rem)]">
         <DialogHeader className="border-b border-[var(--color-border-subtle)]">
           <DialogTitle>
-            {isBulk ? t('stories.drafts.deleteDialog.titleMany') : t('stories.drafts.deleteDialog.title')}
+            {isBulk
+              ? t('stories.drafts.deleteDialog.titleMany')
+              : t('stories.drafts.deleteDialog.title')}
           </DialogTitle>
         </DialogHeader>
 

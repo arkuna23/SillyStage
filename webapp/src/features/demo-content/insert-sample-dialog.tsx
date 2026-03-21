@@ -1,3 +1,5 @@
+import { Badge } from '../../components/ui/badge'
+import { Button } from '../../components/ui/button'
 import {
   Dialog,
   DialogBody,
@@ -7,8 +9,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
-import { Button } from '../../components/ui/button'
-import { Badge } from '../../components/ui/badge'
 import { cn } from '../../lib/cn'
 
 type SampleItemStatus = 'existing' | 'new'
@@ -104,7 +104,7 @@ export function InsertSampleDialog({
             </Button>
           </DialogClose>
           <Button disabled={pending || confirmDisabled} onClick={onConfirm}>
-            {pending ? pendingLabel ?? confirmLabel : confirmLabel}
+            {pending ? (pendingLabel ?? confirmLabel) : confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

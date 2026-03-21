@@ -328,7 +328,8 @@ const en = {
     running: 'Running turn...',
     send: 'Run Turn',
     suggestions: 'Reply Suggestions',
-    suggestionsDescription: 'When enabled, new reply suggestions are generated after each completed turn.',
+    suggestionsDescription:
+      'When enabled, new reply suggestions are generated after each completed turn.',
     suggestionsEmpty: 'No reply suggestions yet.',
     suggestionsGenerate: 'Generate Reply Suggestions',
     suggestionsLoading: 'Generating reply suggestions...',
@@ -344,9 +345,11 @@ const en = {
     create: 'Create Session',
     creating: 'Creating...',
     displayName: 'Session Name',
-    emptyApis: 'No reusable APIs are available yet. Create at least one connection before starting a session.',
+    emptyApis:
+      'No reusable APIs are available yet. Create at least one connection before starting a session.',
     emptyApiGroups: 'No API groups are available yet. Bind your APIs into a reusable group first.',
-    emptyPlayerProfiles: 'No player profiles are available yet. You can still create a blank session.',
+    emptyPlayerProfiles:
+      'No player profiles are available yet. You can still create a blank session.',
     emptyPresets: 'No presets are available yet. Create a preset before starting a session.',
     emptyStories: 'No stories are available yet. Generate a story in the workspace first.',
     playerProfile: 'Player Profile',
@@ -458,8 +461,10 @@ const en = {
       missing: 'Missing, choose again',
       preview: {
         characterRequired: 'Choose a temporary character before previewing the actor prompt.',
-        description: 'Preview the actual runtime prompt sent to an agent using this session and the saved preset.',
-        loadPresetFailed: 'Failed to load the current preset, so the prompt preview is unavailable.',
+        description:
+          'Preview the actual runtime prompt sent to an agent using this session and the saved preset.',
+        loadPresetFailed:
+          'Failed to load the current preset, so the prompt preview is unavailable.',
         open: 'Preview Prompt',
         title: 'Runtime Prompt Preview',
       },
@@ -469,9 +474,11 @@ const en = {
       saving: 'Saving...',
       section: 'Session Bindings',
     },
-    description: 'Adjust the current session API group, preset, player profile, and runtime snapshot.',
+    description:
+      'Adjust the current session API group, preset, player profile, and runtime snapshot.',
     playerDescription: {
-      description: 'Override the active player description for this session and clear the linked player profile.',
+      description:
+        'Override the active player description for this session and clear the linked player profile.',
       errors: {
         required: 'Player description is required.',
       },
@@ -481,10 +488,12 @@ const en = {
       section: 'Player Description',
     },
     playerProfile: {
-      description: 'Switch the active player profile for this session. This does not change player_state.',
+      description:
+        'Switch the active player profile for this session. This does not change player_state.',
       label: 'Player Profile',
       noProfile: 'No player profile',
-      noProfileHint: 'No player profile is currently linked. The session uses a manual player description.',
+      noProfileHint:
+        'No player profile is currently linked. The session uses a manual player description.',
       placeholder: 'Choose a player profile',
       preview: 'Profile Summary',
       save: 'Apply Player Profile',
@@ -568,7 +577,8 @@ const en = {
       invalidJson: 'Enter valid JSON.',
       keyRequired: 'Variable key is required.',
     },
-    hasExternalUpdates: 'Runtime state changed while you were editing. Refresh variables when you are ready.',
+    hasExternalUpdates:
+      'Runtime state changed while you were editing. Refresh variables when you are ready.',
     json: 'Value (JSON)',
     key: 'Key',
     operator: 'Operator',
@@ -579,7 +589,8 @@ const en = {
     saved: 'Variables updated.',
     saveFailed: 'Failed to update variables.',
     saving: 'Saving...',
-    sectionDescription: 'Inspect the custom and player state for this session, then verify the node transition conditions.',
+    sectionDescription:
+      'Inspect the custom and player state for this session, then verify the node transition conditions.',
     title: 'Variables',
     value: 'Expected Value',
     variableLoadFailed: 'Failed to load variables.',

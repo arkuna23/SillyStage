@@ -62,10 +62,7 @@ export function areVariableValuesEqual(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right)
 }
 
-export function parseVariableRows(
-  rows: VariableRowDraft[],
-  errorCopy: VariableEditorErrorCopy,
-) {
+export function parseVariableRows(rows: VariableRowDraft[], errorCopy: VariableEditorErrorCopy) {
   const errors: Record<string, string> = {}
   const values: Record<string, unknown> = {}
   const duplicateIds = new Map<string, string[]>()

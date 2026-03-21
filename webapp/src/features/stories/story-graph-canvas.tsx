@@ -1,17 +1,17 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { type PointerEvent as ReactPointerEvent, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '../../components/ui/badge'
 import { cn } from '../../lib/cn'
-import type { StoryGraph } from './types'
 import {
   GRAPH_NODE_HEIGHT,
   GRAPH_NODE_WIDTH,
   GRAPH_STAGE_PADDING,
-  getGraphNodeLabel,
   type GraphNodePosition,
   type GraphViewport,
+  getGraphNodeLabel,
 } from './story-graph-editor-utils'
+import type { StoryGraph } from './types'
 
 type StoryGraphCanvasProps = {
   graph: StoryGraph
@@ -127,10 +127,7 @@ export function StoryGraphCanvas({
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  function handleNodePointerDown(
-    event: ReactPointerEvent<HTMLButtonElement>,
-    nodeId: string,
-  ) {
+  function handleNodePointerDown(event: ReactPointerEvent<HTMLButtonElement>, nodeId: string) {
     if (event.button !== 0) {
       return
     }
@@ -339,7 +336,9 @@ export function StoryGraphCanvas({
                   <span className="truncate">
                     {t('stories.graph.charactersCount', { count: node.characters.length })}
                   </span>
-                  <span>{t('stories.graph.transitionsCount', { count: node.transitions.length })}</span>
+                  <span>
+                    {t('stories.graph.transitionsCount', { count: node.transitions.length })}
+                  </span>
                 </div>
               </button>
             )

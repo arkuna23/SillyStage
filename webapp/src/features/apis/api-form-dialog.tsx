@@ -14,7 +14,7 @@ import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { useToast, useToastMessage } from '../../components/ui/toast-context'
 import { createApi, getApi, listApiModels, updateApi } from './api'
-import { llmProviders, type ApiConfig, type LlmProvider } from './types'
+import { type ApiConfig, type LlmProvider, llmProviders } from './types'
 
 type ApiFormDialogProps = {
   apiId?: string | null
@@ -88,8 +88,7 @@ export function ApiFormDialog({
       })),
     [availableModels],
   )
-  const canFetchModels =
-    formState.baseUrl.trim().length > 0 && formState.apiKey.trim().length > 0
+  const canFetchModels = formState.baseUrl.trim().length > 0 && formState.apiKey.trim().length > 0
 
   useEffect(() => {
     if (!open) {
@@ -173,11 +172,7 @@ export function ApiFormDialog({
         provider: formState.provider,
       })
       const nextModels = Array.from(
-        new Set(
-          result.models
-            .map((model) => model.trim())
-            .filter((model) => model.length > 0),
-        ),
+        new Set(result.models.map((model) => model.trim()).filter((model) => model.length > 0)),
       )
 
       setAvailableModels(nextModels)
@@ -279,7 +274,10 @@ export function ApiFormDialog({
           {isLoading ? (
             <div className="space-y-4">
               {Array.from({ length: 5 }).map((_, index) => (
-                <div className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-elevated)]" key={index} />
+                <div
+                  className="h-12 animate-pulse rounded-2xl bg-[var(--color-bg-elevated)]"
+                  key={index}
+                />
               ))}
             </div>
           ) : (
@@ -429,7 +427,6 @@ export function ApiFormDialog({
                     : t('apis.apiForm.hints.modelProbe')}
                 </p>
               </div>
-
             </>
           )}
         </DialogBody>

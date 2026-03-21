@@ -27,13 +27,7 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback
 }
 
-function DetailRow({
-  label,
-  value,
-}: {
-  label: string
-  value: string
-}) {
+function DetailRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[1.4rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-elevated)] px-4 py-3.5">
       <p className="text-xs text-[var(--color-text-muted)]">{label}</p>
@@ -42,11 +36,7 @@ function DetailRow({
   )
 }
 
-export function StoryDetailsDialog({
-  onOpenChange,
-  open,
-  storyId,
-}: StoryDetailsDialogProps) {
+export function StoryDetailsDialog({ onOpenChange, open, storyId }: StoryDetailsDialogProps) {
   const { t } = useTranslation()
   const [story, setStory] = useState<StoryDetail | null>(null)
   const [errorState, setErrorState] = useState<{ message: string; storyId: string } | null>(null)
@@ -93,7 +83,8 @@ export function StoryDetailsDialog({
     return {
       nodeCount: visibleStory.graph.nodes.length,
       startNode: visibleStory.graph.start_node,
-      terminalCount: visibleStory.graph.nodes.filter((node) => node.transitions.length === 0).length,
+      terminalCount: visibleStory.graph.nodes.filter((node) => node.transitions.length === 0)
+        .length,
     }
   }, [visibleStory])
 
@@ -161,7 +152,9 @@ export function StoryDetailsDialog({
                           {t('stories.details.startNode', { id: graphSummary.startNode })}
                         </Badge>
                         <Badge className="normal-case px-3 py-1.5" variant="subtle">
-                          {t('stories.details.terminalCount', { count: graphSummary.terminalCount })}
+                          {t('stories.details.terminalCount', {
+                            count: graphSummary.terminalCount,
+                          })}
                         </Badge>
                       </div>
                     </div>

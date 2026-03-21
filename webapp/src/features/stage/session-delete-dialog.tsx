@@ -42,7 +42,9 @@ export function SessionDeleteDialog({
           {session ? (
             <div className="space-y-1 text-sm text-[var(--color-text-secondary)]">
               <p className="font-medium text-[var(--color-text-primary)]">{session.display_name}</p>
-              <p className="font-mono text-xs text-[var(--color-text-muted)]">{session.session_id}</p>
+              <p className="font-mono text-xs text-[var(--color-text-muted)]">
+                {session.session_id}
+              </p>
             </div>
           ) : null}
         </DialogBody>

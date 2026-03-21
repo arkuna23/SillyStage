@@ -1,10 +1,10 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { useEffect, useId, useState } from 'react'
-import type { ReactNode } from 'react'
 import { faChevronDown } from '@fortawesome/free-solid-svg-icons/faChevronDown'
 import { faChevronUp } from '@fortawesome/free-solid-svg-icons/faChevronUp'
 import { faTrashCan } from '@fortawesome/free-solid-svg-icons/faTrashCan'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
+import type { ReactNode } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui/button'
@@ -17,16 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '../../components/ui/dialog'
-import { Input } from '../../components/ui/input'
 import { IconButton } from '../../components/ui/icon-button'
+import { Input } from '../../components/ui/input'
 import { Select } from '../../components/ui/select'
 import { useToastMessage } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
 import {
-  stateValueTypes,
   type JsonValue,
   type StateFieldSchema,
   type StateValueType,
+  stateValueTypes,
 } from '../../lib/state-schema'
 import { createSchema, getSchema, updateSchema } from './api'
 import type { SchemaResource } from './types'
@@ -233,13 +233,14 @@ function Field({
   return (
     <div className="space-y-2.5">
       {htmlFor ? (
-        <label className="block text-sm font-medium text-[var(--color-text-primary)]" htmlFor={htmlFor}>
+        <label
+          className="block text-sm font-medium text-[var(--color-text-primary)]"
+          htmlFor={htmlFor}
+        >
           {label}
         </label>
       ) : (
-        <span className="block text-sm font-medium text-[var(--color-text-primary)]">
-          {label}
-        </span>
+        <span className="block text-sm font-medium text-[var(--color-text-primary)]">{label}</span>
       )}
       {children}
       {description ? (
@@ -495,7 +496,8 @@ export function SchemaFormDialog({
               ...(initialSchema && trimmedDisplayName !== initialSchema.display_name
                 ? { display_name: trimmedDisplayName }
                 : {}),
-              ...(initialSchema && JSON.stringify(builtFields.fields) !== JSON.stringify(initialSchema.fields)
+              ...(initialSchema &&
+              JSON.stringify(builtFields.fields) !== JSON.stringify(initialSchema.fields)
                 ? { fields: builtFields.fields }
                 : {}),
               schema_id: trimmedSchemaId,
@@ -633,11 +635,7 @@ export function SchemaFormDialog({
                     <p className="text-sm font-medium text-[var(--color-text-primary)]">
                       {t('schemas.form.fields.fields')}
                     </p>
-                    <Button
-                      onClick={appendRow}
-                      size="sm"
-                      variant="secondary"
-                    >
+                    <Button onClick={appendRow} size="sm" variant="secondary">
                       {t('schemas.actions.addField')}
                     </Button>
                   </div>
@@ -818,7 +816,9 @@ export function SchemaFormDialog({
                                         >
                                           <Select
                                             items={stateValueTypes.map((valueType) => ({
-                                              label: t(`schemas.form.valueTypes.${valueType}` as const),
+                                              label: t(
+                                                `schemas.form.valueTypes.${valueType}` as const,
+                                              ),
                                               value: valueType,
                                             }))}
                                             onValueChange={(value) => {
@@ -848,7 +848,9 @@ export function SchemaFormDialog({
                                                 defaultValue: event.target.value,
                                               }))
                                             }}
-                                            placeholder={t('schemas.form.placeholders.fieldDefault')}
+                                            placeholder={t(
+                                              'schemas.form.placeholders.fieldDefault',
+                                            )}
                                             value={row.defaultValue}
                                           />
                                         </Field>
@@ -866,7 +868,9 @@ export function SchemaFormDialog({
                                                 description: event.target.value,
                                               }))
                                             }}
-                                            placeholder={t('schemas.form.placeholders.fieldDescription')}
+                                            placeholder={t(
+                                              'schemas.form.placeholders.fieldDescription',
+                                            )}
                                             value={row.description}
                                           />
                                         </Field>

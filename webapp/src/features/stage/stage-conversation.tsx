@@ -74,11 +74,7 @@ function ThoughtBubble({
   )
 }
 
-export function TurnStatusBar({
-  status,
-}: {
-  status: TurnWorkerStatus | null
-}) {
+export function TurnStatusBar({ status }: { status: TurnWorkerStatus | null }) {
   if (!status) {
     return null
   }
@@ -92,7 +88,10 @@ export function TurnStatusBar({
       transition={{ duration: 0.22, ease: panelEase }}
     >
       <div className="inline-flex h-8 items-center gap-2 rounded-full border border-[var(--color-accent-gold-line)] bg-[color-mix(in_srgb,var(--color-bg-panel)_94%,transparent)] px-3.5 text-[0.82rem] text-[var(--color-text-secondary)] shadow-[0_10px_22px_rgba(0,0,0,0.12)] backdrop-blur-sm">
-        <FontAwesomeIcon className="animate-spin text-[0.68rem] text-[var(--color-accent-copper)]" icon={faSpinner} />
+        <FontAwesomeIcon
+          className="animate-spin text-[0.68rem] text-[var(--color-accent-copper)]"
+          icon={faSpinner}
+        />
         <span className="whitespace-nowrap">{status.label}</span>
       </div>
     </motion.div>
@@ -157,16 +156,22 @@ export function StageConversation({
           const previous = messages[index - 1]
           const next = messages[index + 1]
           const isActorMessage =
-            message.variant === 'dialogue' || message.variant === 'action' || message.variant === 'thought'
+            message.variant === 'dialogue' ||
+            message.variant === 'action' ||
+            message.variant === 'thought'
           const sameAsPrevious =
             isActorMessage &&
             previous &&
-            (previous.variant === 'dialogue' || previous.variant === 'action' || previous.variant === 'thought') &&
+            (previous.variant === 'dialogue' ||
+              previous.variant === 'action' ||
+              previous.variant === 'thought') &&
             previous.speakerId === message.speakerId
           const sameAsNext =
             isActorMessage &&
             next &&
-            (next.variant === 'dialogue' || next.variant === 'action' || next.variant === 'thought') &&
+            (next.variant === 'dialogue' ||
+              next.variant === 'action' ||
+              next.variant === 'thought') &&
             next.speakerId === message.speakerId
           const coverUrl = characterCovers[message.speakerId]
           const character = characterMap.get(message.speakerId)
@@ -179,7 +184,9 @@ export function StageConversation({
                 exit={{ opacity: 0, y: -8 }}
                 initial={{ opacity: 0, y: 10 }}
                 key={message.id}
-                transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }}
+                transition={
+                  prefersReducedMotion ? { duration: 0 } : { duration: 0.22, ease: panelEase }
+                }
               >
                 <div className="max-w-[min(72%,30rem)] rounded-[1.25rem] border border-[var(--color-border-subtle)] bg-[color-mix(in_srgb,var(--color-bg-elevated)_56%,transparent)] px-4 py-3 text-center text-sm leading-7 text-[var(--color-text-secondary)]">
                   {message.text}
@@ -189,9 +196,12 @@ export function StageConversation({
           }
 
           if (message.variant === 'player') {
-            const isEditing = Boolean(message.messageId) && editingPlayerMessageId === message.messageId
-            const isDeleting = Boolean(message.messageId) && deletingPlayerMessageId === message.messageId
-            const isSaving = Boolean(message.messageId) && savingPlayerMessageId === message.messageId
+            const isEditing =
+              Boolean(message.messageId) && editingPlayerMessageId === message.messageId
+            const isDeleting =
+              Boolean(message.messageId) && deletingPlayerMessageId === message.messageId
+            const isSaving =
+              Boolean(message.messageId) && savingPlayerMessageId === message.messageId
             const canMutate = Boolean(message.messageId)
 
             return (
@@ -201,7 +211,9 @@ export function StageConversation({
                 exit={{ opacity: 0, x: 10, y: -6 }}
                 initial={{ opacity: 0, x: 16, y: 10 }}
                 key={message.id}
-                transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }}
+                transition={
+                  prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }
+                }
               >
                 <div className="max-w-[min(76%,30rem)] space-y-2">
                   {isEditing ? (
@@ -277,11 +289,16 @@ export function StageConversation({
               exit={{ opacity: 0, x: -10, y: -6 }}
               initial={{ opacity: 0, x: -14, y: 10 }}
               key={message.id}
-              transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }}
+              transition={
+                prefersReducedMotion ? { duration: 0 } : { duration: 0.24, ease: panelEase }
+              }
             >
               <div className="w-10 shrink-0">
                 {!sameAsPrevious ? (
-                  <CharacterAvatar coverUrl={coverUrl} name={character?.name ?? message.speakerName} />
+                  <CharacterAvatar
+                    coverUrl={coverUrl}
+                    name={character?.name ?? message.speakerName}
+                  />
                 ) : null}
               </div>
               <div className={cn('flex min-w-0 flex-col gap-2', sameAsNext ? 'pb-1' : '')}>

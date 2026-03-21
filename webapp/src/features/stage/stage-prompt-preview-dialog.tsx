@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { faCopy } from '@fortawesome/free-solid-svg-icons/faCopy'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PromptViewer } from '../../components/prompt-viewer'
@@ -21,16 +21,12 @@ import { Select } from '../../components/ui/select'
 import { Switch } from '../../components/ui/switch'
 import { useToastNotice } from '../../components/ui/toast-context'
 import { getPreset, previewPresetRuntime } from '../apis/api'
-import type {
-  AgentRoleKey,
-  PresetDetail,
-  PresetPromptPreview,
-} from '../apis/types'
+import type { AgentRoleKey, PresetDetail, PresetPromptPreview } from '../apis/types'
+import { createPresetRoleLabels, getPromptModuleLabel } from '../presets/preset-labels'
 import {
   buildPromptPreviewViewerMessages,
   getPromptPreviewRoleLabel,
 } from '../presets/prompt-preview-shared'
-import { createPresetRoleLabels, getPromptModuleLabel } from '../presets/preset-labels'
 import type { StageCopy } from './copy'
 
 type Notice = {
@@ -93,8 +89,7 @@ export function StagePromptPreviewDialog({
 }: StagePromptPreviewDialogProps) {
   const { t } = useTranslation()
   const translate = useCallback(
-    (key: string, options?: Record<string, unknown>) =>
-      String(t(key as never, options as never)),
+    (key: string, options?: Record<string, unknown>) => String(t(key as never, options as never)),
     [t],
   )
   const previewAbortRef = useRef<AbortController | null>(null)
@@ -136,7 +131,7 @@ export function StagePromptPreviewDialog({
   const selectedModule = useMemo(
     () =>
       selectedModuleId
-        ? agentModules.find((module) => module.module_id === selectedModuleId) ?? null
+        ? (agentModules.find((module) => module.module_id === selectedModuleId) ?? null)
         : null,
     [agentModules, selectedModuleId],
   )
@@ -312,9 +307,7 @@ export function StagePromptPreviewDialog({
                 </Badge>
               </div>
             ) : null}
-            <DialogDescription>
-              {copy.settings.bindings.preview.description}
-            </DialogDescription>
+            <DialogDescription>{copy.settings.bindings.preview.description}</DialogDescription>
           </div>
         </DialogHeader>
 
@@ -330,7 +323,10 @@ export function StagePromptPreviewDialog({
               <div className="space-y-4">
                 <div className={`grid gap-4 ${agent === 'actor' ? 'grid-cols-3' : 'grid-cols-2'}`}>
                   <div className="min-w-0 space-y-2">
-                    <label className="text-xs text-[var(--color-text-muted)]" htmlFor="stage-preview-agent">
+                    <label
+                      className="text-xs text-[var(--color-text-muted)]"
+                      htmlFor="stage-preview-agent"
+                    >
                       {translate('presetsPage.preview.fields.agent')}
                     </label>
                     <Select
@@ -344,7 +340,10 @@ export function StagePromptPreviewDialog({
                   </div>
 
                   <div className="min-w-0 space-y-2">
-                    <label className="text-xs text-[var(--color-text-muted)]" htmlFor="stage-preview-module">
+                    <label
+                      className="text-xs text-[var(--color-text-muted)]"
+                      htmlFor="stage-preview-module"
+                    >
                       {translate('presetsPage.preview.fields.module')}
                     </label>
                     <Select
@@ -360,7 +359,10 @@ export function StagePromptPreviewDialog({
 
                   {agent === 'actor' ? (
                     <div className="min-w-0 space-y-2">
-                      <label className="text-xs text-[var(--color-text-muted)]" htmlFor="stage-preview-character">
+                      <label
+                        className="text-xs text-[var(--color-text-muted)]"
+                        htmlFor="stage-preview-character"
+                      >
                         {translate('presetsPage.preview.fields.character')}
                       </label>
                       <Select
@@ -402,7 +404,11 @@ export function StagePromptPreviewDialog({
                   ) : null}
                   {selectedModule ? (
                     <Badge className="normal-case" variant="gold">
-                      {getPromptModuleLabel(translate, selectedModule.module_id, selectedModule.display_name)}
+                      {getPromptModuleLabel(
+                        translate,
+                        selectedModule.module_id,
+                        selectedModule.display_name,
+                      )}
                     </Badge>
                   ) : null}
                 </div>
@@ -484,9 +490,7 @@ export function StagePromptPreviewDialog({
 
         <DialogFooter className="justify-start">
           <DialogClose asChild>
-            <Button variant="secondary">
-              {translate('presetsPage.preview.actions.close')}
-            </Button>
+            <Button variant="secondary">{translate('presetsPage.preview.actions.close')}</Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

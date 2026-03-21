@@ -120,8 +120,7 @@ const en = {
       create: 'Create Session',
       creating: 'Creating...',
       displayName: 'Session Name',
-      emptyApis:
-        'No APIs are available yet, so a custom session config cannot be created.',
+      emptyApis: 'No APIs are available yet, so a custom session config cannot be created.',
       emptyPlayerProfiles:
         'No player profiles are available yet. You can still create a blank session.',
       emptyStories: 'No stories are available yet. Generate one in the workspace first.',
@@ -343,7 +342,8 @@ const en = {
     },
     apiDeleteDialog: {
       conflict: 'This API is still referenced by an API group.',
-      conflictMany: 'Some selected APIs are still referenced by API groups and could not be deleted.',
+      conflictMany:
+        'Some selected APIs are still referenced by API groups and could not be deleted.',
       message: 'Delete {{id}}? This action cannot be undone.',
       messageMany: 'Delete the selected {{count}} APIs? This action cannot be undone.',
       title: 'Delete API',
@@ -422,7 +422,8 @@ const en = {
     },
     deleteDialog: {
       conflict: 'This API group is still referenced by a draft or session.',
-      conflictMany: 'Some selected API groups are still referenced by drafts or sessions and could not be deleted.',
+      conflictMany:
+        'Some selected API groups are still referenced by drafts or sessions and could not be deleted.',
       message: 'Delete {{id}}? This action cannot be undone.',
       messageMany: 'Delete the selected {{count}} API groups? This action cannot be undone.',
       title: 'Delete API Group',
@@ -440,7 +441,8 @@ const en = {
       deleteFailed: 'Failed to delete the API group.',
       deleted: 'API group {{id}} deleted.',
       deletedMany: '{{count}} API groups deleted.',
-      deletedPartial: 'API groups were partially deleted. Success: {{success}}; Failed: {{failed}}.',
+      deletedPartial:
+        'API groups were partially deleted. Success: {{success}}; Failed: {{failed}}.',
       detailsLoadFailed: 'Failed to load the API group details.',
       updated: 'API group {{id}} updated.',
     },
@@ -531,14 +533,16 @@ const en = {
     },
     deleteDialog: {
       conflict: 'This lorebook is still referenced by a story resource.',
-      conflictMany: 'Some selected lorebooks are still referenced by story resources and could not be deleted.',
+      conflictMany:
+        'Some selected lorebooks are still referenced by story resources and could not be deleted.',
       message: 'Delete {{id}}? This action cannot be undone.',
       messageMany: 'Delete the selected {{count}} lorebooks? This action cannot be undone.',
       title: 'Delete Lorebook',
       titleMany: 'Delete Lorebooks',
     },
     empty: {
-      description: 'Collect reusable world facts here first, then wire them into story resources later.',
+      description:
+        'Collect reusable world facts here first, then wire them into story resources later.',
       title: 'No lorebooks yet.',
     },
     feedback: {
@@ -552,7 +556,8 @@ const en = {
       imported: '{{count}} lorebooks imported.',
       importFailed: 'Failed to import lorebooks.',
       importInvalid: 'The selected file is not a valid lorebook bundle.',
-      importedPartial: 'Lorebooks were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
+      importedPartial:
+        'Lorebooks were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
       importSkipped: '{{count}} lorebooks already exist and were skipped.',
       loadFailed: 'Failed to load lorebooks.',
       loadLorebookFailed: 'Failed to load lorebook details.',
@@ -563,7 +568,8 @@ const en = {
     },
     form: {
       createTitle: 'New Lorebook',
-      emptyEntries: 'This lorebook does not have any entries yet. Save the shell first, then add lore later.',
+      emptyEntries:
+        'This lorebook does not have any entries yet. Save the shell first, then add lore later.',
       editTitle: 'Edit Lorebook',
       entryTitle: 'Entry {{index}}',
       errors: {
@@ -591,7 +597,8 @@ const en = {
       },
       hints: {
         keywords: 'Separate keywords with commas, Chinese commas, or line breaks.',
-        readonlyBasics: 'The backend cannot update lorebook metadata yet, so this dialog only edits entries.',
+        readonlyBasics:
+          'The backend cannot update lorebook metadata yet, so this dialog only edits entries.',
       },
       placeholders: {
         content: 'Write the concrete lore, limits, and background for this entry.',
@@ -673,7 +680,8 @@ const en = {
     },
     deleteDialog: {
       conflict: 'This preset is still referenced by a draft or session.',
-      conflictMany: 'Some selected presets are still referenced by drafts or sessions and could not be deleted.',
+      conflictMany:
+        'Some selected presets are still referenced by drafts or sessions and could not be deleted.',
       message: 'Delete {{id}}? This action cannot be undone.',
       messageMany: 'Delete the selected {{count}} presets? This action cannot be undone.',
       title: 'Delete Preset',
@@ -711,7 +719,8 @@ const en = {
       imported: '{{count}} presets imported.',
       importFailed: 'Failed to import presets.',
       importInvalid: 'The selected file is not a valid preset bundle.',
-      importedPartial: 'Presets were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
+      importedPartial:
+        'Presets were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
       importSkipped: '{{count}} presets already exist and were skipped.',
       loadListFailed: 'Failed to load presets.',
       loadPresetFailed: 'Failed to load preset details.',
@@ -724,7 +733,8 @@ const en = {
     form: {
       createTitle: 'New Preset',
       emptyModuleEntries: 'No entries in this module yet.',
-      emptyModuleEntriesCreate: 'No entries in this module yet. Add the first custom entry when needed.',
+      emptyModuleEntriesCreate:
+        'No entries in this module yet. Add the first custom entry when needed.',
       editTitle: 'Edit Preset',
       errors: {
         customEntryTextRequired: '{{role}} entry {{index}} in {{module}} needs text.',
@@ -800,7 +810,8 @@ const en = {
         draftInit: 'Draft Init',
         graph: 'Graph',
       },
-      description: 'Preview the compiled prompt template from the saved preset version without runtime context.',
+      description:
+        'Preview the compiled prompt template from the saved preset version without runtime context.',
       empty: 'Generate a preview to inspect the compiled prompt.',
       feedback: {
         copied: 'Prompt copied.',
@@ -810,7 +821,8 @@ const en = {
         loadDraftsFailed: 'Failed to load drafts for preview.',
         loadResourcesFailed: 'Failed to load story resources for preview.',
         loadSessionsFailed: 'Failed to load sessions for preview.',
-        saveModuleBeforePreview: 'This module is not saved in the preset yet. Save first, then preview it.',
+        saveModuleBeforePreview:
+          'This module is not saved in the preset yet. Save first, then preview it.',
       },
       fields: {
         actorPurpose: 'Actor Purpose',
@@ -921,7 +933,8 @@ const en = {
     },
     presets: {
       default: {
-        description: 'Provides one ready-to-use default stage preset without any custom prompt entries.',
+        description:
+          'Provides one ready-to-use default stage preset without any custom prompt entries.',
         title: 'Stage Default',
       },
     },
@@ -986,7 +999,8 @@ const en = {
       imported: '{{count}} schemas imported.',
       importFailed: 'Failed to import schemas.',
       importInvalid: 'The selected file is not a valid schema bundle.',
-      importedPartial: 'Schemas were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
+      importedPartial:
+        'Schemas were partially imported. Success: {{success}}; Skipped: {{skipped}}; Failed: {{failed}}.',
       importSkipped: '{{count}} schemas already exist and were skipped.',
       loadFailed: 'Failed to load schemas.',
       loadSchemaFailed: 'Failed to load schema details.',
@@ -1151,7 +1165,8 @@ const en = {
       deleteFailed: 'Failed to delete the player profile.',
       deleted: '{{name}} deleted.',
       deletedMany: '{{count}} player profiles deleted.',
-      deletedPartial: 'Player profiles were partially deleted. Success: {{success}}; Failed: {{failed}}.',
+      deletedPartial:
+        'Player profiles were partially deleted. Success: {{success}}; Failed: {{failed}}.',
       loadFailed: 'Failed to load player profile details.',
       loadListFailed: 'Failed to load player profiles.',
       sampleCreated: 'Sample player profile added: {{name}}.',
@@ -1230,14 +1245,16 @@ const en = {
     },
     deleteDialog: {
       conflict: 'This story resource is still referenced by a story and cannot be deleted.',
-      conflictMany: 'Some selected story resources are still referenced by stories and could not be deleted.',
+      conflictMany:
+        'Some selected story resources are still referenced by stories and could not be deleted.',
       message: 'Delete {{id}}? This story resource cannot be recovered.',
       messageMany: 'Delete the selected {{count}} story resources? They cannot be recovered.',
       title: 'Delete Story Resource',
       titleMany: 'Delete Story Resources',
     },
     empty: {
-      description: 'Start with one story resource, then decide whether Planner should refine its story input.',
+      description:
+        'Start with one story resource, then decide whether Planner should refine its story input.',
       title: 'No story resources yet.',
     },
     feedback: {
@@ -1245,7 +1262,8 @@ const en = {
       deleteFailed: 'Failed to delete the story resource.',
       deleted: 'Story resource {{id}} deleted.',
       deletedMany: '{{count}} story resources deleted.',
-      deletedPartial: 'Story resources were partially deleted. Success: {{success}}; Failed: {{failed}}.',
+      deletedPartial:
+        'Story resources were partially deleted. Success: {{success}}; Failed: {{failed}}.',
       generateFailed: 'Failed to refine the story input.',
       generated: 'Story input {{id}} refined.',
       loadFailed: 'Failed to load story resources.',
@@ -1258,8 +1276,10 @@ const en = {
       createTitle: 'New Story Resource',
       createTransitionTitle: 'Preparing Story Resource',
       editTitle: 'Edit Story Resource',
-      emptyCharacters: 'No characters are available yet. Create or import at least one character first.',
-      emptyLorebooks: 'No lorebooks are available yet. Prepare some world context in Lorebooks, then come back and bind it here.',
+      emptyCharacters:
+        'No characters are available yet. Create or import at least one character first.',
+      emptyLorebooks:
+        'No lorebooks are available yet. Prepare some world context in Lorebooks, then come back and bind it here.',
       emptyLorebookSelection: 'Do not bind any lorebooks yet.',
       emptySelection: 'Choose at least one character.',
       errors: {
@@ -1272,9 +1292,12 @@ const en = {
         submitFailed: 'Failed to save the story input.',
       },
       fieldDescriptions: {
-        lorebooks: 'These lorebooks are injected into Planner and Architect during generation as stable background context and keyword-matched entries.',
-        plannedStory: 'If you let Planner refine the input, the refined version is stored here. Architect prefers this version when it exists.',
-        storyConcept: 'This is the raw story input. Even after Planner refines it, this remains the starting point of the same input chain.',
+        lorebooks:
+          'These lorebooks are injected into Planner and Architect during generation as stable background context and keyword-matched entries.',
+        plannedStory:
+          'If you let Planner refine the input, the refined version is stored here. Architect prefers this version when it exists.',
+        storyConcept:
+          'This is the raw story input. Even after Planner refines it, this remains the starting point of the same input chain.',
       },
       fields: {
         apiGroupId: 'API Group',
@@ -1300,18 +1323,21 @@ const en = {
       openPresets: 'Open Presets',
       placeholders: {
         apiGroupId: 'Select the API Group for this refinement',
-        plannedStory: 'If Planner refines this input, the refined version will appear here and remain editable.',
+        plannedStory:
+          'If Planner refines this input, the refined version will appear here and remain editable.',
         presetId: 'Select the preset for this refinement',
         schemaSeedClear: 'Do not use a schema',
         schemaSeed: 'Choose an optional schema',
-        storyConcept: 'Write the conflict, cast, and opening situation here. Planner will refine this same input instead of creating a different artifact.',
+        storyConcept:
+          'Write the conflict, cast, and opening situation here. Planner will refine this same input instead of creating a different artifact.',
       },
     },
     filters: {
       all: 'All Folders',
       charactersEmpty: 'No characters match the current filters.',
       charactersTitle: 'Available Characters',
-      folderDescription: 'Narrow the cast by folder first, then choose the characters this resource should use.',
+      folderDescription:
+        'Narrow the cast by folder first, then choose the characters this resource should use.',
       folderEmpty: 'No folders match the current filter.',
       folderSearchPlaceholder: 'Filter folder list',
       folderTitle: 'Folder Filter',
@@ -1323,13 +1349,18 @@ const en = {
     createWizard: {
       title: 'New Story Resource',
       descriptions: {
-        characters: 'Choose the cast for this story input in a dedicated step, with folder narrowing and full-text character search.',
-        concept: 'Start with the raw story input. Planner and Architect both continue from this same input chain.',
-        planner: 'Decide whether to keep only the raw input for now or hand it to Planner for a cleaner editable version.',
-        seeds: 'If you already have player or world schemas, or lorebooks with background context, add them here as optional references.',
+        characters:
+          'Choose the cast for this story input in a dedicated step, with folder narrowing and full-text character search.',
+        concept:
+          'Start with the raw story input. Planner and Architect both continue from this same input chain.',
+        planner:
+          'Decide whether to keep only the raw input for now or hand it to Planner for a cleaner editable version.',
+        seeds:
+          'If you already have player or world schemas, or lorebooks with background context, add them here as optional references.',
       },
       bindings: {
-        description: 'Choose which API Group and preset Planner should use for this refinement run.',
+        description:
+          'Choose which API Group and preset Planner should use for this refinement run.',
         missingApiGroups:
           'No API Groups are available yet. Prepare one in API Management before asking Planner to refine this input.',
         missingPresets:
@@ -1338,7 +1369,8 @@ const en = {
         openPresets: 'Open Presets',
         title: 'Refinement Execution',
       },
-      flowDescription: 'These are not two different resources. They are two stages of the same story input before and after Planner.',
+      flowDescription:
+        'These are not two different resources. They are two stages of the same story input before and after Planner.',
       headings: {
         characters: 'Choose the cast for this story input',
         concept: 'Write the raw story input',
@@ -1348,23 +1380,28 @@ const en = {
       loading: {
         badge: 'Planner Refining Input',
         elapsed: 'Elapsed',
-        generating: 'Planner is refining this raw story input with your cast and selected schemas into a more editable version.',
-        preparing: 'The raw story input is being saved first, then handed over to Planner. This can take a moment.',
+        generating:
+          'Planner is refining this raw story input with your cast and selected schemas into a more editable version.',
+        preparing:
+          'The raw story input is being saved first, then handed over to Planner. This can take a moment.',
         title: 'Refining this story input',
       },
       noSchemas: 'No schemas are available yet. You can skip this step for now.',
       plannerOptions: {
         generate: {
-          description: 'Create the input and immediately ask Planner to refine it into a more editable version.',
+          description:
+            'Create the input and immediately ask Planner to refine it into a more editable version.',
           title: 'Create and refine with Planner',
         },
         skip: {
-          description: 'Save the raw input now and come back later to edit it directly or ask Planner to refine it.',
+          description:
+            'Save the raw input now and come back later to edit it directly or ask Planner to refine it.',
           title: 'Save the raw input only',
         },
       },
       seedHints: {
-        lorebooks: 'Optional. Provide stable background setting and keyword-triggered worldbook entries to Planner and Architect.',
+        lorebooks:
+          'Optional. Provide stable background setting and keyword-triggered worldbook entries to Planner and Architect.',
         player: 'Optional. Use a schema as the starting structure for player state.',
         world: 'Optional. Use a schema as the starting structure for world state.',
       },
@@ -1377,13 +1414,15 @@ const en = {
     },
     editPage: {
       backToList: 'Back to Story Resources',
-      description: 'Edit the input, cast, schema seeds, and refinement bindings inside one tabbed dialog.',
+      description:
+        'Edit the input, cast, schema seeds, and refinement bindings inside one tabbed dialog.',
       loadErrorTitle: 'This story resource cannot be opened right now.',
       metrics: {
         characters: 'Characters',
         lorebooks: 'Lorebooks',
       },
-      railDescription: 'Edit one story resource directly and adjust its input, cast, and refinement bindings separately.',
+      railDescription:
+        'Edit one story resource directly and adjust its input, cast, and refinement bindings separately.',
       tabs: {
         basic: 'Basic',
         characters: 'Characters',
@@ -1395,10 +1434,12 @@ const en = {
     },
     inputFlow: {
       badge: 'One Architect Input Chain',
-      description: 'Architect ultimately reads one story input chain. Planner only refines that input into a cleaner editable version.',
+      description:
+        'Architect ultimately reads one story input chain. Planner only refines that input into a cleaner editable version.',
       rawDescription: 'Your original conflict, cast dynamics, and opening situation.',
       rawLabel: 'Raw Story Input',
-      refinedDescription: 'Planner refines the same input into an editable version. Architect prefers this version when it exists.',
+      refinedDescription:
+        'Planner refines the same input into an editable version. Architect prefers this version when it exists.',
       refinedLabel: 'Planner Refined Input',
     },
     list: {
@@ -1413,7 +1454,8 @@ const en = {
       total: 'Resource Count',
     },
     rail: {
-      description: 'Manage the story resources Architect reads from. Raw input and Planner refinement both live inside the same resource.',
+      description:
+        'Manage the story resources Architect reads from. Raw input and Planner refinement both live inside the same resource.',
     },
     planDialog: {
       generatingDescription: 'Planner is refining the story input for resource {{id}}.',
@@ -1434,9 +1476,11 @@ const en = {
       create: 'Generate Story',
       createDraft: 'Start Draft',
       createFromResource: 'Generate from Resource',
-      createFromResourceDescription: 'Run the draft-generation flow and let Architect shape the graph.',
+      createFromResourceDescription:
+        'Run the draft-generation flow and let Architect shape the graph.',
       createManual: 'Create Manually',
-      createManualDescription: 'Fill in the story metadata yourself and draw the full graph directly.',
+      createManualDescription:
+        'Fill in the story metadata yourself and draw the full graph directly.',
       createMenu: 'Create Story',
       continueDraft: 'Continue',
       creating: 'Generating...',
@@ -1464,7 +1508,8 @@ const en = {
       empty:
         'No common variables yet. Add the world, player, or cast variables you want to keep in view.',
       errors: {
-        characterInvalid: 'Common variable {{index}} points to a character outside this story resource.',
+        characterInvalid:
+          'Common variable {{index}} points to a character outside this story resource.',
         characterRequired: 'Choose a character for common variable {{index}}.',
         displayNameRequired: 'Common variable {{index}} still needs a display name.',
         keyRequired: 'Common variable {{index}} still needs a variable key.',
@@ -1479,7 +1524,8 @@ const en = {
       itemSubtitle: 'Used for pinned Stage-side visibility and quick checks.',
       itemTitle: 'Common Variable {{index}}',
       legacyKey: '{{key}} · legacy field',
-      pinnedDescription: 'Disabled entries are still saved, but they are not treated as pinned variables.',
+      pinnedDescription:
+        'Disabled entries are still saved, but they are not treated as pinned variables.',
       pinnedTitle: 'Always visible',
       placeholders: {
         characterId: 'Select a character',
@@ -1548,12 +1594,15 @@ const en = {
         graph: 'Draw the Graph',
       },
       graphCard: {
-        default: 'The default opening graph is still in use. Open the separate graph dialog only when you need to change it.',
-        edited: 'This graph has already been edited. Reopen the separate graph dialog to keep adjusting nodes and transitions.',
+        default:
+          'The default opening graph is still in use. Open the separate graph dialog only when you need to change it.',
+        edited:
+          'This graph has already been edited. Reopen the separate graph dialog to keep adjusting nodes and transitions.',
         title: 'Story Graph',
       },
       graphDialog: {
-        description: 'Changes here stay attached to the current create form and will be submitted with the new story.',
+        description:
+          'Changes here stay attached to the current create form and will be submitted with the new story.',
         footer: 'Closing this dialog keeps the current edits. No separate save step is needed.',
         title: 'Edit Story Graph',
       },
@@ -1622,7 +1671,8 @@ const en = {
     },
     deleteDialog: {
       conflict: 'This story is still referenced by a session.',
-      conflictMany: 'Some selected stories are still referenced by sessions and could not be deleted.',
+      conflictMany:
+        'Some selected stories are still referenced by sessions and could not be deleted.',
       message: 'Delete {{id}}? This story cannot be recovered.',
       messageMany: 'Delete the selected {{count}} stories? They cannot be recovered.',
       title: 'Delete Story',
@@ -1663,12 +1713,14 @@ const en = {
       emptyCharacters: 'No cast linked',
       emptyTransitions: 'This node has no transitions yet.',
       enableCondition: 'Add Condition',
-      footerHint: 'Node positions stay local to this editing session; only graph data will be saved.',
+      footerHint:
+        'Node positions stay local to this editing session; only graph data will be saved.',
       finalGraph: 'Final Graph',
       fullscreen: 'Fullscreen',
       goal: 'Goal',
       hint: 'Drag to pan. Use Ctrl/Cmd with plus, minus, or 0 to zoom and reset.',
-      inspectorEmptyDescription: 'Select a node on the left to edit its text, cast, and transitions here.',
+      inspectorEmptyDescription:
+        'Select a node on the left to edit its text, cast, and transitions here.',
       inspectorEmptyTitle: 'Select a node first',
       nodeId: 'Node ID',
       nodeSection: 'Node',
@@ -1688,7 +1740,8 @@ const en = {
       },
       onEnterUpdateValue: 'Value (JSON)',
       onEnterUpdateValuePlaceholder: 'For example "ready", 3, true, or {"flag":true}',
-      onEnterUpdatesHint: 'These updates run whenever the flow enters this node and are validated before save.',
+      onEnterUpdatesHint:
+        'These updates run whenever the flow enters this node and are validated before save.',
       onEnterUpdatesCount: '{{count}} on-enter updates',
       onEnterUpdatesUnsupported:
         'This node contains an on-enter op that the editor cannot modify yet: {{type}}. Clean it up before saving.',
@@ -1743,7 +1796,8 @@ const en = {
       },
     },
     empty: {
-      description: 'Generate from story resources, or create a story manually and draw its graph yourself.',
+      description:
+        'Generate from story resources, or create a story manually and draw its graph yourself.',
       title: 'No stories yet.',
     },
     feedback: {
@@ -1765,7 +1819,8 @@ const en = {
         'No API Groups are available yet. Prepare one in API Management before generating a story.',
       emptyPresets:
         'No presets are available yet. Create at least one preset before generating a story.',
-      emptyResources: 'No story resources are available yet. Prepare one in Story Resources first, then come back here.',
+      emptyResources:
+        'No story resources are available yet. Prepare one in Story Resources first, then come back here.',
       errors: {
         apiGroupRequired: 'Choose an API Group first.',
         commonVariablesInvalid: 'Fix the required common-variable fields first.',
@@ -1801,8 +1856,10 @@ const en = {
       badge: 'Generating Draft',
       draftProgress: 'The story draft is advancing through section {{current}} of {{total}}.',
       draftProgressUnknown: 'The story draft is still advancing. Please wait a moment.',
-      description: 'Architect is shaping the selected story resource into a full story structure and state graph. This can take a moment.',
-      descriptionWithResource: 'Architect is shaping story resource {{id}} into a full story structure and state graph. This can take a moment.',
+      description:
+        'Architect is shaping the selected story resource into a full story structure and state graph. This can take a moment.',
+      descriptionWithResource:
+        'Architect is shaping story resource {{id}} into a full story structure and state graph. This can take a moment.',
       elapsed: 'Elapsed',
       finalizing: 'Finalizing the current draft into a complete story.',
       progressLabel: 'Progress',
@@ -1978,18 +2035,15 @@ const en = {
     feedback: {
       coverAttachFailed: 'The cover could not be attached.',
       created: '{{name}} is now in the library.',
-      createdWithCoverWarning:
-        '{{name}} was created, but the cover attachment needs another try.',
+      createdWithCoverWarning: '{{name}} was created, but the cover attachment needs another try.',
       deleteFailed: 'Failed to delete the selected characters.',
       demoSchemaMissing: 'The demo cast requires the actor schema preset.',
       deleted: '{{name}} was deleted.',
       deletedMany: '{{count}} characters were deleted.',
-      deletedPartial:
-        '{{success}} characters were deleted, but {{failed}} could not be removed.',
+      deletedPartial: '{{success}} characters were deleted, but {{failed}} could not be removed.',
       exportFailed: 'Failed to export the character card.',
       exported: '{{name}} was exported as .chr.',
-      exportNeedsCover:
-        '{{name}} needs a cover before it can be exported as .chr.',
+      exportNeedsCover: '{{name}} needs a cover before it can be exported as .chr.',
       imported: '{{name}} was imported into the library.',
       importFailed: 'Failed to import the character card.',
       invalidImportType: 'Only .chr character card files can be imported here.',
@@ -2011,8 +2065,7 @@ const en = {
         'Sample cast partially added. Created: {{created}}. Skipped: {{skipped}}.',
       samplesExist: 'The sample cast is already in the library.',
       updated: '{{name}} was updated.',
-      updatedWithCoverWarning:
-        '{{name}} was updated, but the cover replacement needs another try.',
+      updatedWithCoverWarning: '{{name}} was updated, but the cover replacement needs another try.',
     },
     rail: {
       description: 'Create, import, and export character cards from one place.',

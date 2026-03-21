@@ -1,9 +1,5 @@
 import { rpcRequest } from '../../lib/rpc'
-import type {
-  PlayerProfile,
-  PlayerProfileDeletedResult,
-  PlayerProfilesListedResult,
-} from './types'
+import type { PlayerProfile, PlayerProfileDeletedResult, PlayerProfilesListedResult } from './types'
 
 export async function listPlayerProfiles(signal?: AbortSignal) {
   const result = await rpcRequest<Record<string, never>, PlayerProfilesListedResult>(
