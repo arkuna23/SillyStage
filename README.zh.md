@@ -46,7 +46,7 @@ root = "./data"
 [frontend]
 enabled = true
 mount_path = "/"
-static_dir = "webapp/dist"
+static_dir = "webapp"
 ```
 
 优先级顺序：命令行参数 > 环境变量 > 配置文件 > 内置默认值。

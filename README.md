@@ -46,7 +46,7 @@ root = "./data"
 [frontend]
 enabled = true
 mount_path = "/"
-static_dir = "webapp/dist"
+static_dir = "webapp"
 ```
 
 Override precedence: CLI flags > environment variables > config file > built-in defaults.
