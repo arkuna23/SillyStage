@@ -66,4 +66,4 @@ pnpm build
 - API calls target root-scoped backend endpoints like `/rpc` and `/healthz`
 - During `pnpm dev`, Vite proxies `/rpc` and `/healthz` to `http://127.0.0.1:8080`
 
-Treat `ss-protocol` and the API docs under `../docs/zh/api/` and `../docs/en/api/` as the source of truth when the frontend starts consuming backend payloads.
+Treat `ss-protocol` and the API docs under `../website/docs/zh/api/` and `../website/docs/en/api/` as the source of truth when the frontend starts consuming backend payloads.

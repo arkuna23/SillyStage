@@ -1,0 +1,49 @@
+name: Website Check
+
+on:
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "website/**"
+      - ".github/workflows/website-check.yml"
+      - ".github/workflows/website-deploy.yml"
+
+  push:
+    branches:
+      - master
+    paths:
+      - "website/**"
+      - ".github/workflows/website-check.yml"
+      - ".github/workflows/website-deploy.yml"
+
+jobs:
+  website-check:
+    name: Check Website
+    runs-on: ubuntu-latest
+    env:
+      DOCS_BASE_PATH: /${{ github.event.repository.name }}/
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+
+      - name: Install dependencies
+        working-directory: website
+        run: pnpm install --frozen-lockfile
+
+      - name: Run website checks
+        working-directory: website
+        run: pnpm check

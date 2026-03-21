@@ -1,0 +1,29 @@
+{
+  "name": "sillystage-website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "rspress build",
+    "check": "pnpm lint && pnpm build",
+    "dev": "rspress dev",
+    "dev:host": "rspress dev --host 0.0.0.0",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "preview": "rspress preview",
+    "preview:host": "rspress preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@rspress/core": "^2.0.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.8",
+    "@types/node": "^22.8.1",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  }
+}

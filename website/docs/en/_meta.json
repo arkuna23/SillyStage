@@ -1,0 +1,18 @@
+[
+  "index",
+  {
+    "type": "dir-section-header",
+    "name": "start",
+    "label": "Start Here"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "guide",
+    "label": "Core Guides"
+  },
+  {
+    "type": "dir-section-header",
+    "name": "api",
+    "label": "API"
+  }
+]

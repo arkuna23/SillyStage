@@ -25,13 +25,15 @@ This repository is a Rust multi-crate monorepo. Keep responsibilities separated 
 ## Working Rules
 
 - Prefer adding tests under `tests/` instead of inline source tests unless there is a strong reason not to.
-- When protocol payloads change, update the docs under `docs/zh/api/` and `docs/en/api/`.
-- Keep frontend concerns out of the Rust crates. The future frontend lives under `webapp/`.
+- When protocol payloads change, update the docs under `website/docs/zh/api/` and `website/docs/en/api/`.
+- Keep frontend concerns out of the Rust crates. The application frontend lives under `webapp/`; the docs/blog website lives under `website/`.
 - If a task touches `webapp/`, follow `webapp/AGENTS.md` in addition to this file.
-- If a task touches the frontend, Node tooling, or `webapp/`, use `pnpm` as the package manager. Do not introduce `npm`/`yarn` workflows or their lockfiles.
+- If a task touches `website/`, follow `website/AGENTS.md` in addition to this file.
+- If a task touches frontend code, Node tooling, `webapp/`, or `website/`, use `pnpm` as the package manager. Do not introduce `npm`/`yarn` workflows or their lockfiles.
 
 ## Frontend Status
 
-- `webapp/` is currently a reserved folder for the future web frontend.
-- Do not initialize a frontend toolchain unless the task explicitly asks for it.
+- `webapp/` is the application frontend workspace.
+- `website/` is the standalone documentation and blog website workspace.
+- Do not initialize a new frontend toolchain unless the task explicitly asks for it.
 - The current HTTP entrypoints are `POST /rpc` and `GET /healthz`; the placeholder frontend route is mounted by `ss-app`.
