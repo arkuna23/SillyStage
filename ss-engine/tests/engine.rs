@@ -277,7 +277,22 @@ fn default_runtime_prompt_profiles_include_output_contracts() {
             .system_prompt
             .contains("\"type\":\"SetCharacterState\"")
     );
+    assert!(
+        keeper
+            .system_prompt
+            .contains("set one world/global state value")
+    );
+    assert!(
+        keeper
+            .system_prompt
+            .contains("replace the whole active cast list")
+    );
     assert!(keeper.system_prompt.contains("Always include \"ops\""));
+    assert!(
+        keeper
+            .system_prompt
+            .contains("Do not output any other StateOp type")
+    );
     assert!(
         keeper
             .system_prompt
@@ -352,7 +367,25 @@ fn default_architect_prompt_profiles_include_output_schemas() {
         profiles
             .graph
             .system_prompt
+            .contains("set one world/global state value")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("set one state value for a specific character")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
             .contains("Every returned NarrativeNode id must be unique within the current response")
+    );
+    assert!(
+        profiles
+            .graph
+            .system_prompt
+            .contains("Prefer stable snake_case node ids")
     );
     assert!(
         profiles
@@ -380,9 +413,16 @@ fn default_architect_prompt_profiles_include_output_schemas() {
             .contains("Returned node ids must all be new and unique within this response")
     );
     assert!(
-        profiles.draft_init.system_prompt.contains(
-            "All transition and transition_patches targets must use returned node ids only"
-        )
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("every transition.to and every transition_patches target must exactly match one id from this same returned nodes list")
+    );
+    assert!(
+        profiles
+            .draft_init
+            .system_prompt
+            .contains("If a target node is not present in returned nodes, do not output that transition yet")
     );
     assert!(profiles.draft_init.system_prompt.contains(
         "Do not point to future chunk nodes; add those links later with transition_patches"
@@ -404,7 +444,19 @@ fn default_architect_prompt_profiles_include_output_schemas() {
         profiles
             .draft_continue
             .system_prompt
-            .contains("All transition and transition_patches targets must use either GRAPH_SUMMARY node ids or returned node ids")
+            .contains("never return an existing GRAPH_SUMMARY node as a new node")
+    );
+    assert!(
+        profiles
+            .draft_continue
+            .system_prompt
+            .contains("If the next beat or scene already exists in GRAPH_SUMMARY, use that existing node id")
+    );
+    assert!(
+        profiles
+            .draft_continue
+            .system_prompt
+            .contains("every transition.to and every transition_patches target must exactly match either an existing GRAPH_SUMMARY node id or one of the node ids returned in this same response")
     );
     assert!(profiles.draft_continue.system_prompt.contains(
         "Do not point to future chunk nodes; add those links later with transition_patches"
@@ -417,12 +469,32 @@ fn default_architect_prompt_profiles_include_output_schemas() {
     assert!(
         profiles
             .repair_system_prompt
+            .contains("SetCurrentNode: move the runtime to a different current node")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("SetCharacterState: set one state value for a specific character")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
             .contains("do not return any node whose id already exists in GRAPH_SUMMARY")
     );
     assert!(
         profiles
             .repair_system_prompt
-            .contains("transition and transition_patches targets must use GRAPH_SUMMARY node ids or returned node ids only")
+            .contains("every transition.to and every transition_patches target must exactly match one returned node id from the same response")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("If a next beat or scene already exists in GRAPH_SUMMARY, use that existing node id")
+    );
+    assert!(
+        profiles
+            .repair_system_prompt
+            .contains("every transition.to and every transition_patches target must exactly match either a GRAPH_SUMMARY node id or a returned node id from the same response")
     );
     assert!(profiles.repair_system_prompt.contains(
         "Remove links to future chunk nodes; later chunks can add them via transition_patches"

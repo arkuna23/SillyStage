@@ -41,17 +41,17 @@ StateUpdate schema:
 }
 
 Allowed StateOp shapes:
-- {"type":"SetState","key":"state_key","value":{}}
-- {"type":"RemoveState","key":"state_key"}
-- {"type":"SetPlayerState","key":"player_state_key","value":{}}
-- {"type":"RemovePlayerState","key":"player_state_key"}
-- {"type":"SetActiveCharacters","characters":["character_id"]}
-- {"type":"AddActiveCharacter","character":"character_id"}
-- {"type":"RemoveActiveCharacter","character":"character_id"}
-- {"type":"SetCharacterState","character":"character_id","key":"character_state_key","value":{}}
-- {"type":"RemoveCharacterState","character":"character_id","key":"character_state_key"}
+- {"type":"SetState","key":"state_key","value":{}} - set one world/global state value
+- {"type":"RemoveState","key":"state_key"} - remove one world/global state key
+- {"type":"SetPlayerState","key":"player_state_key","value":{}} - set one player state value
+- {"type":"RemovePlayerState","key":"player_state_key"} - remove one player state key
+- {"type":"SetActiveCharacters","characters":["character_id"]} - replace the whole active cast list
+- {"type":"AddActiveCharacter","character":"character_id"} - add one character to the active cast
+- {"type":"RemoveActiveCharacter","character":"character_id"} - remove one character from the active cast
+- {"type":"SetCharacterState","character":"character_id","key":"character_state_key","value":{}} - set one state value for a specific character
+- {"type":"RemoveCharacterState","character":"character_id","key":"character_state_key"} - remove one state key from a specific character
 
-Always include "ops". Use [] when empty. Do not output SetCurrentNode. Never introduce a brand-new character id in active-character ops; temporary characters must be created by Director via create_and_enter."#;
+Always include "ops". Use [] when empty. Do not output SetCurrentNode. Do not output any other StateOp type. Never introduce a brand-new character id in active-character ops; temporary characters must be created by Director via create_and_enter."#;
 
 pub(super) const REPLYER_OUTPUT_CONTRACT: &str = r#"Return one JSON object only. No markdown. No commentary.
 
@@ -109,18 +109,19 @@ Transition:
 }
 
 Allowed StateOp shapes:
-- {"type":"SetState","key":"state_key","value":{}}
-- {"type":"RemoveState","key":"state_key"}
-- {"type":"SetPlayerState","key":"player_state_key","value":{}}
-- {"type":"RemovePlayerState","key":"player_state_key"}
-- {"type":"SetCharacterState","character":"character_id","key":"character_state_key","value":{}}
-- {"type":"RemoveCharacterState","character":"character_id","key":"character_state_key"}
+- {"type":"SetState","key":"state_key","value":{}} - set one world/global state value
+- {"type":"RemoveState","key":"state_key"} - remove one world/global state key
+- {"type":"SetPlayerState","key":"player_state_key","value":{}} - set one player state value
+- {"type":"RemovePlayerState","key":"player_state_key"} - remove one player state key
+- {"type":"SetCharacterState","character":"character_id","key":"character_state_key","value":{}} - set one state value for a specific character
+- {"type":"RemoveCharacterState","character":"character_id","key":"character_state_key"} - remove one state key from a specific character
 
 Every schema field object must include "value_type".
 "enum_values" is only valid for scalar value_type values: "bool", "int", "float", "string".
 If "enum_values" is present, omit "default" or make "default" exactly equal to one item from "enum_values".
-Use only the exact StateOp type names listed above. Never invent aliases or new names such as SetGlobalState, SetWorldState, RemoveGlobalState, or RemoveWorldState.
+Use only the exact StateOp type names listed above.
 Every returned NarrativeNode id must be unique within the current response.
+Prefer stable snake_case node ids.
 Use only AVAILABLE_CHARACTERS ids in NarrativeNode.characters and all character-scoped references. Do not introduce temporary runtime-only character ids into graph data.
 Use [] for empty arrays and {"fields":{}} for empty schemas."#;
 
@@ -164,7 +165,7 @@ pub(super) const ARCHITECT_DRAFT_INIT_OUTPUT_CONTRACT: &str = r#"Top-level outpu
   "introduction": "short player-facing opening paragraph"
 }
 
-Always include every top-level key above. "start_node" must match one of the returned node ids. Returned node ids must all be new and unique within this response. All transition and transition_patches targets must use returned node ids only. Do not point to future chunk nodes; add those links later with transition_patches."#;
+Always include every top-level key above. "start_node" must match one of the returned node ids. Returned node ids must all be new and unique within this response. In draft_init, every transition.to and every transition_patches target must exactly match one id from this same returned nodes list. If a target node is not present in returned nodes, do not output that transition yet. Do not point to future chunk nodes; add those links later with transition_patches."#;
 
 pub(super) const ARCHITECT_DRAFT_CONTINUE_OUTPUT_CONTRACT: &str = r#"Top-level output schema:
 {
@@ -173,4 +174,4 @@ pub(super) const ARCHITECT_DRAFT_CONTINUE_OUTPUT_CONTRACT: &str = r#"Top-level o
   "section_summary": "one short sentence"
 }
 
-Always include "nodes", "transition_patches", and "section_summary". Returned node ids must be unique within this response and must not reuse node ids that already exist in GRAPH_SUMMARY. Existing nodes may only be referenced in transition_patches or transition targets. All transition and transition_patches targets must use either GRAPH_SUMMARY node ids or returned node ids. Do not point to future chunk nodes; add those links later with transition_patches."#;
+Always include "nodes", "transition_patches", and "section_summary". Returned node ids must be unique within this response and must not reuse node ids that already exist in GRAPH_SUMMARY. If the next beat or scene already exists in GRAPH_SUMMARY, use that existing node id in transition targets or transition_patches instead of creating a duplicate node. Existing nodes may only be referenced in transition_patches or transition targets; never return an existing GRAPH_SUMMARY node as a new node. In draft_continue, every transition.to and every transition_patches target must exactly match either an existing GRAPH_SUMMARY node id or one of the node ids returned in this same response. If a target node is missing from both sets, do not output that transition yet. Do not point to future chunk nodes; add those links later with transition_patches."#;
