@@ -3,9 +3,15 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Select } from '../../components/ui/select'
+import { Select, type SelectOption } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
+import type { CharacterSummary } from '../characters/types'
+import type {
+  StoryCommonVariableKeySource,
+  StoryCommonVariableSchemaCatalog,
+} from './story-common-variable-schema-catalog'
+import { StoryGraphCharacterSelect } from './story-graph-character-select'
 import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildOnEnterUpdateDraftKey,
@@ -17,6 +23,7 @@ import {
 import type { StoryGraphNode, StoryGraphStateOpType } from './types'
 
 type StoryGraphOnEnterUpdatesEditorProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   drafts: GraphOnEnterUpdateDrafts
   expandedOperationKeys: Set<string>
   node: StoryGraphNode
@@ -28,12 +35,15 @@ type StoryGraphOnEnterUpdatesEditorProps = {
     operationIndex: number,
     patch: {
       character?: string
+      characters?: string[]
       key?: string
+      node_id?: string
       type?: StoryGraphStateOpType
       value?: unknown
     },
   ) => void
   readOnly?: boolean
+  schemaCatalog: StoryCommonVariableSchemaCatalog
 }
 
 const operationTypeItems = editableGraphStateOpTypes.map((value) => ({ value }))
@@ -51,7 +61,58 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
   )
 }
 
+function ensureCurrentValueOption(
+  items: ReadonlyArray<SelectOption>,
+  value: string,
+  fallbackLabel: string,
+) {
+  if (!value.trim() || items.some((item) => item.value === value)) {
+    return [...items]
+  }
+
+  return [
+    {
+      label: `${value} · ${fallbackLabel}`,
+      value,
+    },
+    ...items,
+  ]
+}
+
+function getKeySourceHint(args: {
+  needsCharacterSelection?: boolean
+  source: StoryCommonVariableKeySource | null
+  translate: (key: string) => string
+}) {
+  if (args.needsCharacterSelection) {
+    return args.translate('stories.graph.keySourceSelectCharacterFirst')
+  }
+
+  if (!args.source) {
+    return args.translate('stories.graph.keySourceMissing')
+  }
+
+  if (args.source.status === 'loading') {
+    return args.translate('stories.graph.keySourceLoading')
+  }
+
+  if (args.source.status === 'error') {
+    return args.translate('stories.graph.keySourceLoadFailed')
+  }
+
+  if (args.source.status === 'missing') {
+    return args.translate('stories.graph.keySourceMissing')
+  }
+
+  if (args.source.items.length === 0) {
+    return args.translate('stories.graph.keySourceEmpty')
+  }
+
+  return null
+}
+
 export function StoryGraphOnEnterUpdatesEditor({
+  availableCharacters,
   drafts,
   expandedOperationKeys,
   node,
@@ -60,6 +121,7 @@ export function StoryGraphOnEnterUpdatesEditor({
   onToggleOperation,
   onUpdateOperation,
   readOnly = false,
+  schemaCatalog,
 }: StoryGraphOnEnterUpdatesEditorProps) {
   const { t } = useTranslation()
   const operationTypeLabels: Partial<Record<StoryGraphStateOpType, string>> = {
@@ -85,6 +147,35 @@ export function StoryGraphOnEnterUpdatesEditor({
             const draftKey = buildOnEnterUpdateDraftKey(node.id, operationIndex)
             const draftValue = drafts[draftKey] ?? 'null'
             const expansionKey = buildOperationExpansionKey(node.id, operationIndex)
+            const characterId = 'character' in operation ? operation.character.trim() : ''
+            const keySource =
+              operation.type === 'SetCharacterState' || operation.type === 'RemoveCharacterState'
+                ? characterId
+                  ? (schemaCatalog.characterByCharacterId[characterId] ?? null)
+                  : null
+                : operation.type === 'SetPlayerState' || operation.type === 'RemovePlayerState'
+                  ? schemaCatalog.player
+                  : needsKey
+                    ? schemaCatalog.world
+                    : null
+            const keyHint = needsKey
+              ? getKeySourceHint({
+                  needsCharacterSelection: needsCharacter && !characterId,
+                  source: keySource,
+                  translate: (key) => t(key as never),
+                })
+              : null
+            const keyItems = needsKey
+              ? ensureCurrentValueOption(
+                  keySource?.items ?? [],
+                  'key' in operation ? operation.key : '',
+                  t('stories.graph.currentKey'),
+                )
+              : []
+            const isKeyDisabled =
+              readOnly ||
+              (needsCharacter && !characterId) ||
+              (needsKey && keySource?.status !== 'ready')
             const valueError =
               needsValue && draftValue
                 ? (() => {
@@ -195,16 +286,14 @@ export function StoryGraphOnEnterUpdatesEditor({
                   <div className="grid gap-3">
                     {needsCharacter ? (
                       <Field label={t('stories.graph.onEnterUpdateCharacter')}>
-                        <Input
-                          id={`story-graph-on-enter-character-${node.id}-${operationIndex}`}
-                          name={`story-graph-on-enter-character-${node.id}-${operationIndex}`}
-                          onChange={(event) => {
+                        <StoryGraphCharacterSelect
+                          characters={availableCharacters}
+                          disabled={readOnly}
+                          onValueChange={(nextValue) => {
                             onUpdateOperation(node.id, operationIndex, {
-                              character: event.target.value,
+                              character: nextValue,
                             })
                           }}
-                          placeholder={t('stories.graph.onEnterUpdateCharacterPlaceholder')}
-                          readOnly={readOnly}
                           value={'character' in operation ? operation.character : ''}
                         />
                       </Field>
@@ -212,18 +301,24 @@ export function StoryGraphOnEnterUpdatesEditor({
 
                     {needsKey ? (
                       <Field label={t('stories.graph.onEnterUpdateKey')}>
-                        <Input
-                          id={`story-graph-on-enter-key-${node.id}-${operationIndex}`}
-                          name={`story-graph-on-enter-key-${node.id}-${operationIndex}`}
-                          onChange={(event) => {
+                        <Select
+                          allowClear
+                          clearLabel={t('stories.graph.clearSelection')}
+                          disabled={isKeyDisabled}
+                          items={keyItems}
+                          onValueChange={(nextValue) => {
                             onUpdateOperation(node.id, operationIndex, {
-                              key: event.target.value,
+                              key: nextValue,
                             })
                           }}
-                          readOnly={readOnly}
-                          value={'key' in operation ? operation.key : ''}
+                          placeholder={t('stories.graph.keySelectPlaceholder')}
+                          textAlign="start"
+                          value={'key' in operation && operation.key ? operation.key : undefined}
                         />
                       </Field>
+                    ) : null}
+                    {keyHint ? (
+                      <p className="text-xs text-[var(--color-text-muted)]">{keyHint}</p>
                     ) : null}
 
                     {needsValue ? (

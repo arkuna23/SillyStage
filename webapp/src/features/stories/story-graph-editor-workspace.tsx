@@ -1,3 +1,4 @@
+import type { CharacterSummary } from '../characters/types'
 import { StoryGraphCanvas } from './story-graph-canvas'
 import type { StoryGraphEditorController } from './story-graph-editor-controller'
 import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM, GRAPH_ZOOM_STEP } from './story-graph-editor-utils'
@@ -6,21 +7,27 @@ import { StoryGraphToolbar } from './story-graph-toolbar'
 import type { StoryGraph } from './types'
 
 type StoryGraphEditorWorkspaceProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   controller: StoryGraphEditorController
   graphType: 'draft' | 'story'
   isFullscreen?: boolean
   onToggleFullscreen?: () => void
+  playerSchemaId?: string | null
   readOnly?: boolean
   showFullscreenToggle?: boolean
+  worldSchemaId?: string | null
 }
 
 export function StoryGraphEditorWorkspace({
+  availableCharacters,
   controller,
   graphType,
   isFullscreen = false,
   onToggleFullscreen,
+  playerSchemaId,
   readOnly = false,
   showFullscreenToggle = true,
+  worldSchemaId,
 }: StoryGraphEditorWorkspaceProps) {
   if (!controller.graphDraft) {
     return null
@@ -76,6 +83,7 @@ export function StoryGraphEditorWorkspace({
 
         <div className="min-h-0 w-[24rem] overflow-hidden rounded-[1.6rem] border border-[var(--color-border-subtle)] bg-[var(--color-bg-panel-strong)]">
           <StoryGraphInspector
+            availableCharacters={availableCharacters}
             conditionDrafts={controller.conditionDrafts}
             graph={graphDraft}
             newNodeIds={controller.newNodeIds}
@@ -101,9 +109,11 @@ export function StoryGraphEditorWorkspace({
             onUpdateTransition={controller.handleUpdateTransition}
             onEnterUpdateDrafts={controller.onEnterUpdateDrafts}
             onUpdateTransitionCondition={controller.handleUpdateTransitionCondition}
+            playerSchemaId={playerSchemaId}
             readOnly={readOnly}
             selectedNodeId={controller.selectedNodeId}
             selectedTransitionIndex={controller.selectedTransitionIndex}
+            worldSchemaId={worldSchemaId}
           />
         </div>
       </div>

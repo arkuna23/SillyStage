@@ -671,6 +671,7 @@ export function ManualStoryCreateDialog({
       </DialogContent>
 
       <ManualStoryGraphDialog
+        availableCharacters={availableCharacters}
         controller={graphController}
         onOpenChange={setIsGraphEditorOpen}
         open={open && isGraphEditorOpen}

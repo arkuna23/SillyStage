@@ -70,7 +70,7 @@ export type StoryGraphEditorController = {
   handleRemoveTransition: (nodeId: string, transitionIndex: number) => void
   handleSelectNode: (nodeId: string | null) => void
   handleToggleCondition: (nodeId: string, transitionIndex: number, enabled: boolean) => void
-  handleUpdateCharacters: (nodeId: string, value: string) => void
+  handleUpdateCharacters: (nodeId: string, value: string[]) => void
   handleUpdateNodeField: (nodeId: string, field: 'goal' | 'scene' | 'title', value: string) => void
   handleUpdateNodeId: (nodeId: string, value: string) => void
   handleUpdateOnEnterUpdate: (
@@ -78,7 +78,9 @@ export type StoryGraphEditorController = {
     operationIndex: number,
     patch: {
       character?: string
+      characters?: string[]
       key?: string
+      node_id?: string
       type?: StoryGraphStateOpType
       value?: unknown
     },
@@ -350,16 +352,17 @@ export function useStoryGraphEditorController({
     })
   }
 
-  function handleUpdateCharacters(nodeId: string, value: string) {
+  function handleUpdateCharacters(nodeId: string, value: string[]) {
+    const normalizedCharacters = Array.from(
+      new Set(value.map((entry) => entry.trim()).filter((entry) => entry.length > 0)),
+    )
+
     patchGraph((currentGraph) => {
       currentGraph.nodes = currentGraph.nodes.map((node) =>
         node.id === nodeId
           ? {
               ...node,
-              characters: value
-                .split(',')
-                .map((entry) => entry.trim())
-                .filter(Boolean),
+              characters: normalizedCharacters,
             }
           : node,
       )
@@ -687,7 +690,9 @@ export function useStoryGraphEditorController({
     operationIndex: number,
     patch: {
       character?: string
+      characters?: string[]
       key?: string
+      node_id?: string
       type?: StoryGraphStateOpType
       value?: unknown
     },

@@ -11,12 +11,14 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { cn } from '../../lib/cn'
+import type { CharacterSummary } from '../characters/types'
 import type { StoryGraphEditorController } from './story-graph-editor-controller'
 import { INITIAL_STORY_GRAPH_VIEWPORT, isEditableTarget } from './story-graph-editor-controller'
 import { GRAPH_MAX_ZOOM, GRAPH_MIN_ZOOM, GRAPH_ZOOM_STEP } from './story-graph-editor-utils'
 import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
 
 type ManualStoryGraphDialogProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   controller: StoryGraphEditorController
   onOpenChange: (open: boolean) => void
   open: boolean
@@ -26,6 +28,7 @@ type ManualStoryGraphDialogProps = {
 }
 
 export function ManualStoryGraphDialog({
+  availableCharacters,
   controller,
   onOpenChange,
   open,
@@ -132,12 +135,15 @@ export function ManualStoryGraphDialog({
         </DialogHeader>
 
         <StoryGraphEditorWorkspace
+          availableCharacters={availableCharacters}
           controller={controller}
           graphType="story"
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => {
             setIsFullscreen((currentValue) => !currentValue)
           }}
+          playerSchemaId={playerSchemaId}
+          worldSchemaId={worldSchemaId}
         />
 
         <DialogFooter className="justify-between">

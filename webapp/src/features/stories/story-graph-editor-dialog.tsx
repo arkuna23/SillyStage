@@ -12,6 +12,7 @@ import {
 } from '../../components/ui/dialog'
 import { useToast } from '../../components/ui/toast-context'
 import { cn } from '../../lib/cn'
+import type { CharacterSummary } from '../characters/types'
 import { updateStoryDraftGraph, updateStoryGraph } from './api'
 import {
   INITIAL_STORY_GRAPH_VIEWPORT,
@@ -29,13 +30,16 @@ import { StoryGraphEditorWorkspace } from './story-graph-editor-workspace'
 import type { StoryGraph } from './types'
 
 type StoryGraphEditorDialogProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   graph: StoryGraph | null
   graphType: 'draft' | 'story'
   onGraphSaved?: (graph: StoryGraph) => void
   onOpenChange: (open: boolean) => void
   open: boolean
+  playerSchemaId?: string | null
   readOnly?: boolean
   resourceId: string
+  worldSchemaId?: string | null
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -43,13 +47,16 @@ function getErrorMessage(error: unknown, fallback: string) {
 }
 
 export function StoryGraphEditorDialog({
+  availableCharacters,
   graph,
   graphType,
   onGraphSaved,
   onOpenChange,
   open,
+  playerSchemaId,
   readOnly = false,
   resourceId,
+  worldSchemaId,
 }: StoryGraphEditorDialogProps) {
   const { t } = useTranslation()
   const { pushToast } = useToast()
@@ -199,13 +206,16 @@ export function StoryGraphEditorDialog({
         </DialogHeader>
 
         <StoryGraphEditorWorkspace
+          availableCharacters={availableCharacters}
           controller={controller}
           graphType={graphType}
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => {
             setIsFullscreen((currentValue) => !currentValue)
           }}
+          playerSchemaId={playerSchemaId}
           readOnly={readOnly}
+          worldSchemaId={worldSchemaId}
         />
 
         <DialogFooter className="justify-between">

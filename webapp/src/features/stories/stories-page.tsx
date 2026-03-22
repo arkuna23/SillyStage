@@ -673,6 +673,7 @@ export function StoriesPage() {
       />
 
       <StoryDetailsDialog
+        availableCharacters={characters}
         onOpenChange={(open) => {
           if (!open) {
             setDetailsStoryId(null)
@@ -683,6 +684,7 @@ export function StoriesPage() {
       />
 
       <StoryDraftDetailsDialog
+        availableCharacters={characters}
         draftId={detailsDraftId}
         onOpenChange={(open) => {
           if (!open) {

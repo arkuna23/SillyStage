@@ -13,11 +13,13 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { useToastMessage } from '../../components/ui/toast-context'
+import type { CharacterSummary } from '../characters/types'
 import { getStoryDraft } from './api'
 import { StoryGraphEditorDialog } from './story-graph-editor-dialog'
 import type { StoryDraftDetail } from './types'
 
 type StoryDraftDetailsDialogProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   draftId: string | null
   onOpenChange: (open: boolean) => void
   open: boolean
@@ -37,6 +39,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 }
 
 export function StoryDraftDetailsDialog({
+  availableCharacters,
   draftId,
   onOpenChange,
   open,
@@ -225,6 +228,7 @@ export function StoryDraftDetailsDialog({
       </DialogContent>
 
       <StoryGraphEditorDialog
+        availableCharacters={availableCharacters}
         graph={visibleDraft?.partial_graph ?? null}
         graphType="draft"
         onGraphSaved={(nextGraph) => {
@@ -236,8 +240,10 @@ export function StoryDraftDetailsDialog({
         }}
         onOpenChange={setIsGraphEditorOpen}
         open={open && isGraphEditorOpen}
+        playerSchemaId={visibleDraft?.player_schema_id}
         readOnly={visibleDraft?.status === 'finalized'}
         resourceId={visibleDraft?.draft_id ?? ''}
+        worldSchemaId={visibleDraft?.world_schema_id}
       />
     </Dialog>
   )

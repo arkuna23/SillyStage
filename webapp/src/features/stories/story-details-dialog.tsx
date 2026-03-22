@@ -13,11 +13,13 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog'
 import { useToastMessage } from '../../components/ui/toast-context'
+import type { CharacterSummary } from '../characters/types'
 import { getStory } from './api'
 import { StoryGraphEditorDialog } from './story-graph-editor-dialog'
 import type { StoryDetail } from './types'
 
 type StoryDetailsDialogProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   onOpenChange: (open: boolean) => void
   open: boolean
   storyId: string | null
@@ -36,7 +38,12 @@ function DetailRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-export function StoryDetailsDialog({ onOpenChange, open, storyId }: StoryDetailsDialogProps) {
+export function StoryDetailsDialog({
+  availableCharacters,
+  onOpenChange,
+  open,
+  storyId,
+}: StoryDetailsDialogProps) {
   const { t } = useTranslation()
   const [story, setStory] = useState<StoryDetail | null>(null)
   const [errorState, setErrorState] = useState<{ message: string; storyId: string } | null>(null)
@@ -182,6 +189,7 @@ export function StoryDetailsDialog({ onOpenChange, open, storyId }: StoryDetails
       </DialogContent>
 
       <StoryGraphEditorDialog
+        availableCharacters={availableCharacters}
         graph={visibleStory?.graph ?? null}
         graphType="story"
         onGraphSaved={(nextGraph) => {
@@ -193,7 +201,9 @@ export function StoryDetailsDialog({ onOpenChange, open, storyId }: StoryDetails
         }}
         onOpenChange={setIsGraphEditorOpen}
         open={open && isGraphEditorOpen}
+        playerSchemaId={visibleStory?.player_schema_id}
         resourceId={visibleStory?.story_id ?? ''}
+        worldSchemaId={visibleStory?.world_schema_id}
       />
     </Dialog>
   )

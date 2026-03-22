@@ -10,9 +10,18 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '../../components/ui/badge'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
-import { Select } from '../../components/ui/select'
+import { Select, type SelectOption } from '../../components/ui/select'
 import { Textarea } from '../../components/ui/textarea'
 import { cn } from '../../lib/cn'
+import type { CharacterSummary } from '../characters/types'
+import {
+  type StoryCommonVariableKeySource,
+  useStoryCommonVariableSchemaCatalog,
+} from './story-common-variable-schema-catalog'
+import {
+  StoryGraphCharacterMultiSelect,
+  StoryGraphCharacterSelect,
+} from './story-graph-character-select'
 import { StoryGraphCollapsibleCard } from './story-graph-collapsible-card'
 import {
   buildConditionDraftKey,
@@ -32,6 +41,7 @@ import type {
 } from './types'
 
 type StoryGraphInspectorProps = {
+  availableCharacters: ReadonlyArray<CharacterSummary>
   conditionDrafts: GraphConditionDrafts
   graph: StoryGraph
   newNodeIds: Set<string>
@@ -45,7 +55,7 @@ type StoryGraphInspectorProps = {
   onSelectTransition: (transitionIndex: number | null) => void
   onSetStartNode: (nodeId: string) => void
   onToggleCondition: (nodeId: string, transitionIndex: number, enabled: boolean) => void
-  onUpdateCharacters: (nodeId: string, value: string) => void
+  onUpdateCharacters: (nodeId: string, value: string[]) => void
   onUpdateNodeField: (nodeId: string, field: 'goal' | 'scene' | 'title', value: string) => void
   onUpdateNodeId: (nodeId: string, value: string) => void
   onUpdateOnEnterUpdate: (
@@ -53,7 +63,9 @@ type StoryGraphInspectorProps = {
     operationIndex: number,
     patch: {
       character?: string
+      characters?: string[]
       key?: string
+      node_id?: string
       type?: StoryGraphStateOpType
       value?: unknown
     },
@@ -69,9 +81,11 @@ type StoryGraphInspectorProps = {
     transitionIndex: number,
     patch: Partial<StoryGraphCondition>,
   ) => void
+  playerSchemaId?: string | null
   readOnly?: boolean
   selectedNodeId: string | null
   selectedTransitionIndex: number | null
+  worldSchemaId?: string | null
 }
 
 type SelectedNodeInspectorContentProps = Omit<StoryGraphInspectorProps, 'selectedNodeId'> & {
@@ -115,6 +129,56 @@ function Field({ children, label }: { children: ReactNode; label: string }) {
   )
 }
 
+function ensureCurrentValueOption(
+  items: ReadonlyArray<SelectOption>,
+  value: string,
+  fallbackLabel: string,
+) {
+  if (!value.trim() || items.some((item) => item.value === value)) {
+    return [...items]
+  }
+
+  return [
+    {
+      label: `${value} · ${fallbackLabel}`,
+      value,
+    },
+    ...items,
+  ]
+}
+
+function getKeySourceHint(args: {
+  needsCharacterSelection?: boolean
+  source: StoryCommonVariableKeySource | null
+  translate: (key: string) => string
+}) {
+  if (args.needsCharacterSelection) {
+    return args.translate('stories.graph.keySourceSelectCharacterFirst')
+  }
+
+  if (!args.source) {
+    return args.translate('stories.graph.keySourceMissing')
+  }
+
+  if (args.source.status === 'loading') {
+    return args.translate('stories.graph.keySourceLoading')
+  }
+
+  if (args.source.status === 'error') {
+    return args.translate('stories.graph.keySourceLoadFailed')
+  }
+
+  if (args.source.status === 'missing') {
+    return args.translate('stories.graph.keySourceMissing')
+  }
+
+  if (args.source.items.length === 0) {
+    return args.translate('stories.graph.keySourceEmpty')
+  }
+
+  return null
+}
+
 function InspectorTabButton({
   active,
   icon,
@@ -156,6 +220,7 @@ function InspectorTabButton({
 
 function SelectedNodeInspectorContent({
   activeTab,
+  availableCharacters,
   conditionDrafts,
   graph,
   newNodeIds,
@@ -177,9 +242,11 @@ function SelectedNodeInspectorContent({
   onUpdateTransition,
   onEnterUpdateDrafts,
   onUpdateTransitionCondition,
+  playerSchemaId,
   readOnly = false,
   selectedNode,
   selectedTransitionIndex,
+  worldSchemaId,
 }: SelectedNodeInspectorContentProps) {
   const { t } = useTranslation()
   const prefersReducedMotion = useReducedMotion()
@@ -194,6 +261,31 @@ function SelectedNodeInspectorContent({
     label: `${getGraphNodeLabel(node)} (${node.id})`,
     value: node.id,
   }))
+  const referencedCharacterIds = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          [
+            ...selectedNode.characters,
+            ...selectedNode.transitions
+              .map((transition) => transition.condition?.character?.trim() ?? '')
+              .filter((characterId) => characterId.length > 0),
+            ...(selectedNode.on_enter_updates ?? [])
+              .flatMap((operation) =>
+                'character' in operation ? [operation.character.trim()] : [],
+              )
+              .filter((characterId) => characterId.length > 0),
+          ].filter((characterId) => characterId.length > 0),
+        ),
+      ),
+    [selectedNode],
+  )
+  const schemaCatalog = useStoryCommonVariableSchemaCatalog({
+    characterIds: referencedCharacterIds,
+    enabled: true,
+    playerSchemaId,
+    worldSchemaId,
+  })
   const onEnterUpdatesCount = selectedNode.on_enter_updates?.length ?? 0
   const tabItems = [
     {
@@ -424,15 +516,13 @@ function SelectedNodeInspectorContent({
                   </Field>
 
                   <Field label={t('stories.graph.characters')}>
-                    <Input
-                      id={`story-graph-node-characters-${selectedNode.id}`}
-                      name={`story-graph-node-characters-${selectedNode.id}`}
-                      onChange={(event) => {
-                        onUpdateCharacters(selectedNode.id, event.target.value)
+                    <StoryGraphCharacterMultiSelect
+                      characters={availableCharacters}
+                      disabled={readOnly}
+                      onChange={(nextCharacterIds) => {
+                        onUpdateCharacters(selectedNode.id, nextCharacterIds)
                       }}
-                      placeholder={t('stories.graph.charactersPlaceholder')}
-                      readOnly={readOnly}
-                      value={selectedNode.characters.join(', ')}
+                      selectedCharacterIds={selectedNode.characters}
                     />
                   </Field>
                 </div>
@@ -472,6 +562,30 @@ function SelectedNodeInspectorContent({
                               }
                             })()
                           : null
+                      const conditionCharacterId = transition.condition?.character?.trim() ?? ''
+                      const conditionKeySource =
+                        transition.condition?.scope === 'character'
+                          ? conditionCharacterId
+                            ? (schemaCatalog.characterByCharacterId[conditionCharacterId] ?? null)
+                            : null
+                          : transition.condition?.scope === 'player'
+                            ? schemaCatalog.player
+                            : schemaCatalog.world
+                      const conditionKeyHint = getKeySourceHint({
+                        needsCharacterSelection:
+                          transition.condition?.scope === 'character' && !conditionCharacterId,
+                        source: conditionKeySource,
+                        translate: (key) => t(key as never),
+                      })
+                      const conditionKeyItems = ensureCurrentValueOption(
+                        conditionKeySource?.items ?? [],
+                        transition.condition?.key ?? '',
+                        t('stories.graph.currentKey'),
+                      )
+                      const isConditionKeyDisabled =
+                        readOnly ||
+                        (transition.condition?.scope === 'character' && !conditionCharacterId) ||
+                        conditionKeySource?.status !== 'ready'
 
                       return (
                         <StoryGraphCollapsibleCard
@@ -612,38 +726,44 @@ function SelectedNodeInspectorContent({
 
                               {transition.condition.scope === 'character' ? (
                                 <Field label={t('stories.graph.conditionCharacter')}>
-                                  <Input
-                                    id={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
-                                    name={`story-graph-condition-character-${selectedNode.id}-${transitionIndex}`}
-                                    onChange={(event) => {
+                                  <StoryGraphCharacterSelect
+                                    characters={availableCharacters}
+                                    disabled={readOnly}
+                                    onValueChange={(nextValue) => {
                                       onUpdateTransitionCondition(
                                         selectedNode.id,
                                         transitionIndex,
                                         {
-                                          character: event.target.value,
+                                          character: nextValue,
                                         },
                                       )
                                     }}
-                                    placeholder={t('stories.graph.conditionCharacterPlaceholder')}
-                                    readOnly={readOnly}
                                     value={transition.condition.character ?? ''}
                                   />
                                 </Field>
                               ) : null}
 
                               <Field label={t('stories.graph.conditionKey')}>
-                                <Input
-                                  id={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
-                                  name={`story-graph-condition-key-${selectedNode.id}-${transitionIndex}`}
-                                  onChange={(event) => {
+                                <Select
+                                  allowClear
+                                  clearLabel={t('stories.graph.clearSelection')}
+                                  disabled={isConditionKeyDisabled}
+                                  items={conditionKeyItems}
+                                  onValueChange={(nextValue) => {
                                     onUpdateTransitionCondition(selectedNode.id, transitionIndex, {
-                                      key: event.target.value,
+                                      key: nextValue,
                                     })
                                   }}
-                                  readOnly={readOnly}
-                                  value={transition.condition.key}
+                                  placeholder={t('stories.graph.keySelectPlaceholder')}
+                                  textAlign="start"
+                                  value={transition.condition.key || undefined}
                                 />
                               </Field>
+                              {conditionKeyHint ? (
+                                <p className="text-xs text-[var(--color-text-muted)]">
+                                  {conditionKeyHint}
+                                </p>
+                              ) : null}
 
                               <Field label={t('stories.graph.conditionValue')}>
                                 <Textarea
@@ -683,6 +803,7 @@ function SelectedNodeInspectorContent({
 
               {activeTab === 'updates' ? (
                 <StoryGraphOnEnterUpdatesEditor
+                  availableCharacters={availableCharacters}
                   drafts={onEnterUpdateDrafts}
                   expandedOperationKeys={expandedOnEnterUpdateKeys}
                   key={selectedNode.id}
@@ -709,6 +830,7 @@ function SelectedNodeInspectorContent({
                   }}
                   onUpdateOperation={onUpdateOnEnterUpdate}
                   readOnly={readOnly}
+                  schemaCatalog={schemaCatalog}
                 />
               ) : null}
             </div>
@@ -720,6 +842,7 @@ function SelectedNodeInspectorContent({
 }
 
 export function StoryGraphInspector({
+  availableCharacters,
   conditionDrafts,
   graph,
   newNodeIds,
@@ -740,9 +863,11 @@ export function StoryGraphInspector({
   onUpdateTransition,
   onEnterUpdateDrafts,
   onUpdateTransitionCondition,
+  playerSchemaId,
   readOnly = false,
   selectedNodeId,
   selectedTransitionIndex,
+  worldSchemaId,
 }: StoryGraphInspectorProps) {
   const { t } = useTranslation()
   const [activeTab, setActiveTab] = useState<InspectorTab>('node')
@@ -768,6 +893,7 @@ export function StoryGraphInspector({
   return (
     <SelectedNodeInspectorContent
       activeTab={activeTab}
+      availableCharacters={availableCharacters}
       conditionDrafts={conditionDrafts}
       graph={graph}
       newNodeIds={newNodeIds}
@@ -789,9 +915,11 @@ export function StoryGraphInspector({
       onUpdateOnEnterUpdate={onUpdateOnEnterUpdate}
       onUpdateTransition={onUpdateTransition}
       onUpdateTransitionCondition={onUpdateTransitionCondition}
+      playerSchemaId={playerSchemaId}
       readOnly={readOnly}
       selectedNode={selectedNode}
       selectedTransitionIndex={selectedTransitionIndex}
+      worldSchemaId={worldSchemaId}
     />
   )
 }
