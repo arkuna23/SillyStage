@@ -1428,6 +1428,7 @@ fn compact_json<T: Serialize>(value: &T) -> String {
 fn actor_memory_kind_label(kind: &ActorMemoryKind) -> &'static str {
     match kind {
         ActorMemoryKind::PlayerInput => "player_input",
+        ActorMemoryKind::Narration => "narration",
         ActorMemoryKind::Dialogue => "dialogue",
         ActorMemoryKind::Thought => "thought",
         ActorMemoryKind::Action => "action",

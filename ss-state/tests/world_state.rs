@@ -107,6 +107,29 @@ fn player_input_shared_memory_uses_visible_player_entry() {
 }
 
 #[test]
+fn actor_shared_history_serializes_narration_entries() {
+    let state = WorldState::new("dock").with_actor_shared_history(vec![ActorMemoryEntry {
+        speaker_id: "narrator".to_owned(),
+        speaker_name: "Narrator".to_owned(),
+        kind: ActorMemoryKind::Narration,
+        text: "The floodwater presses against the old gate.".to_owned(),
+    }]);
+
+    let serialized = serde_json::to_value(&state).expect("world state should serialize");
+
+    assert_eq!(
+        serialized["actor_shared_history"][0]["kind"],
+        json!("narration")
+    );
+    let restored: WorldState =
+        serde_json::from_value(serialized).expect("world state should deserialize");
+    assert_eq!(
+        restored.actor_shared_history()[0].kind,
+        ActorMemoryKind::Narration
+    );
+}
+
+#[test]
 fn actor_private_memory_respects_limit_per_character() {
     let mut state = WorldState::default();
 

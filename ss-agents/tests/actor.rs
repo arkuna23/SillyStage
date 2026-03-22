@@ -363,6 +363,15 @@ async fn perform_stream_sends_character_specific_system_prompt() {
         },
         8,
     );
+    world_state.push_actor_shared_history(
+        ActorMemoryEntry {
+            speaker_id: "narrator".to_owned(),
+            speaker_name: "Narrator".to_owned(),
+            kind: ActorMemoryKind::Narration,
+            text: "Rain beads along the dock planks.".to_owned(),
+        },
+        8,
+    );
     world_state.push_player_input_shared_memory("Can you get us through the flooded gate?", 8);
     world_state.push_actor_private_memory(
         "merchant",
@@ -417,6 +426,11 @@ async fn perform_stream_sends_character_specific_system_prompt() {
         request.messages[1]
             .content
             .contains("Stay close to the lantern light.")
+    );
+    assert!(
+        request.messages[1]
+            .content
+            .contains("[narrator|Narrator|narration] Rain beads along the dock planks.")
     );
     assert!(
         request.messages[1]

@@ -680,8 +680,21 @@ async fn run_turn_stream_emits_full_pipeline_and_updates_state() {
         engine.runtime_state().world_state().state("gate_open"),
         Some(&json!(true))
     );
+    assert!(engine
+        .runtime_state()
+        .world_state()
+        .actor_shared_history()
+        .iter()
+        .any(|entry| {
+            entry.speaker_id == "narrator"
+                && entry.kind == state::ActorMemoryKind::Narration
+                && entry.text == "Water churned beneath the old gate."
+        }));
 
     let requests = llm.recorded_requests();
+    assert_eq!(requests.len(), 5);
+    let actor_user = user_message_content(&requests[3]);
+    assert!(actor_user.contains("Water churned beneath the old gate."));
     let final_keeper_request = requests.last().expect("final keeper request");
     let final_keeper_user = user_message_content(final_keeper_request);
     assert!(final_keeper_user.contains("matched_transition_hints"));

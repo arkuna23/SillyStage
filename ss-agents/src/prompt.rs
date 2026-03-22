@@ -423,6 +423,7 @@ fn render_condition_operator(operator: &story::ConditionOperator) -> &'static st
 fn actor_memory_kind_label(kind: ActorMemoryKind) -> &'static str {
     match kind {
         ActorMemoryKind::PlayerInput => "player_input",
+        ActorMemoryKind::Narration => "narration",
         ActorMemoryKind::Dialogue => "dialogue",
         ActorMemoryKind::Thought => "thought",
         ActorMemoryKind::Action => "action",

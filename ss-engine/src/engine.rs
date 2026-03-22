@@ -483,6 +483,11 @@ impl Engine {
                             "narrator response payload"
                         );
 
+                        record_narration(
+                            self.runtime_state.world_state_mut(),
+                            &response,
+                            self.shared_memory_limit,
+                        );
                         completed_beats.push(ExecutedBeat::Narrator { purpose, response });
                     }
                     ResponseBeat::Actor { speaker_id, purpose } => {
@@ -1253,6 +1258,27 @@ fn record_player_input(
     };
     world_state.push_actor_shared_history(entry.clone(), shared_memory_limit);
     entry
+}
+
+fn record_narration(
+    world_state: &mut WorldState,
+    response: &NarratorResponse,
+    shared_memory_limit: usize,
+) {
+    let text = response.text.trim();
+    if text.is_empty() {
+        return;
+    }
+
+    world_state.push_actor_shared_history(
+        ActorMemoryEntry {
+            speaker_id: "narrator".to_owned(),
+            speaker_name: "Narrator".to_owned(),
+            kind: ActorMemoryKind::Narration,
+            text: text.to_owned(),
+        },
+        shared_memory_limit,
+    );
 }
 
 fn candidate_transition_keys(node: &story::NarrativeNode) -> Vec<String> {

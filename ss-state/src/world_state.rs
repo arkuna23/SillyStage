@@ -8,6 +8,7 @@ use crate::update::{StateOp, StateUpdate};
 #[serde(rename_all = "snake_case")]
 pub enum ActorMemoryKind {
     PlayerInput,
+    Narration,
     Dialogue,
     Thought,
     Action,
