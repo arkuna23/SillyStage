@@ -49,10 +49,14 @@ require_command() {
 
 ensure_rust_target() {
   local target="$1"
-  if ! rustup target list --installed | grep -Fxq "$target"; then
-    echo "missing Rust target: $target" >&2
-    echo "install it first with: rustup target add $target" >&2
-    exit 1
+  if command -v rustup >/dev/null 2>&1; then
+    if ! rustup target list --installed | grep -Fxq "$target"; then
+      echo "missing Rust target: $target" >&2
+      echo "install it first with: rustup target add $target" >&2
+      exit 1
+    fi
+  else
+    echo "rustup not found, skipping target check for $target" >&2
   fi
 }
 
@@ -151,7 +155,6 @@ package_target() {
 }
 
 require_command cargo
-require_command rustup
 require_command pnpm
 require_command tar
 require_command zip

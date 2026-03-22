@@ -999,13 +999,13 @@ fn validate_draft_init_bundle(bundle: &ArchitectDraftOutputBundle) -> Result<(),
     }
     let returned_node_ids: HashSet<&str> =
         bundle.nodes.iter().map(|node| node.id.as_str()).collect();
-    if let Some(start_node) = &bundle.start_node
-        && !returned_node_ids.contains(start_node.as_str())
-    {
-        return Err(ArchitectError::InvalidDraftOutput(format!(
-            "architect draft init start_node '{}' is not included in returned nodes",
-            start_node
-        )));
+    if let Some(start_node) = &bundle.start_node {
+        if !returned_node_ids.contains(start_node.as_str()) {
+            return Err(ArchitectError::InvalidDraftOutput(format!(
+                "architect draft init start_node '{}' is not included in returned nodes",
+                start_node
+            )));
+        }
     }
     validate_draft_chunk_transitions(bundle, &HashSet::new())?;
     Ok(())
