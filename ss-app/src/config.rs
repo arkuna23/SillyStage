@@ -300,12 +300,12 @@ fn resolve_config_path(cli: &CliOverrides, env: &EnvOverrides) -> Option<PathBuf
         return Some(default);
     }
 
-    if let Ok(exe) = env::current_exe()
-        && let Some(exe_dir) = exe.parent()
-    {
-        let packaged = exe_dir.join("ss-app.toml");
-        if packaged.is_file() {
-            return Some(packaged);
+    if let Ok(exe) = env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            let packaged = exe_dir.join("ss-app.toml");
+            if packaged.is_file() {
+                return Some(packaged);
+            }
         }
     }
 
