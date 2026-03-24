@@ -37,6 +37,8 @@ package_all_cmd := if os_family() == "windows" {
     "bash scripts/package-app.sh --target x86_64-unknown-linux-gnu --target x86_64-pc-windows-gnu"
 }
 
+version_cmd := "bash scripts/bump-version.sh"
+
 default:
     @just --list
 
@@ -93,3 +95,6 @@ package-windows:
 
 package-all:
     {{package_all_cmd}}
+
+version arg:
+    {{version_cmd}} "{{arg}}"
